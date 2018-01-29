@@ -95,10 +95,10 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        # Tags = @()
+        Tags = @('ESRI ArcGIS','ArcGIS', 'ArcGIS Enterprise', 'ArcGIS Enterprise Configure', 'ArcGIS Enterprise Upgrade')
 
         # A URL to the license for this module.
-        # LicenseUri = ''
+        LicenseUri = 'Apache License - 2.0'
 
         # A URL to the main website for this project.
         # ProjectUri = ''
