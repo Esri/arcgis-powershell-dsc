@@ -98,7 +98,7 @@ PrivateData = @{
         Tags = 'ESRI ArcGIS','ArcGIS','ArcGIS Enterprise','ArcGIS Enterprise Configure','ArcGIS Enterprise Upgrade'
 
         # A URL to the license for this module.
-        LicenseUri = 'Apache License - 2.0'
+        LicenseUri = 'https://github.com/Esri/arcgis-powershell-dsc/blob/master/License.txt'
 
         # A URL to the main website for this project.
         # ProjectUri = ''
