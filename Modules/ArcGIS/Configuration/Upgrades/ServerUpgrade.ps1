@@ -5,6 +5,10 @@ Configuration ServerUpgrade{
 
         [System.Management.Automation.PSCredential]
         $ServiceAccount,
+        
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsSADomainAccount = $False,
 
         [System.String]
         $InstallerPath,
@@ -32,16 +36,17 @@ Configuration ServerUpgrade{
         $MachineFQDN = [System.Net.DNS]::GetHostByName($NodeName).HostName
         
         $Depends = @()
-        
-        User ArcGIS_RunAsAccount
-        {
-            UserName = $ServiceAccount.UserName
-            Password = $ServiceAccount
-            FullName = 'ArcGIS Run As Account'
-            Ensure = "Present"
-        }
+        if(-not($IsSADomainAccount)){
+            User ArcGIS_RunAsAccount
+            {
+                UserName = $ServiceAccount.UserName
+                Password = $ServiceAccount
+                FullName = 'ArcGIS Run As Account'
+                Ensure = "Present"
+            }
 
-        $Depends += '[User]ArcGIS_RunAsAccount'
+            $Depends += '[User]ArcGIS_RunAsAccount'
+        }
 
         ArcGIS_Install ServerUpgrade{
             Name = "Server"

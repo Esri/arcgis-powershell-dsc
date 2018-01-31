@@ -66,7 +66,7 @@ Configuration ArcGISConfigure
         $MachineFQDN = Get-FQDN $Node.NodeName
 
         $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-        $DCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+        $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
 
         $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
         $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
@@ -88,16 +88,18 @@ Configuration ArcGISConfigure
             }
         }
 
-        User ArcGIS_RunAsAccount
-        {
-            UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-            Password = $DCredential
-            FullName = 'ArcGIS Run As Account'
-            Ensure = "Present"
-            PasswordChangeRequired = $false
-            PasswordNeverExpires = $true
+        if(-Not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+            User ArcGIS_RunAsAccount
+            {
+                UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                Password = $SACredential
+                FullName = 'ArcGIS Run As Account'
+                Ensure = "Present"
+                PasswordChangeRequired = $false
+                PasswordNeverExpires = $true
+            }
         }
-        
+
         if($ConfigurationData.ConfigData.DebugMode) 
         {
 			Group-Object RemoteDesktopUsers
@@ -105,7 +107,7 @@ Configuration ArcGISConfigure
                 GroupName = 'Remote Desktop Users'
                 Ensure = 'Present'
                 MembersToInclude = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-                DependsOn = @('[User]ArcGIS_RunAsAccount') 
+                DependsOn = if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
             }			
         }
 
@@ -256,7 +258,7 @@ Configuration ArcGISConfigure
                     ArcGIS_WindowsService ArcGIS_for_Server_Service
                     {
                         Name = 'ArcGIS Server'
-                        Credential = $DCredential
+                        Credential = $SACredential
                         StartupType = 'Automatic'
                         State = 'Running'
                         DependsOn = $Depends
@@ -273,11 +275,16 @@ Configuration ArcGISConfigure
                         $FilePathsForServer = @()
                         $FilePathsForServer += $ConfigStoreLocation
                         $FilePathsForServer += $ServerDirectoriesRootLocation
-                        $FileShareCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$FileShareMachine\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
                         
+                        if($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount){
+                            $FileShareCredential = $SACredential
+                        }else{
+                            $FileShareCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$FileShareMachine\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
+                        }
+
                         if($Node.WMFVersion -gt 4){
                             WaitForAll "WaitForAllFileShareServer$($Node.NodeName)"{
-                                ResourceName = "[File]ServerDirectoriesRootLocation"
+                                ResourceName = "[ArcGIS_FileShare]FileShare"
                                 NodeName = $FileShareMachine
                                 RetryIntervalSec = 20
                                 RetryCount = 30
@@ -311,7 +318,7 @@ Configuration ArcGISConfigure
                     ArcGIS_Service_Account Server_RunAs_Account
                     {
                         Name = 'ArcGIS Server'
-                        RunAsAccount = $DCredential
+                        RunAsAccount = $SACredential
                         Ensure = 'Present'
                         DependsOn = $Depends
                     }
@@ -366,7 +373,7 @@ Configuration ArcGISConfigure
                         ArcGIS_Service_Account GeoEvent_RunAs_Account
                         {
                             Name = 'ArcGISGeoEvent'
-                            RunAsAccount = $DCredential
+                            RunAsAccount = $SACredential
                             Ensure =  "Present"
                             DependsOn = $Depends
                             DataDir = "$env:ProgramData\Esri\GeoEvent"
@@ -377,7 +384,7 @@ Configuration ArcGISConfigure
                         ArcGIS_WindowsService ArcGIS_GeoEvent_Service
                         {
                             Name = 'ArcGISGeoEvent'
-                            Credential = $DCredential
+                            Credential = $SACredential
                             StartupType = 'Automatic'
                             State = 'Running'
                             DependsOn = $Depends
@@ -463,7 +470,7 @@ Configuration ArcGISConfigure
                             ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
                             {
                                 Name		= 'ArcGISGeoEventGateway'
-                                Credential  = $DCredential
+                                Credential  = $SACredential
                                 StartupType = 'Automatic'
                                 State       = 'Running'
                                 DependsOn   = $Depends
@@ -735,8 +742,12 @@ Configuration ArcGISConfigure
                     }
                 }
                 'Portal'{
-                    $Depends = @('[User]ArcGIS_RunAsAccount')
+                    $Depends = @()
                     
+                    if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+                        $Depends += '[User]ArcGIS_RunAsAccount'
+                    }
+
                     $IsMultiMachinePortal = (($AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
                     if($IsMultiMachinePortal -or ($ConfigData.PortalEndPoint -as [ipaddress]))
                     {
@@ -819,7 +830,7 @@ Configuration ArcGISConfigure
                     Service Portal_for_ArcGIS_Service
                     {
                         Name = 'Portal for ArcGIS'
-                        Credential = $DCredential
+                        Credential = $SACredential
                         StartupType = 'Automatic'
                         State = 'Running'          
                         DependsOn = $Depends
@@ -833,11 +844,15 @@ Configuration ArcGISConfigure
                         #$ContentDirectoryLocation = "\\$($FileShareMachine)\$($ConfigurationData.ConfigData.FileShareName)\$($ConfigurationData.ConfigData.Portal.ContentDirectoryLocation)"
                         $FilePathsForPortal = @()
                         $FilePathsForPortal += $ContentDirectoryLocation
-                        
-                        $FileShareCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$FileShareMachine\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
+                        if($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount){
+                            $FileShareCredential = $SACredential
+                        }else{
+                            $FileShareCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$FileShareMachine\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
+                        }
+
                         if($Node.WMFVersion -gt 4){
                             WaitForAll "WaitForAllFileSharePortal$($Node.NodeName)"{
-                                ResourceName = "[File]PortalDirectoriesRootLocation"
+                                ResourceName = "[ArcGIS_FileShare]FileShare"
                                 NodeName = $FileShareMachine
                                 RetryIntervalSec = 20
                                 RetryCount = 30
@@ -877,7 +892,7 @@ Configuration ArcGISConfigure
                     ArcGIS_Service_Account Portal_RunAs_Account
                     {
                         Name = 'Portal for ArcGIS'
-                        RunAsAccount = $DCredential
+                        RunAsAccount = $SACredential
                         Ensure = "Present"
                         DataDir = $DataDirsForPortal
                         DependsOn = $Depends
@@ -1064,13 +1079,16 @@ Configuration ArcGISConfigure
                     
                 }
                 'DataStore'{
-
-                    $Depends = @('[User]ArcGIS_RunAsAccount')
+                    $Depends = @()
+                    
+                    if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+                        $Depends += '[User]ArcGIS_RunAsAccount'
+                    }
 
                     Service ArcGIS_DataStore_Service
                     {
                         Name = 'ArcGIS Data Store'
-                        Credential = $DCredential
+                        Credential = $SACredential
                         StartupType = 'Automatic'
                         State = 'Running'
                         DependsOn = $Depends
@@ -1134,7 +1152,7 @@ Configuration ArcGISConfigure
                     ArcGIS_Service_Account ArcGIS_DataStore_RunAs_Account
                     {
                         Name = 'ArcGIS Data Store'
-                        RunAsAccount = $DCredential
+                        RunAsAccount = $SACredential
                         Ensure = 'Present'
                         DependsOn = $Depends
                         DataDir = $ConfigurationData.ConfigData.DataStore.ContentDirectoryLocation #DataStoreSpatioTemporalDataDirectory <- Needs to be checked if network location
@@ -1655,7 +1673,7 @@ Configuration ArcGISConfigure
                         FileShareName = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName
                         FileShareLocalPath = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath
                         Ensure = 'Present'
-                        UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                        Credential = $SACredential
                     }
                     
                     $DataStorePath = "\\$($env:ComputerName)\$($ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName)"
@@ -1672,36 +1690,20 @@ Configuration ArcGISConfigure
                     }
                 }
                 'FileShare'{
+                    $FilePathsArray = @()
+                    $FilePathsArray += $ConfigurationData.ConfigData.Server.ConfigStoreLocation
+                    $FilePathsArray += $ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation
+                    if($ConfigurationData.ConfigData.Portal){
+                        $FilePathsArray += $ConfigurationData.ConfigData.Portal.ContentDirectoryLocation
+                    }
+                    
                     ArcGIS_FileShare FileShare
                     {
                         FileShareName = $ConfigurationData.ConfigData.FileShareName
                         FileShareLocalPath = $ConfigurationData.ConfigData.FileShareLocalPath
                         Ensure = 'Present'
-                        UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-                    }
-                    File ConfigStoreRootLocation
-                    {
-                        Type = 'Directory'
-                        DestinationPath = $ConfigurationData.ConfigData.Server.ConfigStoreLocation
-                        Ensure = 'Present'
-                        Force = $true
-                        Credential = $DCredential
-                    }
-                    File ServerDirectoriesRootLocation
-                    {
-                        Type = 'Directory'
-                        DestinationPath = $ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation
-                        Ensure = 'Present'
-                        Force = $true
-                        Credential = $DCredential
-                    }
-                    File PortalDirectoriesRootLocation
-                    {
-                        Type = 'Directory'
-                        DestinationPath  = $ConfigurationData.ConfigData.Portal.ContentDirectoryLocation
-                        Ensure = 'Present'
-                        Force = $true
-                        Credential = $DCredential
+                        Credential = $SACredential
+                        FilePaths = ($FilePathsArray -join ",")
                     }
                 }
                 'LoadBalancer'{

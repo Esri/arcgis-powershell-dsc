@@ -419,11 +419,14 @@ function ServerUpgradeScript {
                 if(Test-Path ".\ServerUpgrade") {
                     Remove-Item ".\ServerUpgrade" -Force -ErrorAction Ignore -Recurse
                 }
+
+                $IsSADomainAccount = if($cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$True}else{$False}
+
                 if($cf.ConfigData.ServerRole -ieq "GeoEvent"){
-                    ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -InstallerPath $cf.ConfigData.Server.Installer.Path `
+                    ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
                                 -LicensePath $cf.ConfigData.Server.LicenseFilePath -ServerRole $cf.ConfigData.ServerRole -GeoEventServerInstaller $cf.ConfigData.GeoEventServer.Installer.Path -Verbose
                 }else{
-                    ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -InstallerPath $cf.ConfigData.Server.Installer.Path `
+                    ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
                                 -LicensePath $cf.ConfigData.Server.LicenseFilePath -ServerRole $cf.ConfigData.ServerRole  -Verbose    
                 }
                 
@@ -508,79 +511,6 @@ function Publish-WebApp
         Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
     }
 
-}
-
-function Configure-ArcGISDocker
-{
-    [CmdletBinding()]
-    Param(
-        [Parameter(Position = 0, Mandatory=$True)]
-        [System.String]
-        $ConfigurationParametersFile,    
-
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.PSCredential]
-        $Credential,
-        
-        [switch]
-        $DebugSwitch
-    )
-
-    $DebugMode = $False
-    
-    if($DebugSwitch){
-        $DebugMode = $true
-    }
-
-    $ConfigurationParamsJSON = (ConvertFrom-Json (Get-Content $ConfigurationParametersFile -Raw))
-
-    $ConfigurationParamsHashtable = ConvertPSObjectToHashtable $ConfigurationParamsJSON
-    
-    $CommonNodeToAddForPlainText = @{
-        NodeName = "*"
-        PSDscAllowPlainTextPassword = $true
-    }
-
-    $ConfigurationParamsHashtable.AllNodes += $CommonNodeToAddForPlainText
-
-    $LicenseJobFlag = $False
-    
-    Write-Host "Dot Sourcing the Configuration:- ArcGISLicense"
-    . "$PSScriptRoot\Configuration\ArcGISLicense.ps1" -Verbose:$false
-
-    Write-Host "Compiling the Configuration:- ArcGISLicense"
-    ArcGISLicense -ConfigurationData $ConfigurationParamsHashtable
-    
-    if($Credential){
-        $LicenseJobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -Credential $Credential -DebugMode $DebugMode
-    }else{
-        $LicenseJobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -DebugMode $DebugMode
-    }
-
-    if(Test-Path ".\ArcGISLicense") {
-        Remove-Item ".\ArcGISLicense" -Force -ErrorAction Ignore -Recurse -DebugMode $DebugMode
-    }
-    
-    if($LicenseJobFlag){
-        
-        $ConfigureJobFlag = $False
-
-        Write-Host "Dot Sourcing the Configuration:- ArcGISDockerConfigure"
-        . "$PSScriptRoot\Configuration\ArcGISDockerConfigure.ps1" -Verbose:$false
-
-        Write-Host "Compiling the Configuration:- ArcGISDockerConfigure"
-        ArcGISDockerConfigure -ConfigurationData $ConfigurationParamsHashtable
-        
-        if($Credential){
-            $ConfigureJobFlag = Start-DSCJob -ConfigurationName ArcGISDockerConfigure -Credential $Credential -DebugMode $DebugMode
-        }else{
-            $ConfigureJobFlag = Start-DSCJob -ConfigurationName ArcGISDockerConfigure -DebugMode $DebugMode
-        }
-
-        if($ConfigureJobFlag){ 
-            Get-ArcGISURL $ConfigurationParamsHashtable
-        }
-    }
 }
 
 function Configure-ArcGIS
@@ -826,7 +756,7 @@ function Configure-ArcGIS
 
                 $PortalSAPassword = ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
                 $PortalSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalSAPassword )
-
+                $PortalIsSADomainAccount = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$True}else{$False}
                 $PortalPSAPassword = ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
                 $PortalPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PortalPSAPassword )
                 
@@ -903,6 +833,7 @@ function Configure-ArcGIS
                                 LicensePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
                                 Context = $PortalConfig.ConfigData.PortalContext
                                 ServiceAccount = $PortalSACredential
+                                IsSADomainAccount = $PortalIsSADomainAccount
                                 PrimarySiteAdmin = $PortalPSACredential 
                                 PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
@@ -931,6 +862,7 @@ function Configure-ArcGIS
                                     LicensePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
                                     Context = $PortalConfig.ConfigData.PortalContext
                                     ServiceAccount = $PortalSACredential
+                                    IsSADomainAccount = $PortalIsSADomainAccount
                                     PrimarySiteAdmin = $PortalPSACredential 
                                     PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
                                     ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
@@ -950,6 +882,7 @@ function Configure-ArcGIS
                                     LicensePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
                                     Context = $PortalConfig.ConfigData.PortalContext
                                     ServiceAccount = $PortalSACredential
+                                    IsSADomainAccount = $PortalIsSADomainAccount
                                     PrimarySiteAdmin = $PortalPSACredential 
                                     PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
                                     ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
@@ -1280,4 +1213,4 @@ function Configure-ArcGIS
     }
 }
    
-Export-ModuleMember -Function Get-FQDN, Configure-ArcGIS, Publish-WebApp, Configure-ArcGISDocker
+Export-ModuleMember -Function Get-FQDN, Configure-ArcGIS, Publish-WebApp

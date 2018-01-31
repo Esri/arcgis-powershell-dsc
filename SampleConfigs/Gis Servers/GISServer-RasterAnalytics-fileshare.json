@@ -19,7 +19,8 @@
                                                                 },
                                            "ServiceAccount":  {
                                                                   "Password":  "[ServiceAccount Password]",
-                                                                  "UserName":  "[ServiceAccount Username - Can be a Domain Account]"
+                                                                  "UserName":  "[ServiceAccount Username - Can be a Domain Account]",
+                                                                  "IsDomainAccount": false
                                                               }
                                        },
                       "Server":  {

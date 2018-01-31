@@ -41,6 +41,10 @@ Configuration PortalUpgrade{
         [System.Management.Automation.PSCredential]
         $ServiceAccount,
 
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsSADomainAccount = $False
+
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $PrimarySiteAdmin,
@@ -86,16 +90,19 @@ Configuration PortalUpgrade{
         $MachineFQDN = [System.Net.DNS]::GetHostByName($NodeName).HostName
         $PrimaryPortalHostName = [System.Net.DNS]::GetHostByName($PrimaryPortalMachine).HostName
         $StandbyMachine = [System.Net.DNS]::GetHostByName($StandbyMachineName).HostName
-        
-        User ArcGIS_RunAsAccount
-        {
-            UserName = $ServiceAccount.UserName
-            Password = $ServiceAccount
-            FullName = 'ArcGIS Run As Account'
-            Ensure = "Present"
+        $Depends = @()
+
+        if(-not($IsSADomainAccount)){
+            User ArcGIS_RunAsAccount
+            {
+                UserName = $ServiceAccount.UserName
+                Password = $ServiceAccount
+                FullName = 'ArcGIS Run As Account'
+                Ensure = "Present"
+            }
+            $Depends += '[User]ArcGIS_RunAsAccount'
         }
 
-        $Depends = @()
 
         if($MachineFQDN -ieq $PrimaryPortalHostName){
         

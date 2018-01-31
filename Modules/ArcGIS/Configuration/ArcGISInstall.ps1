@@ -7,16 +7,18 @@ Configuration ArcGISInstall{
     Node $AllNodes.NodeName {
 
         $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-        $DCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
-
-        User ArcGIS_RunAsAccount
-        {
-            UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-            Password = $DCredential
-            FullName = 'ArcGIS Run As Account'
-            Ensure = "Present"
-            PasswordChangeRequired = $false
-            PasswordNeverExpires = $true
+        $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+     
+        if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+            User ArcGIS_RunAsAccount
+            {
+                UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                Password = $SACredential
+                FullName = 'ArcGIS Run As Account'
+                Ensure = "Present"
+                PasswordChangeRequired = $false
+                PasswordNeverExpires = $true
+            }
         }
 
         $NodeRoleArray = @()
@@ -285,6 +287,5 @@ Configuration ArcGISInstall{
                 }
             }
         }
-
     }
 }

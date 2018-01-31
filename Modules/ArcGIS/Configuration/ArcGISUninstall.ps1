@@ -9,17 +9,19 @@
     Node $AllNodes.NodeName
     {   
         $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-        $DCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+        $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
 
         $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
         $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
-
-        User ArcGIS_RunAsAccount
-        {
-            UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-            Password = $DCredential
-            FullName = 'ArcGIS Run As Account'
-            Ensure = "Present"
+     
+        if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+            User ArcGIS_RunAsAccount
+            {
+                UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                Password = $SACredential
+                FullName = 'ArcGIS Run As Account'
+                Ensure = "Present"
+            }
         }
 
         for ( $i = 0; $i -lt $Node.Role.Count; $i++ )
@@ -98,12 +100,12 @@
                         FileShareName = $ConfigurationData.ConfigData.FileShareName
                         FileShareLocalPath = $ConfigurationData.ConfigData.FileShareLocalPath
                         Ensure = 'Absent'
-                        UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                        Credential = $SACredential
                     }
                 }
                 'LoadBalancer'{
 
-                    $D1Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Domain)\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
+                    $DCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Domain)\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
 
                     Package WebDeployUnistall
                     {
@@ -111,7 +113,7 @@
                         Ensure      = "Absent"
                         Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.WebDeploy
                         Arguments   = " /quiet"
-                        Credential  = $D1Credential
+                        Credential  = $DCredential
                         ProductId   = "5134B35A-B559-4762-94A4-FD4918977953"
                     } 
                     
@@ -120,7 +122,7 @@
                         ProductId = "CC4878C0-4A6A-49CD-AAA7-DD3FCB06CC84"
                         Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.WebPlatformInstaller
                         Arguments = " /quiet"
-                        Credential  = $D1Credential
+                        Credential  = $DCredential
                         Ensure = "Absent"
                     }
 
@@ -129,7 +131,7 @@
                         ProductId = "ECCF2049-1097-4F7D-B2F5-1F9959A89D67"
                         Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.WebFarmInstall
                         Arguments = " /quiet"
-                        Credential  = $D1Credential
+                        Credential  = $DCredential
                         Ensure = "Absent"
                     }
 
@@ -138,7 +140,7 @@
                         ProductId = "9B5EE8C5-108B-4E91-AA52-93607FDC8D9C"
                         Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.ExternalDiskCache
                         Arguments = " "
-                        Credential  = $D1Credential
+                        Credential  = $DCredential
                         Ensure = "Absent"
                     }
                     
@@ -147,7 +149,7 @@
                         ProductId = "08F0318A-D113-4CF0-993E-50F191D397AD"
                         Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.RewriteRule
                         Arguments = " /quiet"
-                        Credential  = $D1Credential
+                        Credential  = $DCredential
                         Ensure = "Absent"
                     }
 
@@ -156,7 +158,7 @@
                         ProductId = "78FD26A2-9214-48CD-AF71-7F33D1A78892"
                         Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.ARRInstall
                         Arguments = " /quiet"
-                        Credential  = $D1Credential
+                        Credential  = $DCredential
                         Ensure = "Absent"
                     }
 

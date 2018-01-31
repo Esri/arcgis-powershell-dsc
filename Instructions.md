@@ -86,7 +86,7 @@ or simply,
 	* **PortalContext** - Context of the Portal WebAdaptor
 	* **ServerRole** - Role value for a specialized GIS Server. Accepted Values are 'GeneralPurposeServer', 'GeoAnalytics', 'GeoEvent', 'RasterAnalytics'.
 	* **Credentials**
-		* **ServiceAccount** - Windows User which will be used to install and run the different services of the components.
+		* **ServiceAccount** - Windows User which will be used to install and run the different services of the components. Set 'IsDomainAccount' Parameter to 'true' if Service account is a domain account.
 		* **PrimarySiteAdmin** - A primary administrator user for different components of ArcGIS Enterprise.
 	* **Server**
 		* **Installer**
