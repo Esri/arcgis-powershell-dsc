@@ -1637,6 +1637,16 @@ Configuration ArcGISConfigure
                                                     $PortalFEDHostName = $PortalHostName
                                                 }
 
+                                                if($ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled){
+                                                    $ServerSiteAdminUrlHostName = $ServerFEDHostName
+                                                    $ServerSiteAdminUrlPort = 443
+                                                    $ServerSiteAdminUrlContext = $ConfigurationData.ConfigData.ServerContext
+                                                }else{
+                                                    $ServerSiteAdminUrlHostName = (Get-FQDN $PrimaryServerMachine)
+                                                    $ServerSiteAdminUrlPort = 6443
+                                                    $ServerSiteAdminUrlContext = 'arcgis'
+                                                }
+                                                
                                                 ArcGIS_Federation FederateInWA
                                                 {
                                                     PortalHostName = $PortalHostName
@@ -1645,9 +1655,9 @@ Configuration ArcGISConfigure
                                                     ServiceUrlHostName = $ServerFEDHostName
                                                     ServiceUrlPort = 443
                                                     ServiceUrlContext = $ConfigurationData.ConfigData.ServerContext
-                                                    ServerSiteAdminUrlHostName = $ServerFEDHostName
-                                                    ServerSiteAdminUrlPort = 443
-                                                    ServerSiteAdminUrlContext = $ConfigurationData.ConfigData.ServerContext
+                                                    ServerSiteAdminUrlHostName = $ServerSiteAdminUrlHostName
+                                                    ServerSiteAdminUrlPort = $ServerSiteAdminUrlPort
+                                                    ServerSiteAdminUrlContext = $ServerSiteAdminUrlContext
                                                     Ensure = "Present"
                                                     RemoteSiteAdministrator = if($PortalFedPSACredential){$PortalFedPSACredential}else{$PSACredential}
                                                     SiteAdministrator = $PSACredential
@@ -1942,6 +1952,16 @@ Configuration ArcGISConfigure
                                 }
                                 if($FederationFlag)
                                 {
+                                    if(-not($ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled)){
+                                        $ServerSiteAdminUrlHostName = $ServerHostName
+                                        $ServerSiteAdminUrlPort = $ServerPort
+                                        $ServerSiteAdminUrlContext = $ServerContext
+                                    }else{
+                                        $ServerSiteAdminUrlHostName = (Get-FQDN $PrimaryServerMachine)
+                                        $ServerSiteAdminUrlPort = 6443
+                                        $ServerSiteAdminUrlContext = 'arcgis'
+                                    }
+
                                     ArcGIS_Federation FederateInLB
                                     {
                                         PortalHostName = $PortalHostName
@@ -1950,9 +1970,9 @@ Configuration ArcGISConfigure
                                         ServiceUrlHostName = $ServerHostName
                                         ServiceUrlContext = $ServerContext
                                         ServiceUrlPort = $ServerPort
-                                        ServerSiteAdminUrlHostName = $ServerHostName
-                                        ServerSiteAdminUrlPort = $ServerPort
-                                        ServerSiteAdminUrlContext = $ServerContext
+                                        ServerSiteAdminUrlHostName = $ServerSiteAdminUrlHostName
+                                        ServerSiteAdminUrlPort = $ServerSiteAdminUrlPort
+                                        ServerSiteAdminUrlContext = $ServerSiteAdminUrlContext
                                         Ensure = "Present"
                                         RemoteSiteAdministrator = if($PortalFedPSACredential){$PortalFedPSACredential}else{$PSACredential}
                                         SiteAdministrator = $PSACredential
