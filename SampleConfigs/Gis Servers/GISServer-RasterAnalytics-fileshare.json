@@ -1,7 +1,7 @@
 {
     "AllNodes":  [
                      {
-                         "NodeName":  "Dev0000664",
+                         "NodeName":  "[Machine Name]",
                          "Role":  [
                                     "Server",
                                     "RasterDataStoreItem"

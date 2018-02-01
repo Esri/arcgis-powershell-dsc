@@ -1,7 +1,7 @@
 {
     "AllNodes":  [
                      {
-                         "NodeName":  "Dev006058",
+                         "NodeName": "[Machine Name]",
                          "Role":  [
                                     "Server"
                                   ]
