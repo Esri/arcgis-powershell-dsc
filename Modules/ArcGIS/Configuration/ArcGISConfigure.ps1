@@ -1415,7 +1415,7 @@ Configuration ArcGISConfigure
                                         OverwriteFlag = $False
                                         SiteAdministrator = $PSACredential
                                         DependsOn = $Depends
-                                        AdminAccessEnabled = if($ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled) { $ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled } else { $false }
+                                        AdminAccessEnabled = if($ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled) { $true } else { $false }
                                     }
                                     
                                     $Depends += "[ArcGIS_WebAdaptor]ConfigureServer$($MachineFQDN)"

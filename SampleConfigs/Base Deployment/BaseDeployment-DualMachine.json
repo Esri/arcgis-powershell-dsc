@@ -73,6 +73,7 @@
                                                        }
                                      },
                        "WebAdaptor":  {
+                                          "AdminAccessEnabled":  true,
                                           "Installer":  {
                                                             "Path":  "[WebAdaptor Installer Path]"
                                                         }
