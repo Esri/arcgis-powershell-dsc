@@ -33,7 +33,7 @@
                                       "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
                                   },
                        "Federation":  {
-                                         "PortalHostName": "[Portal Host Name with which this site needs to be federated]",
+                                         "PortalHostName": "[Portal Host Name (FQDN) with which this site needs to be federated]",
                                          "PortalPort": "[Port on which Portal is listening ex. - 443]",
                                          "PortalContext": "[Context of the Portal ex. - portal]",
                                          "PrimarySiteAdmin":  {
