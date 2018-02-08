@@ -156,9 +156,9 @@ Configuration ArcGISConfigure
                     
                     $IsWebGIS = (($AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 0)
                     $IsMultiMachineServer = (($AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
-                    $HasSpatioTemporalNodes = (($AllNodes | Where-Object { $_.Role -icontains 'DataStore' -and $_.DataStoreTypes -icontains 'SpatiotTemporal'}  | Measure-Object).Count -gt 0)
+                    $HasDataStoreNodes = (($AllNodes | Where-Object { $_.Role -icontains 'DataStore' }  | Measure-Object).Count -gt 0)
                     
-                    $OpenFirewallPorts = (-not($IsWebGIS) -or ($ConfigData.ServerEndPoint -as [ipaddress]) -or $HasSpatioTemporalNodes -or $IsMultiMachineServer)
+                    $OpenFirewallPorts = (-not($IsWebGIS) -or ($ConfigData.ServerEndPoint -as [ipaddress]) -or $HasDataStoreNodes -or $IsMultiMachineServer)
                     
                     if($OpenFirewallPorts) # Server only deployment or behind an ILB or has DataStore nodes that need to register using admin			
                     {
