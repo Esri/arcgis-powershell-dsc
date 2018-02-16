@@ -321,6 +321,8 @@ Configuration ArcGISConfigure
                         RunAsAccount = $SACredential
                         Ensure = 'Present'
                         DependsOn = $Depends
+                        DataDir = @($ConfigStoreLocation, $ServerDirectoriesRootLocation)
+                        IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                     }
 
                     $Depends += '[ArcGIS_Service_Account]Server_RunAs_Account' 
@@ -377,6 +379,7 @@ Configuration ArcGISConfigure
                             Ensure =  "Present"
                             DependsOn = $Depends
                             DataDir = "$env:ProgramData\Esri\GeoEvent"
+                            IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                         }  
 
                         $Depends += "[ArcGIS_Service_Account]GeoEvent_RunAs_Account"
@@ -896,6 +899,7 @@ Configuration ArcGISConfigure
                         Ensure = "Present"
                         DataDir = $DataDirsForPortal
                         DependsOn = $Depends
+                        IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                     }
                     
                     $Depends += @('[ArcGIS_Service_Account]Portal_RunAs_Account')
@@ -1156,6 +1160,7 @@ Configuration ArcGISConfigure
                         Ensure = 'Present'
                         DependsOn = $Depends
                         DataDir = $ConfigurationData.ConfigData.DataStore.ContentDirectoryLocation #DataStoreSpatioTemporalDataDirectory <- Needs to be checked if network location
+                        IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                     }
                     $Depends += '[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account'
 
