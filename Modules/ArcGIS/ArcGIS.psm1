@@ -645,8 +645,28 @@ function Configure-ArcGIS
                             Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
                         }
 
-                        if($JobFlag){ 
-                            Get-ArcGISURL $ConfigurationParamsHashtable
+                        if($JobFlag){
+                            $JobFlag = $False
+
+                            Write-Host "Dot Sourcing the Configuration:- ArcGISOffline"
+                            . "$PSScriptRoot\Configuration\ArcGISOffline.ps1" -Verbose:$false
+
+                            Write-Host "Compiling the Configuration:- ArcGISOffline"
+                            ArcGISOffline -ConfigurationData $ConfigurationParamsHashtable
+                            
+                            if($Credential){
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISOffline -Credential $Credential -DebugMode $DebugMode
+                            }else{
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISOffline -DebugMode $DebugMode
+                            }
+
+                            if(Test-Path ".\ArcGISOffline") {
+                                Remove-Item ".\ArcGISOffline" -Force -ErrorAction Ignore -Recurse
+                            }
+    
+                            if($JobFlag){ 
+                                Get-ArcGISURL $ConfigurationParamsHashtable
+                            }
                         }
                     }
                 }
