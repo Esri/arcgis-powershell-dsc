@@ -722,7 +722,7 @@ function Test-TargetResource {
         }
     }
 
-    if ($result) {
+    if ($result -and $IsHAPortal) { # added test loglevel apache only if HaPortal (matches setting)
         $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
         $PropertiesFile = Join-Path $InstallDir 'framework\runtime\tomcat\conf\logging.properties'
         @('org.apache.catalina.core.ContainerBase.[Catalina].[localhost].level', '1catalina.org.apache.juli.FileHandler.level', '2localhost.org.apache.juli.FileHandler.level', '3portal.org.apache.juli.FileHandler.level', 'java.util.logging.ConsoleHandler.level') | ForEach-Object {
@@ -760,7 +760,7 @@ function Test-TargetResource {
     $Referer = 'http://localhost'
     if ($result -and -not($Join)) {
         try {
-	
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/sharing/rest/generateToken"
             $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
                 -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
             $result = $token.token
