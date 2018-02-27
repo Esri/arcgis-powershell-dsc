@@ -398,15 +398,23 @@ function Set-TargetResource {
         }
     }
 
-    if ($IsHAPortal) {
-        # Initially set log level to debug to allow Join Site to succeed
-        Write-Verbose "Setup is Portal HA. Enable debug logging to troubleshoot JoinSite Failures"        
+    if ($IsHAPortal -or $EnableDebugLogging) {
+        if($IsHAPortal){
+            # Initially set log level to debug to allow Join Site to succeed
+            Write-Verbose "Setup is Portal HA. Enable debug logging to troubleshoot JoinSite Failures"        
+        }
+        
         if (Set-LoggingLevel -EnableDebugLogging $true) {
             $RestartRequired = $true
         }
     }    
     else {
-        Write-Verbose "Setup is Single machine Portal"
+        if(-not($IsHAPortal)){
+            Write-Verbose "Setup is Single machine Portal"
+        }
+        if (Set-LoggingLevel -EnableDebugLogging $false) {
+            $RestartRequired = $true
+        }
     }
 
     if ($RestartRequired) {
@@ -490,7 +498,7 @@ function Set-TargetResource {
             }
         }
         else {
-            Write-Verbose "Setup is Single machine Portal. Use desired log level '$DesiredLogLevel' as specified by yser"
+            Write-Verbose "Setup is Single machine Portal. Use desired log level '$DesiredLogLevel' as specified by user"
         }
         $LogSettings = Get-PortalLogSettings -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer 
         if ($LogSettings -and $LogSettings.logLevel) {
@@ -722,7 +730,7 @@ function Test-TargetResource {
         }
     }
 
-    if ($result -and $IsHAPortal) { # added test loglevel apache only if HaPortal (matches setting)
+    if ($result) {
         $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
         $PropertiesFile = Join-Path $InstallDir 'framework\runtime\tomcat\conf\logging.properties'
         @('org.apache.catalina.core.ContainerBase.[Catalina].[localhost].level', '1catalina.org.apache.juli.FileHandler.level', '2localhost.org.apache.juli.FileHandler.level', '3portal.org.apache.juli.FileHandler.level', 'java.util.logging.ConsoleHandler.level') | ForEach-Object {
@@ -730,7 +738,7 @@ function Test-TargetResource {
                 $PropertyName = $_
                 Write-Verbose "Property Name :- $PropertyName"
                 $DesiredLoggingLevel = $null
-                if ($EnableDebugLogging) {
+                if ($EnableDebugLogging -or $IsHAPortal) {
                     $DesiredLoggingLevel = 'ALL' 
                 }
                 else { 
