@@ -970,7 +970,7 @@ Configuration ArcGISConfigure
                         ExternalDNSName = $ExternalDNSName
                         PortalEndPoint = $MachineFQDN
                         PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { (Get-FQDN $PrimaryPortalMachine) } else { "" }
-                        EnableDebugLogging = if($DebugMode) { $true } else { $false }
+                        EnableDebugLogging = if($ConfigurationData.ConfigData.DebugMode) { $true } else { $false }
                     }
                     
                     if($Node.NodeName -ieq $PrimaryPortalMachine -and (($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')}  | Measure-Object).Count -eq 0))
