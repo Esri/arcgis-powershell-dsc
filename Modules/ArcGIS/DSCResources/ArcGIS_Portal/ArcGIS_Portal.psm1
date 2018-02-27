@@ -398,15 +398,23 @@ function Set-TargetResource {
         }
     }
 
-    if ($IsHAPortal) {
-        # Initially set log level to debug to allow Join Site to succeed
-        Write-Verbose "Setup is Portal HA. Enable debug logging to troubleshoot JoinSite Failures"        
+    if ($IsHAPortal -or $EnableDebugLogging) {
+        if($IsHAPortal){
+            # Initially set log level to debug to allow Join Site to succeed
+            Write-Verbose "Setup is Portal HA. Enable debug logging to troubleshoot JoinSite Failures"        
+        }
+        
         if (Set-LoggingLevel -EnableDebugLogging $true) {
             $RestartRequired = $true
         }
     }    
     else {
-        Write-Verbose "Setup is Single machine Portal"
+        if(-not($IsHAPortal)){
+            Write-Verbose "Setup is Single machine Portal"
+        }
+        if (Set-LoggingLevel -EnableDebugLogging $false) {
+            $RestartRequired = $true
+        }
     }
 
     if ($RestartRequired) {
@@ -490,7 +498,7 @@ function Set-TargetResource {
             }
         }
         else {
-            Write-Verbose "Setup is Single machine Portal. Use desired log level '$DesiredLogLevel' as specified by yser"
+            Write-Verbose "Setup is Single machine Portal. Use desired log level '$DesiredLogLevel' as specified by user"
         }
         $LogSettings = Get-PortalLogSettings -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer 
         if ($LogSettings -and $LogSettings.logLevel) {
@@ -730,7 +738,7 @@ function Test-TargetResource {
                 $PropertyName = $_
                 Write-Verbose "Property Name :- $PropertyName"
                 $DesiredLoggingLevel = $null
-                if ($EnableDebugLogging) {
+                if ($EnableDebugLogging -or $IsHAPortal) {
                     $DesiredLoggingLevel = 'ALL' 
                 }
                 else { 
@@ -760,7 +768,7 @@ function Test-TargetResource {
     $Referer = 'http://localhost'
     if ($result -and -not($Join)) {
         try {
-	
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/sharing/rest/generateToken"
             $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
                 -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
             $result = $token.token
