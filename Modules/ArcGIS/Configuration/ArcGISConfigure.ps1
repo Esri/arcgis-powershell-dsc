@@ -543,38 +543,28 @@ Configuration ArcGISConfigure
 
                     if((($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')}  | Measure-Object).Count -eq 0))
                     {
-                        if(($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor')}  | Measure-Object).Count -eq 0)
+                        if($Node.SslCertifcate.Path)
                         {
-                            if($ConfigurationData.ConfigData.Server.SslCertifcate.Path)
-                            {
-                                ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-                                {
-                                    Ensure = 'Present'
-                                    SiteName = 'arcgis'
-                                    SiteAdministrator = $PSACredential                         
-                                    CName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                    RegisterWebAdaptorForCName = $False
-                                    CertificateFileLocation = $ConfigurationData.ConfigData.Server.SslCertifcate.Path
-                                    CertificatePassword = $ConfigurationData.ConfigData.Server.SslCertifcate.Password
-                                    EnableSSL = $True
-                                    DependsOn =  $Depends
-                                } 
+                            if ($ConfigurationData.ConfigData.SslRootOrIntermediate) {
+                                $SslRootOrIntermediate = $ConfigurationData.ConfigData.SslRootOrIntermediate | ConvertTo-Json
+                            }else{
+                                $SslRootOrIntermediate = ''
                             }
-                            else
+                            ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
                             {
-                                ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-                                {
-                                    Ensure = 'Present'
-                                    SiteName = 'arcgis'
-                                    SiteAdministrator = $PSACredential                         
-                                    CName = $MachineFQDN
-                                    RegisterWebAdaptorForCName = $False
-                                    EnableSSL = $True
-                                    DependsOn =  $Depends
-                                } 
-                            }
+                                Ensure = 'Present'
+                                SiteName = 'arcgis'
+                                SiteAdministrator = $PSACredential                         
+                                CName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                                RegisterWebAdaptorForCName = $False
+                                CertificateFileLocation = $ConfigurationData.ConfigData.Server.SslCertifcate.Path
+                                CertificatePassword = $ConfigurationData.ConfigData.Server.SslCertifcate.Password
+                                EnableSSL = $True
+                                SslRootOrIntermediate = $SslRootOrIntermediate
+                                DependsOn =  $Depends
+                            } 
                         }
-                        
+
                         if($Federation -and ($Node.NodeName -ieq $PrimaryServerMachine))
                         {
                             if(($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor') -or ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -eq 0)
@@ -703,18 +693,19 @@ Configuration ArcGISConfigure
                                 }
                                 if($FederationFlag)
                                 {
-                                    if($ConfigurationData.ConfigData.Server.SslCertifcate.Alias)
+                                    if($Node.SslCertifcate.Alias)
                                     {
-                                        $ServerFedHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                                        $ServerFedHostName = $Node.SslCertifcate.Alias
                                     }
                                     else
                                     {
                                         $ServerFedHostName = $MachineFQDN
                                     }
 
-                                    if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias)
+                                    $FirstPortalNode = $($AllNodes | Where-Object { ($_.Role -icontains 'Portal')} | Select-Object -First 1)
+                                    if($FirstPortalNode.SslCertifcate.Alias)
                                     {
-                                        $PortalFEDHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias  
+                                        $PortalFEDHostName = $FirstPortalNode.SslCertifcate.Alias  
                                     }
                                     else
                                     {
@@ -893,9 +884,9 @@ Configuration ArcGISConfigure
 
                     $HasLoadBalancer = (($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }  | Measure-Object).Count -gt 0)
                     $ExternalDNSName = [System.Net.DNS]::GetHostByName($PrimaryPortalMachine).HostName
-                    if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+                    if($Node.SslCertifcate)
                     {
-                        $ExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+                        $ExternalDNSName = $Node.SslCertifcate.Alias
                     }
                     else
                     {
@@ -960,24 +951,29 @@ Configuration ArcGISConfigure
                         EnableDebugLogging = if($ConfigurationData.ConfigData.DebugMode) { $true } else { $false }
                     }
                     
-                    if($Node.NodeName -ieq $PrimaryPortalMachine -and (($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')}  | Measure-Object).Count -eq 0))
+                    if($Node.SslCertifcate.Alias) 
                     {
-                        if(($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -eq 0)
-                        {
-                            if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias)
-                            {
-                                ArcGIS_Portal_TLS "Portal_TLS$($Node.NodeName)"                                   
-                                {
-                                    Ensure = $Ensure
-                                    SiteName = $PortalContext
-                                    SiteAdministrator = $PSACredential
-                                    CName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                    CertificateFileLocation = $ConfigurationData.ConfigData.Portal.SslCertifcate.Path
-                                    CertificatePassword = $ConfigurationData.ConfigData.Portal.SslCertifcate.Password
-                                    DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
-                                }
-                            }
+                        if ($ConfigurationData.ConfigData.SslRootOrIntermediate) {
+                            $SslRootOrIntermediate = $ConfigurationData.ConfigData.SslRootOrIntermediate | ConvertTo-Json
+                        }else{
+                            $SslRootOrIntermediate = ''
                         }
+                        ArcGIS_Portal_TLS "Portal_TLS$($Node.NodeName)"                                   
+                        {
+                            Ensure = 'Present'
+                            SiteName = 'arcgis'
+                            SiteAdministrator = $PSACredential
+                            CName = $Node.SslCertifcate.Alias
+                            CertificateFileLocation = $Node.SslCertifcate.Path
+                            CertificatePassword = $Node.SslCertifcate.Password
+                            DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
+                            SslRootOrIntermediate = $SslRootOrIntermediate
+                        }
+                    }
+
+                    if($Node.NodeName -ieq $PrimaryPortalMachine) 
+                    {
+                        
 
                         if($Federation -and (($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor') -or ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -eq 0))
                         {
@@ -1026,18 +1022,19 @@ Configuration ArcGISConfigure
                                     }
                                     if($FederationFlag)
                                     {
-                                        if($ConfigurationData.ConfigData.Server.SslCertifcate.Alias)
+                                        if($Node.SslCertifcate.Alias)
                                         {
-                                            $ServerFEDHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                                            $ServerFEDHostName = $Node.SslCertifcate.Alias
                                         }
                                         else
                                         {
                                             $ServerFEDHostName = $MachineFQDN  
                                         }
 
-                                        if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias)
+                                        $FirstPortalNode = $($AllNodes | Where-Object { ($_.Role -icontains 'Portal') }| Select-Object -First 1)
+                                        if($FirstPortalNode.SslCertifcate.Alias)
                                         {
-                                            $PortalFEDHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias  
+                                            $PortalFEDHostName = $FirstPortalNode.SslCertifcate.Alias  
                                         }
                                         else
                                         {
@@ -1309,28 +1306,15 @@ Configuration ArcGISConfigure
                                 Protocol              = "TCP" 
                             }
 
-                            if($Node.Role -icontains 'ServerWebAdaptor' -and $ConfigurationData.ConfigData.Server.SslCertifcate.Path)
-                            {
-                                $Alias = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                $CertificateFileLocation = $ConfigurationData.ConfigData.Server.SslCertifcate.Path
-                                $CertificatePassword = $ConfigurationData.ConfigData.Server.SslCertifcate.Password
-                            }
-                            elseif($Node.Role -icontains 'PortalWebAdaptor' -and $ConfigurationData.ConfigData.Portal.SslCertifcate.Path)
-                            {
-                                $Alias = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                $CertificateFileLocation = $ConfigurationData.ConfigData.Portal.SslCertifcate.Path
-                                $CertificatePassword = $ConfigurationData.ConfigData.Portal.SslCertifcate.Password
-                            }
-
-                            if($CertificateFileLocation -and $CertificatePassword -and $Alias)
+                            if($Node.SslCertifcate.Path -and $Node.SslCertifcate.Password -and $Node.SslCertifcate.Alias)
                             {
                                 ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
                                 {
                                     WebSiteName = 'Default Web Site'
-                                    ExternalDNSName = $Alias
+                                    ExternalDNSName = $Node.SslCertifcate.Alias
                                     Ensure = 'Present'
-                                    CertificateFileLocation = $CertificateFileLocation
-                                    CertificatePassword = $CertificatePassword
+                                    CertificateFileLocation = $Node.SslCertifcate.Path
+                                    CertificatePassword = $Node.SslCertifcate.Password
                                     DependsOn = $Depends
                                 }
                             }
@@ -1611,18 +1595,19 @@ Configuration ArcGISConfigure
                                             }
                                             if($FederationFlag)
                                             {
-                                                if($ConfigurationData.ConfigData.Server.SslCertifcate.Alias)
+                                                if($Node.SslCertifcate.Alias)
                                                 {
-                                                    $ServerFEDHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                                                    $ServerFEDHostName = $Node.SslCertifcate.Alias
                                                 }
                                                 else
                                                 {
                                                     $ServerFEDHostName = $MachineFQDN  
                                                 }
                                                 
-                                                if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias)
+                                                $FirstPortalNode = $($AllNodes | Where-Object { ($_.Role -icontains 'Portal')} | Select-Object -First 1)
+                                                if($FirstPortalNode.SslCertifcate.Alias)
                                                 {
-                                                    $PortalFEDHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias  
+                                                    $PortalFEDHostName = $FirstPortalNode.SslCertifcate.Alias  
                                                 }
                                                 else
                                                 {
