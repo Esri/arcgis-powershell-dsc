@@ -19,6 +19,8 @@ function Get-TargetResource
         [System.String]
         $Version
 	)
+    
+    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null
 }
@@ -44,15 +46,16 @@ function Test-TargetResource
         [System.String]
         $Version
     )
-	
+    
+    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
 	$result = $false
 
 	$result = Test-Install -Name "Portal" -Version $Version
     
     if(-not($result)){
 		$Referer = 'http://localhost'
-		$token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -UserName $PrimarySiteAdmin.UserName  `
-			-Password $PrimarySiteAdmin.GetNetworkCredential().Password -Referer $Referer
+		$token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PrimarySiteAdmin -Referer $Referer
     
 		$Machines = Invoke-ArcGISWebRequest -Url ("https://$($PortalEndPoint):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
 		$StandbyFlag = $false
@@ -92,9 +95,10 @@ function Set-TargetResource
         $Version
 	)
 
+    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
     $Referer = 'http://localhost'
-    $token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -UserName $PrimarySiteAdmin.UserName  `
-        -Password $PrimarySiteAdmin.GetNetworkCredential().Password -Referer $Referer
+    $token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PrimarySiteAdmin -Referer $Referer
         
     Write-Verbose "Unregistering $StandbyMachine Portal"
     $StandbyMachineHostName = Get-FQDN $StandbyMachine

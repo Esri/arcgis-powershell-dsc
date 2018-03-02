@@ -1,5 +1,4 @@
 Configuration PortalUpgrade{
-
     param(
         [parameter(Mandatory = $true)]
         [System.String]
@@ -43,7 +42,7 @@ Configuration PortalUpgrade{
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsSADomainAccount = $False
+        $IsSADomainAccount = $False,
 
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
@@ -113,6 +112,7 @@ Configuration PortalUpgrade{
                     PortalEndPoint = $MachineFQDN
                     PrimarySiteAdmin = $PrimarySiteAdmin
                     StandbyMachine = $StandbyMachine
+                    Version = $Version
                 }
     
                 $Depends += '[ArcGIS_PortalUnregister]UnregisterStandyPortal'
@@ -165,6 +165,7 @@ Configuration PortalUpgrade{
                 Ensure = "Present"
                 DataDir = $DataDirsForPortal
                 DependsOn =  $Depends
+                IsDomainAccount = $IsSADomainAccount
             }
             $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'
     
@@ -278,6 +279,7 @@ Configuration PortalUpgrade{
                 Ensure = "Present"
                 DataDir = $DataDirsForPortal
                 DependsOn = $Depends
+                IsDomainAccount = $IsSADomainAccount
             }
         }        
     }

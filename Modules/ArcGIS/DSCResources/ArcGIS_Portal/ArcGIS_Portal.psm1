@@ -54,8 +54,7 @@ function Create-PortalSite {
     param(
         [string]$PortalHttpsUrl, 
         [string]$PortalSiteName, 
-        [string]$UserName, 
-        [string]$Password, 
+        [System.Management.Automation.PSCredential]$Credential, 
         [string]$FullName, 
         [string]$EMail, 
         [string]$SecurityQuestionAnswer, 
@@ -112,8 +111,9 @@ function Create-PortalSite {
         }
     }
         
-    $WebParams = @{ username = $UserName
-        password = $Password
+    $WebParams = @{ 
+        username = $Credential.UserName
+        password = $Credential.GetNetworkCredential().Password
         fullname = $FullName
         email = $Email
         description = $Description
@@ -136,23 +136,23 @@ function Create-PortalSite {
         Write-Verbose "Sleeping for $($Response.recheckAfterSeconds*2) seconds"
         Start-Sleep -Seconds ($Response.recheckAfterSeconds * 2)
     }
-    Wait-ForPortalToStart -PortalHttpsUrl $PortalHttpsUrl -PortalSiteName $PortalSiteName -PortalAdminUserName $UserName -PortalAdminPassword $Password -Referer $PortalHttpsUrl
+    Wait-ForPortalToStart -PortalHttpsUrl $PortalHttpsUrl -PortalSiteName $PortalSiteName -PortalAdminCredential $Credential -Referer $PortalHttpsUrl
 }
 
 function Join-PortalSite {    
     [CmdletBinding()]
     param(
         [string]$PortalEndPoint, 
-        [string]$UserName, 
-        [string]$Password,
+        [System.Management.Automation.PSCredential]$Credential, 
         [string]$PeerMachineHostName
     )
 
     $peerMachineAdminUrl = "https://$($PeerMachineHostName):7443"
     $MachineFQDN = Get-FQDN $PortalEndPoint
     [string]$JoinSiteUrl = "https://$($MachineFQDN):7443/arcgis/portaladmin/joinSite"
-    $WebParams = @{ username = $UserName
-        password = $Password
+    $WebParams = @{ 
+        username = $Credential.UserName
+        password = $Credential.GetNetworkCredential().Password
         machineAdminUrl = $peerMachineAdminUrl
         f = 'json'
     }
@@ -196,7 +196,7 @@ function Join-PortalSite {
         Write-Verbose "Sleeping for $($Response.recheckAfterSeconds*2) seconds"
         Start-Sleep -Seconds ($Response.recheckAfterSeconds * 2)
     }
-    Wait-ForPortalToStart -PortalHttpsUrl "https://$($MachineFQDN):7443/" -PortalSiteName "arcgis" -PortalAdminUserName $UserName -PortalAdminPassword $Password -Referer "https://$($MachineFQDN):7443/"
+    Wait-ForPortalToStart -PortalHttpsUrl "https://$($MachineFQDN):7443/" -PortalSiteName "arcgis" -PortalAdminCredential $Credential -Referer "https://$($MachineFQDN):7443/"
 }
 
 function Wait-ForPortalToStart {
@@ -204,8 +204,7 @@ function Wait-ForPortalToStart {
     param(
         [string]$PortalHttpsUrl, 
         [string]$PortalSiteName, 
-        [string]$PortalAdminUserName, 
-        [string]$PortalAdminPassword, 
+        [System.Management.Automation.PSCredential]$PortalAdminCredential, 
         [string]$Referer,
         [int]$MaxAttempts = 40,
         [int]$SleepTimeInSeconds = 15
@@ -215,8 +214,9 @@ function Wait-ForPortalToStart {
     ## Wait for the Portal Admin to start back up
     ##
     [string]$CheckPortalAdminUrl = $PortalHttpsUrl.TrimEnd('/') + "/$PortalSiteName/sharing/rest/generateToken"  
-    $WebParams = @{ username = $PortalAdminUserName
-        password = $PortalAdminPassword                    
+    $WebParams = @{ 
+        username = $PortalAdminCredential.UserName
+        password = $PortalAdminCredential.GetNetworkCredential().Password
         client = 'requestip'
         f = 'json'
     }
@@ -261,7 +261,7 @@ function Wait-ForPortalToStart {
     }
 }
 
-function Test-PortalSiteCreated([string]$PortalHttpsUrl, [string]$PortalSiteName, [string]$PortalAdminUser, [string]$PortalPassword) {    
+function Test-PortalSiteCreated([string]$PortalHttpsUrl, [string]$PortalSiteName, [System.Management.Automation.PSCredential]$PortalAdminCredential) {    
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
     $params = @{ f = 'json' }    
     $resp = $null
@@ -429,8 +429,7 @@ function Set-TargetResource {
         [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\Portal for ArcGIS').RealVersion
         Write-Verbose "Version of Portal is $RealVersion"
         try {
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
-                -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
         }
         catch {
             Write-Verbose $_
@@ -439,22 +438,20 @@ function Set-TargetResource {
             if ($Join -and (-not($RealVersion -ieq '10.3'))) {
                 $PeerMachineFQDN = Get-FQDN $PeerMachineHostName
                 Write-Verbose "Joining Site with Peer $PeerMachineFQDN"   
-                Join-PortalSite -PortalEndPoint $PortalEndPoint -UserName $PortalAdministrator.UserName `
-                    -Password $PortalAdministrator.GetNetworkCredential().Password -PeerMachineHostName $PeerMachineFQDN
+                Join-PortalSite -PortalEndPoint $PortalEndPoint -Credential $PortalAdministrator -PeerMachineHostName $PeerMachineFQDN
                 Write-Verbose 'Joined Site'
             }
             else {
                 Write-Verbose "Creating Site" 
-                Create-PortalSite -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -UserName $PortalAdministrator.UserName `
-                    -Password $PortalAdministrator.GetNetworkCredential().Password -FullName $PortalAdministrator.UserName -ContentDirectoryLocation $ContentDirectoryLocation `
+                Create-PortalSite -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
+                    -FullName $PortalAdministrator.UserName -ContentDirectoryLocation $ContentDirectoryLocation `
                     -EMail $AdminEMail -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
                     -Description 'Portal Administrator' -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
                     -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName
                 Write-Verbose 'Created Site'
                 if ($UpgradeReindex) {
                     Write-Verbose "Reindexing Portal"
-                    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName `
-                        -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
+                    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
                     if (-not($token.token)) {
                         throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
                     }
@@ -476,8 +473,7 @@ function Set-TargetResource {
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -LogFailures
             Write-Verbose "Finished Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/' to intialize"
 
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
-                -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
             Write-Verbose "Portal Site created. Successfully retrieved token for $($PortalAdministrator.UserName)"
         }
         else {
@@ -530,7 +526,7 @@ function Set-TargetResource {
 			
             if (-not($token)) {
                 Write-Verbose "Getting Portal Token for user '$PortalAdminUserName' from '$PortalHttpsUrl'"
-                $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdminUserName -Password $PortalAdminPassword -Referer $Referer
+                $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
                 if (-not($token.token)) {
                     throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
                 }
@@ -609,8 +605,7 @@ function Set-TargetResource {
             }
 
             Write-Verbose "Retrieve token to verify that portal has come back up"
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
-                -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
             if (-not($token.token)) {
                 Write-Verbose "[WARNING] Unable to retrieve token after configuration"
             }
@@ -772,7 +767,6 @@ function Test-TargetResource {
             $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
                 -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
             $result = $token.token
-
             if ($result -and $ExternalDNSName) {
                 # Check if web context URL is set correctly							
                 $sysProps = Get-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
@@ -829,8 +823,7 @@ function Test-TargetResource {
         $Referer = 'http://localhost'
         
         Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'POST'
-        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
-            -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer     
+        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer     
         
         $LogSettings = Get-PortalLogSettings -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer 
         $CurrentLogLevel = $LogSettings.logLevel

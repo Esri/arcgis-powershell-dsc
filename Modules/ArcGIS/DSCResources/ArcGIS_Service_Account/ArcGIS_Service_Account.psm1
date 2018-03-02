@@ -1,4 +1,4 @@
-﻿<#
+<#
     .SYNOPSIS
         Resource to make the Data Directories accesssible to given Run as Account for a given ArcGIS Component.
     .PARAMETER Ensure
@@ -118,7 +118,7 @@ function Set-TargetResource
                     }
 
                 }else{
-                    if(-not (Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
+                    if(-not(Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
                         Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissions to $InstallDir"
                         Write-Verbose "icacls.exe $InstallDir /grant $($RunAsUserName):(OI)(CI)F"
                         icacls.exe $InstallDir /grant "$($RunAsUserName):(OI)(CI)F"
@@ -133,24 +133,26 @@ function Set-TargetResource
         {
             foreach($DataDirectory in $DataDir) 
             {
-                $LocalPath = $DataDirectory
-                if($LocalPath.StartsWith('HKLM:\')) {
-                    $LocalPath = (Get-Item ((Get-ItemProperty ($LocalPath) -ErrorAction Ignore).ContentDir))                        
-                }elseif($LocalPath.StartsWith('$env:')){
-                    $LocalPath = $ExecutionContext.InvokeCommand.ExpandString("$DataDirectory")
-                }
-                if($LocalPath -and (Test-Path $LocalPath)) 
-                {
-                    Write-Verbose "Checking Permissions on $LocalPath"
-                    if(-not (Test-Acl $LocalPath $RunAsUserName $IsDomainAccount)) {
-				        Write-Verbose "Permissions are not set for $LocalPath"
-                        Write-Verbose "Providing RunAs Account '$RunAsUserName' the required permissions to $LocalPath"
-                        Write-Verbose "icacls.exe $LocalPath /grant $($RunAsUserName):(OI)(CI)F"
-                        icacls.exe $LocalPath /grant "$($RunAsUserName):(OI)(CI)F"
-                    }  else {
-						Write-Verbose "RunAs Account '$RunAsUserName' has the required permissions to $LocalPath"
-					}             
-                }                
+                if(-not($DataDirectory.StartsWith('\'))){
+                    $LocalPath = $DataDirectory
+                    if($LocalPath.StartsWith('HKLM:\')) {
+                        $LocalPath = (Get-Item ((Get-ItemProperty ($LocalPath) -ErrorAction Ignore).ContentDir))                        
+                    }elseif($LocalPath.StartsWith('$env:')){
+                        $LocalPath = $ExecutionContext.InvokeCommand.ExpandString("$DataDirectory")
+                    }
+                    if($LocalPath -and (Test-Path $LocalPath)) 
+                    {
+                        Write-Verbose "Checking Permissions on $LocalPath"
+                        if(-not(Test-Acl $LocalPath $RunAsUserName $IsDomainAccount)) {
+                            Write-Verbose "Permissions are not set for $LocalPath"
+                            Write-Verbose "Providing RunAs Account '$RunAsUserName' the required permissions to $LocalPath"
+                            Write-Verbose "icacls.exe $LocalPath /grant $($RunAsUserName):(OI)(CI)F"
+                            icacls.exe $LocalPath /grant "$($RunAsUserName):(OI)(CI)F"
+                        }  else {
+                            Write-Verbose "RunAs Account '$RunAsUserName' has the required permissions to $LocalPath"
+                        }             
+                    } 
+                }          
             }
         }
 
@@ -354,7 +356,7 @@ function Test-TargetResource
 
     if($InstallDir -and (Test-Path $InstallDir)) {
         Write-Verbose "Install Dir for $Name is $InstallDir"
-        if(-not (Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
+        if(-not(Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
 			Write-Verbose "Permissions are not set for $InstallDir"
             $result = $false
         }
@@ -363,7 +365,7 @@ function Test-TargetResource
     if($result) {
         if($DataDir) {
             foreach($DataDirectory in $DataDir) {
-                if($result) {
+                if($result -and -not($DataDirectory.StartsWith('\'))) {
                     $LocalPath = $DataDirectory
                     if($LocalPath.StartsWith('HKLM:\')) {
                         $LocalPath = (Get-Item ((Get-ItemProperty ($LocalPath) -ErrorAction Ignore).ContentDir))                        
@@ -373,7 +375,7 @@ function Test-TargetResource
                     if($LocalPath -and (Test-Path $LocalPath)) 
                     {
                         Write-Verbose "Checking Permissions on $LocalPath"
-                        if(-not (Test-Acl $LocalPath $RunAsUserName $IsDomainAccount)) {
+                        if(-not(Test-Acl $LocalPath $RunAsUserName $IsDomainAccount)) {
 				            Write-Verbose "Permissions are not set for $LocalPath"
                             $result = $false
                         }
@@ -413,9 +415,10 @@ function Test-Acl {
     {
         $RunAsUserName = "$env:ComputerName\$RunAsUsername"
     }
+    Write-Verbose "Testing Permission for User $RunAsUserName on Directory $Directory"
     $acl = Get-Acl $Directory | Select-Object -ExpandProperty Access | Where {$_.IdentityReference -ieq "$RunAsUserName"} | Where {$_.FileSystemRights -ieq "FullControl"}
     if((-not($acl)) -or ($acl.AccessControlType -ine 'Allow')) {
-        (-not($result))
+        $result = $false
     }
     $result
 }
