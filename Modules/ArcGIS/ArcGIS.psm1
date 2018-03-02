@@ -1,4 +1,4 @@
-﻿function Get-FQDN
+function Get-FQDN
 {    
     [CmdletBinding()]
     param(

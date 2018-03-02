@@ -25,13 +25,9 @@ function Get-ServerToken
         [System.String]
 		$ServerSiteName = 'arcgis', 
 
-		[Parameter(Mandatory=$true)]
-        [System.String]
-		$UserName, 
-
-		[Parameter(Mandatory=$true)]
-        [System.String]
-		$Password, 
+		[parameter(Mandatory = $true)]
+		[System.Management.Automation.PSCredential]
+		$Credential,
 
 		[Parameter(Mandatory=$true)]
         [System.String]
@@ -40,7 +36,7 @@ function Get-ServerToken
         [System.Int32]$Expiration=1000
     )
             
-    Invoke-ArcGISWebRequest -Url ($ServerEndPoint.TrimEnd('/') + "/$ServerSiteName/admin/generateToken") -HttpFormParameters @{ username = $UserName; password = $Password; client = 'referer'; referer = $Referer; expiration = $Expiration; f = 'json' } -Referer $Referer -TimeOutSec 30 
+    Invoke-ArcGISWebRequest -Url ($ServerEndPoint.TrimEnd('/') + "/$ServerSiteName/admin/generateToken") -HttpFormParameters @{ username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password; client = 'referer'; referer = $Referer; expiration = $Expiration; f = 'json' } -Referer $Referer -TimeOutSec 30 
 }
 
 
@@ -56,13 +52,9 @@ function Get-PortalToken
         [System.String]
 		$SiteName = 'arcgis', 
 
-		[Parameter(Mandatory=$true)]
-        [System.String]
-		$UserName, 
-
-		[Parameter(Mandatory=$true)]
-        [System.String]
-		$Password, 
+        [parameter(Mandatory = $true)]
+		[System.Management.Automation.PSCredential]
+		$Credential,
 
 		[Parameter(Mandatory=$true)]
         [System.String]
@@ -73,7 +65,7 @@ function Get-PortalToken
 		$Port = 7443
     )
        
-    Invoke-ArcGISWebRequest -Url "https://$($PortalHostName):$($Port)/$SiteName/sharing/rest/generateToken" -HttpFormParameters @{ username = $UserName; password = $Password; referer = $Referer; f = 'json' } -Referer $Referer -LogResponse  
+    Invoke-ArcGISWebRequest -Url "https://$($PortalHostName):$($Port)/$SiteName/sharing/rest/generateToken" -HttpFormParameters @{ username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password; referer = $Referer; f = 'json' } -Referer $Referer -LogResponse  
 }
 
 function Check-ResponseStatus($Response, $Url)
@@ -159,7 +151,7 @@ function Wait-ForServiceToReachDesiredState
     }
 
     Write-Verbose "Waiting $SleepTimeInSeconds seconds."
-    Sleep -Seconds $SleepTimeInSeconds
+    Start-Sleep -Seconds $SleepTimeInSeconds
   }
 }
 
@@ -222,7 +214,7 @@ function Wait-ForUrl
             }
         }
         if(-not $Done) {
-            Sleep -Seconds $SleepTimeInSeconds
+            Start-Sleep -Seconds $SleepTimeInSeconds
             $TotalElapsedTimeInSeconds += $SleepTimeInSeconds
         }
     }

@@ -752,8 +752,8 @@ Configuration ArcGISConfigure
                     }
 
                     $IsMultiMachinePortal = (($AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
-                    if($IsMultiMachinePortal -or ($ConfigData.PortalEndPoint -as [ipaddress]))
-                    {
+                    <#if($IsMultiMachinePortal -or ($ConfigData.PortalEndPoint -as [ipaddress]))
+                    {#>
                         xFirewall Portal_FirewallRules
                         {
                                 Name                  = "PortalforArcGIS" 
@@ -767,7 +767,7 @@ Configuration ArcGISConfigure
                                 Protocol              = "TCP" 
                         }
                         $Depends += @('[xFirewall]Portal_FirewallRules')
-                    }
+                    <#}
                     else 
                     {  # If single machine, need to open 7443 to allow federation over private portal URL and 6443 for changeServerRole
                         xFirewall Portal_FirewallRules
@@ -779,23 +779,10 @@ Configuration ArcGISConfigure
                                 Access                = "Allow" 
                                 State                 = "Enabled" 
                                 Profile               = ("Domain","Private","Public")
-                                LocalPort             = ("7443")                         
+                                LocalPort             = ("7080","7443")                         
                                 Protocol              = "TCP" 
                         }
-
-                        xFirewall ServerFederation_FirewallRules
-                        {
-                                Name                  = "ArcGISforServer-Federation" 
-                                DisplayName           = "ArcGIS for Server" 
-                                DisplayGroup          = "ArcGIS for Server" 
-                                Ensure                = 'Present'
-                                Access                = "Allow" 
-                                State                 = "Enabled" 
-                                Profile               = ("Domain","Private","Public")
-                                LocalPort             = ("6443")                         
-                                Protocol              = "TCP" 
-                        }
-                    }
+                    }#>
                     
                     if($IsMultiMachinePortal) 
                     {
@@ -809,7 +796,7 @@ Configuration ArcGISConfigure
                                 Access                = "Allow" 
                                 State                 = "Enabled" 
                                 Profile               = ("Domain","Private","Public")
-                                RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701 and 5702 (extra 2 ports for situations where unable to get port)
+                                RemotePort            = ("7120","7220", "7005", "7099", "7199", "5701", "5702", "5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701 and 5702 (extra 2 ports for situations where unable to get port)
                                 Direction             = "Outbound"                       
                                 Protocol              = "TCP" 
                         }  
@@ -824,7 +811,7 @@ Configuration ArcGISConfigure
                                 Access                = "Allow" 
                                 State                 = "Enabled" 
                                 Profile               = ("Domain","Private","Public")
-                                LocalPort             = ("7120","7220", "5701", "5702")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
+                                LocalPort             = ("7120","7220","5701", "5702", "5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
                                 Protocol              = "TCP" 
                         }  
                         $Depends += @('[xFirewall]Portal_Database_InBound')
@@ -1689,6 +1676,7 @@ Configuration ArcGISConfigure
                         FileShareLocalPath = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath
                         Ensure = 'Present'
                         Credential = $SACredential
+                        IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                     }
                     
                     $DataStorePath = "\\$($env:ComputerName)\$($ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName)"
@@ -1719,6 +1707,7 @@ Configuration ArcGISConfigure
                         Ensure = 'Present'
                         Credential = $SACredential
                         FilePaths = ($FilePathsArray -join ",")
+                        IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                     }
                 }
                 'LoadBalancer'{

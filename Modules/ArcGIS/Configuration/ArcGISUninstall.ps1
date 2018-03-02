@@ -1,4 +1,4 @@
-﻿Configuration ArcGISUninstall
+Configuration ArcGISUninstall
 {
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DscResource -ModuleName ArcGIS
