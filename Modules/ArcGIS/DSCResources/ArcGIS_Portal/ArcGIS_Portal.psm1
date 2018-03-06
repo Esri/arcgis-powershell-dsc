@@ -764,8 +764,7 @@ function Test-TargetResource {
     if ($result -and -not($Join)) {
         try {
             Wait-ForUrl "https://$($FQDN):7443/arcgis/sharing/rest/generateToken"
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -UserName $PortalAdministrator.UserName  `
-                -Password $PortalAdministrator.GetNetworkCredential().Password -Referer $Referer
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
             $result = $token.token
             if ($result -and $ExternalDNSName) {
                 # Check if web context URL is set correctly							
