@@ -1,4 +1,4 @@
-Configuration ArcGISOffline
+Configuration ArcGISDisconnectedEnvironment
 {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName ArcGIS
@@ -14,14 +14,14 @@ Configuration ArcGISOffline
             {
                 'Server'
                 {
-                    if($Configuration.Offline -and $ConfigurationData.Offline.Server)
+                    if($ConfigurationData.DisconnectedEnvironment -and $ConfigurationData.DisconnectedEnvironment.Server)
                     {
-                        ArcGIS_Server_Offline $Node.NodeName
+                        ArcGIS_Server_DisconnectedEnvironment $Node.NodeName
                         {
                             Ensure = 'Present'
                             HostName = $Node.NodeName
-                            JSAPI = if($ConfigurationData.Offline.Server.JSAPI) {$true} else {$false}
-                            ArcGISCom = if($ConfigurationData.Offline.Server.ArcGISCom) {$true} else {$false}
+                            EnableJsApi = if($ConfigurationData.DisconnectedEnvironment.Server.EnableJsApi) {$true} else {$false}
+                            EnableArcGISOnlineMapViewer = if($ConfigurationData.DisconnectedEnvironment.Server.EnableArcGISOnlineMapViewer) {$true} else {$false}
                             SiteAdministrator = $PSACredential
                         }
                     }
@@ -29,7 +29,7 @@ Configuration ArcGISOffline
                 'Portal'
                 {
                     Write-Host "Portal $NodeName"
-                    #Implement Offline Steps for Portal here
+                    #Implement DisconnectedEnvironment Steps for Portal here
                 }
             }
         }

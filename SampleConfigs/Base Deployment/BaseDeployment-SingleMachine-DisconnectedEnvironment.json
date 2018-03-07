@@ -14,11 +14,11 @@
                                   ]
                      }
                  ],
-    "Offline":  {
-                    "Server": {
-                                    "JSAPI":    true,
-                                    "ArcGISCom":    true
-                    }
+    "DisconnectedEnvironment":  {
+                                    "Server": {
+                                                    "EnableJsApi":    true,
+                                                    "EnableArcGISOnlineMapViewer":    true
+                                    }
     },
     "ConfigData":  {
                        "Version":  "[Version of ArcGIS Deployment]",

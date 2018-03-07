@@ -655,20 +655,20 @@ function Configure-ArcGIS
                         if($JobFlag){
                             $JobFlag = $False
 
-                            Write-Host "Dot Sourcing the Configuration:- ArcGISOffline"
-                            . "$PSScriptRoot\Configuration\ArcGISOffline.ps1" -Verbose:$false
+                            Write-Host "Dot Sourcing the Configuration:- ArcGISDisconnectedEnvironment"
+                            . "$PSScriptRoot\Configuration\ArcGISDisconnectedEnvironment.ps1" -Verbose:$false
 
-                            Write-Host "Compiling the Configuration:- ArcGISOffline"
-                            ArcGISOffline -ConfigurationData $ConfigurationParamsHashtable
+                            Write-Host "Compiling the Configuration:- ArcGISDisconnectedEnvironment"
+                            ArcGISDisconnectedEnvironment -ConfigurationData $ConfigurationParamsHashtable
                             
                             if($Credential){
-                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISOffline -Credential $Credential -DebugMode $DebugMode
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISDisconnectedEnvironment -Credential $Credential -DebugMode $DebugMode
                             }else{
-                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISOffline -DebugMode $DebugMode
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISDisconnectedEnvironment -DebugMode $DebugMode
                             }
 
-                            if(Test-Path ".\ArcGISOffline") {
-                                Remove-Item ".\ArcGISOffline" -Force -ErrorAction Ignore -Recurse
+                            if(Test-Path ".\ArcGISDisconnectedEnvironment") {
+                                Remove-Item ".\ArcGISDisconnectedEnvironment" -Force -ErrorAction Ignore -Recurse
                             }
     
                             if($JobFlag){ 

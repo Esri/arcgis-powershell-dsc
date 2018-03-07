@@ -1,17 +1,17 @@
 <#
     .SYNOPSIS
-        Configures the ArcGIS Server for Offline Environment
+        Configures the ArcGIS Server for Disconnected Environment
     .PARAMETER Ensure
         Take the values Present or Absent. 
-        - "Present" ensures that Server is Configured for Offline-Use.
+        - "Present" ensures that Server is Configured for Disconnected-Use.
         - "Absent" ensures that Server is Configured as out-of-the-box - Not Implemented.
     .PARAMETER HostName
         Host Name of the Machine on which the ArcGIS Server is Installed
     .PARAMETER SiteAdministrator
         Credentials to access Server/Portal with admin privileges
-    .PARAMETER JSAPI
-        Boolean if JSAPI for Rest-Interface should be set to Portals JSAPI
-    .PARAMETER ArcGISCom
+    .PARAMETER EnableJsApi
+        Boolean if JsApi for Rest-Interface should be set to Portals EnableJsApi
+    .PARAMETER EnableArcGISOnlineMapViewer
         Boolean if ArcGIS.com-Map is set to Portal
 #>
 
@@ -34,10 +34,10 @@ function Get-TargetResource
 		$SiteAdministrator,
 
         [System.Boolean]
-        $JSAPI = $true,
+        $EnableJsApi = $true,
 
         [System.Boolean]
-        $ArcGISCom = $false
+        $EnableArcGISOnlineMapViewer = $false
 
     )
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -62,10 +62,10 @@ function Set-TargetResource
 		$SiteAdministrator,
 
         [System.Boolean]
-        $JSAPI = $true,
+        $EnableJsApi = $true,
 
         [System.Boolean]
-        $ArcGISCom = $false
+        $EnableArcGISOnlineMapViewer = $false
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -78,42 +78,37 @@ function Set-TargetResource
         $ServerUrl = "http://$($FQDN):6080"
         
         $result = $true
-        try {        
-            Write-Verbose "Checking for Servicesdirectory on '$ServerUrl'"
-            Wait-ForUrl -Url $ServerUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'  
-            $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+        
+        Write-Verbose "Checking for Servicesdirectory on '$ServerUrl'"
+        Wait-ForUrl -Url $ServerUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'  
+        $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
 
-            if ($token.token -ne $null)
-            {
-                $securityconfiguration = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/config" `
-                                    -Token $token.token -Referer $Referer
-
-                $portalProperties = $securityconfiguration.portalProperties
-
-                if($portalProperties -and $portalProperties.portalUrl)
-                {
-                    $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" `
-                                        -Token $token.token -Referer $Referer
-                    if($JSAPI)
-                    {
-                        $servicesdirectory.'jsapi.arcgis' = ($portalProperties.portalUrl).TrimEnd("/") + "/jsapi/jsapi4"
-                        $servicesdirectory.'jsapi.arcgis.css' = ($portalProperties.portalUrl).TrimEnd("/") + "/jsapi/jsapi4/esri/css/main.css"
-                    }
-                    if($ArcGISCom)
-                    {
-                        $servicesdirectory.'arcgis.com.map' = ($portalProperties.portalUrl).TrimEnd("/") + "/home/webmap/viewer.html"
-                        $servicesdirectory.'arcgis.com.map.text' = "ArcGIS Enterprise Viewer"
-                    }
-                    $servicesdirectory = ConvertTo-Json $servicesdirectory
-                    $result = Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" `
-                                        -Token $token.token -Properties $servicesdirectory -Referer $Referer
-                    Write-Verbose "Set-Servicesdirectory: $result"
-                }
-            }
-        }
-        catch
+        if ($token.token -ne $null)
         {
-            Write-Host "ERROR: $_"
+            $securityconfiguration = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/config" `
+                                -Token $token.token -Referer $Referer
+
+            $portalProperties = $securityconfiguration.portalProperties
+
+            if($portalProperties -and $portalProperties.portalUrl)
+            {
+                $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" `
+                                    -Token $token.token -Referer $Referer
+                if($EnableJsApi)
+                {
+                    $servicesdirectory.'jsapi.arcgis' = ($portalProperties.portalUrl).TrimEnd("/") + "/jsapi/jsapi4"
+                    $servicesdirectory.'jsapi.arcgis.css' = ($portalProperties.portalUrl).TrimEnd("/") + "/jsapi/jsapi4/esri/css/main.css"
+                }
+                if($EnableArcGISOnlineMapViewer)
+                {
+                    $servicesdirectory.'arcgis.com.map' = ($portalProperties.portalUrl).TrimEnd("/") + "/home/webmap/viewer.html"
+                    $servicesdirectory.'arcgis.com.map.text' = "ArcGIS Enterprise Viewer"
+                }
+                $servicesdirectory = ConvertTo-Json $servicesdirectory
+                $result = Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" `
+                                    -Token $token.token -Properties $servicesdirectory -Referer $Referer
+                Write-Verbose "Set-Servicesdirectory: $result"
+            }
         }
     }
     else
@@ -139,19 +134,19 @@ function Test-TargetResource
 		$SiteAdministrator,
         
         [System.Boolean]
-        $JSAPI = $false,
+        $EnableJsApi = $false,
 
         [System.Boolean]
-        $ArcGISCom = $false
+        $EnableArcGISOnlineMapViewer = $false
     )
     #[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $result = $false
+    $result = $true
 
-    if($JSAPI -or $ArcGISCom)
+    if($EnableJsApi -or $EnableArcGISOnlineMapViewer)
     {
-    
+        $result = $false
         $FQDN = Get-FQDN $env:COMPUTERNAME   
         Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
         $Referer = 'http://localhost'
@@ -174,17 +169,17 @@ function Test-TargetResource
                 {
                     $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" `
                                         -Token $token.token -Referer $Referer
-                    if($result -and $JSAPI)
+                    if($result -and $EnableJsApi)
                     {
                         if(($servicesdirectory.'jsapi.arcgis' -notmatch $portalProperties.portalUrl) -or
                             ($servicesdirectory.'jsapi.arcgis.css' -notmatch $portalProperties.portalUrl))
                         {
-                            Write-Verbose "JSAPI not set to Portal-JSAPI: $($servicesdirectory.'jsapi.arcgis')"
+                            Write-Verbose "JsApi not set to Portal-JsApi: $($servicesdirectory.'jsapi.arcgis')"
                             $result = $false
                         }
                     }
 
-                    if($result -and $ArcGISCom)
+                    if($result -and $EnableArcGISOnlineMapViewer)
                     {
                         if(($servicesdirectory.'arcgis.com.map' -notmatch $portalProperties.portalUrl))
                         {
@@ -239,7 +234,7 @@ function Get-AdminSettings
 
     $res = Invoke-WebRequest -Uri $RequestUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
     $response = $res.Content | ConvertFrom-Json
-	Write-Verbose "Response from Get-AdminSettings ($RequestUrl):- $response"
+	Write-Verbose "Response from Get-AdminSettings ($RequestUrl):- $($res.Content)"
     Check-ResponseStatus $response 
     $response    
 }
@@ -281,7 +276,7 @@ function Set-AdminSettings
                 }
     $res = Invoke-WebRequest -Uri $RequestUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
     $response = $res.Content | ConvertFrom-Json
-	Write-Verbose "Response from Set-AdminSettings ($RequestUrl):- $response"
+	Write-Verbose "Response from Set-AdminSettings ($RequestUrl):- $($res.Content)"
     Check-ResponseStatus $response 
     $response    
 }
