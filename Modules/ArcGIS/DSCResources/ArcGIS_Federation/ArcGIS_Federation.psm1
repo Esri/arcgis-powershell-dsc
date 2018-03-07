@@ -129,13 +129,13 @@ function Test-TargetResource
     $Referer = "https://$($PortalHostName)/$PortalContext"
     $waitForToken = $true
     $waitForTokenCounter = 0 
-    while ($waitForToken -and $waitForTokenCounter -lt 5) {
+    while ($waitForToken -and $waitForTokenCounter -lt 25) {
         $waitForTokenCounter++
         try{
             $token = Get-PortalToken -PortalHostName $PortalHostName -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer
         } catch {
-            Write-Verbose "Error getting Token for Federation ! Waiting for 5 Minutes to try again"
-            Start-Sleep -Seconds 300
+            Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
+            Start-Sleep -Seconds 60
         }
         if($token.token) {    
             $waitForToken = $false
@@ -302,13 +302,13 @@ function Set-TargetResource
     $Referer = "https://$($PortalHostName):$($PortalPort)/$PortalContext"
     $waitForToken = $true
     $waitForTokenCounter = 0 
-    while ($waitForToken -and $waitForTokenCounter -lt 5) {
+    while ($waitForToken -and $waitForTokenCounter -lt 25) {
         $waitForTokenCounter++
         try{
             $token = Get-PortalToken -PortalHostName $PortalHostName -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer
         } catch {
-            Write-Verbose "Error getting Token for Federation ! Waiting for 5 Minutes to try again"
-            Start-Sleep -Seconds 300
+            Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
+            Start-Sleep -Seconds 60
         }
         if($token.token) {    
             $waitForToken = $false
