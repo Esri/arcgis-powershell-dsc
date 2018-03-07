@@ -1,4 +1,4 @@
-Configuration ArcGISOffline
+Configuration ArcGISDisconnectedEnvironment
 {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName ArcGIS
@@ -11,13 +11,11 @@ Configuration ArcGISOffline
             {
                 'Server'
                 {
-                    Write-Host "Server $NodeName"
-                    #Implement Offline Steps for Server here
                 }
                 'Portal'
                 {
                     Write-Host "Portal $NodeName"
-                    #Implement Offline Steps for Portal here
+                    #Implement DisconnectedEnvironment Steps for Portal here
                 }
             }
         }
