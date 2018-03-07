@@ -12,7 +12,7 @@
 # RootModule = ''
 
 # Version number of this module.
-ModuleVersion = '0.8.5'
+ModuleVersion = '0.8.6'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -66,7 +66,7 @@ Description = 'ArcGIS Module for PowerShell DSC'
 # FormatsToProcess = @()
 
 # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
-# NestedModules = @('ArcGIS.psm1')
+NestedModules = @('ArcGIS.psm1')
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
 FunctionsToExport = 'Get-FQDN', 'Configure-ArcGIS', 'Publish-WebApp'
