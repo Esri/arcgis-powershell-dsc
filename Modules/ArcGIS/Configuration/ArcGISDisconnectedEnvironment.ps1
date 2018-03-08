@@ -14,8 +14,15 @@ Configuration ArcGISDisconnectedEnvironment
                 }
                 'Portal'
                 {
-                    Write-Host "Portal $NodeName"
-                    #Implement DisconnectedEnvironment Steps for Portal here
+                    if($ConfigurationData.DisconnectedEnvironment -and $ConfigurationData.DisconnectedEnvironment.Portal)
+                    {
+                        ArcGIS_Portal_DisconnectedEnvironment $Node.NodeName
+                        {
+                            Ensure = 'Present'
+                            HostName = $Node.NodeName
+                            SiteAdministrator = $PSACredential
+                        }
+                    }
                 }
             }
         }
