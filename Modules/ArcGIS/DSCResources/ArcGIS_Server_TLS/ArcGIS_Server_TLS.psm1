@@ -677,7 +677,7 @@ function Import-RootOrIntermediateCertificate
     [CmdletBinding()]
     param(
         [System.String]
-        $PortalHostName = 'localhost', 
+        $ServerHostName = 'localhost', 
 
         [System.String]
         $SiteName = 'arcgis', 
@@ -698,7 +698,7 @@ function Import-RootOrIntermediateCertificate
         $CertificateFilePath
     )
 
-    $ImportCertUrl  = "https://$($PortalHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/importRootOrIntermediate"
+    $ImportCertUrl  = "https://$($ServerHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/importRootOrIntermediate"
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
 
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; } 
@@ -1022,12 +1022,12 @@ function Get-SSLCertificateForMachine
                 $null 
             }else {
                 $IssuerValue = $null
-                $Issuer = [regex]::matches($res.Content, '"issuer":"([A-Za-z =,\.0-9\-]+)\"')
+                $Issuer = [regex]::matches($res.Content, '"Issuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
                 $Issuer.Groups | %{ 
                     if($_.Value -and $_.Value.Length -gt 0){
-                        $Pos = $_.Value.IndexOf('"issuer"')
+                        $Pos = $_.Value.IndexOf('"Issuer"')
                         if($Pos -gt -1) {
-                            $Str = $_.Value.Substring($Pos + '"issuer"'.Length)
+                            $Str = $_.Value.Substring($Pos + '"Issuer"'.Length)
                             $Pos = $Str.IndexOf('"')
                             if($Pos -gt -1) {
                                 $Str = $Str.Substring($Pos + 1)
