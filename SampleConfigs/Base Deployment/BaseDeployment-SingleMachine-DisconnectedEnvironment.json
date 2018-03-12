@@ -14,12 +14,6 @@
                                   ]
                      }
                  ],
-    "DisconnectedEnvironment":  {
-                                    "Server": {
-                                                    "EnableJsApi":    true,
-                                                    "EnableArcGISOnlineMapViewer":    true
-                                    }
-    },
     "ConfigData":  {
                        "Version":  "[Version of ArcGIS Deployment]",
                        "ServerContext":  "server",
@@ -45,7 +39,11 @@
                                                         "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] "
                                                     },
                                       "ServerDirectoriesRootLocation":  "C:\\arcgisserver\\directories",
-                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
+                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store",
+                                      "DisconnectedEnvironment":  {
+                                        "EnableJsApi":    true,
+                                        "EnableArcGISOnlineMapViewer":    true
+                                      }
                                   },
                        "Portal":  {
                                       "LicenseFilePath": "[License File Path - Portal ]",

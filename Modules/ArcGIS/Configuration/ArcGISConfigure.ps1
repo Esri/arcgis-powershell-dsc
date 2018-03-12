@@ -739,6 +739,20 @@ Configuration ArcGISConfigure
                                         ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                         DependsOn = $Depends
                                     }
+
+                                    if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
+                                        $Depends += "[ArcGIS_Federation]FederateInServer"
+
+                                        ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                        {
+                                            Ensure = 'Present'
+                                            HostName = Get-FQDN $PrimaryServerMachine
+                                            EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
+                                            EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
+                                            SiteAdministrator = $PSACredential
+                                            DependsOn = $Depends
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1061,6 +1075,20 @@ Configuration ArcGISConfigure
                                             ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
                                             ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                             DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
+                                        }
+
+                                        if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
+                                            $Depends += "[ArcGIS_Federation]FederateInPortal"
+                                            
+                                            ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                            {
+                                                Ensure = 'Present'
+                                                HostName = Get-FQDN $PrimaryServerMachine
+                                                EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
+                                                EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
+                                                SiteAdministrator = $PSACredential
+                                                DependsOn = $Depends
+                                            }
                                         }
                                     }
                                 }
@@ -1657,6 +1685,22 @@ Configuration ArcGISConfigure
                                                     ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                                     DependsOn = $Depends
                                                 }
+
+                                                if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
+                                                
+                                                    $Depends += "[ArcGIS_Federation]FederateInWA"
+                                                                                                    
+                                                    ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                                    {
+                                                        Ensure = 'Present'
+                                                        HostName = Get-FQDN $PrimaryServerMachine
+                                                        EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
+                                                        EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
+                                                        SiteAdministrator = $PSACredential
+                                                        DependsOn = $Depends
+                                                    }
+                                                }
+
                                             }
                                         }
                                         else
@@ -1973,6 +2017,20 @@ Configuration ArcGISConfigure
                                         ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
                                         ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                         DependsOn = $Depends
+                                    }
+
+                                    if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
+                                        $Depends += "[ArcGIS_Federation]FederateInLB"
+                                        
+                                        ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                        {
+                                            Ensure = 'Present'
+                                            HostName = Get-FQDN $PrimaryServerMachine
+                                            EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
+                                            EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
+                                            SiteAdministrator = $PSACredential
+                                            DependsOn = $Depends
+                                        }
                                     }
                                 }
                             }
