@@ -22,6 +22,7 @@ Configuration ArcGISConfigure
     Import-DSCResource -Name ArcGIS_DataStoreItem
     Import-DSCResource -Name ArcGIS_Server_TLS
     Import-DSCResource -Name ArcGIS_Portal_TLS
+    Import-DSCResource -Name ArcGIS_Server_DisconnectedEnvironment
     
     $PrimaryServerMachine = ""
     $PrimaryPortalMachine = ""

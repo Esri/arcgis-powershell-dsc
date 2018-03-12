@@ -653,27 +653,7 @@ function Configure-ArcGIS
                         }
 
                         if($JobFlag){
-                            $JobFlag = $False
-
-                            Write-Host "Dot Sourcing the Configuration:- ArcGISDisconnectedEnvironment"
-                            . "$PSScriptRoot\Configuration\ArcGISDisconnectedEnvironment.ps1" -Verbose:$false
-
-                            Write-Host "Compiling the Configuration:- ArcGISDisconnectedEnvironment"
-                            ArcGISDisconnectedEnvironment -ConfigurationData $ConfigurationParamsHashtable
-                            
-                            if($Credential){
-                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISDisconnectedEnvironment -Credential $Credential -DebugMode $DebugMode
-                            }else{
-                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISDisconnectedEnvironment -DebugMode $DebugMode
-                            }
-
-                            if(Test-Path ".\ArcGISDisconnectedEnvironment") {
-                                Remove-Item ".\ArcGISDisconnectedEnvironment" -Force -ErrorAction Ignore -Recurse
-                            }
-    
-                            if($JobFlag){ 
-                                Get-ArcGISURL $ConfigurationParamsHashtable
-                            }
+                            Get-ArcGISURL $ConfigurationParamsHashtable
                         }
                     }
                 }
