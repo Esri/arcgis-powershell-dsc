@@ -123,7 +123,7 @@ function Set-TargetResource
                 Write-Verbose 'Installing 7Zip'
                   
                 $MsiFile = Join-Path $TempFolder '7Zip.msi'
-                Invoke-WebRequest -Uri 'http://www.7-zip.org/a/7z938-x64.msi' -OutFile $MsiFile
+                Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
                 Write-Verbose "msiexec /i $MsiFile /quiet"
                 Invoke-Expression "msiexec /i $MsiFile /quiet"
                 Start-Sleep -Seconds 30 # Allow files to be copied to Program Files
@@ -180,7 +180,7 @@ function Set-TargetResource
     elseif($Ensure -eq 'Absent') {
         $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
         foreach($wa in $WAInstalls){
-            if($wa.InstallLocation -match "$($Context)\\"){
+            if($wa.InstallLocation -match "\\$($Context)\\"){
                 #SanityCheck - if($ProductIds -contains $wa.IdentifyingNumber)
                 $ProdId = $wa.IdentifyingNumber
                 if(-not($ProdId.StartsWith('{'))){
@@ -237,7 +237,7 @@ function Test-TargetResource
     }
     $result = $false
     foreach($wa in $WAInstalls){
-        if($wa.InstallLocation -match "$($Context)\\"){
+        if($wa.InstallLocation -match "\\$($Context)\\"){
             $result = $true
             break
         }else{
