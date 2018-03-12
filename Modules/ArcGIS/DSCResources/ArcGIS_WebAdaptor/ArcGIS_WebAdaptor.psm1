@@ -335,7 +335,7 @@ function Test-TargetResource
     $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
     $result = $false
     foreach($wa in $WAInstalls){
-        if(($wa.InstallLocation).Contains($Context) ){
+        if($wa.InstallLocation -match "\\$($Context)\\"){
             $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
             [xml]$WAConfig = Get-Content $WAConfigPath
             $ServerSiteURL = "https://$($ComponentHostName):6443"
