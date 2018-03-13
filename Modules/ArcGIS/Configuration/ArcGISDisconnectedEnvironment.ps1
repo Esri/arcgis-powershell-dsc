@@ -21,6 +21,7 @@ Configuration ArcGISDisconnectedEnvironment
                             Ensure = 'Present'
                             HostName = $Node.NodeName
                             SiteAdministrator = $PSACredential
+                            DisableExternalContent = if($ConfigurationData.DisconnectedEnvironment.Portal.DisableExternalContent) {$true} else {$false}
                         }
                     }
                 }
