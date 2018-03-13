@@ -550,6 +550,7 @@ Configuration ArcGISConfigure
                             }else{
                                 $SslRootOrIntermediate = ''
                             }
+                            #check if the Node has a Certificate, if not fallback to one in the Server Block (Fix needed)
                             ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
                             {
                                 Ensure = 'Present'
@@ -701,11 +702,11 @@ Configuration ArcGISConfigure
                                     {
                                         $ServerFedHostName = $MachineFQDN
                                     }
-
-                                    $FirstPortalNode = $($AllNodes | Where-Object { ($_.Role -icontains 'Portal')} | Select-Object -First 1)
-                                    if($FirstPortalNode.SslCertifcate.Alias)
+                                    
+                                    $PrimaryPortalNode = $($AllNodes | Where-Object { ($_.NodeName -ieq $PrimaryPortalMachine)})
+                                    if($PrimaryPortalNode.SslCertifcate.Alias)
                                     {
-                                        $PortalFEDHostName = $FirstPortalNode.SslCertifcate.Alias  
+                                        $PortalFEDHostName = $PrimaryPortalNode.SslCertifcate.Alias  
                                     }
                                     else
                                     {
@@ -973,8 +974,6 @@ Configuration ArcGISConfigure
 
                     if($Node.NodeName -ieq $PrimaryPortalMachine) 
                     {
-                        
-
                         if($Federation -and (($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor') -or ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -eq 0))
                         {
                             if($PrimaryPortalMachine)
@@ -1030,11 +1029,11 @@ Configuration ArcGISConfigure
                                         {
                                             $ServerFEDHostName = $MachineFQDN  
                                         }
-
-                                        $FirstPortalNode = $($AllNodes | Where-Object { ($_.Role -icontains 'Portal') }| Select-Object -First 1)
-                                        if($FirstPortalNode.SslCertifcate.Alias)
+                                        
+                                        $PrimaryPortalNode = $($AllNodes | Where-Object { ($_.NodeName -ieq $PrimaryPortalMachine)})
+                                        if($PrimaryPortalNode.SslCertifcate.Alias)
                                         {
-                                            $PortalFEDHostName = $FirstPortalNode.SslCertifcate.Alias  
+                                            $PortalFEDHostName = $PrimaryPortalNode.SslCertifcate.Alias  
                                         }
                                         else
                                         {
@@ -1604,10 +1603,10 @@ Configuration ArcGISConfigure
                                                     $ServerFEDHostName = $MachineFQDN  
                                                 }
                                                 
-                                                $FirstPortalNode = $($AllNodes | Where-Object { ($_.Role -icontains 'Portal')} | Select-Object -First 1)
-                                                if($FirstPortalNode.SslCertifcate.Alias)
+                                                $PrimaryPortalNode = $($AllNodes | Where-Object { ($_.NodeName -ieq $PrimaryPortalMachine)})
+                                                if($PrimaryPortalNode.SslCertifcate.Alias)
                                                 {
-                                                    $PortalFEDHostName = $FirstPortalNode.SslCertifcate.Alias  
+                                                    $PortalFEDHostName = $PrimaryPortalNode.SslCertifcate.Alias  
                                                 }
                                                 else
                                                 {
