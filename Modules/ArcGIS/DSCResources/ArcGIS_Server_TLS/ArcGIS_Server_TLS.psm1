@@ -294,7 +294,7 @@ function Set-TargetResource
         }else{
             Write-Verbose "Set RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates Import-RootOrIntermediate"
             try{
-                Import-RootOrIntermediateCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $MachineName -CertAlias $key.Alias -CertificateFilePath $key.Path
+                Import-RootOrIntermediateCertificate -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $MachineName -CertAlias $key.Alias -CertificateFilePath $key.Path
             }catch{
                 Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
             }
