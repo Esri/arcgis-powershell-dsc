@@ -11,6 +11,8 @@
         Credentials to access Server/Portal with admin privileges
     .PARAMETER DisableExternalContent
         Switch for Disabling External Content
+    .PARAMETER ConfigProperties
+        JSON of Properties and their values in config.js
 #>
 
 function Get-TargetResource
@@ -24,18 +26,15 @@ function Get-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-		[System.String]
-		$HostName,
+        [System.String]
+        $HostName,
 
         [parameter(Mandatory = $true)]
-		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator,
 
-        [System.Boolean]
-        $EnableJsApi = $true,
-
-        [System.Boolean]
-        $EnableArcGISOnlineMapViewer = $false,
+        [System.String]
+        $ConfigProperties,
 
         [System.Boolean]
         $DisableExternalContent = $false
@@ -55,12 +54,15 @@ function Set-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-		[System.String]
-		$HostName,
+        [System.String]
+        $HostName,
 
         [parameter(Mandatory = $true)]
-		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator,
+
+        [System.String]
+        $ConfigProperties,
 
         [System.Boolean]
         $DisableExternalContent = $false
@@ -73,6 +75,7 @@ function Set-TargetResource
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):7443"
+    $ServiceRestartRequired = $false
 
     Wait-ForUrl -Url "$ServerUrl/arcgis/portaladmin/" -LogFailures
     $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
@@ -82,6 +85,25 @@ function Set-TargetResource
     } else {
         Write-Verbose "Disconnected Environment DisableExternalContent set to false"
     }
+    $ConfigFilePath = Get-ConfigFilePath
+
+    $ServiceRestartRequired = $false
+
+    $ConfigProps = ConvertFrom-Json $ConfigProperties
+    ForEach ($Property in $ConfigProps.PSObject.Properties)
+    {
+        if (Set-PropertyInConfigFile -ConfigFilePath $ConfigFilePath -PropertyName $Property.Name -PropertyValue $Property.Value)
+        {
+            $ServiceRestartRequired = $true
+        }
+    }
+
+    if ($ServiceRestartRequired)
+    {
+        Restart-PortalService
+        Wait-ForUrl "$($ServerUrl)/arcgis/portaladmin" -HttpMethod 'GET'
+    }
+
 }
 
 
@@ -96,11 +118,14 @@ function Test-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-		[System.String]
-		$HostName,
+        [System.String]
+        $HostName,
 
         [System.Management.Automation.PSCredential]
-		$SiteAdministrator,
+        $SiteAdministrator,
+
+        [System.String]
+        $ConfigProperties,
 
         [System.Boolean]
         $DisableExternalContent = $false
@@ -115,17 +140,181 @@ function Test-TargetResource
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):7443"
 
-    Wait-ForUrl -Url "$ServerUrl/arcgis/portaladmin/" -LogFailures
-    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+    if ($result)
+    {
+        $ConfigFilePath = Get-ConfigFilePath
 
-    if ($result) {
-        if ($DisableExternalContent) {
-            $result = Get-ExternalContentEnabled -ServerUrl $ServerUrl -SiteName 'arcgis' -Token $($token.token) -Referer $Referer
+        $ConfigProps = ConvertFrom-Json $ConfigProperties
+        ForEach ($Property in $ConfigProps.PSObject.Properties)
+        {
+            if (-not (Compare-PropertyInConfigFile -ConfigFilePath $ConfigFilePath -PropertyName $Property.Name -PropertyValue $Property.Value))
+            {
+                $result = $false
+                break
+            }
         }
     }
 
     $result
 }
+
+function Get-ConfigFilePath
+{
+    $ServiceName = 'Portal for ArcGIS'
+    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
+    $Version = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
+    if ($Version.Split('.').Count -lt 3)
+    {
+        $Version += '.0'
+    }
+    $ConfigFilePath = Join-Path $InstallDir "customizations\$Version\webapps\arcgis#home\js\arcgisonline\config.js"
+
+    $ConfigFilePath
+}
+
+function Get-PropertyFromConfigFile
+{
+    [CmdletBinding()]
+    param(
+        [string]
+        $ConfigFilePath,
+
+        [string]
+        $PropertyName
+    )
+    
+    $PropertyValue = $null
+    if(Test-Path $ConfigFilePath) {
+        Get-Content $ConfigFilePath | ForEach-Object {
+            if($_ -and $_.Trim().StartsWith($PropertyName)){
+                $Splits = $_.Split(':')
+                if($Splits.Length -gt 1){
+                    $Splits = $Splits[1].Split(',')
+                    $PropertyValue = $Splits[0].Trim()
+                }
+            }
+        }
+    }
+    $PropertyValue
+}
+
+
+function Set-PropertyInConfigFile
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ConfigFilePath,
+
+        [System.String]
+        $PropertyName,
+
+        [System.String]
+        $PropertyValue
+    )
+
+    $Changed = $false
+    $Lines = @()
+    $Exists = $false
+    Write-Host $ConfigFilePath
+    if(Test-Path $ConfigFilePath) {   
+        Get-Content $ConfigFilePath | ForEach-Object {
+            $Line = $_
+            if($_ -and $_.Trim().StartsWith($PropertyName))
+            {
+                $Exists = $true
+                $Splits = $_.Split(':')
+                if($Splits.Length -gt 1)
+                {
+                    $Splits = $Splits[1].Split(',')
+                    $CurrentValue = $Splits[0].Trim()
+                    if ($CurrentValue -ieq $PropertyValue)
+                    {
+                        Write-Verbose "Property entry for '$PropertyName' already exists in $ConfigFilePath  and matches expected value '$PropertyValue'"
+                    }
+                    else 
+                    {
+                        $Line = $Line.Replace($CurrentValue, $PropertyValue.ToLower())
+                        Write-Verbose $Line
+                        $Changed = $true
+                        $Exists = $true
+                    }
+                }
+            }
+            $Lines += $Line
+        }
+
+        if($Changed) 
+        {
+            Write-Verbose "Updating file $ConfigFilePath"
+            Set-Content -Path $ConfigFilePath -Value $Lines -Force
+        }
+        elseif(-not($Exists))
+        {
+            Write-Verbose "Property $PropertyName does not exist in $ConfigFilePath. Property cannot be changed."
+        }
+    }
+    Write-Verbose "Change applied:- $Changed"
+    $Changed
+}
+
+function Compare-PropertyInConfigFile
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ConfigFilePath,
+
+        [System.String]
+        $PropertyName,
+
+        [System.String]
+        $PropertyValue
+    )
+
+    $CurrentValue = Get-PropertyFromConfigFile -ConfigFilePath $ConfigFilePath -PropertyName $PropertyName
+    if($CurrentValue -ne $PropertyValue)
+    {
+        Write-Verbose "Current Value for '$PropertyName' is '$CurrentValue'. Expected value is '$PropertyValue'."
+        $false       
+    }else {
+        Write-Verbose "Current Value for '$PropertyName' is '$CurrentValue' and matches expected value. No change needed"
+        $true
+    }
+}
+
+function Restart-PortalService {
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param
+    (
+        [System.String]
+        $ServiceName = 'Portal for ArcGIS'
+    )
+
+    try {
+        Write-Verbose "Restarting Service $ServiceName"
+        Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
+        Write-Verbose 'Stopping the service'
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+        Write-Verbose 'Stopped the service'
+    }
+    catch {
+        Write-Verbose "[WARNING] Stopping Service $_"
+    }
+
+    try {
+        Write-Verbose 'Starting the service'
+        Start-Service -Name $ServiceName -ErrorAction Ignore
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+        Write-Verbose "Restarted Service '$ServiceName'"
+    }
+    catch {
+        Write-Verbose "[WARNING] Starting Service $_"
+    }
+}
+
 
 function Get-ExternalContentEnabled {
     [CmdletBinding()]

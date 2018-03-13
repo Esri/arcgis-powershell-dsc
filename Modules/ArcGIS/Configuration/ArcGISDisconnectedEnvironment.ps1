@@ -22,6 +22,7 @@ Configuration ArcGISDisconnectedEnvironment
                             HostName = $Node.NodeName
                             SiteAdministrator = $PSACredential
                             DisableExternalContent = if($ConfigurationData.DisconnectedEnvironment.Portal.DisableExternalContent) {$true} else {$false}
+                            ConfigProperties = ConvertTo-Json $ConfigurationData.DisconnectedEnvironment.Portal.ConfigJs
                         }
                     }
                 }
