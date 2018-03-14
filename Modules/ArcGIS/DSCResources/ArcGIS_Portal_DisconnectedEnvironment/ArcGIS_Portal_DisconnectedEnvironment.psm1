@@ -73,15 +73,14 @@ function Set-TargetResource
 
     $FQDN = Get-FQDN $env:COMPUTERNAME   
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
-    $Referer = 'http://localhost'
-    $ServerUrl = "https://$($FQDN):7443"
+    $PortalUrl = "https://$($FQDN):7443/arcgis"
     $ServiceRestartRequired = $false
 
-    Wait-ForUrl -Url "$ServerUrl/arcgis/portaladmin/" -LogFailures
-    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+    Wait-ForUrl -Url "$PortalUrl/portaladmin/" -LogFailures
+    $token = Get-PortalToken -PortalHostName $FQDN -Credential $SiteAdministrator
 
     if ($DisableExternalContent) {
-        Set-ExternalContentEnabled -ServerUrl $ServerUrl -SiteName 'arcgis' -Token $($token.token) -Referer $Referer
+        Set-ExternalContentEnabled -ServerUrl $PortalUrl -Token $($token.token)
     } else {
         Write-Verbose "Disconnected Environment DisableExternalContent set to false"
     }
@@ -101,7 +100,7 @@ function Set-TargetResource
     if ($ServiceRestartRequired)
     {
         Restart-PortalService
-        Wait-ForUrl "$($ServerUrl)/arcgis/portaladmin" -HttpMethod 'GET'
+        Wait-ForUrl "$($PortalUrl)/portaladmin" -HttpMethod 'GET'
     }
 
 }
@@ -137,8 +136,16 @@ function Test-TargetResource
     $result = $true
     $FQDN = Get-FQDN $env:COMPUTERNAME   
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
-    $Referer = 'http://localhost'
-    $ServerUrl = "https://$($FQDN):7443"
+    $PortalUrl = "https://$($FQDN):7443/arcgis"
+
+    Wait-ForUrl -Url "$PortalUrl/portaladmin/" -LogFailures
+    $token = Get-PortalToken -PortalHostName $FQDN -Credential $SiteAdministrator
+
+    if ($result) {
+        if ($DisableExternalContent) {
+            $result = Get-ExternalContentEnabled -ServerUrl $PortalUrl -Token $($token.token)
+        }
+    }
 
     if ($result)
     {
@@ -320,10 +327,7 @@ function Get-ExternalContentEnabled {
     [CmdletBinding()]
     param(
         [System.String]
-        $ServerUrl,
-
-        [System.String]
-        $SiteName = 'arcgis',
+        $PortalUrl,
 
         [System.String]
         $Token,
@@ -332,7 +336,7 @@ function Get-ExternalContentEnabled {
         $Referer = 'http://localhost'
     )
 
-    $configuration = Invoke-ArcGISWebRequest -Url "$ServerUrl/$SiteName/portaladmin/system/content/configuration" `
+    $configuration = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/content/configuration" `
                     -HttpFormParameters @{ f = 'pjson'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 
     -not($configuration.isExternalContentEnabled) # returns true when $isExternalContentEnabled is set to false
@@ -343,10 +347,7 @@ function Set-ExternalContentEnabled {
     [CmdletBinding()]
     param(
         [System.String]
-        $ServerUrl,
-
-        [System.String]
-        $SiteName = 'arcgis',
+        $PortalUrl,
 
         [System.String]
         $Token,
@@ -356,10 +357,10 @@ function Set-ExternalContentEnabled {
     )
     $result = $true
 
-    if(-not(Get-ExternalContentEnabled -ServerUrl $ServerUrl -SiteName $SiteName -Token $Token -Referer $Referer))
+    if(-not(Get-ExternalContentEnabled -ServerUrl $PortalUrl -Token $Token -Referer $Referer))
     {
         # updating content configuration requires reindexing which may take up to a few minutes > timeout 600
-        $configuration = Invoke-ArcGISWebRequest -Url "$ServerUrl/$SiteName/portaladmin/system/content/configuration/update" `
+        $configuration = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/content/configuration/update" `
                         -HttpFormParameters @{ f = 'pjson'; token = $Token; externalContentEnabled = 'false'} -Referer $Referer `
                         -TimeOutSec 600 -HttpMethod 'POST'
         
