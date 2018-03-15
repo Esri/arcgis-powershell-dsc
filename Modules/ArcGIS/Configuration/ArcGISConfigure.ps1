@@ -1095,6 +1095,16 @@ Configuration ArcGISConfigure
 
                                         if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
                                         {
+                                            if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
+                                            {
+                                                $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
+                                            }
+
+                                            if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
+                                            {
+                                                $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
+                                            }
+
                                             $Depends += "[ArcGIS_Federation]FederateInPortal"
                                             ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
                                             {
@@ -1102,7 +1112,8 @@ Configuration ArcGISConfigure
                                                 HostName = Get-FQDN $PrimaryPortalMachine
                                                 SiteAdministrator = $PSACredential
                                                 DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                                                ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
+                                                ConfigProperties = $ConfigProperties
+                                                HelperServices = $HelperServices
                                             }
                                         }
                                     }
@@ -1717,6 +1728,16 @@ Configuration ArcGISConfigure
 
                                                 if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
                                                 {
+                                                    if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
+                                                    {
+                                                        $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
+                                                    }
+
+                                                    if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
+                                                    {
+                                                        $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
+                                                    }
+
                                                     $Depends += "[ArcGIS_Federation]FederateInWA"
                                                     ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
                                                     {
@@ -1724,7 +1745,8 @@ Configuration ArcGISConfigure
                                                         HostName = Get-FQDN $PrimaryPortalMachine
                                                         SiteAdministrator = $PSACredential
                                                         DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                                                        ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
+                                                        ConfigProperties = $ConfigProperties
+                                                        HelperServices = $HelperServices
                                                     }
                                                 }
 
@@ -2062,6 +2084,16 @@ Configuration ArcGISConfigure
 
                                     if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
                                     {
+                                        if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
+                                        {
+                                            $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
+                                        }
+
+                                        if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
+                                        {
+                                            $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
+                                        }
+
                                         $Depends += "[ArcGIS_Federation]FederateInLB"
                                         ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
                                         {
@@ -2069,7 +2101,8 @@ Configuration ArcGISConfigure
                                             HostName = Get-FQDN $PrimaryPortalMachine
                                             SiteAdministrator = $PSACredential
                                             DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                                            ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
+                                            ConfigProperties = $ConfigProperties
+                                            HelperServices = $HelperServices
                                         }
                                     }
                                 }

@@ -7,6 +7,7 @@ class ArcGIS_Portal_DisconnectedEnvironment : OMI_BaseResource
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write] Boolean DisableExternalContent;
 	[Write] String ConfigProperties;
+	[Write] String HelperServices;
 };
 
 
