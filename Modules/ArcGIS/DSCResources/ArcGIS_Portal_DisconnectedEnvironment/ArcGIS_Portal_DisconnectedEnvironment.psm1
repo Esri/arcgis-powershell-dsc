@@ -141,8 +141,10 @@ function Test-TargetResource
     Wait-ForUrl -Url "$PortalUrl/portaladmin/" -LogFailures
     $token = Get-PortalToken -PortalHostName $FQDN -Credential $SiteAdministrator
 
-    if ($result) {
-        if ($DisableExternalContent) {
+    if ($result) 
+    {
+        if ($DisableExternalContent) 
+        {
             $result = Get-ExternalContentEnabled -ServerUrl $PortalUrl -Token $($token.token)
         }
     }
@@ -225,7 +227,8 @@ function Set-PropertyInConfigFile
     $Lines = @()
     $Exists = $false
     Write-Host $ConfigFilePath
-    if(Test-Path $ConfigFilePath) {   
+    if(Test-Path $ConfigFilePath) 
+    {
         Get-Content $ConfigFilePath | ForEach-Object {
             $Line = $_
             if($_ -and $_.Trim().StartsWith($PropertyName))
@@ -285,7 +288,7 @@ function Compare-PropertyInConfigFile
     {
         Write-Verbose "Current Value for '$PropertyName' is '$CurrentValue'. Expected value is '$PropertyValue'."
         $false       
-    }else {
+    } else {
         Write-Verbose "Current Value for '$PropertyName' is '$CurrentValue' and matches expected value. No change needed"
         $true
     }
@@ -323,7 +326,8 @@ function Restart-PortalService {
 }
 
 
-function Get-ExternalContentEnabled {
+function Get-ExternalContentEnabled 
+{
     [CmdletBinding()]
     param(
         [System.String]
@@ -343,7 +347,8 @@ function Get-ExternalContentEnabled {
 
 }
 
-function Set-ExternalContentEnabled {
+function Set-ExternalContentEnabled 
+{
     [CmdletBinding()]
     param(
         [System.String]
@@ -365,7 +370,7 @@ function Set-ExternalContentEnabled {
                         -TimeOutSec 600 -HttpMethod 'POST'
         
         Write-Verbose "External Content disabled:- $configuration"
-        $result = if($configuration.status -matches "success") {$true} else {$false}
+        $result = if($configuration.status -match "success") {$true} else {$false}
     } else {
         Write-Verbose "External Content already disabled in /portaladmin/system/content/configuration - skipping"
         $result = $true
