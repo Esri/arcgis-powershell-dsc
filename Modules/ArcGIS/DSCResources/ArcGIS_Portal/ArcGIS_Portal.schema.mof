@@ -19,5 +19,6 @@ class ArcGIS_Portal : OMI_BaseResource
 	[Write] String ContentDirectoryLocation;
 	[Write] String ContentDirectoryCloudConnectionString;
     [Write] String ContentDirectoryCloudContainerName;    
+	[Write, EmbeddedInstance("MSFT_Credential")] String ADServiceUser;
 };
 

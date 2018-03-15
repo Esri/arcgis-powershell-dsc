@@ -348,7 +348,10 @@ function Set-TargetResource {
         $ContentDirectoryCloudConnectionString,
 
         [System.String]
-        $ContentDirectoryCloudContainerName
+        $ContentDirectoryCloudContainerName,
+
+        [System.Management.Automation.PSCredential]
+        $ADServiceUser
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -633,6 +636,22 @@ function Set-TargetResource {
                 Write-Verbose $PortalSelfResponse
             }
         }
+        # set system property userstoreconfig > AD
+        if ($ADServiceUser.UserName) {
+            $Referer = 'http://localhost'
+            
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+
+            $securityConfig = Get-PortalUserStoreConfig -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
+            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') {
+                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). Changing to Active Directory"
+                Set-PortalUserStoreConfig -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -ADServiceUser $ADServiceUser
+            } else {
+                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
+            }
+        }
+
     }
     elseif ($Ensure -ieq 'Absent') {
         Write-Warning 'Site Delete not implemented'
@@ -696,7 +715,10 @@ function Test-TargetResource {
         $ContentDirectoryCloudConnectionString,
 
         [System.String]
-        $ContentDirectoryCloudContainerName
+        $ContentDirectoryCloudContainerName,
+
+        [System.Management.Automation.PSCredential]
+        $ADServiceUser
     )
 
  
@@ -846,6 +868,24 @@ function Test-TargetResource {
         }
     }
 
+    if ($result) {
+        # test for Active Directory Config
+        if ($ADServiceUser.UserName) {
+            $Referer = 'http://localhost'
+            
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+
+            $securityConfig = Get-PortalUserStoreConfig -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
+            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') {
+                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type)"
+                $result = $false
+            } else {
+                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
+            }
+        }
+    }
+
     if ($Ensure -ieq 'Present') {
         $result   
     }
@@ -931,6 +971,71 @@ function Set-LoggingLevel {
         }
     }
     $ServiceRestartRequired
+}
+
+function Get-PortalUserStoreConfig {
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+
+        [System.String]
+        $SiteName = 'arcgis',
+
+        [System.Int32]
+        $Port = 7443,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    )   
+
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config") -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+}
+
+function Set-PortalUserStoreConfig {
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+        
+        [System.String]
+        $SiteName = 'arcgis', 
+
+        [System.Int32]
+        $Port = 7443,
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer = 'http://localhost',
+
+        [System.Management.Automation.PSCredential]
+        $ADServiceUser
+    )
+
+    $userStoreConfig = '{
+        "type": "WINDOWS",
+        "properties": {
+            "userPassword": "' + $($ADServiceUser.GetNetworkCredential().Password) +'",
+            "isPasswordEncrypted": "false",
+            "user": "' + $($ADServiceUser.UserName.Replace("\","\\")) +'",
+            "userFullnameAttribute": "cn",
+            "userEmailAttribute": "mail",
+            "caseSensitive": "false"
+        }
+    }'
+
+    
+    $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config/updateIdentityStore") -HttpFormParameters @{ f = 'json'; token = $Token; userStoreConfig = $userStoreConfig; } -Referer $Referer -TimeOutSec 300 -LogResponse
+    if ($response.error) {
+        throw "Error in Set-PortalUserStoreConfig:- $($response.error)"
+    } else {
+        Write-Verbose "Response received from Portal Set UserStoreconfig:- $response"
+    }
 }
 
 function Get-PortalLogSettings {

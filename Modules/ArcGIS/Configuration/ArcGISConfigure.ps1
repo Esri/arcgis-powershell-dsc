@@ -71,6 +71,13 @@ Configuration ArcGISConfigure
         $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
         $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
 
+        if ($ConfigurationData.ConfigData.Credentials.ADServiceUser.UserName) {
+            $ADServicePassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ADServiceUser.Password -AsPlainText -Force
+            $ADServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ADServiceUser.UserName, $ADServicePassword )
+        } else {
+            $ADServiceCredential = $null
+        }
+
         $Federation = if($ConfigurationData.ConfigData.Federation){$true}else{$false}
 
         if(-not($Federation))
@@ -958,6 +965,7 @@ Configuration ArcGISConfigure
                         PortalEndPoint = $MachineFQDN
                         PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { (Get-FQDN $PrimaryPortalMachine) } else { "" }
                         EnableDebugLogging = if($ConfigurationData.ConfigData.DebugMode) { $true } else { $false }
+                        ADServiceUser = $ADServiceCredential
                     }
                     
                     if($Node.NodeName -ieq $PrimaryPortalMachine -and (($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')}  | Measure-Object).Count -eq 0))
