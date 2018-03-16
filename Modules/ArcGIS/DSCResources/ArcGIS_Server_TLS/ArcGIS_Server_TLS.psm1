@@ -1022,10 +1022,10 @@ function Get-SSLCertificateForMachine
                 $null 
             }else {
                 $IssuerValue = $null
-                $Issuer = [regex]::matches($res.Content, '"Issuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
+                $Issuer = [regex]::matches($res.Content, '"[Ii]ssuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
                 $Issuer.Groups | %{ 
                     if($_.Value -and $_.Value.Length -gt 0){
-                        $Pos = $_.Value.IndexOf('"Issuer"')
+                        $Pos = $_.Value.ToLower().IndexOf('"issuer"')
                         if($Pos -gt -1) {
                             $Str = $_.Value.Substring($Pos + '"Issuer"'.Length)
                             $Pos = $Str.IndexOf('"')
