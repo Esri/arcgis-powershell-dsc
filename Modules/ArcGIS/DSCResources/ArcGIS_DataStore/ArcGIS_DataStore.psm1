@@ -654,6 +654,7 @@ function Register-DataStore
         Write-Verbose "Register DataStore Attempt $NumAttempts"
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates        
         [bool]$failed = $false
+        $response = $null
         try {
             $alreadyRegistered = $false
             if($NumAttempts -gt 1) {

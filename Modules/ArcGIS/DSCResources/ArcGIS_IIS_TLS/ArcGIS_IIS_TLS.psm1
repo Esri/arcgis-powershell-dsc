@@ -132,8 +132,8 @@ function Test-TargetResource
         else {
             $pfx.Import($CertificateFileLocation)
         }
-        $CertRootStore = “LocalMachine”
-        $CertStore = “My”
+        $CertRootStore = "LocalMachine"
+        $CertStore = "My"
         $CertPath = "Cert:\$CertRootStore\$CertStore\$($pfx.Thumbprint)"    
         if(Test-Path $CertPath)  { 
             Write-Verbose "Certificate found in $CertPath"       

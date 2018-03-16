@@ -1,0 +1,12 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Server_DisconnectedEnvironment")]
+class ArcGIS_Server_DisconnectedEnvironment : OMI_BaseResource
+{
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Key] String HostName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+	[Write] Boolean EnableJsApi;
+	[Write] Boolean EnableArcGISOnlineMapViewer;
+};
+
+
