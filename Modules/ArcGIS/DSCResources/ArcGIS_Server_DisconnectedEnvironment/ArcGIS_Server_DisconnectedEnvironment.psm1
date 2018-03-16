@@ -72,10 +72,9 @@ function Set-TargetResource
 
     if($Ensure -ieq 'Present') 
     {
-        $FQDN = Get-FQDN $env:COMPUTERNAME   
-        Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
+        Write-Verbose "Fully Qualified Domain Name :- $HostName" 
         $Referer = 'http://localhost'
-        $ServerUrl = "http://$($FQDN):6080"
+        $ServerUrl = "http://$($HostName):6080"
         
         $result = $true
         
@@ -147,10 +146,9 @@ function Test-TargetResource
     if($EnableJsApi -or $EnableArcGISOnlineMapViewer)
     {
         $result = $false
-        $FQDN = Get-FQDN $env:COMPUTERNAME   
-        Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
+        Write-Verbose "Fully Qualified Domain Name :- $HostName" 
         $Referer = 'http://localhost'
-        $ServerUrl = "http://$($FQDN):6080"
+        $ServerUrl = "http://$($HostName):6080"
         
         $result = $true
         try {        
@@ -190,14 +188,14 @@ function Test-TargetResource
                 }
                 else
                 {
-                    Write-Host "Error: Server not Federated. Handler for Servicesdirectory cannot be changed."
+                    Write-Verbose "Error: Server not Federated. Handler for Servicesdirectory cannot be changed."
                     $result = $false
                 }
             }
         }
         catch
         {
-            Write-Host "Error: $_"
+            Write-Verbose "Error: $_"
             $result = $false
         }
     }
