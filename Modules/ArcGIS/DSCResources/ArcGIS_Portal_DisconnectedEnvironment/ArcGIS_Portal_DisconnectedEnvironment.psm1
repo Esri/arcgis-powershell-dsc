@@ -71,13 +71,12 @@ function Set-TargetResource
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $FQDN = Get-FQDN $env:COMPUTERNAME   
-    Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
-    $PortalUrl = "https://$($FQDN):7443/arcgis"
+    Write-Verbose "Fully Qualified Domain Name :- $HostName" 
+    $PortalUrl = "https://$($HostName):7443/arcgis"
     $ServiceRestartRequired = $false
 
     Wait-ForUrl -Url "$PortalUrl/portaladmin/" -LogFailures
-    $token = Get-PortalToken -PortalHostName $FQDN -Credential $SiteAdministrator
+    $token = Get-PortalToken -PortalHostName $HostName -Credential $SiteAdministrator
 
     if ($DisableExternalContent) {
         Set-ExternalContentEnabled -ServerUrl $PortalUrl -Token $($token.token)
@@ -134,12 +133,11 @@ function Test-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $result = $true
-    $FQDN = Get-FQDN $env:COMPUTERNAME   
-    Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
-    $PortalUrl = "https://$($FQDN):7443/arcgis"
+    Write-Verbose "Fully Qualified Domain Name :- $HostName" 
+    $PortalUrl = "https://$($HostName):7443/arcgis"
 
     Wait-ForUrl -Url "$PortalUrl/portaladmin/" -LogFailures
-    $token = Get-PortalToken -PortalHostName $FQDN -Credential $SiteAdministrator
+    $token = Get-PortalToken -PortalHostName $HostName -Credential $SiteAdministrator
 
     if ($result) 
     {

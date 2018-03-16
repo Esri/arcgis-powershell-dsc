@@ -52,7 +52,11 @@
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
                                                         "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
                                                     },
-                                      "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content"
+                                      "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content",
+                                      "DisconnectedEnvironment":  {
+                                        "DisableExternalContent":    true,
+                                        "ConfigJs": "[Portal Config.js]"
+                                      }
                                   },
                        "DataStore":  {
                                          "ContentDirectoryLocation":  "[Content Dir DataStore - C:\\arcgisdatastore]",

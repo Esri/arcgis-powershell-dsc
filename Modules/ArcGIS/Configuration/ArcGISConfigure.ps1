@@ -23,6 +23,7 @@ Configuration ArcGISConfigure
     Import-DSCResource -Name ArcGIS_Server_TLS
     Import-DSCResource -Name ArcGIS_Portal_TLS
     Import-DSCResource -Name ArcGIS_Server_DisconnectedEnvironment
+    Import-DSCResource -Name ArcGIS_Portal_DisconnectedEnvironment
     
     $PrimaryServerMachine = ""
     $PrimaryPortalMachine = ""
@@ -1091,12 +1092,24 @@ Configuration ArcGISConfigure
                                                 DependsOn = $Depends
                                             }
                                         }
+
+                                        if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
+                                        {
+                                            $Depends += "[ArcGIS_Federation]FederateInPortal"
+                                            ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                            {
+                                                Ensure = 'Present'
+                                                HostName = Get-FQDN $PrimaryPortalMachine
+                                                SiteAdministrator = $PSACredential
+                                                DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
+                                                ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
+                                            }
+                                        }
                                     }
                                 }
                             }
                         } 
                     }
-                    
                 }
                 'DataStore'{
                     $Depends = @()
@@ -1702,6 +1715,19 @@ Configuration ArcGISConfigure
                                                     }
                                                 }
 
+                                                if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
+                                                {
+                                                    $Depends += "[ArcGIS_Federation]FederateInWA"
+                                                    ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                                    {
+                                                        Ensure = 'Present'
+                                                        HostName = Get-FQDN $PrimaryPortalMachine
+                                                        SiteAdministrator = $PSACredential
+                                                        DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
+                                                        ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
+                                                    }
+                                                }
+
                                             }
                                         }
                                         else
@@ -2031,6 +2057,19 @@ Configuration ArcGISConfigure
                                             EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
                                             SiteAdministrator = $PSACredential
                                             DependsOn = $Depends
+                                        }
+                                    }
+
+                                    if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
+                                    {
+                                        $Depends += "[ArcGIS_Federation]FederateInLB"
+                                        ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
+                                        {
+                                            Ensure = 'Present'
+                                            HostName = Get-FQDN $PrimaryPortalMachine
+                                            SiteAdministrator = $PSACredential
+                                            DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
+                                            ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
                                         }
                                     }
                                 }
