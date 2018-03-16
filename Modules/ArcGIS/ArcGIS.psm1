@@ -206,19 +206,26 @@ function Start-DSCJob {
 
     Write-Host "Starting DSC Job:- $ConfigurationName"
     $JobTimer = [System.Diagnostics.Stopwatch]::StartNew()
-    if($Credential)
+    if(Test-Path ".\$($ConfigurationName)\*")
     {
-        $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential
+        if($Credential)
+        {
+            $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential
+        }
+        else
+        {
+            $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose
+        }
+        Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
     }
     else
     {
-        $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose
+        $Job = @{state = "Skipped"}
     }
-    Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
     Write-Host "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
     Write-Host "$($ConfigurationName) - $($Job.state)"
     $result = $False
-    if($Job.state -ieq "Completed"){
+    if(($Job.state -ieq "Completed") -or ($Job.state -ieq "Skipped")){
         $result = $True
     }  
     $result  
@@ -645,7 +652,7 @@ function Configure-ArcGIS
                             Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
                         }
 
-                        if($JobFlag){ 
+                        if($JobFlag){
                             Get-ArcGISURL $ConfigurationParamsHashtable
                         }
                     }
