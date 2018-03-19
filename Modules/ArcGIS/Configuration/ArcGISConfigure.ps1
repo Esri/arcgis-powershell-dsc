@@ -966,6 +966,7 @@ Configuration ArcGISConfigure
                         PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { (Get-FQDN $PrimaryPortalMachine) } else { "" }
                         EnableDebugLogging = if($ConfigurationData.ConfigData.DebugMode) { $true } else { $false }
                         ADServiceUser = $ADServiceCredential
+                        enableAutomaticAccountCreation = if($ConfigurationData.ConfigData.Portal.enableAutomaticAccountCreation) {$true} else {$false}
                     }
                     
                     if($Node.NodeName -ieq $PrimaryPortalMachine -and (($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')}  | Measure-Object).Count -eq 0))

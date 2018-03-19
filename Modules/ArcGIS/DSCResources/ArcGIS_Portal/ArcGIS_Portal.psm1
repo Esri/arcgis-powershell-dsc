@@ -47,6 +47,10 @@
         Content Directory Location for the Portal - Can be a location file path or a Network File Share
     .PARAMETER UpgradeReindex
         Need to Run Reindex of PostgresSQL Database that ships with the portal when a upgrade takes place.
+    .PARAMETER ADServiceUser
+        Service User to connect the Portal-UserStore to an Active Directory
+    .PARAMETER enableAutomaticAccountCreation
+        Enables the automaticAccountCreation on Portal
 #>
 
 function Create-PortalSite {    
@@ -351,7 +355,10 @@ function Set-TargetResource {
         $ContentDirectoryCloudContainerName,
 
         [System.Management.Automation.PSCredential]
-        $ADServiceUser
+        $ADServiceUser,
+
+        [System.Boolean]
+        $enableAutomaticAccountCreation
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -637,18 +644,36 @@ function Set-TargetResource {
             }
         }
         # set system property userstoreconfig > AD
-        if ($ADServiceUser.UserName) {
-            $Referer = 'http://localhost'
-            
+        if ($ADServiceUser.UserName) 
+        {
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
 
-            $securityConfig = Get-PortalUserStoreConfig -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') {
+            $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') 
+            {
                 Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). Changing to Active Directory"
-                Set-PortalUserStoreConfig -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -ADServiceUser $ADServiceUser
+                Set-PortalUserStoreConfig -PortalHostName $FQDN -Token $token.token -ADServiceUser $ADServiceUser
             } else {
                 Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
+            }
+        }
+        if ($enableAutomaticAccountCreation)
+        {
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+            if (-not ($token))
+            {
+                $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
+            }
+            if (-not ($securityConfig))
+            {
+                $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+            }
+            if ($securityConfig.enableAutomaticAccountCreation -ne "true")
+            {
+                Write-Verbose "enableAutomaticAccountCreation is set to false, enable it"
+                $securityConfig.enableAutomaticAccountCreation = "true"
+                Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
             }
         }
 
@@ -718,7 +743,10 @@ function Test-TargetResource {
         $ContentDirectoryCloudContainerName,
 
         [System.Management.Automation.PSCredential]
-        $ADServiceUser
+        $ADServiceUser,
+
+        [System.Boolean]
+        $enableAutomaticAccountCreation
     )
 
  
@@ -868,21 +896,40 @@ function Test-TargetResource {
         }
     }
 
-    if ($result) {
-        # test for Active Directory Config
-        if ($ADServiceUser.UserName) {
-            $Referer = 'http://localhost'
-            
-            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+    if ($result -and ($ADServiceUser.UserName)) 
+    {
+        $Referer = 'http://localhost'
+        
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
 
-            $securityConfig = Get-PortalUserStoreConfig -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') {
-                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type)"
-                $result = $false
-            } else {
-                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
-            }
+        $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+        if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') 
+        {
+            Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type)"
+            $result = $false
+        } else {
+            Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
+        }
+    }
+
+    if ($result -and ($enableAutomaticAccountCreation))
+    {
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+        if (-not ($token))
+        {
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
+        }
+        if (-not ($securityConfig))
+        {
+            $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+        }
+        if ($securityConfig.enableAutomaticAccountCreation -ne "true")
+        {
+            Write-Verbose "enableAutomaticAccountCreation is set to false, it should be enabled"
+            $result = $false
+        } else {
+            Write-Verbose "enableAutomaticAccountCreation is already set to true"
         }
     }
 
@@ -973,7 +1020,7 @@ function Set-LoggingLevel {
     $ServiceRestartRequired
 }
 
-function Get-PortalUserStoreConfig {
+function Get-PortalSecurityConfig {
     [CmdletBinding()]
     param(
         [System.String]
@@ -992,7 +1039,37 @@ function Get-PortalUserStoreConfig {
         $Referer = 'http://localhost'
     )   
 
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config") -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config") `
+                        -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+}
+
+function Set-PortalSecurityConfig {
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+
+        [System.String]
+        $SiteName = 'arcgis',
+
+        [System.Int32]
+        $Port = 7443,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost',
+
+        [System.String]
+        $SecurityParameters
+    )   
+
+    $params = @{ f = 'json'; token = $Token; securityConfig = $SecurityParameters;}
+    
+    $resp = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config/update") `
+                        -HttpFormParameters $params -Referer $Referer
+    Write-Verbose "Set-PortalSecurityConfig Response:- $($resp.error) $resp"
 }
 
 function Set-PortalUserStoreConfig {
@@ -1029,7 +1106,6 @@ function Set-PortalUserStoreConfig {
         }
     }'
 
-    
     $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config/updateIdentityStore") -HttpFormParameters @{ f = 'json'; token = $Token; userStoreConfig = $userStoreConfig; } -Referer $Referer -TimeOutSec 300 -LogResponse
     if ($response.error) {
         throw "Error in Set-PortalUserStoreConfig:- $($response.error)"
