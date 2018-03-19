@@ -689,7 +689,11 @@ function Get-ExternalContentEnabled
     $configuration = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/content/configuration" `
                     -HttpFormParameters @{ f = 'pjson'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 
-    -not($configuration.isExternalContentEnabled) # returns true when $isExternalContentEnabled is set to false
+    if ($configuration.isExternalContentEnabled -or $configuration.error) {
+        $false
+    } else {
+        $true
+    }
 
 }
 
