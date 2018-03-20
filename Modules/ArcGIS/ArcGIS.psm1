@@ -528,7 +528,7 @@ function Configure-ArcGIS
         [System.Array]
         $ConfigurationParametersFile,    
 
-        [ValidateSet("Install","Uninstall","Upgrade","PublishGISService")]
+        [ValidateSet("Install","Uninstall","Upgrade","PublishGISService","DisconnectedEnvironment")]
         [Parameter(Position = 1)]
         [System.String]
         $Mode = 'Install',
@@ -551,7 +551,7 @@ function Configure-ArcGIS
         $DebugMode = $true
     }
 
-    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService"){
+    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService" -or (Mode -ieq "DisconnectedEnvironment"){
 
         Foreach($cf in $ConfigurationParametersFile){
             if(-not($ConfigurationParamsJSON)){
@@ -660,11 +660,13 @@ function Configure-ArcGIS
             }else{
                 throw "FileShare not present required for HA Setup!"  
             }
-        }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService")){
+        }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService") -or ($Mode -ieq "DisconnectedEnvironment")){
             if($Mode -ieq "Uninstall"){
                 $ConfigurationName = "ArcGISUninstall"
             }elseif($Mode -ieq "PublishGISService"){
                 $ConfigurationName = "PublishGISService"
+            }elseif($Mode -ieq "DisconnectedEnvironment"){
+                $ConfigurationName = "ArcGISDisconnectedEnvironment"
             }
             if(Test-Path ".\$ConfigurationName") {
                 Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
