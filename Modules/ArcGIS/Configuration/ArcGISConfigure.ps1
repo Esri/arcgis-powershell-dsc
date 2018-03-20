@@ -355,6 +355,12 @@ Configuration ArcGISConfigure
                         }
                     }
 
+                    if ($ConfigurationData.ConfigData.Server.RegisteredDirectories) {
+                        $RegisteredDirectories = $ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json
+                    } else {
+                        $RegisteredDirectories = $null
+                    }
+
                     ArcGIS_Server "Server$($Node.NodeName)"
                     {
                         Ensure = 'Present'
@@ -366,6 +372,7 @@ Configuration ArcGISConfigure
                         DependsOn = $Depends
                         LogLevel = if($ConfigurationData.ConfigData.DebugMode) { 'DEBUG' } else { 'WARNING' }
                         SingleClusterMode = if(($AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0) { $true } else { $false }
+                        RegisteredDirectories = $RegisteredDirectories
                     }
 
                     $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"

@@ -21,6 +21,8 @@
         Defines the Logging Level of Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
     .PARAMETER  Platform
         Define the platform on which the Server is being installed - (Not Used)  
+    .PARAMETER RegisteredDirectories
+        List of Registered Directories
 #>
 function Get-TargetResource
 {
@@ -63,7 +65,10 @@ function Get-TargetResource
         $SingleClusterMode,
 
         [System.String]
-        $Platform
+        $Platform,
+
+        [System.String]
+        $RegisteredDirectories
 	)
 	
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -111,7 +116,10 @@ function Set-TargetResource
         $SingleClusterMode,
 
         [System.String]
-        $Platform
+        $Platform,
+
+        [System.String]
+        $RegisteredDirectories
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -297,6 +305,21 @@ function Set-TargetResource
                 Update-LogSettings -ServerURL "http://$($FQDN):6080" -Token $token.token -Referer $Referer -logSettings $logSettings.settings 
                 #Write-Verbose "Updated log level to $($logSettings.settings.logLevel)"
             }
+
+            if($RegisteredDirectories) { #setting registered directories
+                $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
+                ForEach ($dir in ($RegisteredDirectories | ConvertFrom-Json)) 
+                {
+                    Write-Verbose "Testing for Directory $($dir.name)"
+                    if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
+                        Write-Verbose "Directory $($dir.name) already registered > no Action required"
+                    } else {
+                        Write-Verbose "Directory $($dir.name) not registered > registering directory"
+                        $response = Set-RegisteredDirectory -ServerURL $ServerUrl -Token $token.token -Referer $Referer -name $dir.name -physicalPath $dir.physicalPath -directoryType $dir.directoryType
+                        Write-Verbose "Set-RegisteredDirectory Response :-$response"
+                    }
+                }
+            }
         }
     }
     elseif($Ensure -ieq 'Absent') {
@@ -352,7 +375,10 @@ function Test-TargetResource
 		$SingleClusterMode,
 
         [System.String]
-		$Platform
+		$Platform,
+
+        [System.String]
+        $RegisteredDirectories
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -423,6 +449,23 @@ function Test-TargetResource
 				}
 			}
 		}
+    }
+
+    if($result) { #test for registered Directories
+        if((-not $Join) -and $RegisteredDirectories) { # only Primary Server
+            $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
+            ForEach ($dir in ($RegisteredDirectories | ConvertFrom-Json)) 
+            {
+                Write-Verbose "Testing for Directory $($dir.name)"
+                if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
+                    Write-Verbose "Directory $($dir.name) already registered"
+                } else {
+                    Write-Verbose "Directory $($dir.name) not registered"
+                    $result = $false
+                    break
+                }
+            }
+        }
     }
 
     if($Ensure -ieq 'Present') {
@@ -990,6 +1033,81 @@ function Get-SingleClusterModeOnServer
         $response    
     }else {
         Write-Verbose "[WARNING] Response from $GetDeploymentUrl is NULL"
+    }
+}
+
+function Get-RegisteredDirectories 
+{ # returns list of Servers registerd Directories 
+    [CmdletBinding()]
+	param
+	(
+        [System.String]
+        $ServerURL, 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer
+	)
+
+    $Url  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/directories"   
+    $props = @{ f= 'pjson'; token = $Token;  }
+    $cmdBody = To-HttpBody $props    
+    $headers = @{'Content-type'='application/x-www-form-urlencoded'
+                'Content-Length' = $cmdBody.Length
+                'Accept' = 'text/plain'
+                'Referer' = $Referer
+                }
+
+    $res = Invoke-WebRequest -Uri $Url -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing -TimeoutSec 150 -ErrorAction Ignore
+    if($res -and $res.Content) {
+        $response = $res.Content | ConvertFrom-Json
+        $response    
+    }else{
+        Write-Verbose "[WARNING] Response from $Url (Get-RegisteredDirectories) is NULL"
+    }
+}
+
+function Set-RegisteredDirectory
+{ # adds an directory to Server registerd Directories 
+    [CmdletBinding()]
+	param
+	(
+        [System.String]
+        $ServerURL, 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer,
+
+        [System.String]
+        $name,
+
+        [System.String]
+        $physicalPath,
+
+        [System.String]
+        $directoryType
+	)
+
+    $Url  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/directories/register"   
+    $props = @{ f= 'pjson'; token = $Token; name = $name; physicalPath = $physicalPath; directoryType = $directoryType; }
+    $cmdBody = To-HttpBody $props    
+    $headers = @{'Content-type'='application/x-www-form-urlencoded'
+                'Content-Length' = $cmdBody.Length
+                'Accept' = 'text/plain'
+                'Referer' = $Referer
+                }
+
+    $res = Invoke-WebRequest -Uri $Url -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing -TimeoutSec 150 -ErrorAction Ignore
+    if($res -and $res.Content) {
+        $response = $res.Content | ConvertFrom-Json
+        $response    
+    }else{
+        Write-Verbose "[WARNING] Response from $Url (RegisterDirectory) is NULL"
     }
 }
 
