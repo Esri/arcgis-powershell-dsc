@@ -22,8 +22,6 @@ Configuration ArcGISConfigure
     Import-DSCResource -Name ArcGIS_DataStoreItem
     Import-DSCResource -Name ArcGIS_Server_TLS
     Import-DSCResource -Name ArcGIS_Portal_TLS
-    Import-DSCResource -Name ArcGIS_Server_DisconnectedEnvironment
-    Import-DSCResource -Name ArcGIS_Portal_DisconnectedEnvironment
     
     $PrimaryServerMachine = ""
     $PrimaryPortalMachine = ""
@@ -741,20 +739,6 @@ Configuration ArcGISConfigure
                                         ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                         DependsOn = $Depends
                                     }
-
-                                    if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
-                                        $Depends += "[ArcGIS_Federation]FederateInServer"
-
-                                        ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                        {
-                                            Ensure = 'Present'
-                                            HostName = Get-FQDN $PrimaryServerMachine
-                                            EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
-                                            EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
-                                            SiteAdministrator = $PSACredential
-                                            DependsOn = $Depends
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1077,44 +1061,6 @@ Configuration ArcGISConfigure
                                             ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
                                             ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                             DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
-                                        }
-
-                                        if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
-                                            $Depends += "[ArcGIS_Federation]FederateInPortal"
-                                            
-                                            ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                            {
-                                                Ensure = 'Present'
-                                                HostName = Get-FQDN $PrimaryServerMachine
-                                                EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
-                                                EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
-                                                SiteAdministrator = $PSACredential
-                                                DependsOn = $Depends
-                                            }
-                                        }
-
-                                        if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
-                                        {
-                                            if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
-                                            {
-                                                $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
-                                            }
-
-                                            if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
-                                            {
-                                                $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
-                                            }
-
-                                            $Depends += "[ArcGIS_Federation]FederateInPortal"
-                                            ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                            {
-                                                Ensure = 'Present'
-                                                HostName = Get-FQDN $PrimaryPortalMachine
-                                                SiteAdministrator = $PSACredential
-                                                DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                                                ConfigProperties = $ConfigProperties
-                                                HelperServices = $HelperServices
-                                            }
                                         }
                                     }
                                 }
@@ -1710,46 +1656,6 @@ Configuration ArcGISConfigure
                                                     ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                                     DependsOn = $Depends
                                                 }
-
-                                                if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
-                                                
-                                                    $Depends += "[ArcGIS_Federation]FederateInWA"
-                                                                                                    
-                                                    ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                                    {
-                                                        Ensure = 'Present'
-                                                        HostName = Get-FQDN $PrimaryServerMachine
-                                                        EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
-                                                        EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
-                                                        SiteAdministrator = $PSACredential
-                                                        DependsOn = $Depends
-                                                    }
-                                                }
-
-                                                if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
-                                                {
-                                                    if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
-                                                    {
-                                                        $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
-                                                    }
-
-                                                    if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
-                                                    {
-                                                        $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
-                                                    }
-
-                                                    $Depends += "[ArcGIS_Federation]FederateInWA"
-                                                    ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                                    {
-                                                        Ensure = 'Present'
-                                                        HostName = Get-FQDN $PrimaryPortalMachine
-                                                        SiteAdministrator = $PSACredential
-                                                        DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                                                        ConfigProperties = $ConfigProperties
-                                                        HelperServices = $HelperServices
-                                                    }
-                                                }
-
                                             }
                                         }
                                         else
@@ -2066,44 +1972,6 @@ Configuration ArcGISConfigure
                                         ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
                                         ServerFunctions = $ConfigurationData.ConfigData.ServerRole
                                         DependsOn = $Depends
-                                    }
-
-                                    if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment){
-                                        $Depends += "[ArcGIS_Federation]FederateInLB"
-                                        
-                                        ArcGIS_Server_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                        {
-                                            Ensure = 'Present'
-                                            HostName = Get-FQDN $PrimaryServerMachine
-                                            EnableJsApi = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableJsApi) {$true} else {$false}
-                                            EnableArcGISOnlineMapViewer = if($ConfigurationData.ConfigData.Server.DisconnectedEnvironment.EnableArcGISOnlineMapViewer) {$true} else {$false}
-                                            SiteAdministrator = $PSACredential
-                                            DependsOn = $Depends
-                                        }
-                                    }
-
-                                    if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
-                                    {
-                                        if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
-                                        {
-                                            $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
-                                        }
-
-                                        if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
-                                        {
-                                            $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
-                                        }
-
-                                        $Depends += "[ArcGIS_Federation]FederateInLB"
-                                        ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
-                                        {
-                                            Ensure = 'Present'
-                                            HostName = Get-FQDN $PrimaryPortalMachine
-                                            SiteAdministrator = $PSACredential
-                                            DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                                            ConfigProperties = $ConfigProperties
-                                            HelperServices = $HelperServices
-                                        }
                                     }
                                 }
                             }
