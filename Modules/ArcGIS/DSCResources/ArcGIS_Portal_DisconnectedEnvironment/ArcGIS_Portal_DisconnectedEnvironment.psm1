@@ -11,6 +11,10 @@
         Credentials to access Server/Portal with admin privileges
     .PARAMETER DisableExternalContent
         Switch for Disabling External Content
+    .PARAMETER DisableLivingAtlas
+        Switch for Disabling Content of Living Atlas
+    .PARAMETER LivingAtlasGroupIds
+        GroupIds for the Living Atlas Contents
     .PARAMETER ConfigProperties
         JSON of Properties and their values in config.js
     .PARAMETER HelperServices
@@ -41,12 +45,18 @@ function Get-TargetResource
         [System.Boolean]
         $DisableExternalContent = $false,
 
+        [System.Boolean]
+        $DisableLivingAtlas = $false,
+
+        [System.Array]
+        $LivingAtlasGroupIds,
+
         [System.String]
         $HelperServices
     )
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $null 
+    $null
 }
 function Set-TargetResource
 {
@@ -71,6 +81,12 @@ function Set-TargetResource
         [System.Boolean]
         $DisableExternalContent = $false,
 
+        [System.Boolean]
+        $DisableLivingAtlas = $false,
+
+        [System.Array]
+        $LivingAtlasGroupIds,
+
         [System.String]
         $HelperServices
     )
@@ -90,6 +106,24 @@ function Set-TargetResource
         Set-ExternalContentEnabled -PortalUrl $PortalUrl -Token $($token.token)
     } else {
         Write-Verbose "Disconnected Environment DisableExternalContent set to false"
+    }
+
+    if ($DisableLivingAtlas) 
+    {
+        $lAStatus = Get-LivingAtlasStatus -PortalUrl $PortalUrl -Token $($token.token) -LivingAtlasGroupIds $LivingAtlasGroupIds
+        if ($lAStatus -eq 'disableable')
+        {
+            Set-LivingAtlasDisabled -PortalUrl $PortalUrl -Token $($token.token) -LivingAtlasGroupIds $LivingAtlasGroupIds
+            $lAStatus = Get-LivingAtlasStatus -PortalUrl $PortalUrl -Token $($token.token) -LivingAtlasGroupIds $LivingAtlasGroupIds
+        }
+        if ($lAStatus -eq 'disabled')
+        {
+            Write-Verbose "Living Atlas disabled"
+        } else {
+            Write-Verbose "Living Atlas cannot be disabled:- $lAStatus"
+        }
+    } else {
+        Write-Verbose "Disconnected Environment DisableLivingAtlas set to false"
     }
 
     if ($ConfigProperties)
@@ -184,6 +218,12 @@ function Test-TargetResource
         [System.Boolean]
         $DisableExternalContent = $false,
 
+        [System.Boolean]
+        $DisableLivingAtlas = $false,
+
+        [System.Array]
+        $LivingAtlasGroupIds,
+
         [System.String]
         $HelperServices
     )
@@ -201,6 +241,18 @@ function Test-TargetResource
     if ($result -and $DisableExternalContent)
     {
         $result = Get-ExternalContentEnabled -PortalUrl $PortalUrl -Token $($token.token)
+    }
+
+    if ($result -and $DisableLivingAtlas)
+    {
+        $lAStatus = Get-LivingAtlasStatus -PortalUrl $PortalUrl -Token $($token.token) -LivingAtlasGroupIds $LivingAtlasGroupIds
+        if ($lAStatus -eq 'disabled')
+        {
+            Write-Verbose "Living Atlas already disabled."
+        } else {
+            Write-Verbose "Status of Living Atlas:- $lAStatus"
+            $result = $false
+        }
     }
 
     if ($result -and $ConfigProperties)
@@ -687,7 +739,7 @@ function Get-ExternalContentEnabled
     )
 
     $configuration = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/content/configuration" `
-                    -HttpFormParameters @{ f = 'pjson'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+                    -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 
     if ($configuration.isExternalContentEnabled -or $configuration.error) {
         $false
@@ -724,6 +776,113 @@ function Set-ExternalContentEnabled
     } else {
         Write-Verbose "External Content already disabled in /portaladmin/system/content/configuration - skipping"
         $result = $true
+    }
+    $result
+}
+
+function Get-LivingAtlasGroupsStatus
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalUrl,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost',
+
+        [System.Array]
+        $LivingAtlasGroupIds
+    )
+
+    $result = @{}
+    ForEach ($groupId in $LivingAtlasGroupIds)
+    {
+        $resp = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/content/livingatlas/status" `
+                                -HttpFormParameters @{ f = 'json'; token = $Token; groupId = $groupId } -Referer $Referer -LogResponse
+        $result += @{ $groupId = $resp}
+    }
+
+    $result
+}
+
+function Get-LivingAtlasStatus
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalUrl,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost',
+
+        [System.Array]
+        $LivingAtlasGroupIds
+    )
+
+    $result = "disabled"
+
+    $groupsStatus = Get-LivingAtlasGroupsStatus -PortalUrl $PortalUrl -Token $Token -LivingAtlasGroupIds $LivingAtlasGroupIds
+    
+    ForEach ($status in $groupsStatus.GetEnumerator())
+    {
+        if ($status.Value.error)
+        {
+            $result = "Error in LivingAtlas:- $($status.Name) > $($status.Value.error)"
+            break
+        }
+        elseif ($result.StartsWith('disable') -and `
+                    (-not $status.Value.subscriberContentEnabled -and `
+                    -not $status.Value.premiumContentEnabled -and `
+                    -not $status.Value.subscriberContentShared -and `
+                    -not $status.Value.premiumContentShared))
+        {
+            if ($status.Value.publicContentEnabled -or $status.Value.publicContentShared)
+            {
+                $result = 'disableable'
+            }
+        } else {
+            $result = "additional Living Atlas Content enabled/shared:- $($status.Name) > $($status.Value)"
+            break
+        }
+    }
+
+    $result
+}
+
+function Set-LivingAtlasDisabled
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalUrl,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost',
+
+        [System.Array]
+        $LivingAtlasGroupIds
+    )
+    $result = $true
+
+    ForEach ($groupId in $LivingAtlasGroupIds)
+    {
+        $resp = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/content/livingatlas/unshare" `
+                        -HttpFormParameters @{ f = 'json'; token = $Token; groupId = $groupId; type = "Public";} -Referer $Referer -TimeOutSec 600
+        if ($resp.error)
+        {
+            Write-Host "Unshare Living Atlas Group $($groupId) gives Error:- $($resp.error)"
+            $result = $false
+            break
+        }
     }
     $result
 }

@@ -6,6 +6,8 @@ class ArcGIS_Portal_DisconnectedEnvironment : OMI_BaseResource
 	[Key] String HostName;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write] Boolean DisableExternalContent;
+	[Write] Boolean DisableLivingAtlas;
+	[Write] String LivingAtlasGroupIds[];
 	[Write] String ConfigProperties;
 	[Write] String HelperServices;
 };

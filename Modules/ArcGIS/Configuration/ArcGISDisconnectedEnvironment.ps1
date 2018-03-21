@@ -49,7 +49,9 @@ Configuration ArcGISDisconnectedEnvironment{
 
         $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
         $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
-        
+
+        [string[]]$livingAtlasGroupIds =  "81f4ed89c3c74086a99d168925ce609e", "6646cd89ff1849afa1b95ed670a298b8"
+
         $NodeRoleArray = @()
         if($Node.Role -icontains "Server")
         {
@@ -81,14 +83,14 @@ Configuration ArcGISDisconnectedEnvironment{
                 'Portal'{
                     if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
                     {
-                        if ($ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs)
+                        if ($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs)
                         {
-                            $ConfigProperties = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.ConfigJs
+                            $ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
                         }
 
-                        if ($ConfigurationData.Portal.DisconnectedEnvironment.HelperServices)
+                        if ($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices)
                         {
-                            $HelperServices = ConvertTo-Json $ConfigurationData.Portal.DisconnectedEnvironment.HelperServices
+                            $HelperServices = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices
                         }
 
                         ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
@@ -97,6 +99,8 @@ Configuration ArcGISDisconnectedEnvironment{
                             HostName = Get-FQDN $PrimaryPortalMachine
                             SiteAdministrator = $PSACredential
                             DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
+                            DisableLivingAtlas = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableLivingAtlas) {$true} else {$false}
+                            LivingAtlasGroupIds = $livingAtlasGroupIds
                             ConfigProperties = $ConfigProperties
                             HelperServices = $HelperServices
                         }
