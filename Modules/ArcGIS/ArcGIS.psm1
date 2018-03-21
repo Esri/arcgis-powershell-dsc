@@ -551,7 +551,7 @@ function Configure-ArcGIS
         $DebugMode = $true
     }
 
-    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService" -or (Mode -ieq "DisconnectedEnvironment"){
+    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService" -or $Mode -ieq "DisconnectedEnvironment"){
 
         Foreach($cf in $ConfigurationParametersFile){
             if(-not($ConfigurationParamsJSON)){
