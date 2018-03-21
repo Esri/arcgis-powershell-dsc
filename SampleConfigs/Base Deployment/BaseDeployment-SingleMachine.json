@@ -39,7 +39,25 @@
                                                         "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] "
                                                     },
                                       "ServerDirectoriesRootLocation":  "C:\\arcgisserver\\directories",
-                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
+                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store",
+                                      "RegisteredDirectories":  [
+                                                                    {
+                                                                    "name": "BasemapsCacheDir",
+                                                                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
+                                                                    "directoryType": "CACHE"
+                                                                    },
+                                                                    {
+                                                                    "name": "TestOutputDir",
+                                                                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testOutput",
+                                                                    "directoryType": "OUTPUT"
+                                                                    },
+                                                                    {
+                                                                    "name": "TestJobsDir",
+                                                                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testJobs",
+                                                                    "directoryType": "JOBS"
+                                                                    }
+                                                                ]
+                       
                                   },
                        "Portal":  {
                                       "LicenseFilePath": "[License File Path - Portal ]",
