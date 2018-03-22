@@ -50,8 +50,6 @@ Configuration ArcGISDisconnectedEnvironment{
         $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
         $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
 
-        [string[]]$livingAtlasGroupIds =  "81f4ed89c3c74086a99d168925ce609e", "6646cd89ff1849afa1b95ed670a298b8"
-
         $NodeRoleArray = @()
         if($Node.Role -icontains "Server")
         {
@@ -88,14 +86,24 @@ Configuration ArcGISDisconnectedEnvironment{
                             $HelperServices = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices
                         }
 
+                        $LABoundaryLayerFolderPath = $null
+                        $LABoundarySubsetFilePath = $null
+                        if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundaryLayerFolderPath){
+                            $LABoundaryLayerFolderPath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundaryLayerFolderPath)
+                            if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundarySubsetFilePath){
+                                $LABoundarySubsetFilePath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundarySubsetFilePath
+                            }
+                        }
+
                         ArcGIS_Portal_DisconnectedEnvironment "DisconnectedEnvironment_$($Node.NodeName)"
                         {
                             Ensure = 'Present'
                             HostName = Get-FQDN $PrimaryPortalMachine
                             SiteAdministrator = $PSACredential
                             DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
-                            DisableLivingAtlas = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableLivingAtlas) {$true} else {$false}
-                            LivingAtlasGroupIds = $livingAtlasGroupIds
+                            DisableLivingAtlas = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.Disabled) {$true} else {$false}
+                            LivingAtlasBoundaryLayerFolderPath = $LABoundaryLayerFolderPath
+                            LivingAtlasBoundarySubsetFilePath = $LABoundarySubsetFilePath
                             ConfigJsPath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJsPath
                             HelperServices = $HelperServices
                         }

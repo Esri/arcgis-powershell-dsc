@@ -13,8 +13,10 @@
         Switch for Disabling External Content
     .PARAMETER DisableLivingAtlas
         Switch for Disabling Content of Living Atlas
-    .PARAMETER LivingAtlasGroupIds
-        GroupIds for the Living Atlas Contents
+    .PARAMETER LivingAtlasBoundaryLayerFolderPath
+        Folder Containing All boundaryfiles files that are published to the portal, Folder requires access by portal run as account
+    .PARAMETER LivingAtlasBoundarySubsetFilePath
+        A text file (boundarysubset.txt) in the boundaryfiles directory. The tool reads the file list from the text file to publish a subset of the boundary layers.
     .PARAMETER ConfigProperties
         JSON of Properties and their values in config.js
     .PARAMETER HelperServices
@@ -47,9 +49,12 @@ function Get-TargetResource
 
         [System.Boolean]
         $DisableLivingAtlas = $false,
+        
+        [System.String]
+        $LivingAtlasBoundaryLayerFolderPath,
 
-        [System.Array]
-        $LivingAtlasGroupIds,
+        [System.String]
+        $LivingAtlasBoundarySubsetFilePath,
 
         [System.String]
         $HelperServices
@@ -84,8 +89,11 @@ function Set-TargetResource
         [System.Boolean]
         $DisableLivingAtlas = $false,
 
-        [System.Array]
-        $LivingAtlasGroupIds,
+        [System.String]
+        $LivingAtlasBoundaryLayerFolderPath,
+
+        [System.String]
+        $LivingAtlasBoundarySubsetFilePath,
 
         [System.String]
         $HelperServices
@@ -110,6 +118,8 @@ function Set-TargetResource
 
     if ($DisableLivingAtlas) 
     {
+        [string[]]$LivingAtlasGroupIds =  "81f4ed89c3c74086a99d168925ce609e", "6646cd89ff1849afa1b95ed670a298b8"
+
         $lAStatus = Get-LivingAtlasStatus -PortalUrl $PortalUrl -Token $($token.token) -LivingAtlasGroupIds $LivingAtlasGroupIds
         if ($lAStatus -eq 'disableable')
         {
@@ -119,6 +129,10 @@ function Set-TargetResource
         if ($lAStatus -eq 'disabled')
         {
             Write-Verbose "Living Atlas disabled"
+            if($LivingAtlasBoundaryLayerFolderPath){
+                Configure-BoundaryLayers -PortalUrl $PortalUrl -Credential $SiteAdministrator `
+                    -LivingAtlasBoundaryLayerFolderPath $LivingAtlasBoundaryLayerFolderPath -LivingAtlasBoundarySubsetFilePath $LivingAtlasBoundarySubsetFilePath
+            }
         } else {
             Write-Verbose "Living Atlas cannot be disabled:- $lAStatus"
         }
@@ -216,9 +230,12 @@ function Test-TargetResource
 
         [System.Boolean]
         $DisableLivingAtlas = $false,
+        
+        [System.String]
+        $LivingAtlasBoundaryLayerFolderPath,
 
-        [System.Array]
-        $LivingAtlasGroupIds,
+        [System.String]
+        $LivingAtlasBoundarySubsetFilePath,
 
         [System.String]
         $HelperServices
@@ -241,6 +258,7 @@ function Test-TargetResource
 
     if ($result -and $DisableLivingAtlas)
     {
+        [string[]]$LivingAtlasGroupIds =  "81f4ed89c3c74086a99d168925ce609e", "6646cd89ff1849afa1b95ed670a298b8"
         $lAStatus = Get-LivingAtlasStatus -PortalUrl $PortalUrl -Token $($token.token) -LivingAtlasGroupIds $LivingAtlasGroupIds
         if ($lAStatus -eq 'disabled')
         {
@@ -807,6 +825,56 @@ function Set-LivingAtlasDisabled
         }
     }
     $result
+}
+
+function Configure-BoundaryLayers{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalUrl,
+
+        [parameter(Mandatory = $true)]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+        
+        [System.String]
+        $LivingAtlasBoundaryLayerFolderPath,
+
+        [System.String]
+        $LivingAtlasBoundarySubsetFilePath
+    )
+
+    #Give access Portal Run As Account to Boundary Layers Folder - TODO
+    $regKey = Get-EsriRegistryKeyForService -ServiceName 'Portal for ArcGIS'
+    $installDir = (Get-ItemProperty -Path $regKey -ErrorAction Ignore).InstallDir
+    $publishBoundaryToolPath = Join-Path $installDir (Join-Path 'tools' (Join-Path 'publishboundarylayers' 'publishboundarylayers.bat'))
+    $Arguments = "--folder $LivingAtlasBoundaryLayerFolderPath" 
+    if($LivingAtlasBoundarySubsetFilePath -ne $null -or $LivingAtlasBoundarySubsetFilePath -ne ""){
+        $Arguments += " --file $LivingAtlasBoundarySubsetFilePath"
+    }
+    $Arguments +=" --url $PortalUrl --username $($Credential.UserName) --password $($Credential.GetNetworkCredential().Password)"
+
+    if(-not(Test-Path $publishBoundaryToolPath -PathType Leaf)){
+        throw "$publishBoundaryToolPath += not found"
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $publishBoundaryToolPath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    $op = $p.StandardOutput.ReadToEnd()
+    if($op -and $op.Length -gt 0) {
+        Write-Verbose "Output of execution:- $op"
+    }
+    $err = $p.StandardError.ReadToEnd()
+    if($err -and $err.Length -gt 0) {
+        throw $err
+    }
 }
 
 Export-ModuleMember -Function *-TargetResource

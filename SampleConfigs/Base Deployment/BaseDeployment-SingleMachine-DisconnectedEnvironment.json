@@ -55,6 +55,11 @@
                                       "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content",
                                       "DisconnectedEnvironment":  {
                                         "DisableExternalContent":    true,
+                                        "LivingAtlas":{
+                                            "Disabled": true,
+                                            "BoundaryLayerFolderPath": "[Optional Local Path - Folder Containing Boundary Layer]",
+                                            "BoundarySubsetFilePath": "[Optional Text File Path - List of boundary Layers to be deployed from the Folder specified above]"
+                                        },
                                         "ConfigJsPath": "[Path to new Portal Config.js]",
                                         "HelperServices": {
                                             "geometry": {
