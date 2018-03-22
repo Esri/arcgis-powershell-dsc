@@ -55,7 +55,7 @@
                                       "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content",
                                       "DisconnectedEnvironment":  {
                                         "DisableExternalContent":    true,
-                                        "ConfigJs": "[Portal Config.js]",
+                                        "ConfigJsPath": "[Path to new Portal Config.js]",
                                         "HelperServices": {
                                             "geometry": {
                                                 "useHostedServer": true,
