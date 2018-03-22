@@ -83,11 +83,6 @@ Configuration ArcGISDisconnectedEnvironment{
                 'Portal'{
                     if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment)
                     {
-                        if ($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs)
-                        {
-                            $ConfigProperties = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJs
-                        }
-
                         if ($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices)
                         {
                             $HelperServices = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices
@@ -101,7 +96,7 @@ Configuration ArcGISDisconnectedEnvironment{
                             DisableExternalContent = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableExternalContent) {$true} else {$false}
                             DisableLivingAtlas = if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.DisableLivingAtlas) {$true} else {$false}
                             LivingAtlasGroupIds = $livingAtlasGroupIds
-                            ConfigProperties = $ConfigProperties
+                            ConfigJsPath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.ConfigJsPath
                             HelperServices = $HelperServices
                         }
                     }

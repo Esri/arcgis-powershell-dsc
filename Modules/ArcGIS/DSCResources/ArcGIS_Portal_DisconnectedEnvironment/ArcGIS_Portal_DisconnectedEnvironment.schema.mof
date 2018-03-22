@@ -8,7 +8,7 @@ class ArcGIS_Portal_DisconnectedEnvironment : OMI_BaseResource
 	[Write] Boolean DisableExternalContent;
 	[Write] Boolean DisableLivingAtlas;
 	[Write] String LivingAtlasGroupIds[];
-	[Write] String ConfigProperties;
+	[Write] String ConfigJsPath;
 	[Write] String HelperServices;
 };
 

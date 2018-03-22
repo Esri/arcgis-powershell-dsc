@@ -40,7 +40,7 @@ function Get-TargetResource
         $SiteAdministrator,
 
         [System.String]
-        $ConfigProperties,
+        $ConfigJsPath,
 
         [System.Boolean]
         $DisableExternalContent = $false,
@@ -76,7 +76,7 @@ function Set-TargetResource
         $SiteAdministrator,
 
         [System.String]
-        $ConfigProperties,
+        $ConfigJsPath,
 
         [System.Boolean]
         $DisableExternalContent = $false,
@@ -126,17 +126,13 @@ function Set-TargetResource
         Write-Verbose "Disconnected Environment DisableLivingAtlas set to false"
     }
 
-    if ($ConfigProperties)
+    if ($ConfigJsPath)
     {
-        $ConfigFilePath = Get-ConfigFilePath
-        $ConfigProps = ConvertFrom-Json $ConfigProperties
-        
-        ForEach ($Property in $ConfigProps.PSObject.Properties)
+        $curConfigFilePath = Get-ConfigFilePath
+        if ((Test-Path $ConfigJsPath) -and -not (Test-ConfigFiles -CurConfigFilePath $curConfigFilePath -NewConfigFilePath $ConfigJsPath))
         {
-            if (Set-PropertyInConfigFile -ConfigFilePath $ConfigFilePath -PropertyName $Property.Name -PropertyValue $Property.Value)
-            {
-                $ServiceRestartRequired = $true
-            }
+            Set-ConfigFile -ConfigFilePath $ConfigJsPath
+            $ServiceRestartRequired = $true
         }
     }
 
@@ -213,7 +209,7 @@ function Test-TargetResource
         $SiteAdministrator,
 
         [System.String]
-        $ConfigProperties,
+        $ConfigJsPath,
 
         [System.Boolean]
         $DisableExternalContent = $false,
@@ -255,18 +251,17 @@ function Test-TargetResource
         }
     }
 
-    if ($result -and $ConfigProperties)
+    if ($result -and $ConfigJsPath)
     {
         $ConfigFilePath = Get-ConfigFilePath
 
-        $ConfigProps = ConvertFrom-Json $ConfigProperties
-        ForEach ($Property in $ConfigProps.PSObject.Properties)
+        if (Test-Path $ConfigJsPath)
         {
-            if (-not (Compare-PropertyInConfigFile -ConfigFilePath $ConfigFilePath -PropertyName $Property.Name -PropertyValue $Property.Value))
-            {
-                $result = $false
-                break
-            }
+            $result = Test-ConfigFiles -CurConfigFilePath $ConfigFilePath -NewConfigFilePath $ConfigJsPath
+        }
+        else
+        {
+            Write-Verbose "ERROR: Config.js-File is not readable:- $ConfigJsPath"
         }
     }
 
@@ -568,128 +563,55 @@ function Get-HostedServerUrl
 
 function Get-ConfigFilePath
 {
-    $ServiceName = 'Portal for ArcGIS'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
-    $Version = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
-    if ($Version.Split('.').Count -lt 3)
-    {
-        $Version += '.0'
-    }
-    $ConfigFilePath = Join-Path $InstallDir "customizations\$Version\webapps\arcgis#home\js\arcgisonline\config.js"
-
-    $ConfigFilePath
-}
-
-function Get-PropertyFromConfigFile
-{
-    [CmdletBinding()]
-    param(
-        [string]
-        $ConfigFilePath,
-
-        [string]
-        $PropertyName
-    )
+    $regKey = Get-EsriRegistryKeyForService -ServiceName 'Portal for ArcGIS'
+    $installDir = (Get-ItemProperty -Path $regKey -ErrorAction Ignore).InstallDir
     
-    $PropertyValue = $null
-    if(Test-Path $ConfigFilePath) {
-        Get-Content $ConfigFilePath | ForEach-Object {
-            if($_ -and $_.Trim().StartsWith($PropertyName)){
-                $Splits = $_.Split(':')
-                if($Splits.Length -gt 1){
-                    $Splits = $Splits[1].Split(',')
-                    $PropertyValue = $Splits[0].Trim()
-                }
-            }
-        }
-    }
-    $PropertyValue
+    $configFilePath = Join-Path $installDir "webapps\arcgis#home\js\arcgisonline\config.js"
+    
+    $configFilePath
 }
 
-
-function Set-PropertyInConfigFile
+function Test-ConfigFiles
 {
     [CmdletBinding()]
     param(
         [System.String]
-        $ConfigFilePath,
+        $CurConfigFilePath,
 
         [System.String]
-        $PropertyName,
-
-        [System.String]
-        $PropertyValue
+        $NewConfigFilePath
     )
 
-    $Changed = $false
-    $Lines = @()
-    $Exists = $false
-    Write-Host $ConfigFilePath
-    if(Test-Path $ConfigFilePath) 
+    if ((Get-FileHash $CurConfigFilePath).hash -ne (Get-FileHash $NewConfigFilePath).hash)
     {
-        Get-Content $ConfigFilePath | ForEach-Object {
-            $Line = $_
-            if($_ -and $_.Trim().StartsWith($PropertyName))
-            {
-                $Exists = $true
-                $Splits = $_.Split(':')
-                if($Splits.Length -gt 1)
-                {
-                    $Splits = $Splits[1].Split(',')
-                    $CurrentValue = $Splits[0].Trim()
-                    if ($CurrentValue -ieq $PropertyValue)
-                    {
-                        Write-Verbose "Property entry for '$PropertyName' already exists in $ConfigFilePath  and matches expected value '$PropertyValue'"
-                    }
-                    else 
-                    {
-                        $Line = $Line.Replace($CurrentValue, $PropertyValue.ToLower())
-                        Write-Verbose $Line
-                        $Changed = $true
-                    }
-                }
-            }
-            $Lines += $Line
-        }
-
-        if($Changed) 
-        {
-            Write-Verbose "Updating file $ConfigFilePath"
-            Set-Content -Path $ConfigFilePath -Value $Lines -Force
-        }
-        elseif(-not($Exists))
-        {
-            Write-Verbose "Property $PropertyName does not exist in $ConfigFilePath. Property cannot be changed."
-        }
+        Write-Verbose "Config.js-Files are different"
+        $false
     }
-    Write-Verbose "Change applied:- $Changed"
-    $Changed
-}
-
-function Compare-PropertyInConfigFile
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $ConfigFilePath,
-
-        [System.String]
-        $PropertyName,
-
-        [System.String]
-        $PropertyValue
-    )
-
-    $CurrentValue = Get-PropertyFromConfigFile -ConfigFilePath $ConfigFilePath -PropertyName $PropertyName
-    if($CurrentValue -ne $PropertyValue)
+    else 
     {
-        Write-Verbose "Current Value for '$PropertyName' is '$CurrentValue'. Expected value is '$PropertyValue'."
-        $false       
-    } else {
-        Write-Verbose "Current Value for '$PropertyName' is '$CurrentValue' and matches expected value. No change needed"
+        Write-Verbose "Config.js-Files are equal"
         $true
     }
+}
+
+function Set-ConfigFile
+{
+    param
+    (
+        [System.String]
+        $ConfigFilePath
+    )
+
+    Write-Verbose "Copying Config.js $ConfigFilePath to Portal."
+    $regKey = Get-EsriRegistryKeyForService -ServiceName 'Portal for ArcGIS'
+    $installDir = (Get-ItemProperty -Path $regKey -ErrorAction Ignore).InstallDir
+    $version = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
+    if ($version.Split('.').Count -lt 3)
+    {
+        $version += '.0'
+    }
+    $customConfigFilePath = Join-Path $installDir "customizations\$version\webapps\arcgis#home\js\arcgisonline\config.js"
+    Copy-Item -Path $ConfigFilePath -Destination $customConfigFilePath -Force
 }
 
 function Restart-PortalService {
