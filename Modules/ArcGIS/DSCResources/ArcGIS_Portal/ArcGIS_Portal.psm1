@@ -438,6 +438,7 @@ function Set-TargetResource {
         $Referer = 'http://localhost'
         [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\Portal for ArcGIS').RealVersion
         Write-Verbose "Version of Portal is $RealVersion"
+        $RestartRequired = $false
         try {
             $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
         }
@@ -654,6 +655,7 @@ function Set-TargetResource {
             {
                 Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). Changing to Active Directory"
                 Set-PortalUserStoreConfig -PortalHostName $FQDN -Token $token.token -ADServiceUser $ADServiceUser
+                $RestartRequired = $true
             } else {
                 Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
             }
@@ -674,7 +676,14 @@ function Set-TargetResource {
                 Write-Verbose "enableAutomaticAccountCreation is set to false, enable it"
                 $securityConfig.enableAutomaticAccountCreation = "true"
                 Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
+                $RestartRequired = $true
             }
+        }
+
+        if ($RestartRequired) 
+        {
+            Restart-PortalService
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET'
         }
 
     }
