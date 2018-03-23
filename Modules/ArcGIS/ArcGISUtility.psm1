@@ -790,7 +790,41 @@ function Get-ComponentCode
     $ProductCodes[$ComponentName][$Version]    
 } 
 
+# http://www.andreasnick.com/85-reading-out-an-msp-product-code-with-powershell.html
+<# 
+.SYNOPSIS 
+    Get the Patch Code from an Microsoft Installer Patch MSP
+.DESCRIPTION 
+    Get a Patch Code from an Microsoft Installer Patch MSP (Andreas Nick 2015)
+.NOTES 
+    $NULL for an error
+.LINK
+.RETURNVALUE
+  [String] Product Code
+.PARAMETER
+  [IO.FileInfo] Path to the msp file
+#>
+function Get-MSPqfeID {
+    param (
+        [IO.FileInfo] $patchnamepath
+          
+    )
+    try {
+        $wi = New-Object -com WindowsInstaller.Installer
+        $mspdb = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $Null, $wi, $($patchnamepath.FullName, 32))
+        $su = $mspdb.GetType().InvokeMember("SummaryInformation", "GetProperty", $Null, $mspdb, $Null)
+        #$pc = $su.GetType().InvokeMember("PropertyCount", "GetProperty", $Null, $su, $Null)
+
+        [String] $qfeID = $su.GetType().InvokeMember("Property", "GetProperty", $Null, $su, 3)
+        return $qfeID
+    }
+    catch {
+        Write-Output $_.Exception.Message
+        return $NULL
+    }
+}
+
 Export-ModuleMember -Function Invoke-ArcGISWebRequest,License-Software,To-HttpBody,Upload-File,Wait-ForUrl,Get-LastModifiedDateForRemoteFile,Check-ResponseStatus `
                                 ,Get-ServerToken,Get-PortalToken,Wait-ForServiceToReachDesiredState,Get-EsriRegistryKeyForService,Ensure-PropertyInPropertiesFile `
                                 ,Get-PropertyFromPropertiesFile,Set-PropertyFromPropertiesFile,Add-HostMapping,Get-ConfiguredHostIdentifier,Set-ConfiguredHostIdentifier `
-                                ,Get-ConfiguredHostName,Set-ConfiguredHostName,Get-ConfiguredHostIdentifierType, Get-ComponentCode
+                                ,Get-ConfiguredHostName,Set-ConfiguredHostName,Get-ConfiguredHostIdentifierType, Get-ComponentCode, Get-MSPqfeID

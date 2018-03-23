@@ -64,6 +64,12 @@ Configuration ArcGISInstall{
                 {
                     $HasSQLServer = (($AllNodes | Where-Object { $_.Role -icontains 'SQLServer' }  | Measure-Object).Count -gt 0)
 
+                    if ($ConfigurationData.ConfigData.Server.Installer.PatchesDir) {
+                        $PatchesDir = $ConfigurationData.ConfigData.Server.Installer.PatchesDir
+                    } else {
+                        $PatchesDir = $null
+                    }
+
                     ArcGIS_Install ServerInstall
                     {
                         Name = "Server"
@@ -71,6 +77,7 @@ Configuration ArcGISInstall{
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
                         Arguments = "/qn InstallDir=$($ConfigurationData.ConfigData.Server.Installer.InstallDir) INSTALLDIR1=$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)";
                         Ensure = "Present"
+                        PatchesDir = $PatchesDir
                     }
                     
                     if($HasSQLServer)
@@ -121,6 +128,12 @@ Configuration ArcGISInstall{
                 }
                 'Portal'
                 {
+                    if ($ConfigurationData.ConfigData.Portal.Installer.PatchesDir) {
+                        $PatchesDir = $ConfigurationData.ConfigData.Portal.Installer.PatchesDir
+                    } else {
+                        $PatchesDir = $null
+                    }
+
                     ArcGIS_Install "PortalInstall$($Node.NodeName)"
                     { 
                         Name = "Portal"
@@ -128,10 +141,17 @@ Configuration ArcGISInstall{
                         Path = $ConfigurationData.ConfigData.Portal.Installer.Path
                         Arguments = "/qn INSTALLDIR=$($ConfigurationData.ConfigData.Portal.Installer.InstallDir) CONTENTDIR=$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)";
                         Ensure = "Present"
+                        PatchesDir = $PatchesDir
                     }
                 }
                 'DataStore'
                 {
+                    if ($ConfigurationData.ConfigData.DataStore.Installer.PatchesDir) {
+                        $PatchesDir = $ConfigurationData.ConfigData.DataStore.Installer.PatchesDir
+                    } else {
+                        $PatchesDir = $null
+                    }
+
                     ArcGIS_Install DataStoreInstall
                     { 
                         Name = "DataStore"
@@ -139,6 +159,7 @@ Configuration ArcGISInstall{
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
                         Arguments = "/qn InstallDir=$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)"
                         Ensure = "Present"
+                        PatchesDir = $PatchesDir
                     }
                 }
                 {($_ -eq "ServerWebAdaptor") -or ($_ -eq "PortalWebAdaptor")}
