@@ -8,6 +8,5 @@ class ArcGIS_Install : OMI_BaseResource
 	[Write] String Arguments;
 	[Write] String LogPath;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-	[Write] String PatchesDir;
 };
 

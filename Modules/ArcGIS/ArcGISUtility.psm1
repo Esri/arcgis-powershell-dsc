@@ -790,6 +790,47 @@ function Get-ComponentCode
     $ProductCodes[$ComponentName][$Version]    
 } 
 
+Function Test-Install{
+    [CmdletBinding()]
+	[OutputType([System.Boolean])]
+	param
+	(
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$Name,
+
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$Version
+    )
+    
+    $result = $false
+    
+    $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
+    if(-not($ProdId.StartsWith('{'))){
+        $ProdId = '{' + $ProdId
+    }
+    if(-not($ProdId.EndsWith('}'))){
+        $ProdId = $ProdId + '}'
+    }
+    $PathToCheck = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
+    Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
+    if (Test-Path $PathToCheck -ErrorAction Ignore){
+        $result = $true
+    }
+    if(-not($result)){
+        $PathToCheck = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
+        Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
+        if (Test-Path $PathToCheck -ErrorAction Ignore){
+            $result = $true
+        }
+    }
+
+    $result
+}
+
+
+
 # http://www.andreasnick.com/85-reading-out-an-msp-product-code-with-powershell.html
 <# 
 .SYNOPSIS 
@@ -827,4 +868,4 @@ function Get-MSPqfeID {
 Export-ModuleMember -Function Invoke-ArcGISWebRequest,License-Software,To-HttpBody,Upload-File,Wait-ForUrl,Get-LastModifiedDateForRemoteFile,Check-ResponseStatus `
                                 ,Get-ServerToken,Get-PortalToken,Wait-ForServiceToReachDesiredState,Get-EsriRegistryKeyForService,Ensure-PropertyInPropertiesFile `
                                 ,Get-PropertyFromPropertiesFile,Set-PropertyFromPropertiesFile,Add-HostMapping,Get-ConfiguredHostIdentifier,Set-ConfiguredHostIdentifier `
-                                ,Get-ConfiguredHostName,Set-ConfiguredHostName,Get-ConfiguredHostIdentifierType, Get-ComponentCode, Get-MSPqfeID
+                                ,Get-ConfiguredHostName,Set-ConfiguredHostName,Get-ConfiguredHostIdentifierType,Get-ComponentCode,Test-Install,Get-MSPqfeID
