@@ -644,42 +644,44 @@ function Set-TargetResource {
                 Write-Verbose $PortalSelfResponse
             }
         }
-        # set system property userstoreconfig > AD
-        if ($ADServiceUser.UserName) 
-        {
-            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
-
-            $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
-            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') 
+        if(-not($Join)){
+            # set system property userstoreconfig > AD only done on primary machine. 
+            #Dont need to restart standby machine since join hasn't happened yet.
+            if ($ADServiceUser.UserName) 
             {
-                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). Changing to Active Directory"
-                Set-PortalUserStoreConfig -PortalHostName $FQDN -Token $token.token -ADServiceUser $ADServiceUser
-                $RestartRequired = $true
-            } else {
-                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
-            }
-        }
-        if ($enableAutomaticAccountCreation)
-        {
-            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-            if (-not ($token))
-            {
+                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
                 $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
-            }
-            if (-not ($securityConfig))
-            {
+
                 $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+                if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') 
+                {
+                    Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). Changing to Active Directory"
+                    Set-PortalUserStoreConfig -PortalHostName $FQDN -Token $token.token -ADServiceUser $ADServiceUser
+                    $RestartRequired = $true
+                } else {
+                    Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
+                }
             }
-            if ($securityConfig.enableAutomaticAccountCreation -ne "true")
+            if ($enableAutomaticAccountCreation)
             {
-                Write-Verbose "enableAutomaticAccountCreation is set to false, enable it"
-                $securityConfig.enableAutomaticAccountCreation = "true"
-                Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
-                $RestartRequired = $true
+                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                if (-not ($token))
+                {
+                    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
+                }
+                if (-not ($securityConfig))
+                {
+                    $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+                }
+                if ($securityConfig.enableAutomaticAccountCreation -ne "true")
+                {
+                    Write-Verbose "enableAutomaticAccountCreation is set to false, enable it"
+                    $securityConfig.enableAutomaticAccountCreation = "true"
+                    Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
+                    $RestartRequired = $true
+                }
             }
         }
-
         if ($RestartRequired) 
         {
             Restart-PortalService
