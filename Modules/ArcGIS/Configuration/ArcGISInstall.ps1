@@ -130,11 +130,7 @@ Configuration ArcGISInstall{
 
                 }
                 'Portal'
-                {
-                    else {
-                        $PatchesDir = $null
-                    }
-
+                {                    
                     ArcGIS_Install "PortalInstall$($Node.NodeName)"
                     { 
                         Name = "Portal"
@@ -163,7 +159,6 @@ Configuration ArcGISInstall{
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
                         Arguments = "/qn InstallDir=$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)"
                         Ensure = "Present"
-                        PatchesDir = $PatchesDir
                     }
 
                     if ($ConfigurationData.ConfigData.DataStore.Installer.PatchesDir) {
@@ -313,7 +308,7 @@ Configuration ArcGISInstall{
                             {
                                 $True
                             } 
-                            Else 
+                            else 
                             {
                                 $False
                             }
