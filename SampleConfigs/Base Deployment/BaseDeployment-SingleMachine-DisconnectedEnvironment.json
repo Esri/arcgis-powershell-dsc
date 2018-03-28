@@ -62,10 +62,23 @@
                                         },
                                         "ConfigJsPath": "[Path to new Portal Config.js]",
                                         "HelperServices": {
-                                            "geometry": {
-                                                "useHostedServer": true,
-                                                "url": "[URL to 'EXTERNAL' GeometryService e.g. if Hosted Server shall not be used]"
-                                            }
+                                                "geometry": {
+                                                    "useHostedServer": true,
+                                                    "url": "[URL to 'EXTERNAL' GeometryService e.g. if Hosted Server shall not be used]"
+                                                },
+                                                "geocode": {
+                                                    "disableEsriWorldGeocoder": true,
+                                                    "Services": [
+                                                        {
+                                                            "url": "[URL to 'EXTERNAL' GeocodeService]",
+                                                            "name": "[Name fo Geocode-Service]"
+                                                        },
+                                                        {
+                                                            "url": "[URL to 'EXTERNAL' GeocodeService]",
+                                                            "name": "[Name fo Geocode-Service]"
+                                                        }
+                                                    ]
+                                                }
                                         }
                                       }
                                   },
