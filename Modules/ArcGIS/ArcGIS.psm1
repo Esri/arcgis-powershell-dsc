@@ -679,9 +679,9 @@ function Configure-ArcGIS
             & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
             
             if($Credential){
-                Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
+                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
             }else{
-                Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
+                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
             }
         }
     }elseif($Mode -ieq "Upgrade"){

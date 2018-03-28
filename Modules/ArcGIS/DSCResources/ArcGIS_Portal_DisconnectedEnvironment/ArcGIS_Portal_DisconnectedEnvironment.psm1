@@ -156,6 +156,50 @@ function Set-TargetResource
         $CurHelperServices = Get-HelperServices -PortalUrl $PortalUrl -Token $($token.token)
         $helperServiceParams = @{}
 
+        if ($HelperSrvcs.geocode)
+        {
+            $newGeocodeServices = @()
+            if ($HelperSrvcs.geocode.disableEsriWorldGeocoder)
+            {
+                if(-not (Test-EsriWorldGeocoderDisabled -CurGeocodeServices $CurHelperServices.geocode))
+                {
+                    ForEach ($geocodeService in $CurHelperServices.geocode)
+                    {
+                        if ($geocodeService.url -ne "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer")
+                        {
+                            $newGeocodeServices += $geocodeService
+                        }
+                    }
+                }
+            }
+
+            if ($HelperSrvcs.geocode.Services)
+            {
+                if (-not (Test-GeocodeUrls -CurGeocodeServices $CurHelperServices.geocode -GeocodeUrls $HelperSrvcs.geocode.Services))
+                {
+                    ForEach ($geocodeSrvc in $HelperSrvcs.geocode.Services.value)
+                    {
+                        $alreadyImplemented = $false
+                        ForEach ($newGeocodeService in $newGeocodeServices)
+                        {
+                            if ($newGeocodeService.url -eq $geocodeSrvc.url)
+                            {
+                                $alreadyImplemented = $true
+                                break
+                            }
+                        }
+                        if (-not $alreadyImplemented)
+                        {
+                            $geocodeInfos = Get-GeocodeInfos -GeocodeService $geocodeSrvc
+
+                            $newGeocodeServices += $geocodeInfos
+                        }
+                    }
+                }
+            }
+            $helperServiceParams.Add('geocodeService', (ConvertTo-Json $newGeocodeServices))
+        }
+
         if($HelperSrvcs.geometry)
         {
             if ($HelperSrvcs.geometry.useHostedServer)
@@ -288,7 +332,20 @@ function Test-TargetResource
         $HelperSrvcs = ConvertFrom-Json $HelperServices
         $CurHelperServices = Get-HelperServices -PortalUrl $PortalUrl -Token $($token.token)
 
-        if($result -and ($HelperSrvcs.geometry))
+        if ($result -and ($HelperSrvcs.geocode))
+        {
+            if ($HelperSrvcs.geocode.disableEsriWorldGeocoder)
+            {
+                $result = Test-EsriWorldGeocoderDisabled -CurGeocodeServices $CurHelperServices.geocode
+            }
+
+            if ($result -and $HelperSrvcs.geocode.Services)
+            {
+                $result = Test-GeocodeUrls -CurGeocodeServices $CurHelperServices.geocode -GeocodeUrls $HelperSrvcs.geocode.Services
+            }
+        }
+
+        if ($result -and ($HelperSrvcs.geometry))
         {
             if ($HelperSrvcs.geometry.useHostedServer)
             {
@@ -330,6 +387,107 @@ function Test-TargetResource
     
     $result
 }
+
+function Test-EsriWorldGeocoderDisabled
+{
+    [CmdletBinding()]
+    param(
+        [PSObject]
+        $CurGeocodeServices
+    )
+
+    ForEach ($curGeocodeService in $CurGeocodeServices)
+    {
+        if ($curGeocodeService.url -eq "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer")
+        {
+            Write-Verbose "Esri World Geocoder is still implemented"
+            $false
+        }
+    }
+    $true
+}
+
+function Get-GeocodeInfos
+{
+    [CmdletBinding()]
+    param(
+        [PSObject]
+        $GeocodeService,
+
+        [System.String]
+        $Referer = "http://localhost"
+    )
+
+    $geocodeInfos = @{}
+    $geocodeServiceInfos = Invoke-ArcGISWebRequest -Url $GeocodeService.url -HttpFormParameters @{ f = 'json'; } -Referer $Referer -HttpMethod 'GET'
+
+    if ($geocodeServiceInfos.error)
+    {
+        throw "GeocodeServiceInfos from $($GeocodeService.url) could not be retrieved.\nERROR:- $($geocodeServiceInfos.error)"
+    }
+
+    if ($geocodeServiceInfos.capabilities.Contains("Suggest"))
+    {
+        $geocodeInfos.Add("suggest", $true)
+    }
+    if ($geocodeServiceInfos.capabilities.Contains("ReverseGeocode"))
+    {
+        $geocodeInfos.Add("placefinding", $true)
+    }
+    if ($geocodeServiceInfos.locatorProperties.MaxBatchSize -gt 0)
+    {
+        $geocodeInfos.Add("batch", $true)
+    }
+    
+    $geocodeInfos.Add("singleLineFieldName", $geocodeServiceInfos.singleLineAddressField.name)
+    $geocodeInfos.Add("zoomScale", 10000)
+    $geocodeInfos.Add("name", $GeocodeService.name)
+    $geocodeInfos.Add("url", $GeocodeService.url)
+
+    $geocodeInfos
+
+}
+
+function Test-GeocodeUrls
+{
+    [CmdletBinding()]
+    param(
+        [PSObject]
+        $CurGeocodeServices,
+
+        [PSObject]
+        $GeocodeUrls
+    )
+
+    $geocodeServicesImplemented = $true
+    ForEach ($geocodeUrl in $GeocodeUrls.value)
+    {
+        if ($geocodeServicesImplemented)
+        {
+            $geocodeServicesImplemented = $false
+            ForEach ($curGeocodeService in $CurGeocodeServices)
+            {
+                if ($geocodeUrl.url -eq $curGeocodeService.url)
+                {
+                    $geocodeServicesImplemented = $true
+                    break
+                }
+            }
+        } else {
+            break
+        }
+    }
+    
+    if ($geocodeServicesImplemented)
+    {
+        Write-Verbose "All Geocode-Services are implemented"
+        $true
+    } else {
+        Write-Verbose "Some Geocode-Services are missing. Going to implement them."
+        $false
+    }
+}
+
 
 function Test-GeometrySharing
 {
@@ -512,7 +670,6 @@ function Get-HelperServices
         $Referer = 'http://localhost'
     )
 
-    $result = $false
     $portalsSelf = Invoke-ArcGISWebRequest -Url "$PortalUrl/sharing/rest/portals/self" `
                     -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 

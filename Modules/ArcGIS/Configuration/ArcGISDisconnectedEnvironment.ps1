@@ -83,13 +83,13 @@ Configuration ArcGISDisconnectedEnvironment{
                     {
                         if ($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices)
                         {
-                            $HelperServices = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices
+                            $HelperServices = ConvertTo-Json $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.HelperServices -Depth 4
                         }
 
                         $LABoundaryLayerFolderPath = $null
                         $LABoundarySubsetFilePath = $null
                         if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundaryLayerFolderPath){
-                            $LABoundaryLayerFolderPath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundaryLayerFolderPath)
+                            $LABoundaryLayerFolderPath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundaryLayerFolderPath
                             if($ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundarySubsetFilePath){
                                 $LABoundarySubsetFilePath = $ConfigurationData.ConfigData.Portal.DisconnectedEnvironment.LivingAtlas.BoundarySubsetFilePath
                             }
