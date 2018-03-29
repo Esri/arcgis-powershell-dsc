@@ -1021,6 +1021,9 @@ function Configure-BoundaryLayers{
     $psi.UseShellExecute = $false #start the process from it's own executable file    
     $psi.RedirectStandardOutput = $true #enable the process to read from standard output
     $psi.RedirectStandardError = $true #enable the process to read from standard error
+    $psi.EnvironmentVariables["AGSPORTAL"] = [environment]::GetEnvironmentVariable("AGSPortal","Machine")
+    $psi.EnvironmentVariables["AGSDATASTORE"] = [environment]::GetEnvironmentVariable("AGSDATASTORE","Machine")
+    $psi.EnvironmentVariables["AGSSERVER"] = [environment]::GetEnvironmentVariable("AGSSERVER","Machine")
 
     $p = [System.Diagnostics.Process]::Start($psi)
     $p.WaitForExit()
