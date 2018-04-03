@@ -13,6 +13,5 @@ class ArcGIS_Server : OMI_BaseResource
 	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
 	[Write] String PeerServerHostName;
 	[Write] String Platform;
-	[Write] String RegisteredDirectories;
 };
 
