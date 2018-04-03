@@ -372,12 +372,11 @@ Configuration ArcGISConfigure
                     $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
 
                     if ($ConfigurationData.ConfigData.Server.RegisteredDirectories -and ($Node.NodeName -ieq $PrimaryServerMachine)) {
-                        $RegisteredDirectories = $ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json
                         ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"
                         { 
                             Ensure = 'Present'
                             SiteAdministrator = $PSACredential
-                            RegisteredDirectories = $RegisteredDirectories
+                            Directories = $ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json
                             DependsOn = $Depends
                         }
                     }

@@ -7,7 +7,7 @@
         - "Absent" ensures that existing server site is deleted (Not Implemented).
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Adminstrator
-    .PARAMETER RegisteredDirectories
+    .PARAMETER Directories
         List of Registered Directories
 #>
 function Get-TargetResource
@@ -17,7 +17,7 @@ function Get-TargetResource
 	param
 	(
         [System.String]
-        $RegisteredDirectories,
+        $Directories,
 
         [ValidateSet("Present","Absent")]
         [System.String]
@@ -39,7 +39,7 @@ function Set-TargetResource
 	param
 	(
         [System.String]
-        $RegisteredDirectories,
+        $Directories,
 
         [ValidateSet("Present","Absent")]
         [System.String]
@@ -71,9 +71,9 @@ function Set-TargetResource
         catch {
             Write-Verbose "[WARNING] GetToken returned:- $_"
         }
-        if($RegisteredDirectories) { #setting registered directories
+        if($Directories) { #setting registered directories
             $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-            ForEach ($dir in ($RegisteredDirectories | ConvertFrom-Json)) 
+            ForEach ($dir in ($Directories | ConvertFrom-Json)) 
             {
                 Write-Verbose "Testing for Directory $($dir.name)"
                 if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
@@ -100,7 +100,7 @@ function Test-TargetResource
 	param
 	(
         [System.String]
-        $RegisteredDirectories,
+        $Directories,
 
         [ValidateSet("Present","Absent")]
         [System.String]
@@ -120,9 +120,9 @@ function Test-TargetResource
     $ServerUrl = "http://$($FQDN):6080"
     $result = $false
    
-    if($RegisteredDirectories) { # only Primary Server
+    if($Directories) { # only Primary Server
         $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-        ForEach ($dir in ($RegisteredDirectories | ConvertFrom-Json)) 
+        ForEach ($dir in ($Directories | ConvertFrom-Json)) 
         {
             Write-Verbose "Testing for Directory $($dir.name)"
             if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
