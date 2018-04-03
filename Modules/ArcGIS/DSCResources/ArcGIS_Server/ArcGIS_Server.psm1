@@ -20,7 +20,7 @@
     .PARAMETER LogLevel
         Defines the Logging Level of Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
     .PARAMETER  Platform
-        Define the platform on which the Server is being installed - (Not Used)  
+-        Define the platform on which the Server is being installed - (Not Used) 
 #>
 function Get-TargetResource
 {
