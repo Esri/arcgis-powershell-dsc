@@ -66,6 +66,10 @@
                                                     "useHostedServer": true,
                                                     "url": "[URL to 'EXTERNAL' GeometryService e.g. if Hosted Server shall not be used]"
                                                 },
+                                                "print": {
+                                                    "useHostedServer": true,
+                                                    "url": "[URL to 'EXTERNAL' PrintService e.g. if Hosted Server shall not be used]"
+                                                },
                                                 "geocode": {
                                                     "disableEsriWorldGeocoder": true,
                                                     "Services": [

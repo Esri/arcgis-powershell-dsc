@@ -207,14 +207,14 @@ function Set-TargetResource
                 $HostedServerUrl = Get-HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token)
                 if ($HostedServerUrl)
                 {
-                    if (-not (Test-GeometryStatus -ServerUrl $HostedServerUrl -Token $($token.token)))
+                    if (-not (Test-ServiceStatus -ServerUrl $HostedServerUrl -Token $($token.token) -ServiceName Geometry))
                     {
-                        Set-GeometryStatus -ServerUrl $HostedServerUrl -Token $($token.token)
+                        Set-ServiceStatus -ServerUrl $HostedServerUrl -Token $($token.token) -ServiceName Geometry
                     }
 
-                    if (-not (Test-GeometrySharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token)))
+                    if (-not (Test-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Geometry))
                     {
-                        Set-GeometrySharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token)
+                        Set-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Geometry
                     }
                     
                     if (-not ($CurHelperServices.geometry.url.StartsWith($HostedServerUrl)))
@@ -234,6 +234,42 @@ function Set-TargetResource
                 }
             }
         }
+
+        if($HelperSrvcs.print)
+        {
+            if ($HelperSrvcs.print.useHostedServer)
+            {
+                $HostedServerUrl = Get-HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token)
+                if ($HostedServerUrl)
+                {
+                    if (-not (Test-ServiceStatus -ServerUrl $HostedServerUrl -Token $($token.token) -ServiceName Print))
+                    {
+                        Set-ServiceStatus -ServerUrl $HostedServerUrl -Token $($token.token) -ServiceName Print
+                    }
+
+                    if (-not (Test-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Print))
+                    {
+                        Set-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Print
+                    }
+                    
+                    if (-not ($CurHelperServices.print.url.StartsWith($HostedServerUrl)))
+                    {
+                        $serviceUrl = "$HostedServerUrl/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task"
+                        $helperServiceParams.Add("printTask",  '{"url": "' + $serviceUrl + '" }')
+                    }
+                } else {
+                    Write-Warning "No Hosted Server available. Print-Service is not working."
+                }
+            }
+            elseif ($HelperSrvcs.print.url)
+            {
+                if ($HelperSrvcs.print.url -ne $CurHelperServices.print.url)
+                {
+                    $helperServiceParams.Add("printTask",  '{"url": "' + $HelperSrvcs.print.url + '" }')
+                }
+            }
+        }
+
         if ($helperServiceParams.Count -gt 0)
         {
             Set-HelperServices -PortalUrl $PortalUrl -Token $($token.token) -HelperServices (ConvertTo-Json $helperServiceParams)
@@ -362,13 +398,13 @@ function Test-TargetResource
                     $result = $false
                 }
 
-                if ($result -and -not (Test-GeometryStatus -ServerUrl $HostedServerUrl -Token $($token.token)))
+                if ($result -and -not (Test-ServiceStatus -ServerUrl $HostedServerUrl -Token $($token.token) -ServiceName Geometry))
                 {
                     Write-Verbose "Geometry-Service on Hosted-Server not running"
                     $result = $false
                 }
 
-                if ($result -and -not (Test-GeometrySharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token)))
+                if ($result -and -not (Test-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Geometry))
                 {
                     Write-Verbose "Geometry-Service is not shared to Everyone"
                     $result = $false
@@ -379,6 +415,46 @@ function Test-TargetResource
                 if ($HelperSrvcs.geometry.url -ne $CurHelperServices.geometry.url)
                 {
                     Write-Verbose "Current Geometry-Service: $($CurHelperServices.geometry.url) does not match configured Url $($HelperSrvcs.geometry.url)"
+                    $result = $false
+                }
+            }
+        }
+
+
+        if ($result -and ($HelperSrvcs.print))
+        {
+            if ($HelperSrvcs.print.useHostedServer)
+            {
+                $HostedServerUrl = Get-HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token)
+                if ($result -and -not ($HostedServerUrl))
+                {
+                    Write-Warning "No Hosted Server available. Print-Service is not working."
+                    $result = $false
+                }
+                
+                if ($result -and -not ($CurHelperServices.print.url.StartsWith($HostedServerUrl)))
+                {
+                    Write-Verbose "Current Print-Service $($CurHelperServices.print.url) does not match Hosted-Server $HostedServerUrl"
+                    $result = $false
+                }
+
+                if ($result -and -not (Test-ServiceStatus -ServerUrl $HostedServerUrl -Token $($token.token) -ServiceName Print))
+                {
+                    Write-Verbose "Print-Service on Hosted-Server not running"
+                    $result = $false
+                }
+
+                if ($result -and -not (Test-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Print))
+                {
+                    Write-Verbose "Print-Service is not shared to Everyone"
+                    $result = $false
+                }
+            }
+            elseif ($HelperSrvcs.print.url)
+            {
+                if ($HelperSrvcs.print.url -ne $CurHelperServices.print.url)
+                {
+                    Write-Verbose "Current Print-Service: $($CurHelperServices.print.url) does not match configured Url $($HelperSrvcs.print.url)"
                     $result = $false
                 }
             }
@@ -488,11 +564,15 @@ function Test-GeocodeUrls
     }
 }
 
-
-function Test-GeometrySharing
+function Test-ServiceSharing
 {
     [CmdletBinding()]
     param(
+        [parameter(Mandatory = $true)]
+        [ValidateSet("Geometry","Print")]
+		[System.String]
+        $ServiceName,
+        
         [System.String]
         $ServerUrl,
 
@@ -505,21 +585,33 @@ function Test-GeometrySharing
         [System.String]
         $Referer = 'http://localhost'
     )
+    $serviceurl = $ServerUrl
+    
+    if($ServiceName -ieq "Geometry"){
+        $serviceurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer"
+    }else if($ServiceName -ieq "Print"){
+        $serviceurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer"
+    }
 
-    $geometryService = Invoke-ArcGISWebRequest -Url "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer" `
+    $service = Invoke-ArcGISWebRequest -Url $serviceurl `
                     -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 
-    $portalItemId = $geometryService.portalProperties.portalItems[0].itemId
+    $portalItemId = $service.portalProperties.portalItems[0].itemId
 
     $result = Test-PortalItemSharing -PortalUrl $PortalUrl -Token $Token -PortalItemId $portalItemId
 
     $result
 }
 
-function Set-GeometrySharing
+function Set-ServiceSharing
 {
     [CmdletBinding()]
     param(
+        [parameter(Mandatory = $true)]
+        [ValidateSet("Geometry","Print")]
+		[System.String]
+		$ServiceName,
+
         [System.String]
         $ServerUrl,
 
@@ -531,14 +623,20 @@ function Set-GeometrySharing
 
         [System.String]
         $Referer = 'http://localhost'
-
-
     )
+    
+    $serviceurl = $ServerUrl
 
-    $geometryService = Invoke-ArcGISWebRequest -Url "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer" `
+    if($ServiceName -ieq "Geometry"){
+        $serviceurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer"
+    }else if($ServiceName -ieq "Print"){
+        $serviceurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer"
+    }
+    
+    $service = Invoke-ArcGISWebRequest -Url $serviceurl `
                     -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 
-    $portalItemId = $geometryService.portalProperties.portalItems[0].itemId
+    $portalItemId = $service.portalProperties.portalItems[0].itemId
     $sharingParams = '{ "everyone": "true" }'
 
     Set-PortalItemSharing -PortalUrl $PortalUrl -Token $Token -PortalItemId $portalItemId -SharingParams $sharingParams
@@ -602,10 +700,15 @@ function Set-PortalItemSharing
     Invoke-ArcGISWebRequest -Url "$PortalUrl/sharing/rest/content/items/$PortalItemId/share" -HttpFormParameters $params -Referer $Referer
 }
 
-function Test-GeometryStatus
+function Test-ServiceStatus
 {
     [CmdletBinding()]
     param(
+        [parameter(Mandatory = $true)]
+        [ValidateSet("Geometry","Print")]
+		[System.String]
+        $ServiceName,
+        
         [System.String]
         $ServerUrl,
 
@@ -616,8 +719,14 @@ function Test-GeometryStatus
         $Referer = 'http://localhost'
     )
 
+    $servicestatusurl = ""
+    if($ServiceName -ieq "Geometry"){
+        $servicestatusurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/status"
+    }else if($ServiceName -ieq "Print"){
+        $servicestatusurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer/status"
+    }
     $result = $false
-    $status = Invoke-ArcGISWebRequest -Url "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/status" `
+    $status = Invoke-ArcGISWebRequest -Url $servicestatusurl `
                     -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 
     if (($status.configuredState -eq "STARTED") -and ($status.realTimeState -eq "STARTED"))
@@ -627,10 +736,15 @@ function Test-GeometryStatus
     $result
 }
 
-function Set-GeometryStatus
+function Set-ServiceStatus
 {
     [CmdletBinding()]
     param(
+        [parameter(Mandatory = $true)]
+        [ValidateSet("Geometry","Print")]
+		[System.String]
+        $ServiceName,
+        
         [System.String]
         $ServerUrl,
 
@@ -643,15 +757,27 @@ function Set-GeometryStatus
         [System.String]
         $Status = "STARTED"
     )
-
+    $servicestatusurl = ""
     if ($Status -eq "STARTED")
     {
         Write-Verbose "Starting Geometry-Service"
-        $resp = Invoke-ArcGISWebRequest -Url "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/start" `
+        
+        if($ServiceName -ieq "Geometry"){
+            $servicestatusurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/start"
+        }else if($ServiceName -ieq "Print"){
+            $servicestatusurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer/start"
+        }
+
+        $resp = Invoke-ArcGISWebRequest -Url $servicestatusurl `
                     -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -TimeOutSec 300 -LogResponse
         Write-Verbose "Response:- $resp"
     } else {
-        Invoke-ArcGISWebRequest -Url "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/stop" `
+        if($ServiceName -ieq "Geometry"){
+            $servicestatusurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/stop"
+        }else if($ServiceName -ieq "Print"){
+            $servicestatusurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer/stop"
+        }
+        Invoke-ArcGISWebRequest -Url $servicestatusurl `
                     -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -TimeOutSec 300
     }
 }
