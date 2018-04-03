@@ -376,9 +376,11 @@ Configuration ArcGISConfigure
                         { 
                             Ensure = 'Present'
                             SiteAdministrator = $PSACredential
-                            Directories = $ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json
+                            Directories = ($ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
                             DependsOn = $Depends
                         }
+                        $Depends += "[ArcGIS_Server_RegisterDirectories]Server$($Node.NodeName)RegisterDirectories"
+                        
                     }
 
                     if($ConfigurationData.ConfigData.GeoEventServer) 
