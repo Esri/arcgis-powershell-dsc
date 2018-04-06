@@ -16,6 +16,7 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $true)]
         [System.String]
         $Directories,
 
@@ -38,6 +39,7 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $true)]
         [System.String]
         $Directories,
 
@@ -99,6 +101,7 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $true)]
         [System.String]
         $Directories,
 
