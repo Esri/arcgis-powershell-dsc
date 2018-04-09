@@ -1132,7 +1132,7 @@ function Configure-BoundaryLayers{
     $installDir = (Get-ItemProperty -Path $regKey -ErrorAction Ignore).InstallDir
     $publishBoundaryToolPath = Join-Path $installDir (Join-Path 'tools' (Join-Path 'publishboundarylayers' 'publishboundarylayers.bat'))
     $Arguments = "--folder $LivingAtlasBoundaryLayerFolderPath" 
-    if($LivingAtlasBoundarySubsetFilePath -ne $null -or $LivingAtlasBoundarySubsetFilePath -ne ""){
+    if($LivingAtlasBoundarySubsetFilePath -ne $null -and $LivingAtlasBoundarySubsetFilePath -ne ""){
         $Arguments += " --file $LivingAtlasBoundarySubsetFilePath"
     }
     $Arguments +=" --url $PortalUrl --username $($Credential.UserName) --password $($Credential.GetNetworkCredential().Password)"
