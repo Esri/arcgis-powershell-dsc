@@ -129,7 +129,7 @@ function Wait-ForServiceToReachDesiredState
     if ($Attempts++ -gt 0) {  # to skip the message for first attempt
       Write-Verbose "Checking state of Service '$ServiceName'. Attempt # $Attempts"        
     }    
-    if($MachineName -ne $null -or $MachineName -ne ""){
+    if($MachineName -ne $null -and $MachineName -ne ""){
         $Service = Get-Service -Name $ServiceName -ErrorAction Ignore -ComputerName $MachineName
     }else{
         $Service = Get-Service -Name $ServiceName -ErrorAction Ignore
