@@ -589,7 +589,7 @@ function Test-ServiceSharing
     
     if($ServiceName -ieq "Geometry"){
         $serviceurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer"
-    }else if($ServiceName -ieq "Print"){
+    }elseif($ServiceName -ieq "Print"){
         $serviceurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer"
     }
 
@@ -629,7 +629,7 @@ function Set-ServiceSharing
 
     if($ServiceName -ieq "Geometry"){
         $serviceurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer"
-    }else if($ServiceName -ieq "Print"){
+    }elseif($ServiceName -ieq "Print"){
         $serviceurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer"
     }
     
@@ -722,7 +722,7 @@ function Test-ServiceStatus
     $servicestatusurl = ""
     if($ServiceName -ieq "Geometry"){
         $servicestatusurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/status"
-    }else if($ServiceName -ieq "Print"){
+    }elseif($ServiceName -ieq "Print"){
         $servicestatusurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer/status"
     }
     $result = $false
@@ -764,7 +764,7 @@ function Set-ServiceStatus
         
         if($ServiceName -ieq "Geometry"){
             $servicestatusurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/start"
-        }else if($ServiceName -ieq "Print"){
+        }elseif($ServiceName -ieq "Print"){
             $servicestatusurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer/start"
         }
 
@@ -774,7 +774,7 @@ function Set-ServiceStatus
     } else {
         if($ServiceName -ieq "Geometry"){
             $servicestatusurl = "$ServerUrl/admin/services/Utilities/Geometry.GeometryServer/stop"
-        }else if($ServiceName -ieq "Print"){
+        }elseif($ServiceName -ieq "Print"){
             $servicestatusurl = "$ServerUrl/admin/services/Utilities/PrintingTools.GPServer/stop"
         }
         Invoke-ArcGISWebRequest -Url $servicestatusurl `
