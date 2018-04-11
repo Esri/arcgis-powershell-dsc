@@ -554,7 +554,12 @@ function Configure-ArcGIS
         $ConfigurationParamsHashtable = ConvertPSObjectToHashtable $ConfigurationParamsJSON
 
         for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
-            $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major }
+            if ($Credential)
+            {
+                $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major } -Credential $Credential 
+            } else {
+                $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major }
+            }
             $ConfigurationParamsHashtable.AllNodes[$i].WMFVersion = $WMFVersion
         }
 
