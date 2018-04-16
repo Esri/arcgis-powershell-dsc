@@ -528,7 +528,7 @@ function Configure-ArcGIS
         [System.Array]
         $ConfigurationParametersFile,    
 
-        [ValidateSet("Install","Uninstall","Upgrade","PublishGISService","DisconnectedEnvironment")]
+        [ValidateSet("Install","Uninstall","Upgrade","PublishGISService")]
         [Parameter(Position = 1)]
         [System.String]
         $Mode = 'Install',
@@ -542,7 +542,10 @@ function Configure-ArcGIS
         $MappedDriveOverrideFlag = $false,
         
         [switch]
-        $DebugSwitch
+        $DebugSwitch,
+        
+        [switch]
+        $DisconnectedEnvironment
     )
     
     $DebugMode = $False
@@ -652,6 +655,24 @@ function Configure-ArcGIS
                             Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
                         }
 
+                        if($DisconnectedEnvironment){
+                            $ConfigurationName = "ArcGISDisconnectedEnvironment"
+                            if(Test-Path ".\$ConfigurationName") {
+                                Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
+                            }
+                            Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
+                            . "$PSScriptRoot\Configuration\$ConfigurationName.ps1" -Verbose:$false
+                
+                            Write-Host "Compiling the Configuration:- $ConfigurationName"
+                            & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
+                            
+                            if($Credential){
+                                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
+                            }else{
+                                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
+                            }
+                        }
+                        
                         if($JobFlag){
                             Get-ArcGISURL $ConfigurationParamsHashtable
                         }
@@ -665,9 +686,8 @@ function Configure-ArcGIS
                 $ConfigurationName = "ArcGISUninstall"
             }elseif($Mode -ieq "PublishGISService"){
                 $ConfigurationName = "PublishGISService"
-            }elseif($Mode -ieq "DisconnectedEnvironment"){
-                $ConfigurationName = "ArcGISDisconnectedEnvironment"
             }
+
             if(Test-Path ".\$ConfigurationName") {
                 Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
             }    

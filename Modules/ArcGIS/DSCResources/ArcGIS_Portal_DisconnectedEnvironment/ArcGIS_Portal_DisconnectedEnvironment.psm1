@@ -255,7 +255,7 @@ function Set-TargetResource
                     if (-not ($CurHelperServices.print.url.StartsWith($HostedServerUrl)))
                     {
                         $serviceUrl = "$HostedServerUrl/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task"
-                        $helperServiceParams.Add("printTask",  '{"url": "' + $serviceUrl + '" }')
+                        $helperServiceParams.Add("printServiceTask",  '{"url": "' + $serviceUrl + '" }')
                     }
                 } else {
                     Write-Warning "No Hosted Server available. Print-Service is not working."

@@ -64,22 +64,38 @@
                                         "HelperServices": {
                                                 "geometry": {
                                                     "useHostedServer": true,
-                                                    "url": "[URL to 'EXTERNAL' GeometryService e.g. if Hosted Server shall not be used]"
+                                                    "url": "[URL to 'EXTERNAL' GeometryService e.g. if Hosted Server shall not be used]",
+                                                    "Credentials":  {
+                                                        "UserName":  "[Service Username - Required for a Secured Service]",
+                                                        "Password":  "[Service Password - Required for a Secured Service]"
+                                                    }
                                                 },
                                                 "print": {
                                                     "useHostedServer": true,
-                                                    "url": "[URL to 'EXTERNAL' PrintService e.g. if Hosted Server shall not be used]"
+                                                    "url": "[URL to 'EXTERNAL' PrintService e.g. if Hosted Server shall not be used]",
+                                                    "Credentials":  {
+                                                        "UserName":  "[Service Username - Required for a Secured Service]",
+                                                        "Password":  "[Service Password - Required for a Secured Service]"
+                                                    }
                                                 },
                                                 "geocode": {
                                                     "disableEsriWorldGeocoder": true,
                                                     "Services": [
                                                         {
                                                             "url": "[URL to 'EXTERNAL' GeocodeService]",
-                                                            "name": "[Name fo Geocode-Service]"
+                                                            "name": "[Name fo Geocode-Service]",
+                                                            "Credentials":  {
+                                                                "UserName":  "[Service Username - Required for a Secured Service]",
+                                                                "Password":  "[Service Password - Required for a Secured Service]"
+                                                            }
                                                         },
                                                         {
                                                             "url": "[URL to 'EXTERNAL' GeocodeService]",
-                                                            "name": "[Name fo Geocode-Service]"
+                                                            "name": "[Name fo Geocode-Service]",
+                                                            "Credentials":  {
+                                                                "UserName":  "[Service Username - Required for a Secured Service]",
+                                                                "Password":  "[Service Password - Required for a Secured Service]"
+                                                            }
                                                         }
                                                     ]
                                                 }
