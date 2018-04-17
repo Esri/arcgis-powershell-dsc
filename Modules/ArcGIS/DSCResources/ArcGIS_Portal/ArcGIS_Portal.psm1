@@ -569,7 +569,13 @@ function Set-TargetResource {
                 }
 
                 Write-Verbose "Updating Portal System Properties to set WebContextUrl to $ExpectedWebContextUrl and privatePortalURl to $ExpectedPrivatePortalUrl"
-                Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -Properties $sysProps
+                try {
+                    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                    Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -Properties $sysProps
+                } catch {
+                    Write-Verbose "Error setting Portal System Properties :- $_"
+                    Write-Verbose "Request: Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $($token.token) -Referer $Referer -Properties $sysProps"
+                }
                 Write-Verbose "Waiting 5 minutes for web server to apply changes before polling for endpoint being available" 
                 Start-Sleep -Seconds 300 # Add a 5 minute wait to allow the web server to go down
                 Write-Verbose "Updated Portal System Properties. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
@@ -595,8 +601,13 @@ function Set-TargetResource {
             if (-not($AlreadyExists)) {        
                 #Register the ExternalDNSName and PortalEndPoint as a web adaptor for Portal
                 Write-Verbose "Registering the ExternalDNSName Endpoint with Url $WebAdaptorUrl and MachineName $PortalEndPoint as a Web Adaptor for Portal"
-                Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer `
-                    -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443
+                try{
+                    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                    Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443
+                } catch {
+                    Write-Verbose "Error registering Webadaptor for Portal :- $_"    
+                    Write-Verbose "Request: Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $($token.token) -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443"
+                }
                 Write-Verbose "Waiting 3 minutes for web server to apply changes before polling for endpoint being available"
                 Start-Sleep -Seconds 180 # Add a 3 minute wait to allow the web server to go down
                 Write-Verbose "Updated Web Adaptors which causes a web server restart. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"

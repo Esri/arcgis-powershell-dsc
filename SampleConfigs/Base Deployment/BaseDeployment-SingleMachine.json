@@ -36,17 +36,37 @@
                                       "Installer":  {
                                                         "Path":  "[Server Installer Path]",
                                                         "InstallDir":  "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
-                                                        "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] "
+                                                        "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] ",
+                                                        "PatchesDir": "[Path to Directory with Patches for Server]"
                                                     },
                                       "ServerDirectoriesRootLocation":  "C:\\arcgisserver\\directories",
-                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
+                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store",
+                                      "RegisteredDirectories":  [
+                                                                    {
+                                                                    "name": "BasemapsCacheDir",
+                                                                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
+                                                                    "directoryType": "CACHE"
+                                                                    },
+                                                                    {
+                                                                    "name": "TestOutputDir",
+                                                                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testOutput",
+                                                                    "directoryType": "OUTPUT"
+                                                                    },
+                                                                    {
+                                                                    "name": "TestJobsDir",
+                                                                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testJobs",
+                                                                    "directoryType": "JOBS"
+                                                                    }
+                                                                ]
+                       
                                   },
                        "Portal":  {
                                       "LicenseFilePath": "[License File Path - Portal ]",
                                       "Installer":  {
                                                         "Path":  "[Portal Installer Path]",
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
-                                                        "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
+                                                        "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]",
+                                                        "PatchesDir": "[Path to Directory with Patches for Portal]"
                                                     },
                                       "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content"
                                   },
@@ -54,7 +74,8 @@
                                          "ContentDirectoryLocation":  "[Content Dir DataStore - C:\\arcgisdatastore]",
                                          "Installer":  {
                                                            "Path":  "[DataStore Installer Path]",
-                                                           "InstallDir":  "[DataStore Install Dir - Ex. C:\\ArcGIS\\DataStore]"
+                                                           "InstallDir":  "[DataStore Install Dir - Ex. C:\\ArcGIS\\DataStore]",
+                                                           "PatchesDir": "[Path to Directory with Patches for DataStore]"
                                                        }
                                      },
                        "WebAdaptor":  {

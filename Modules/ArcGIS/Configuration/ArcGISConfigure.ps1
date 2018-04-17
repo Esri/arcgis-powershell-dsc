@@ -366,9 +366,22 @@ Configuration ArcGISConfigure
                         DependsOn = $Depends
                         LogLevel = if($ConfigurationData.ConfigData.DebugMode) { 'DEBUG' } else { 'WARNING' }
                         SingleClusterMode = if(($AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0) { $true } else { $false }
+                        
                     }
-
+                    
                     $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
+
+                    if ($ConfigurationData.ConfigData.Server.RegisteredDirectories -and ($Node.NodeName -ieq $PrimaryServerMachine)) {
+                        ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"
+                        { 
+                            Ensure = 'Present'
+                            SiteAdministrator = $PSACredential
+                            Directories = ($ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
+                            DependsOn = $Depends
+                        }
+                        $Depends += "[ArcGIS_Server_RegisterDirectories]Server$($Node.NodeName)RegisterDirectories"
+                        
+                    }
 
                     if($ConfigurationData.ConfigData.GeoEventServer) 
                     { 
@@ -1149,7 +1162,7 @@ Configuration ArcGISConfigure
 
                     if(-not(($Node.Role -icontains "Server") -and ($Node.NodeName -ieq $PrimaryServerMachine)))
                     {
-                        if($Node.WMFVersion -gt 4){
+                        <#if($Node.WMFVersion -gt 4){
                             WaitForAll "WaitForAllServerConfigToComplete$($PrimaryServerMachine)"{
                                 ResourceName = "[ArcGIS_Server]Server$($PrimaryServerMachine)"
                                 NodeName = $PrimaryServerMachine
@@ -1158,7 +1171,7 @@ Configuration ArcGISConfigure
                                 DependsOn = $Depends
                             }
                             $Depends += "[WaitForAll]WaitForAllServerConfigToComplete$($PrimaryServerMachine)"
-                        }else{
+                        }else{#>
                             ArcGIS_WaitForComponent "WaitForServerConfigToComplete$($PrimaryServerMachine)"
                             {
                                 Component = "Server"
@@ -1172,7 +1185,7 @@ Configuration ArcGISConfigure
                                 DependsOn = $Depends
                             }
                             $Depends += "[ArcGIS_WaitForComponent]WaitForServerConfigToComplete$($PrimaryServerMachine)"
-                        }
+                        <#}#>
                     }
 
                     $IsStandByRelational = (($Node.NodeName -ine $PrimaryDataStore) -and ($Node.Role -icontains 'DataStore' -and $Node.DataStoreTypes -icontains 'Relational'))
@@ -1354,7 +1367,7 @@ Configuration ArcGISConfigure
                                     #Hacky Way to overcome a conflict
                                     if(-not($Node.Role -icontains 'DataStore') -and ($WAPrimaryServerMachine -ine $Node.NodeName))
                                     {
-                                        if($Node.WMFVersion -gt 4){
+                                        <#if($Node.WMFVersion -gt 4){
                                             WaitForAll "WaitForAllServerConfigToCompleteWA$($WAPrimaryServerMachine)"{
                                                 ResourceName = "[ArcGIS_Server]Server$($WAPrimaryServerMachine)"
                                                 NodeName = $WAPrimaryServerMachine
@@ -1363,7 +1376,7 @@ Configuration ArcGISConfigure
                                                 DependsOn = $Depends
                                             }
                                             $Depends += "[WaitForAll]WaitForAllServerConfigToCompleteWA$($WAPrimaryServerMachine)"
-                                        }else{
+                                        }else{#>
                                             ArcGIS_WaitForComponent "WaitForServerConfigToCompleteWA$($WAPrimaryServerMachine)"
                                             {
                                                 Component = "server"
@@ -1377,7 +1390,7 @@ Configuration ArcGISConfigure
                                                 DependsOn = $Depends
                                             }
                                             $Depends += "[ArcGIS_WaitForComponent]WaitForServerConfigToCompleteWA$($WAPrimaryServerMachine)"
-                                        }
+                                        <#}#>
                                     }
                                     
                                     ArcGIS_WebAdaptor "ConfigureServer$($MachineFQDN)"

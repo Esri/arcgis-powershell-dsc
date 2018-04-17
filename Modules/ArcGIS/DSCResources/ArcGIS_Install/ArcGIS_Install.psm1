@@ -102,15 +102,15 @@ function Set-TargetResource
             {
                 New-Item $TempFolder -ItemType directory            
             }  
-                       
+                    
             $SevenZipPath = Join-Path ${env:ProgramFiles} (Join-Path '7-Zip' '7z.exe')
             if(-not(Test-Path $SevenZipPath)) 
             {
                 Write-Verbose "7Zip not found at $SevenZipPath"
                 Write-Verbose 'Installing 7Zip'
-                  
+                
                 $MsiFile = Join-Path $TempFolder '7Zip.msi'
-                Invoke-WebRequest -Uri 'http://www.7-zip.org/a/7z938-x64.msi' -OutFile $MsiFile
+                Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
                 Write-Verbose "msiexec /i $MsiFile /quiet"
                 Invoke-Expression "msiexec /i $MsiFile /quiet"
                 Start-Sleep -Seconds 30 # Allow files to be copied to Program Files
@@ -129,17 +129,17 @@ function Set-TargetResource
             $SetupExe = Get-ChildItem -Path $TempFolder -Filter 'Setup.exe' -Recurse | Select-Object -First 1
             $ExecPath = $SetupExe.FullName
             if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-               Write-Verbose 'Setup.exe not found in extracted contents'
-               $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.exe' -Recurse | Select-Object -First 1
-               $ExecPath = $SetupExe.FullName
-               if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-                   Write-Verbose "Executable .exe not found in extracted contents to install. Looking for .msi"
-                   $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.msi' -Recurse | Select-Object -First 1
-                   $ExecPath = $SetupExe.FullName
-                   if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-                        throw "Neither .exe nor .msi not found in extracted contents to install"
-                   }               
-               }               
+                Write-Verbose 'Setup.exe not found in extracted contents'
+                $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.exe' -Recurse | Select-Object -First 1
+                $ExecPath = $SetupExe.FullName
+                if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
+                    Write-Verbose "Executable .exe not found in extracted contents to install. Looking for .msi"
+                    $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.msi' -Recurse | Select-Object -First 1
+                    $ExecPath = $SetupExe.FullName
+                    if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
+                            throw "Neither .exe nor .msi not found in extracted contents to install"
+                    }               
+                }               
             }
         
             Write-Verbose "Executing $ExecPath with arguments $Arguments"
@@ -193,7 +193,7 @@ function Set-TargetResource
             }
         }
         else {
-			Write-Verbose "Installing Software using installer at $Path and arguments $Arguments"            
+            Write-Verbose "Installing Software using installer at $Path and arguments $Arguments"            
             if($LogPath) {
                 Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -RedirectStandardOutput $LogPath
             }else {
@@ -272,7 +272,8 @@ function Test-TargetResource
 
     $result = $false
     
-    $ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $Name -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
+    $trueName = if ($Name -ieq 'DataStore') { 'Data Store' } else { $Name }
+    $ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
 	Write-Verbose "Installed Version $($ver.Version)"
 
     $result = Test-Install -Name $Name -Version $Version
@@ -283,45 +284,6 @@ function Test-TargetResource
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
     }
-}
-
-Function Test-Install{
-    [CmdletBinding()]
-	[OutputType([System.Boolean])]
-	param
-	(
-        [parameter(Mandatory = $true)]
-		[System.String]
-		$Name,
-
-		[parameter(Mandatory = $true)]
-		[System.String]
-		$Version
-    )
-    
-    $result = $false
-    
-    $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
-    if(-not($ProdId.StartsWith('{'))){
-        $ProdId = '{' + $ProdId
-    }
-    if(-not($ProdId.EndsWith('}'))){
-        $ProdId = $ProdId + '}'
-    }
-    $PathToCheck = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
-    Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
-    if (Test-Path $PathToCheck -ErrorAction Ignore){
-        $result = $true
-    }
-    if(-not($result)){
-        $PathToCheck = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
-        Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
-        if (Test-Path $PathToCheck -ErrorAction Ignore){
-            $result = $true
-        }
-    }
-
-    $result
 }
 
 Export-ModuleMember -Function *-TargetResource

@@ -127,8 +127,20 @@ function Test-TargetResource
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	    
     Write-Verbose "Get Portal Token from Deployment '$PortalHostName'"
     $Referer = "https://$($PortalHostName)/$PortalContext"
-    $token = Get-PortalToken -PortalHostName $PortalHostName -Port $PortalPort -SiteName $PortalContext `
-         -Credential $RemoteSiteAdministrator -Referer $Referer 
+    $waitForToken = $true
+    $waitForTokenCounter = 0 
+    while ($waitForToken -and $waitForTokenCounter -lt 25) {
+        $waitForTokenCounter++
+        try{
+            $token = Get-PortalToken -PortalHostName $PortalHostName -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer
+        } catch {
+            Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
+            Start-Sleep -Seconds 60
+        }
+        if($token.token) {    
+            $waitForToken = $false
+        }
+    }
     if(-not($token.token)) {
         throw "Unable to retrieve Portal Token for '$($RemoteSiteAdministrator.UserName)' from Deployment '$PortalHostName'"
     }
@@ -288,8 +300,20 @@ function Set-TargetResource
 
     Write-Verbose "Get Portal Token from Deployment '$PortalHostName'"
     $Referer = "https://$($PortalHostName):$($PortalPort)/$PortalContext"
-    $token = Get-PortalToken -PortalHostName $PortalHostName -Port $PortalPort -SiteName $PortalContext `
-        -Credential $RemoteSiteAdministrator -Referer $Referer 
+    $waitForToken = $true
+    $waitForTokenCounter = 0 
+    while ($waitForToken -and $waitForTokenCounter -lt 25) {
+        $waitForTokenCounter++
+        try{
+            $token = Get-PortalToken -PortalHostName $PortalHostName -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer
+        } catch {
+            Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
+            Start-Sleep -Seconds 60
+        }
+        if($token.token) {    
+            $waitForToken = $false
+        }
+    }
     if(-not($token.token)) {
         throw "Unable to retrieve Portal Token for '$($RemoteSiteAdministrator.UserName)' from Deployment '$PortalHostName'"
     }
