@@ -1,4 +1,4 @@
-Configuration ArcGISConfigureSSLPerNode
+Configuration ArcGISConfigureSSLCertsPerNode
 {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName ArcGIS

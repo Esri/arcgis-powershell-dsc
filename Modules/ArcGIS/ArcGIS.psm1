@@ -552,7 +552,7 @@ function Configure-ArcGIS
             }
         }
         $ConfigurationParamsHashtable = ConvertPSObjectToHashtable $ConfigurationParamsJSON
-
+        $HasSSLCertificatesPerNode = $true
         for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
             if ($Credential)
             {
@@ -561,6 +561,12 @@ function Configure-ArcGIS
                 $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major }
             }
             $ConfigurationParamsHashtable.AllNodes[$i].WMFVersion = $WMFVersion
+            if($HasSSLCertificatesPerNode -and -not($ConfigurationParamsHashtable.AllNodes[$i].SslCertifcate)){
+                $HasSSLCertificatesPerNode = $false
+                if($i -gt 0){
+                    throw "Please check and try again. All Nodes in the configuration don't have a SSL Certificate!"
+                }
+            }
         }
 
         $CommonNodeToAddForPlainText = @{
@@ -633,21 +639,39 @@ function Configure-ArcGIS
                     if($JobFlag){
                         
                         $JobFlag = $False
-
-                        Write-Host "Dot Sourcing the Configuration:- ArcGISConfigure"
-                        . "$PSScriptRoot\Configuration\ArcGISConfigure.ps1" -Verbose:$false
-
-                        Write-Host "Compiling the Configuration:- ArcGISConfigure"
-                        ArcGISConfigure -ConfigurationData $ConfigurationParamsHashtable
                         
-                        if($Credential){
-                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigure -Credential $Credential -DebugMode $DebugMode
-                        }else{
-                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigure -DebugMode $DebugMode
-                        }
+                        if($HasSSLCertificatesPerNode){
+                            Write-Host "Dot Sourcing the Configuration:- ArcGISConfigureSSLCertsPerNode"
+                            . "$PSScriptRoot\Configuration\ArcGISConfigureSSLCertsPerNode.ps1" -Verbose:$false
 
-                        if(Test-Path ".\ArcGISConfigure") {
-                            Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
+                            Write-Host "Compiling the Configuration:- ArcGISConfigureSSLCertsPerNode"
+                            ArcGISConfigureSSLCertsPerNode -ConfigurationData $ConfigurationParamsHashtable
+                            
+                            if($Credential){
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigureSSLCertsPerNode -Credential $Credential -DebugMode $DebugMode
+                            }else{
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigureSSLCertsPerNode -DebugMode $DebugMode
+                            }
+
+                            if(Test-Path ".\ArcGISConfigureSSLCertsPerNode") {
+                                Remove-Item ".\ArcGISConfigureSSLCertsPerNode" -Force -ErrorAction Ignore -Recurse
+                            }
+                        }else{
+                            Write-Host "Dot Sourcing the Configuration:- ArcGISConfigure"
+                            . "$PSScriptRoot\Configuration\ArcGISConfigure.ps1" -Verbose:$false
+
+                            Write-Host "Compiling the Configuration:- ArcGISConfigure"
+                            ArcGISConfigure -ConfigurationData $ConfigurationParamsHashtable
+                            
+                            if($Credential){
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigure -Credential $Credential -DebugMode $DebugMode
+                            }else{
+                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigure -DebugMode $DebugMode
+                            }
+
+                            if(Test-Path ".\ArcGISConfigure") {
+                                Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
+                            }
                         }
 
                         if($JobFlag){ 
