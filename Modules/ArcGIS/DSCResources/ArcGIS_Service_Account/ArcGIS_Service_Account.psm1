@@ -61,7 +61,8 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {
         $RunAsUserName = $RunAsAccount.UserName
         $RunAsPassword = $RunAsAccount.GetNetworkCredential().Password
-   
+        $RunAsPassword = $RunAsPassword.Replace('"', '""')
+
         Write-Verbose "RunAsAccount Username:- $RunAsUserName"
         if($RunAsUserName -and $RunAsUserName.StartsWith('.\')){            
             $RunAsUserName = $RunAsUserName.Substring(2) # Remove the current machine prefix
@@ -78,7 +79,7 @@ function Set-TargetResource
            {
                 if(<#$Name -ieq 'ArcGIS Server' -OR $Name -ieq 'Portal for ArcGIS' -or#> $Name -ieq 'ArcGIS Data Store'){
                     $ExecPath = $InstallDir
-                    $Arguments = "/username $($RunAsUserName)  /password $($RunAsPassword)"
+                    $Arguments = '/username ' + $($RunAsUserName) + ' /password "' + $($RunAsPassword) +'"'
                     Write-Verbose "Just Checking : - $Arguments"
                     if($Name -ieq 'ArcGIS Server'){
                         $ExecPath = Join-Path $ExecPath '\\bin\\ServerConfigurationUtility.exe'
@@ -114,7 +115,7 @@ function Set-TargetResource
                         Write-Verbose "Initialized correctly indicating successful desktop initialization"
                         $result = $true
                     }else {
-                        Write-Verbose "Initialization did not succeed. Process exit code:- $($p.ExitCode) $p"
+                        Write-Verbose "Initialization did not succeed. Process exit code:- $($p.ExitCode) $err"
                     }
 
                 }else{
