@@ -333,11 +333,25 @@ function License-Software
     Write-Verbose "[Running Command] $SoftwareAuthExePath $Params" -Verbose
     
     if($StdOutputLogFilePath) {
-        Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params -Wait -RedirectStandardOutput $StdOutputLogFilePath -RedirectStandardError $StdErrLogFilePath
-		[string]$LicenseFileOutput = Get-Content $StdOutputLogFilePath
-		if($LicenseFileOutput -and (($LicenseFileOutput.IndexOf('Error') -gt -1) -or ($LicenseFileOutput.IndexOf('(null)') -gt -1))) {
-			throw "Licensing for Product [$Product] failed. Software Authorization Utility returned $LicenseFileOutput"
-		}
+        [bool]$Done = $false
+        [int]$AttemptNumber = 1
+        $err = $null
+        while(-not($Done) -and ($AttemptNumber -le 10)) {
+            Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params -Wait -RedirectStandardOutput $StdOutputLogFilePath -RedirectStandardError $StdErrLogFilePath
+            [string]$LicenseFileOutput = Get-Content $StdOutputLogFilePath
+            if($LicenseFileOutput -and (($LicenseFileOutput.IndexOf('Error') -gt -1) -or ($LicenseFileOutput.IndexOf('(null)') -gt -1))) {
+                $err = "[ERROR] - Attempt $AttemptNumber - Licensing for Product [$Product] failed. Software Authorization Utility returned $LicenseFileOutput"
+                Write-Verbose $err
+                Start-Sleep -Seconds (Get-Random -Maximum 61 -Minimum 30)
+            }else{
+                $Done = $True
+                $err = $null
+            }
+            $AttemptNumber += 1
+        }
+        if($err -ne $null){
+            throw $err
+        }
 	}
     else {
         Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params
