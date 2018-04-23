@@ -342,7 +342,7 @@ function License-Software
             if($LicenseFileOutput -and (($LicenseFileOutput.IndexOf('Error') -gt -1) -or ($LicenseFileOutput.IndexOf('(null)') -gt -1))) {
                 $err = "[ERROR] - Attempt $AttemptNumber - Licensing for Product [$Product] failed. Software Authorization Utility returned $LicenseFileOutput"
                 Write-Verbose $err
-                Start-Sleep -Seconds 30
+                Start-Sleep -Seconds (Get-Random -Maximum 61 -Minimum 30)
             }else{
                 $Done = $True
                 $err = $null
