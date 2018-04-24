@@ -134,26 +134,28 @@ function Test-TargetResource
         }
         $CertRootStore = "LocalMachine"
         $CertStore = "My"
-        $CertPath = "Cert:\$CertRootStore\$CertStore\$($pfx.Thumbprint)"    
-        if(Test-Path $CertPath)  { 
-            Write-Verbose "Certificate found in $CertPath"       
+        $CertPath = "Cert:\$CertRootStore\$CertStore\$($pfx.Thumbprint)"
+        if(Test-Path $CertPath)  {
+            Write-Verbose "Certificate found in $CertPath"
             $result = $true
         }
         if($result){
-			$CurrVerbosePreference = $VerbosePreference # Save current preference
-			$VerbosePreference = 'SilentlyContinue' # quieten it to ignore verbose output from Importing WebAdmin (bug in Powershell for this module) 
-			Import-Module WebAdministration | Out-Null
-			$VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
-            if(Get-WebBinding -Protocol https -Port $Port)
+            $result = $false
+            $CurrVerbosePreference = $VerbosePreference # Save current preference
+            $VerbosePreference = 'SilentlyContinue' # quieten it to ignore verbose output from Importing WebAdmin (bug in Powershell for this module) 
+            Import-Module WebAdministration | Out-Null
+            $VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
+            $binding = Get-WebBinding -Protocol https -Port $Port
+            if($binding)
             {
                 Write-Verbose "IIS has a web binding at Port $Port. Checking for the Certificate"
                 $IISCertPath = "IIS:\SslBindings\0.0.0.0!$Port"
-                if(Test-Path $IISCertPath) {                                    
-                    $result = $true
+                if(Test-Path $IISCertPath) {
+                    if ($binding.certificateHash -ieq $pfx.Thumbprint) {
+                        $result = $true
+                    }
                 }
-            }else {
-				$result = $false
-			}
+            }
         }
     }else{
         # Self Signed option
