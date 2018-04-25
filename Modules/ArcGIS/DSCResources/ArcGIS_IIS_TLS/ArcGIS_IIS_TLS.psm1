@@ -438,6 +438,39 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
             }
         }
         
+        #Search based on Name as a fallback - Backward compatibility
+        if(-not($Cert)) 
+        {
+            $SubjectName = $CertificateToInstall.SubjectName.Name
+            if(-not($SubjectName)){
+                $SubjectName = $CertificateToInstall.Subject
+            }
+            Write-Verbose "Installing existing certificate with SubjectName $($SubjectName)"
+            $SubjectNameSplits = Get-CommonNameSplits $SubjectName
+            if($SubjectNameSplits -eq $null) { throw "Unable to split $SubjectName" }        
+            $AllCerts = Get-ChildItem cert:\LocalMachine\My 
+            foreach($ACert in $AllCerts){
+                $SubjectForCert = $ACert.Subject
+                if($SubjectForCert -and $SubjectForCert.Length -gt 0) {
+                    $CertSubjectNameSplits = Get-CommonNameSplits $SubjectForCert
+                    if($CertSubjectNameSplits -and ($SubjectNameSplits.Length -eq $CertSubjectNameSplits.Length)) {
+                        $MisMatch = $false   
+                        [int]$count = $SubjectNameSplits.Length
+                        for($m = 0; $m -lt $count; $m++){
+                            if($SubjectNameSplits[$m] -ine $CertSubjectNameSplits[$m] -and $SubjectNameSplits[$m] -ine '*') {
+                                $MisMatch = $true
+                                break
+                            }
+                        }            
+                        if($MisMatch -eq $false) {
+                            $Cert = $ACert
+                            break
+                        } 
+                    }
+                }
+            }
+        }
+
         if(-not($Cert)) 
         {
             $Cert = Get-ChildItem cert:\LocalMachine\My | Where-Object { $_.Thumbprint -ieq $CertificateToInstall.Thumbprint } | Select-Object -First 1 
