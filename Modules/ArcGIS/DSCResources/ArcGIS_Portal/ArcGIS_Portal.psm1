@@ -950,11 +950,7 @@ function Restart-PortalService {
     (
         [Parameter(Mandatory=$false)]    
         [System.String]
-        $ServiceName = 'Portal for ArcGIS',
-        
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $MachineName
+        $ServiceName = 'Portal for ArcGIS'
     )
 
     try {
