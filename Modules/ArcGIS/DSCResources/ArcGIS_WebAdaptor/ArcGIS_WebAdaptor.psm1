@@ -344,16 +344,19 @@ function Test-TargetResource
                 if($OverwriteFlag){
                     $result = $false
                 }else{
-                    $result = $true
-                }
-                if (URLAvailable("https://$Hostname/$Context/admin")){
-                    if(-not($AdminAccessEnabled)){
-                        $result = $false
-                    } 
-                }else{
-                    if($AdminAccessEnabled){
-                        $result = $false
-                    } 
+                    if (URLAvailable("https://$Hostname/$Context/admin")){
+                        if(-not($AdminAccessEnabled)){
+                            $result = $false
+                        }else{
+                            $result = $true
+                        } 
+                    }else{
+                        if($AdminAccessEnabled){
+                            $result = $false
+                        }else{
+                            $result = $true
+                        } 
+                    }
                 }
             }elseif(($Component -ieq "Portal") -and ($WAConfig.Config.Portal.URL -like $PortalSiteUrl)){
                 if($OverwriteFlag){
