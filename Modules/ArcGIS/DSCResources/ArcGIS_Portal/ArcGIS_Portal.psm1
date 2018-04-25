@@ -644,11 +644,8 @@ function Set-TargetResource {
                 Write-Verbose $PortalSelfResponse
             }
         }
-        $StandByRestartRequired = $False
-        $StandByMachineName = ""
+        
         if(-not($Join)){
-            # set system property userstoreconfig > AD only done on primary machine. 
-            #Dont need to restart standby machine since join hasn't happened yet.
             if ($ADServiceUser.UserName) 
             {
                 Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
@@ -659,7 +656,6 @@ function Set-TargetResource {
                 {
                     Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). Changing to Active Directory"
                     Set-PortalUserStoreConfig -PortalHostName $FQDN -Token $token.token -ADServiceUser $ADServiceUser
-                    $RestartRequired = $true
                 } else {
                     Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
                 }
@@ -680,26 +676,9 @@ function Set-TargetResource {
                     Write-Verbose "enableAutomaticAccountCreation is set to false, enable it"
                     $securityConfig.enableAutomaticAccountCreation = "true"
                     Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
-                    $RestartRequired = $true
-                }
-            }
-            if($RestartRequired){
-                $machines = Get-RegisteredMachine -PortalHostName $FQDN -Token $token.token
-                if($machines.machines.count > 2){
-                    $StandByRestartRequired = $true
-                    $StandByMachineName = ($machine.machines| Where-Object { (Get-FQDN $_.machineName) -ne $FQDN }).machineName
                 }
             }
         }
-        if ($RestartRequired) 
-        {
-            Restart-PortalService
-            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET'
-            if($StandByRestartRequired){
-                Restart-PortalService -MachineName $StandByMachineName
-            }
-        }
-
     }
     elseif ($Ensure -ieq 'Absent') {
         Write-Warning 'Site Delete not implemented'
@@ -980,14 +959,9 @@ function Restart-PortalService {
 
     try {
         Write-Verbose "Restarting Service $ServiceName"
-        if($MachineName -ne $null -or $MachineName -ne ""){
-            Get-Service -Name $ServiceName -ComputerName $MachineName | Set-Service -Status Stopped -Force -ErrorAction Ignore
-        }else{
-            Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-        }
-        
+        Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
         Write-Verbose 'Stopping the service' 
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -MachineName $MachineName
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
         Write-Verbose 'Stopped the service'
     }
     catch {
@@ -996,13 +970,8 @@ function Restart-PortalService {
 
     try {
         Write-Verbose 'Starting the service'
-        if($MachineName -ne $null -or $MachineName -ne ""){
-            Get-Service -Name $ServiceName -ComputerName $MachineName | Set-Service -Status Running -Force -ErrorAction Ignore
-        }else{
-            Start-Service -Name $ServiceName -ErrorAction Ignore
-        }
-
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running' -MachineName $MachineName
+        Start-Service -Name $ServiceName -ErrorAction Ignore
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
         Write-Verbose "Restarted Service '$ServiceName'"
     }
     catch {
@@ -1056,29 +1025,6 @@ function Set-LoggingLevel {
         }
     }
     $ServiceRestartRequired
-}
-
-function Get-RegisteredMachine {
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $PortalHostName = 'localhost',
-
-        [System.String]
-        $SiteName = 'arcgis',
-
-        [System.Int32]
-        $Port = 7443,
-
-        [System.String]
-        $Token,
-
-        [System.String]
-        $Referer = 'http://localhost'
-    )   
-
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/machines") `
-                        -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
 }
 
 function Get-PortalSecurityConfig {

@@ -113,11 +113,7 @@ function Wait-ForServiceToReachDesiredState
 	$MaxSeconds=300,
 
     [System.Int32]
-    $MaxAttempts=-1,
-    
-    [Parameter(Mandatory=$false)]
-    [System.String]
-    $MachineName
+    $MaxAttempts=-1
   )
     
   $Attempts  = 0
@@ -129,13 +125,9 @@ function Wait-ForServiceToReachDesiredState
     if ($Attempts++ -gt 0) {  # to skip the message for first attempt
       Write-Verbose "Checking state of Service '$ServiceName'. Attempt # $Attempts"        
     }    
-    if($MachineName -ne $null -and $MachineName -ne ""){
-        $Service = Get-Service -Name $ServiceName -ErrorAction Ignore -ComputerName $MachineName
-    }else{
-        $Service = Get-Service -Name $ServiceName -ErrorAction Ignore
-    }
     
-
+    $Service = Get-Service -Name $ServiceName -ErrorAction Ignore
+    
     $msg = "Service '$ServiceName' not ready."
     if ($Service) {
       $msg  = "Service '$ServiceName' is in '$($Service.Status)' state."
