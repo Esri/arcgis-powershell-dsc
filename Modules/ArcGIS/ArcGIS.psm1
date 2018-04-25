@@ -564,7 +564,7 @@ function Configure-ArcGIS
             if($HasSSLCertificatesPerNode -and -not($ConfigurationParamsHashtable.AllNodes[$i].SslCertifcate)){
                 $HasSSLCertificatesPerNode = $false
                 $Roles = $ConfigurationParamsHashtable.AllNodes[$i].Role
-                if(-not(($Roles.Count -eq 1 -and -not($Roles -icontains "DataStore" -or $Roles -icontains "FileShare")) -or ($Roles.Count -eq 2 -and -not((Compare-Object $Roles @("FileShare", "DataStore")).count -eq 0)))
+                if((@("Server", "Portal", "ServerWebAdaptor","PortalWebAdaptor", "LoadBalancer") | ?{$Roles -contains $_}).Count -gt 1)
                 {
                     if($i -gt 0){
                         throw "Please check and try again. All Nodes in the configuration don't have a SSL Certificate!"
