@@ -428,7 +428,12 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
         }
     }
     else {
-        Write-Verbose "Installing existing certificate with Thumbprint $($CertificateToInstall.Thumbprint)"
+        $SubjectName = $CertificateToInstall.SubjectName.Name
+        if(-not($SubjectName)){
+            $SubjectName = $CertificateToInstall.Subject
+        }
+
+        Write-Verbose "Installing existing certificate with SubjectName = $SubjectName and Thumbprint $($CertificateToInstall.Thumbprint)"
 
         $AllCerts = Get-ChildItem cert:\LocalMachine\My 
         foreach($ACert in $AllCerts){
@@ -441,10 +446,6 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
         #Search based on Name as a fallback - Backward compatibility
         if(-not($Cert)) 
         {
-            $SubjectName = $CertificateToInstall.SubjectName.Name
-            if(-not($SubjectName)){
-                $SubjectName = $CertificateToInstall.Subject
-            }
             Write-Verbose "Installing existing certificate with SubjectName $($SubjectName)"
             $SubjectNameSplits = Get-CommonNameSplits $SubjectName
             if($SubjectNameSplits -eq $null) { throw "Unable to split $SubjectName" }        
@@ -475,7 +476,7 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
         {
             $Cert = Get-ChildItem cert:\LocalMachine\My | Where-Object { $_.Thumbprint -ieq $CertificateToInstall.Thumbprint } | Select-Object -First 1 
             if($Cert -eq $null){
-                throw "Unable to find certificate with SubjectName = $SubjectName in 'cert:\LocalMachine\My'"
+                throw "Unable to find certificate with SubjectName = $SubjectName and Thumbprint $($CertificateToInstall.Thumbprint) in 'cert:\LocalMachine\My'"
             }               
         }              
     }
