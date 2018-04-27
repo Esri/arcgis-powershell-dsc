@@ -374,23 +374,14 @@ function Test-TargetResource
 }
 
 function URLAvailable([string]$Url){
-    # fixed (all status codes except 200 will throw an error)
     Write-Verbose "Checking URLAvailable : $Url"
 
     try{
-        $HTTP_Response_Available = Invoke-WebRequest -Uri $Url -Method GET -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing
-        $HTTP_Status_Available = [int]$HTTP_Response_Available.StatusCode
+        $HTTP_Response_Available = Invoke-ArcGISWebRequest -Url $Url -HttpMethod GET -HttpFormParameters @{ f = 'json'; }
+        return $true
     }catch [System.Net.WebException]{
-        $HTTP_Status_Available = [int]$_.Exception.HTTP_Response_Available.StatusCode #every status code except 200
-    }finally{
-        $temp = $HTTP_Response_Available.Close 
+        return $false
     }
-    if ($HTTP_Status_Available -eq 200){
-        $result =  $true
-    }else{
-        $result = $false
-    }
-    $result
 }
 
 function Get-WebAdaptorsForPortal
