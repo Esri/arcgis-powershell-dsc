@@ -934,7 +934,7 @@ Configuration ArcGISConfigure
 
                     $ExternalDNSName =(Get-FQDN $PrimaryPortalMachine.NodeName) 
                     if($Node.SslCertifcate){
-                        $ExternalDNSName = $LBMachine.SslCertifcate.Alias
+                        $ExternalDNSName = $Node.SslCertifcate.Alias
                     }else{
                         if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
                             $ExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
