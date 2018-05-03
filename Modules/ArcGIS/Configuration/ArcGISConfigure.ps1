@@ -932,7 +932,7 @@ Configuration ArcGISConfigure
                     
                     $Depends += @('[ArcGIS_Service_Account]Portal_RunAs_Account')
 
-                    $ExternalDNSName =(Get-FQDN $PrimaryPortalMachine.NodeName) 
+                    $ExternalDNSName =(Get-FQDN $PrimaryPortalMachine) 
                     if($Node.SslCertifcate){
                         $ExternalDNSName = $Node.SslCertifcate.Alias
                     }else{
