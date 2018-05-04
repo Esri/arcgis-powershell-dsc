@@ -113,7 +113,7 @@ function Wait-ForServiceToReachDesiredState
 	$MaxSeconds=300,
 
     [System.Int32]
-	$MaxAttempts=-1
+    $MaxAttempts=-1
   )
     
   $Attempts  = 0
@@ -127,7 +127,7 @@ function Wait-ForServiceToReachDesiredState
     }    
     
     $Service = Get-Service -Name $ServiceName -ErrorAction Ignore
-
+    
     $msg = "Service '$ServiceName' not ready."
     if ($Service) {
       $msg  = "Service '$ServiceName' is in '$($Service.Status)' state."
