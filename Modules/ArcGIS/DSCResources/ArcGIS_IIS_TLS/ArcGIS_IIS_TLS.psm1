@@ -134,26 +134,28 @@ function Test-TargetResource
         }
         $CertRootStore = "LocalMachine"
         $CertStore = "My"
-        $CertPath = "Cert:\$CertRootStore\$CertStore\$($pfx.Thumbprint)"    
-        if(Test-Path $CertPath)  { 
-            Write-Verbose "Certificate found in $CertPath"       
+        $CertPath = "Cert:\$CertRootStore\$CertStore\$($pfx.Thumbprint)"
+        if(Test-Path $CertPath)  {
+            Write-Verbose "Certificate found in $CertPath"
             $result = $true
         }
         if($result){
-			$CurrVerbosePreference = $VerbosePreference # Save current preference
-			$VerbosePreference = 'SilentlyContinue' # quieten it to ignore verbose output from Importing WebAdmin (bug in Powershell for this module) 
-			Import-Module WebAdministration | Out-Null
-			$VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
-            if(Get-WebBinding -Protocol https -Port $Port)
+            $result = $false
+            $CurrVerbosePreference = $VerbosePreference # Save current preference
+            $VerbosePreference = 'SilentlyContinue' # quieten it to ignore verbose output from Importing WebAdmin (bug in Powershell for this module) 
+            Import-Module WebAdministration | Out-Null
+            $VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
+            $binding = Get-WebBinding -Protocol https -Port $Port
+            if($binding)
             {
                 Write-Verbose "IIS has a web binding at Port $Port. Checking for the Certificate"
                 $IISCertPath = "IIS:\SslBindings\0.0.0.0!$Port"
-                if(Test-Path $IISCertPath) {                                    
-                    $result = $true
+                if(Test-Path $IISCertPath) {
+                    if ($binding.certificateHash -ieq $pfx.Thumbprint) {
+                        $result = $true
+                    }
                 }
-            }else {
-				$result = $false
-			}
+            }
         }
     }else{
         # Self Signed option
@@ -430,36 +432,51 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
         if(-not($SubjectName)){
             $SubjectName = $CertificateToInstall.Subject
         }
-        Write-Verbose "Installing existing certificate with SubjectName $($SubjectName)"
-        $SubjectNameSplits = Get-CommonNameSplits $SubjectName
-        if($SubjectNameSplits -eq $null) { throw "Unable to split $SubjectName" }        
+
+        Write-Verbose "Installing existing certificate with SubjectName = $SubjectName and Thumbprint $($CertificateToInstall.Thumbprint)"
+
         $AllCerts = Get-ChildItem cert:\LocalMachine\My 
         foreach($ACert in $AllCerts){
-            $SubjectForCert = $ACert.Subject
-            if($SubjectForCert -and $SubjectForCert.Length -gt 0) {
-                $CertSubjectNameSplits = Get-CommonNameSplits $SubjectForCert
-                if($CertSubjectNameSplits -and ($SubjectNameSplits.Length -eq $CertSubjectNameSplits.Length)) {
-                    $MisMatch = $false   
-                    [int]$count = $SubjectNameSplits.Length
-                    for($m = 0; $m -lt $count; $m++){
-                        if($SubjectNameSplits[$m] -ine $CertSubjectNameSplits[$m] -and $SubjectNameSplits[$m] -ine '*') {
-                            $MisMatch = $true
-                            break
-                        }
-                    }            
-                    if($MisMatch -eq $false) {
-                        $Cert = $ACert
-                        break
-                    } 
-                }
+            if($CertificateToInstall.Thumbprint -ieq $ACert.Thumbprint) 
+            {
+                $Cert = $ACert
             }
         }
         
+        #Search based on Name as a fallback - Backward compatibility
         if(-not($Cert)) 
         {
-            $Cert = Get-ChildItem cert:\LocalMachine\My | Where-Object { $_.Subject -match $SubjectName } | Select-Object -First 1 
+            Write-Verbose "Installing existing certificate with SubjectName $($SubjectName)"
+            $SubjectNameSplits = Get-CommonNameSplits $SubjectName
+            if($SubjectNameSplits -eq $null) { throw "Unable to split $SubjectName" }        
+            $AllCerts = Get-ChildItem cert:\LocalMachine\My 
+            foreach($ACert in $AllCerts){
+                $SubjectForCert = $ACert.Subject
+                if($SubjectForCert -and $SubjectForCert.Length -gt 0) {
+                    $CertSubjectNameSplits = Get-CommonNameSplits $SubjectForCert
+                    if($CertSubjectNameSplits -and ($SubjectNameSplits.Length -eq $CertSubjectNameSplits.Length)) {
+                        $MisMatch = $false   
+                        [int]$count = $SubjectNameSplits.Length
+                        for($m = 0; $m -lt $count; $m++){
+                            if($SubjectNameSplits[$m] -ine $CertSubjectNameSplits[$m] -and $SubjectNameSplits[$m] -ine '*') {
+                                $MisMatch = $true
+                                break
+                            }
+                        }            
+                        if($MisMatch -eq $false) {
+                            $Cert = $ACert
+                            break
+                        } 
+                    }
+                }
+            }
+        }
+
+        if(-not($Cert)) 
+        {
+            $Cert = Get-ChildItem cert:\LocalMachine\My | Where-Object { $_.Thumbprint -ieq $CertificateToInstall.Thumbprint } | Select-Object -First 1 
             if($Cert -eq $null){
-                throw "Unable to find certificate with SubjectName = $SubjectName in 'cert:\LocalMachine\My'"
+                throw "Unable to find certificate with SubjectName = $SubjectName and Thumbprint $($CertificateToInstall.Thumbprint) in 'cert:\LocalMachine\My'"
             }               
         }              
     }
@@ -471,7 +488,7 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
     }
     Write-Verbose "Installing Certificate with thumbprint $($Cert.Thumbprint) and subject $($Cert.Subject) into IIS Binding for Port $Port"
     New-Item  $InstallPath -Value $Cert
-    Write-Verbose 'Finished Installing Certificate'        
+    Write-Verbose 'Finished Installing Certificate'
 }
  
 function Create-SelfSignedCertificate([string]$subject)
