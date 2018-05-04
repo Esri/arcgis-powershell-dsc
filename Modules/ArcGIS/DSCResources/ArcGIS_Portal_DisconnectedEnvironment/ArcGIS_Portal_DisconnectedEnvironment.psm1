@@ -282,6 +282,10 @@ function Set-TargetResource
         Wait-ForUrl "$($PortalUrl)/portaladmin" -HttpMethod 'GET'
     }
 
+    if (-not (Test-Indexer -PortalUrl $PortalUrl -Token $($token.token)))
+    {
+        Set-Indexer -PortalUrl $PortalUrl -Token $($token.token)
+    }
 }
 
 
@@ -391,7 +395,7 @@ function Test-TargetResource
                     Write-Warning "No Hosted Server available. Geometry-Service is not working."
                     $result = $false
                 }
-                
+
                 if ($result -and -not ($CurHelperServices.geometry.url.StartsWith($HostedServerUrl)))
                 {
                     Write-Verbose "Current Geometry-Service $($CurHelperServices.geometry.url) does not match Hosted-Server $HostedServerUrl"
@@ -403,7 +407,7 @@ function Test-TargetResource
                     Write-Verbose "Geometry-Service on Hosted-Server not running"
                     $result = $false
                 }
-
+                
                 if ($result -and -not (Test-ServiceSharing -ServerUrl $HostedServerUrl -PortalUrl $PortalUrl -Token $($token.token) -ServiceName Geometry))
                 {
                     Write-Verbose "Geometry-Service is not shared to Everyone"
@@ -460,7 +464,11 @@ function Test-TargetResource
             }
         }
     }
-    
+
+    if ($result) {
+        $result = Test-Indexer -PortalUrl $PortalUrl -Token $($token.token)
+    }
+
     $result
 }
 
@@ -1160,6 +1168,60 @@ function Configure-BoundaryLayers{
     $err = $p.StandardError.ReadToEnd()
     if($err -and $err.Length -gt 0) {
         throw $err
+    }
+}
+
+function Test-Indexer
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalUrl,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    )
+
+    $result = $true
+
+    $portalIndexStatus = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/indexer/status" -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+
+    ForEach ($index in $portalIndexStatus.indexes) {
+        Write-Verbose "Index Status for $($index.name) : DataBase $($index.databaseCount) Items, Index $($index.indexCount) Items"
+        if ($index.databaseCount -ne $index.indexCount) {
+            Write-Verbose "Index needs Reindex"
+            $result = $false
+        } else {
+            Write-Verbose "Index correct"
+        }
+    }
+
+    $result
+}
+
+function Set-Indexer
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalUrl,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    )
+
+    Write-Verbose "Reindexing Portal"
+    $ret  = Invoke-ArcGISWebRequest -Url "$PortalUrl/portaladmin/system/indexer/reindex" -HttpFormParameters @{ f = 'json'; token = $Token; mode = 'FULL_MODE' } -TimeOutSec 600
+    if ($ret.status -ieq 'error') {
+        Write-Verbose "[WARNING] Reindexing Portal returned error:- $($ret.message)"
+    } else {
+        Write-Verbose "Reindexing Portal returned:- $ret"
     }
 }
 
