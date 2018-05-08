@@ -130,7 +130,7 @@ function Set-TargetResource
         {
             Write-Verbose "Living Atlas disabled"
             if($LivingAtlasBoundaryLayerFolderPath){
-                Configure-BoundaryLayers -PortalUrl $PortalUrl -Credential $SiteAdministrator `
+                Set-BoundaryLayers -PortalUrl $PortalUrl -Credential $SiteAdministrator `
                     -LivingAtlasBoundaryLayerFolderPath $LivingAtlasBoundaryLayerFolderPath -LivingAtlasBoundarySubsetFilePath $LivingAtlasBoundarySubsetFilePath
             }
         } else {
@@ -1118,7 +1118,7 @@ function Set-LivingAtlasDisabled
     $result
 }
 
-function Configure-BoundaryLayers{
+function Set-BoundaryLayers{
     [CmdletBinding()]
     param(
         [System.String]
@@ -1149,8 +1149,34 @@ function Configure-BoundaryLayers{
         throw "$publishBoundaryToolPath += not found"
     }
 
+    if ($Arguments -contains "--file")
+    {
+        Invoke-PublishBoundaryLayers -Arguments $Arguments -PublishBoundaryToolPath $publishBoundaryToolPath
+    }
+    else
+    {
+        $files = Get-ChildItem $LivingAtlasBoundaryLayerFolderPath -Filter *.sd
+        ForEach ($file in $files)
+        {
+            Write-Verbose $file
+            $Argument = $Arguments + " --files $($file.BaseName)"
+            Invoke-PublishBoundaryLayers -PublishBoundaryToolPath $publishBoundaryToolPath -Arguments $Argument
+        }
+    }
+}
+
+function Invoke-PublishBoundaryLayers
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PublishBoundaryToolPath,
+
+        [System.String]
+        $Arguments
+    )
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $publishBoundaryToolPath
+    $psi.FileName = $PublishBoundaryToolPath
     $psi.Arguments = $Arguments
     $psi.UseShellExecute = $false #start the process from it's own executable file    
     $psi.RedirectStandardOutput = $true #enable the process to read from standard output
