@@ -1,0 +1,16 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Portal_DisconnectedEnvironment")]
+class ArcGIS_Portal_DisconnectedEnvironment : OMI_BaseResource
+{
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Key] String HostName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+	[Write] Boolean DisableExternalContent;
+	[Write] Boolean DisableLivingAtlas;
+	[Write] String LivingAtlasBoundaryLayerFolderPath;
+	[Write] String LivingAtlasBoundarySubsetFilePath;
+	[Write] String ConfigJsPath;
+	[Write] String HelperServices;
+};
+
+

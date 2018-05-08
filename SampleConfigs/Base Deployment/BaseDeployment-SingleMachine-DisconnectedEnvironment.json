@@ -1,0 +1,119 @@
+{
+    "AllNodes":  [
+                     {
+                         "NodeName":  "[Machine Name]",
+                         "DataStoreTypes":  [ 
+                                              "Relational"
+                                            ],
+                         "Role":  [
+                                    "Server",
+                                    "Portal",          
+                                    "DataStore",
+                                    "ServerWebAdaptor",
+                                    "PortalWebAdaptor"
+                                  ]
+                     }
+                 ],
+    "ConfigData":  {
+                       "Version":  "[Version of ArcGIS Deployment]",
+                       "ServerContext":  "server",
+                       "PortalContext":  "portal",
+                       "ServerRole": "GeneralPurposeServer",
+                       "Credentials":  {
+                                           "PrimarySiteAdmin":  {
+                                                                    "UserName":  "[PrimarySiteAdmin Username]",
+                                                                    "Email":  "[PrimarySiteAdmin Email]",
+                                                                    "Password":  "[PrimarySiteAdmin Password]"
+                                                                },
+                                           "ServiceAccount":  {
+                                                                  "Password":  "[ServiceAccount Password]",
+                                                                  "UserName":  "[ServiceAccount Username - Can be a Domain Account]",
+                                                                  "IsDomainAccount": false
+                                                              }
+                                       },
+                       "Server":  {
+                                      "LicenseFilePath":   "[License File Path - Server ]",
+                                      "Installer":  {
+                                                        "Path":  "[Server Installer Path]",
+                                                        "InstallDir":  "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                                                        "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] "
+                                                    },
+                                      "ServerDirectoriesRootLocation":  "C:\\arcgisserver\\directories",
+                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store",
+                                      "DisconnectedEnvironment":  {
+                                        "EnableJsApi":    true,
+                                        "EnableArcGISOnlineMapViewer":    true
+                                      }
+                                  },
+                       "Portal":  {
+                                      "LicenseFilePath": "[License File Path - Portal ]",
+                                      "Installer":  {
+                                                        "Path":  "[Portal Installer Path]",
+                                                        "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
+                                                        "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
+                                                    },
+                                      "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content",
+                                      "DisconnectedEnvironment":  {
+                                        "DisableExternalContent":    true,
+                                        "LivingAtlas":{
+                                            "Disabled": true,
+                                            "BoundaryLayerFolderPath": "[Optional Local Path - Folder Containing Boundary Layer]",
+                                            "BoundarySubsetFilePath": "[Optional Text File Path - List of boundary Layers to be deployed from the Folder specified above]"
+                                        },
+                                        "ConfigJsPath": "[Path to new Portal Config.js]",
+                                        "HelperServices": {
+                                                "geometry": {
+                                                    "useHostedServer": true,
+                                                    "url": "[URL to 'EXTERNAL' GeometryService e.g. if Hosted Server shall not be used]",
+                                                    "Credentials":  {
+                                                        "UserName":  "[Service Username - Required for a Secured Service]",
+                                                        "Password":  "[Service Password - Required for a Secured Service]"
+                                                    }
+                                                },
+                                                "print": {
+                                                    "useHostedServer": true,
+                                                    "url": "[URL to 'EXTERNAL' PrintService e.g. if Hosted Server shall not be used]",
+                                                    "Credentials":  {
+                                                        "UserName":  "[Service Username - Required for a Secured Service]",
+                                                        "Password":  "[Service Password - Required for a Secured Service]"
+                                                    }
+                                                },
+                                                "geocode": {
+                                                    "disableEsriWorldGeocoder": true,
+                                                    "Services": [
+                                                        {
+                                                            "url": "[URL to 'EXTERNAL' GeocodeService]",
+                                                            "name": "[Name fo Geocode-Service]",
+                                                            "Credentials":  {
+                                                                "UserName":  "[Service Username - Required for a Secured Service]",
+                                                                "Password":  "[Service Password - Required for a Secured Service]"
+                                                            }
+                                                        },
+                                                        {
+                                                            "url": "[URL to 'EXTERNAL' GeocodeService]",
+                                                            "name": "[Name fo Geocode-Service]",
+                                                            "Credentials":  {
+                                                                "UserName":  "[Service Username - Required for a Secured Service]",
+                                                                "Password":  "[Service Password - Required for a Secured Service]"
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                        }
+                                      }
+                                  },
+                       "DataStore":  {
+                                         "ContentDirectoryLocation":  "[Content Dir DataStore - C:\\arcgisdatastore]",
+                                         "Installer":  {
+                                                           "Path":  "[DataStore Installer Path]",
+                                                           "InstallDir":  "[DataStore Install Dir - Ex. C:\\ArcGIS\\DataStore]"
+                                                       }
+                                     },
+                       "WebAdaptor":  {
+                                          "AdminAccessEnabled":  true,
+                                          "Installer":  {
+                                                            "Path":  "[WebAdaptor Installer Path]"
+                                                        }
+                                      }
+                   }
+}

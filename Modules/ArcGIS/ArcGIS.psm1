@@ -206,19 +206,26 @@ function Start-DSCJob {
 
     Write-Host "Starting DSC Job:- $ConfigurationName"
     $JobTimer = [System.Diagnostics.Stopwatch]::StartNew()
-    if($Credential)
+    if(Test-Path ".\$($ConfigurationName)\*")
     {
-        $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential
+        if($Credential)
+        {
+            $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential
+        }
+        else
+        {
+            $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose
+        }
+        Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
     }
     else
     {
-        $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose
+        $Job = @{state = "Skipped"}
     }
-    Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
     Write-Host "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
     Write-Host "$($ConfigurationName) - $($Job.state)"
     $result = $False
-    if($Job.state -ieq "Completed"){
+    if(($Job.state -ieq "Completed") -or ($Job.state -ieq "Skipped")){
         $result = $True
     }  
     $result  
@@ -535,7 +542,10 @@ function Configure-ArcGIS
         $MappedDriveOverrideFlag = $false,
         
         [switch]
-        $DebugSwitch
+        $DebugSwitch,
+        
+        [switch]
+        $DisconnectedEnvironment
     )
     
     $DebugMode = $False
@@ -544,7 +554,7 @@ function Configure-ArcGIS
         $DebugMode = $true
     }
 
-    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService"){
+    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService" -or $Mode -ieq "DisconnectedEnvironment"){
 
         Foreach($cf in $ConfigurationParametersFile){
             if(-not($ConfigurationParamsJSON)){
@@ -645,7 +655,25 @@ function Configure-ArcGIS
                             Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
                         }
 
-                        if($JobFlag){ 
+                        if($DisconnectedEnvironment){
+                            $ConfigurationName = "ArcGISDisconnectedEnvironment"
+                            if(Test-Path ".\$ConfigurationName") {
+                                Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
+                            }
+                            Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
+                            . "$PSScriptRoot\Configuration\$ConfigurationName.ps1" -Verbose:$false
+                
+                            Write-Host "Compiling the Configuration:- $ConfigurationName"
+                            & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
+                            
+                            if($Credential){
+                                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
+                            }else{
+                                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
+                            }
+                        }
+                        
+                        if($JobFlag){
                             Get-ArcGISURL $ConfigurationParamsHashtable
                         }
                     }
@@ -653,12 +681,13 @@ function Configure-ArcGIS
             }else{
                 throw "FileShare not present required for HA Setup!"  
             }
-        }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService")){
+        }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService") -or ($Mode -ieq "DisconnectedEnvironment")){
             if($Mode -ieq "Uninstall"){
                 $ConfigurationName = "ArcGISUninstall"
             }elseif($Mode -ieq "PublishGISService"){
                 $ConfigurationName = "PublishGISService"
             }
+
             if(Test-Path ".\$ConfigurationName") {
                 Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
             }    
@@ -670,9 +699,9 @@ function Configure-ArcGIS
             & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
             
             if($Credential){
-                Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
+                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
             }else{
-                Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
+                $JobFlag = Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
             }
         }
     }elseif($Mode -ieq "Upgrade"){

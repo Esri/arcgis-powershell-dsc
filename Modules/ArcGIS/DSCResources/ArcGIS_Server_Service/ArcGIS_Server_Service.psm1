@@ -108,7 +108,7 @@ function Test-TargetResource
     $ServerEndPoint = "$($Scheme)://$($ServerHostname):$Port"
     $Url = "$ServerEndPoint/$ServerContext/admin"
     Wait-ForUrl -Url $Url -MaxWaitTimeInSeconds 180
-    $token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount.UserName -Referer $Referer
+    $token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
     
     Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
     $ServiceNameToCompare = if($Folder) { "$Folder/$ServiceName" } else { $ServiceName }

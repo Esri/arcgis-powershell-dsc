@@ -1067,7 +1067,6 @@ Configuration ArcGISConfigure
                             }
                         } 
                     }
-                    
                 }
                 'DataStore'{
                     $Depends = @()
