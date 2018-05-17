@@ -12,5 +12,6 @@ class ArcGIS_Server_TLS : OMI_BaseResource
     [Write, Description("Register CName for Web Adaptor")] Boolean RegisterWebAdaptorForCName;
     [Write, Description("EnableSSL")] Boolean EnableSSL;
 	[Write, Description("Whether the Certificate should only be imported and not set as the Web Server Certificate Alias")] Boolean ImportOnly;
+	[Write, Description("List of RootOrIntermediate Certificates")] String SslRootOrIntermediate;
 };
 

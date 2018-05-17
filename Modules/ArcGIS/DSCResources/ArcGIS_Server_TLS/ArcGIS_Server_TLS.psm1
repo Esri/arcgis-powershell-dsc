@@ -76,7 +76,10 @@ function Set-TargetResource
         $EnableSSL,
 
         [System.Boolean]
-        $ImportOnly
+        $ImportOnly,
+
+        [System.String]
+        $SslRootOrIntermediate
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -283,6 +286,21 @@ function Set-TargetResource
         }
     }
 
+    #RootOrIntermediateCertificate
+    $certNames = Get-AllSSLCertificateCNamesForMachine -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $MachineName 
+    foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
+        if ($certNames.certificates -icontains $key.Alias){
+            Write-Verbose "Set RootOrIntermediate $($key.Alias) is in List of SSL-Certificates no Action Required"
+        }else{
+            Write-Verbose "Set RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates Import-RootOrIntermediate"
+            try{
+                Import-RootOrIntermediateCertificate -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $MachineName -CertAlias $key.Alias -CertificateFilePath $key.Path
+            }catch{
+                Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
+            }
+        }
+    }
+
     if($RestartRequired)
     {
         Write-Verbose "Restarting Service $ServiceName"
@@ -337,7 +355,10 @@ function Test-TargetResource
         $EnableSSL,
 
         [System.Boolean]
-        $ImportOnly
+        $ImportOnly,
+
+        [System.String]
+        $SslRootOrIntermediate
 	)   
    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -458,6 +479,20 @@ function Test-TargetResource
         }
     }       
     
+    if ($result) { # test for RootOrIntermediate Certificate-List
+        $testRootorIntermediate = $true
+        foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
+            if ($certNames.certificates -icontains $key.Alias){
+                Write-Verbose "Test RootOrIntermediate $($key.Alias) is in List of SSL-Certificates"
+            }else{
+                $testRootorIntermediate = $false 
+                Write-Verbose "Test RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates"
+                break;
+            }
+        }
+        $result = $testRootorIntermediate
+    }
+
 	Write-Verbose "Returning $result from Test-TargetResource"
     if($Ensure -ieq 'Present') {
 	       $result   
@@ -636,6 +671,46 @@ function Import-ExistingCertificate
         Write-Verbose "[WARNING] Response from $ImportCACertUrl was null"
     }
 }
+
+function Import-RootOrIntermediateCertificate
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ServerHostName = 'localhost', 
+
+        [System.String]
+        $SiteName = 'arcgis', 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer, 
+
+        [string]
+        $MachineName,
+
+        [System.String]
+        $CertAlias, 
+
+        [System.String]
+        $CertificateFilePath
+    )
+
+    $ImportCertUrl  = "https://$($ServerHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/importRootOrIntermediate"
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+
+    $props = @{ f= 'json'; token = $Token; alias = $CertAlias; } 
+    $res = Upload-File -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'rootCACertificate'    
+    if($res -and $res.Content) {
+        $response = $res | ConvertFrom-Json
+        Check-ResponseStatus $response -Url $ImportCACertUrl
+    } else {
+        Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
+    }
+}
+
 
 function Get-SecurityConfig 
 {
@@ -931,13 +1006,13 @@ function Get-SSLCertificateForMachine
 
     try 
     {
-       $res = Invoke-WebRequest -Uri $CertUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
+        $res = Invoke-WebRequest -Uri $CertUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
        ### Response is not valid JSON. Hence use Regex
-       #Write-Verbose "Response $($res.Content)"
+        #Write-Verbose "Response $($res.Content)"
        if(-not($res.Content)){
             Write-Verbose "[WARNING] Response from $CertUrl is NULL"
             $null
-       }else {
+        }else {
            if($res.Content.IndexOf('error') -gt -1){
                 $json = $res.Content | ConvertFrom-Json
 				$errMsgs = ($json.messages -join ', ')
@@ -945,12 +1020,12 @@ function Get-SSLCertificateForMachine
 					Write-Verbose "[WARNING] Response from $CertUrl is $errMsgs"
 				}
                 $null 
-           }else {
+            }else {
                 $IssuerValue = $null
-                $Issuer = [regex]::matches($res.Content, '"Issuer":(\w*)"([A-Za-z =,\.0-9\-]+)\"')
+                $Issuer = [regex]::matches($res.Content, '"[Ii]ssuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
                 $Issuer.Groups | %{ 
                     if($_.Value -and $_.Value.Length -gt 0){
-                        $Pos = $_.Value.IndexOf('"Issuer"')
+                        $Pos = $_.Value.ToLower().IndexOf('"issuer"')
                         if($Pos -gt -1) {
                             $Str = $_.Value.Substring($Pos + '"Issuer"'.Length)
                             $Pos = $Str.IndexOf('"')
