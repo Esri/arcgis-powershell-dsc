@@ -56,7 +56,6 @@ function Set-TargetResource
 
     $FQDN = Get-FQDN $env:COMPUTERNAME    
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
-010
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	Write-Verbose "Waiting for Server 'http://$($FQDN):6080/arcgis/admin' to initialize"
     Wait-ForUrl "http://$($FQDN):6080/arcgis/admin" -HttpMethod 'GET'
