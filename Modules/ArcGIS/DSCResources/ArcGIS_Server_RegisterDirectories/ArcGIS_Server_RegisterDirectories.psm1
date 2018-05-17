@@ -56,7 +56,6 @@ function Set-TargetResource
 
     $FQDN = Get-FQDN $env:COMPUTERNAME    
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
-
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	Write-Verbose "Waiting for Server 'http://$($FQDN):6080/arcgis/admin' to initialize"
     Wait-ForUrl "http://$($FQDN):6080/arcgis/admin" -HttpMethod 'GET'
@@ -64,30 +63,29 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {        
         $Referer = 'http://localhost' 
         $ServerUrl = "http://$($FQDN):6080"
-        Write-Verbose "Checking for site on '$ServerUrl'"
-        $siteExists = $false
         try {  
+            Write-Verbose "Getting the Token for site '$ServerUrl'"
             $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-            $siteExists = ($token.token -ne $null)
-        }
-        catch {
-            Write-Verbose "[WARNING] GetToken returned:- $_"
-        }
-        if($Directories) { #setting registered directories
-            $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-            ForEach ($dir in ($Directories | ConvertFrom-Json)) 
-            {
-                Write-Verbose "Testing for Directory $($dir.name)"
-                if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
-                    Write-Verbose "Directory $($dir.name) already registered > no Action required"
-                } else {
-                    Write-Verbose "Directory $($dir.name) not registered > registering directory"
-                    $response = Set-RegisteredDirectory -ServerURL $ServerUrl -Token $token.token -Referer $Referer -Name $dir.name -PhysicalPath $dir.physicalPath -DirectoryType $dir.directoryType
-                    Write-Verbose "Set-RegisteredDirectory Response :-$response"
+            if($token.token -ne $null -and $Directories) { #setting registered directories
+                $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
+                ForEach ($dir in ($Directories | ConvertFrom-Json)) 
+                {
+                    Write-Verbose "Testing for Directory $($dir.name)"
+                    if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
+                        Write-Verbose "Directory $($dir.name) already registered > no Action required"
+                    } else {
+                        Write-Verbose "Directory $($dir.name) not registered > registering directory"
+                        $response = Set-RegisteredDirectory -ServerURL $ServerUrl -Token $token.token -Referer $Referer -Name $dir.name -PhysicalPath $dir.physicalPath -DirectoryType $dir.directoryType
+                        Write-Verbose "Set-RegisteredDirectory Response :-$response"
+                    }
                 }
+            }else{
+                throw "[Error] No Token Returned"
             }
         }
-        
+        catch {
+            throw "[ERROR] GetToken returned:- $_"
+        }
     }
     elseif($Ensure -ieq 'Absent') {
         #Unregister Registered Directories
@@ -122,20 +120,30 @@ function Test-TargetResource
     $Referer = 'http://localhost'
     $ServerUrl = "http://$($FQDN):6080"
     $result = $false
-   
-    if($Directories) { # only Primary Server
-        $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-        ForEach ($dir in ($Directories | ConvertFrom-Json)) 
-        {
-            Write-Verbose "Testing for Directory $($dir.name)"
-            if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
-                Write-Verbose "Directory $($dir.name) already registered"
-            } else {
-                Write-Verbose "Directory $($dir.name) not registered"
-                $result = $false
-                break
+    Write-Verbose "Getting the Token for site '$ServerUrl'"
+    $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+    try {  
+        Write-Verbose "Getting the Token for site '$ServerUrl'"
+        if($token.token -ne $null -and $Directories) { #setting registered directories
+            $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
+            ForEach ($dir in ($Directories | ConvertFrom-Json)) 
+            {
+                Write-Verbose "Testing for Directory $($dir.name)"
+                if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
+                    Write-Verbose "Directory $($dir.name) already registered"
+                } else {
+                    Write-Verbose "Directory $($dir.name) not registered"
+                    $result = $false
+                    break
+                }
             }
         }
+        else{
+            throw "[Error] No Token Returned"
+        }
+    }
+    catch {
+        throw "[ERROR] GetToken returned:- $_"
     }
    
     if($Ensure -ieq 'Present') {
