@@ -119,11 +119,10 @@ function Test-TargetResource
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'http://localhost'
     $ServerUrl = "http://$($FQDN):6080"
-    $result = $false
+    $result = $true
     Write-Verbose "Getting the Token for site '$ServerUrl'"
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
     try {  
-        Write-Verbose "Getting the Token for site '$ServerUrl'"
         if($token.token -ne $null -and $Directories) { #setting registered directories
             $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
             ForEach ($dir in ($Directories | ConvertFrom-Json)) 
@@ -139,7 +138,7 @@ function Test-TargetResource
             }
         }
         else{
-            throw "[Error] No Token Returned"
+            throw "No Token Returned"
         }
     }
     catch {
