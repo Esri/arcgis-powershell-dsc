@@ -7,8 +7,8 @@
         - "Absent" ensures that existing server site is deleted (Not Implemented).
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Adminstrator
-    .PARAMETER Directories
-        List of Registered Directories
+    .PARAMETER DirectoriesJSON
+        List of Registered Directories in JSON Format
 #>
 function Get-TargetResource
 {
@@ -18,7 +18,7 @@ function Get-TargetResource
 	(
         [parameter(Mandatory = $true)]
         [System.String]
-        $Directories,
+        $DirectoriesJSON,
 
         [ValidateSet("Present","Absent")]
         [System.String]
@@ -41,7 +41,7 @@ function Set-TargetResource
 	(
         [parameter(Mandatory = $true)]
         [System.String]
-        $Directories,
+        $DirectoriesJSON,
 
         [ValidateSet("Present","Absent")]
         [System.String]
@@ -66,9 +66,9 @@ function Set-TargetResource
         try {  
             Write-Verbose "Getting the Token for site '$ServerUrl'"
             $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-            if($token.token -ne $null -and $Directories) { #setting registered directories
+            if($token.token -ne $null -and $DirectoriesJSON) { #setting registered directories
                 $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-                ForEach ($dir in ($Directories | ConvertFrom-Json)) 
+                ForEach ($dir in ($DirectoriesJSON | ConvertFrom-Json)) 
                 {
                     Write-Verbose "Testing for Directory $($dir.name)"
                     if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
@@ -101,7 +101,7 @@ function Test-TargetResource
 	(
         [parameter(Mandatory = $true)]
         [System.String]
-        $Directories,
+        $DirectoriesJSON,
 
         [ValidateSet("Present","Absent")]
         [System.String]
@@ -123,9 +123,9 @@ function Test-TargetResource
     Write-Verbose "Getting the Token for site '$ServerUrl'"
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
     try {  
-        if($token.token -ne $null -and $Directories) { #setting registered directories
+        if($token.token -ne $null -and $DirectoriesJSON) { #setting registered directories
             $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-            ForEach ($dir in ($Directories | ConvertFrom-Json)) 
+            ForEach ($dir in ($DirectoriesJSON | ConvertFrom-Json)) 
             {
                 Write-Verbose "Testing for Directory $($dir.name)"
                 if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {

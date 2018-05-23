@@ -49,7 +49,7 @@
         Need to Run Reindex of PostgresSQL Database that ships with the portal when a upgrade takes place.
     .PARAMETER ADServiceUser
         Service User to connect the Portal-UserStore to an Active Directory
-    .PARAMETER enableAutomaticAccountCreation
+    .PARAMETER EnableAutomaticAccountCreation
         Enables the automaticAccountCreation on Portal
 #>
 
@@ -358,7 +358,7 @@ function Set-TargetResource {
         $ADServiceUser,
 
         [System.Boolean]
-        $enableAutomaticAccountCreation
+        $EnableAutomaticAccountCreation
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -660,7 +660,7 @@ function Set-TargetResource {
                     Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
                 }
             }
-            if ($enableAutomaticAccountCreation)
+            if ($EnableAutomaticAccountCreation)
             {
                 Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
                 if (-not ($token))
@@ -673,7 +673,7 @@ function Set-TargetResource {
                 }
                 if ($securityConfig.enableAutomaticAccountCreation -ne "true")
                 {
-                    Write-Verbose "enableAutomaticAccountCreation is set to false, enable it"
+                    Write-Verbose "EnableAutomaticAccountCreation is set to false, enable it"
                     $securityConfig.enableAutomaticAccountCreation = "true"
                     Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
                 }
@@ -748,7 +748,7 @@ function Test-TargetResource {
         $ADServiceUser,
 
         [System.Boolean]
-        $enableAutomaticAccountCreation
+        $EnableAutomaticAccountCreation
     )
 
  
@@ -915,7 +915,7 @@ function Test-TargetResource {
         }
     }
 
-    if ($result -and ($enableAutomaticAccountCreation))
+    if ($result -and ($EnableAutomaticAccountCreation))
     {
         Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
         if (-not ($token))
@@ -928,10 +928,10 @@ function Test-TargetResource {
         }
         if ($securityConfig.enableAutomaticAccountCreation -ne "true")
         {
-            Write-Verbose "enableAutomaticAccountCreation is set to false, it should be enabled"
+            Write-Verbose "EnableAutomaticAccountCreation is set to false, it should be enabled"
             $result = $false
         } else {
-            Write-Verbose "enableAutomaticAccountCreation is already set to true"
+            Write-Verbose "EnableAutomaticAccountCreation is already set to true"
         }
     }
 
