@@ -3,6 +3,7 @@ Configuration ArcGISInstall{
     Import-DscResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
+    Import-DscResource -Name ArcGIS_InstallMsiPackage
 
     Node $AllNodes.NodeName {
 
@@ -218,15 +219,7 @@ Configuration ArcGISInstall{
                         Name =  "Web-Server"
                     }
                     
-                    Registry DowngradeIISVersionInRegistry
-                    {
-                        Ensure      = "Present"
-                        Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\InetStp"
-                        ValueName   = "MajorVersion"
-                        ValueData   = "9"
-                    }
-                    
-                    $TempFolder = "C:\Temp"
+                    $TempFolder = "$($env:SystemDrive)\Temp"
 
                     if(Test-Path $TempFolder)
                     {
@@ -251,15 +244,14 @@ Configuration ArcGISInstall{
                             DestinationPath = "$TempFolder\$FileName"  
                         }
 
-                        Package "Install$($h.Name)"
+                        ArcGIS_InstallMsiPackage "AIMP_$($h.Name.Replace(' ', '_'))"
                         {
-                            Name        = $h.Name
-                            Ensure      = "Present"
-                            Path        = "$TempFolder\$FileName"
-                            Arguments   = " /quiet"
-                            ProductId   = $h.ProductCode
+                            Name = $h.Name
+                            Path = $ExecutionContext.InvokeCommand.ExpandString("$TempFolder\$FileName")
+                            Ensure = "Present"
+                            ProductId = $h.ProductId
+                            Arguments = " /quiet"
                         }
-
                     }
 
                     if(Test-Path $TempFolder)

@@ -114,26 +114,6 @@
                        "LoadBalancer":  {
                                           "InstallerPath":  [
                                                             {
-                                                                "FilePath":  "WebDeploy_2_10_amd64_en-US.msi",
-                                                                "Name":"Microsoft Web Deploy 2.0",
-                                                                "ProductCode":  "5134B35A-B559-4762-94A4-FD4918977953"
-                                                            },
-                                                            {
-                                                                "FilePath":  "WebPlatformInstaller_3_10_amd64_en-US.msi",
-                                                                "Name":"Microsoft Web Platform Installer 3.0",
-                                                                "ProductCode":  "CC4878C0-4A6A-49CD-AAA7-DD3FCB06CC84"
-                                                            },
-                                                            {
-                                                                "FilePath":  "WebFarm2_x64.msi",
-                                                                "Name":"Microsoft Web Farm Framework Version 2.2",
-                                                                "ProductCode":  "ECCF2049-1097-4F7D-B2F5-1F9959A89D67"
-                                                            },
-                                                            {
-                                                                "FilePath":  "ExternalDiskCache_amd64.msi",
-                                                                "Name":"Microsoft External Cache",
-                                                                "ProductCode":  "9B5EE8C5-108B-4E91-AA52-93607FDC8D9C"
-                                                            },
-                                                            {
                                                                 "FilePath":  "rewrite_amd64.msi",
                                                                 "Name":"IIS URL Rewrite Module 2",
                                                                 "ProductCode":  "08F0318A-D113-4CF0-993E-50F191D397AD"

@@ -1,0 +1,12 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_InstallMsiPackage")]
+class ArcGIS_InstallMsiPackage : OMI_BaseResource
+{
+	[Write] String Name;
+	[Write] String Path;
+	[Key] String ProductId;
+	[Write] String Arguments;
+	[Write] String LogPath;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+};
+
