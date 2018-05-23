@@ -231,8 +231,21 @@ function Get-ArcGISURL
         [Parameter(Mandatory=$True)]
         $ConfigurationData
     )
-
+    
     $AllNodes = $ConfigurationData.AllNodes
+    
+    $HasSSLCertificatesPerNode = $true
+    for ( $i = 0; $i -lt $AllNodes.count; $i++ )
+    {
+        if($HasSSLCertificatesPerNode -and -not($AllNodes[$i].SslCertifcate)){
+            $Roles = $AllNodes[$i].Role
+            if((@("Server", "Portal", "ServerWebAdaptor","PortalWebAdaptor", "LoadBalancer") | ?{$Roles -contains $_}).Count -gt 1)
+            {
+                $HasSSLCertificatesPerNode = $False
+            }                
+        }
+    }
+    
     $PrimaryServerMachine = ""
     $PrimaryPortalMachine = ""
     $PortalContext = $ConfigurationData.ConfigData.PortalContext 
@@ -243,23 +256,32 @@ function Get-ArcGISURL
         $Role = $AllNodes[$i].Role
         if($Role -icontains 'Server' -and -not($PrimaryServerMachine))
         {
-            $PrimaryServerMachine  = $AllNodes[$i].NodeName
+            $PrimaryServerMachine  = $AllNodes[$i]
+            $PrimaryServerMachineName  = $PrimaryServerMachine.NodeName
         }
 
         if($Role -icontains 'Portal' -and -not($PrimaryPortalMachine))
         {
-            $PrimaryPortalMachine= $AllNodes[$i].NodeName
+            $PrimaryPortalMachine= $AllNodes[$i]
+            $PrimaryPortalMachineName = $PrimaryPortalMachine.NodeName
         }
     }
 
     if($PrimaryPortalMachine)
     {
-        $PortalExternalDNSName = Get-FQDN $PrimaryPortalMachine
+        $PortalExternalDNSName = Get-FQDN $PrimaryPortalMachineName
         
-        if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+        if($HasSSLCertificatesPerNode)
         {
-            $PortalExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-        }  
+            $PortalExternalDNSName = $PrimaryPortalMachine.SslCertifcate.Path
+        }
+        else
+        { 
+            if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+            {
+                $PortalExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+            }  
+        }
 
         $PortalAdminURL = "https://$($PortalExternalDNSName):7443/arcgis/portaladmin"
         $PortalURL = "https://$($PortalExternalDNSName):7443/arcgis/home"
@@ -267,11 +289,18 @@ function Get-ArcGISURL
 
     if($PrimaryServerMachine)
     {
-        $ServerExternalDNSName = Get-FQDN $PrimaryServerMachine
+        $ServerExternalDNSName = Get-FQDN $PrimaryServerMachineName
         
-        if($ConfigurationData.ConfigData.Server.SslCertifcate)
+        if($HasSSLCertificatesPerNode)
         {
-            $ServerExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+            $ServerExternalDNSName = $PrimaryServerMachine.SslCertifcate.Path
+        }
+        else
+        { 
+            if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+            {
+                $ServerExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+            } 
         }
 
         $ServerAdminURL = "https://$($ServerExternalDNSName):6443/arcgis/admin"
@@ -282,42 +311,64 @@ function Get-ArcGISURL
     $HasLoadBalancer = (($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }  | Measure-Object).Count -gt 0)
     if($HasLoadBalancer)
     {
-        $LBMachine = ($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }| Sort-Object | Select-Object -First 1).NodeName
-        $ExternalDNSName = [System.Net.DNS]::GetHostByName($LBMachine).HostName
+        $LBMachine = ($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }| Sort-Object | Select-Object -First 1)
+        $ExternalDNSName = Get-FQDN $LBMachine.NodeName
         
         $ServerExternalDNSName = $ExternalDNSName
         $PortalExternalDNSName = $ExternalDNSName
 
-        if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+        if($HasSSLCertificatesPerNode)
         {
-            $ServerExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-            $PortalExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+            $ServerExternalDNSName = $LBMachine.SslCertifcate.Alias
+            $PortalExternalDNSName = $LBMachine.SslCertifcate.Alias
         }
-        elseif($ConfigurationData.ConfigData.Server.SslCertifcate)
+        else
         {
-            $ServerExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-            $PortalExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-        }
+            if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+            {
+                $ServerExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+                $PortalExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+            }
+            elseif($ConfigurationData.ConfigData.Server.SslCertifcate)
+            {
+                $ServerExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                $PortalExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+            }
+        }        
     }
     else
     {
         if((($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0))
         {
-            $PortalWAMachine = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor') }| Select-Object -First 1).NodeName
-            $PortalExternalDNSName = [System.Net.DNS]::GetHostByName($PortalWAMachine).HostName
-            if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+            $PortalWAMachine = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor') }| Select-Object -First 1)
+            $PortalExternalDNSName =  Get-FQDN $PortalWAMachine.NodeName
+            
+            if($HasSSLCertificatesPerNode)
             {
-                $PortalExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+                $PortalExternalDNSName = $PortalWAMachine.SslCertifcate.Alias
+            }
+            else 
+            {
+                if($ConfigurationData.ConfigData.Portal.SslCertifcate)
+                {
+                    $PortalExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
+                }
             }
         }
         if((($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor')}  | Measure-Object).Count -gt 0))
         {
-            $ServerWAMachine = ($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor') }| Select-Object -First 1).NodeName
-            $ServerExternalDNSName = [System.Net.DNS]::GetHostByName($ServerWAMachine).HostName
-        
-            if($ConfigurationData.ConfigData.Server.SslCertifcate)
+            $ServerWAMachine = ($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor') }| Select-Object -First 1)
+            $ServerExternalDNSName = Get-FQDN $ServerWAMachine.NodeName
+            if($HasSSLCertificatesPerNode)
             {
-                $ServerExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                $ServerExternalDNSName = $ServerWAMachine.SslCertifcate.Alias
+            }
+            else 
+            {
+                if($ConfigurationData.ConfigData.Server.SslCertifcate)
+                {
+                    $ServerExternalDNSName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
+                }
             }
         }
     }
@@ -552,7 +603,6 @@ function Configure-ArcGIS
             }
         }
         $ConfigurationParamsHashtable = ConvertPSObjectToHashtable $ConfigurationParamsJSON
-
         for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
             if ($Credential)
             {
@@ -562,7 +612,7 @@ function Configure-ArcGIS
             }
             $ConfigurationParamsHashtable.AllNodes[$i].WMFVersion = $WMFVersion
         }
-
+        
         $CommonNodeToAddForPlainText = @{
             NodeName = "*"
             PSDscAllowPlainTextPassword = $true
@@ -633,7 +683,7 @@ function Configure-ArcGIS
                     if($JobFlag){
                         
                         $JobFlag = $False
-
+                    
                         Write-Host "Dot Sourcing the Configuration:- ArcGISConfigure"
                         . "$PSScriptRoot\Configuration\ArcGISConfigure.ps1" -Verbose:$false
 
@@ -649,7 +699,7 @@ function Configure-ArcGIS
                         if(Test-Path ".\ArcGISConfigure") {
                             Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
                         }
-
+                    
                         if($JobFlag){ 
                             Get-ArcGISURL $ConfigurationParamsHashtable
                         }

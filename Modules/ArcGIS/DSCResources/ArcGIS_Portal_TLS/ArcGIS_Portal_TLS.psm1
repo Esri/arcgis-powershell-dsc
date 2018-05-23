@@ -19,6 +19,8 @@
         Portal Endpoint with which the Certificate will be associated.
 	.PARAMETER ServerEndPoint
         Not sure - Adds a Host Mapping of Server Machine and associates it with the certificate being Installed.
+    .PARAMETER SslRootOrIntermediate
+        List of RootOrIntermediate Certificates
 #>
 
 function Get-TargetResource
@@ -66,7 +68,10 @@ function Set-TargetResource
 		$PortalEndPoint,
 
 		[System.String]
-		$ServerEndPoint
+		$ServerEndPoint,
+
+        [System.String]
+        $SslRootOrIntermediate
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -91,37 +96,73 @@ function Set-TargetResource
         }
 		$PortalUrl = "https://$($FQDN):7443"  
 		$Referer = $PortalUrl
-		$token = Get-PortalToken -PortalHostName $FQDN -SiteName $SiteName  -Credential $SiteAdministrator -Referer $Referer 
-		if(-not($token.token)) {
+        try{
+            Wait-ForUrl "https://$($FQDN):7443/$SiteName/sharing/rest/generateToken"
+		    $token = Get-PortalToken -PortalHostName $FQDN -SiteName $SiteName -Credential $SiteAdministrator -Referer $Referer 
+        }catch{
+            Write-Verbose "[WARNING] Unable to get token:- $_"
+        }
+		if(-not($token.token)){
 			throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
-		}
-		$certsConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $Sitename -Token $token.token -Referer $Referer 
+		}else{
+            Write-Verbose "Retrieved Portal Token : $($token.token)"
+        }
+        try{
+		    $certsConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer
+        }catch{
+            Write-Verbose "[WARNING] Unable to get SSL-CertificatesForPortal:- $_"
+        }
 		Write-Verbose "Current Alias for SSL Certificate:- '$($certsConfig.webServerCertificateAlias)' Certificates:- '$($certsConfig.sslCertificates -join ',')'"
 
-		if(-not($certsConfig.sslCertificates -icontains $CName)) {
+		if(-not($certsConfig.sslCertificates -icontains $CName)){
 			Write-Verbose "Importing SSL Certificate with alias $CName"
-			Import-ExistingCertificate -PortalHostName $FQDN -SiteName $Sitename -Token $token.token `
-					-Referer $Referer -CertAlias $CName -CertificateFilePath $CertificateFileLocation -CertificatePassword $CertificatePassword
-		}else {
+            try{
+			    Import-ExistingCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CertAlias $CName -CertificateFilePath $CertificateFileLocation -CertificatePassword $CertificatePassword
+            }catch{
+                Write-Verbose "[WARNING] Error Import-ExistingCertificate:- $_"
+            }
+		}else{
 			Write-Verbose "SSL Certificate with alias $CName already exists"
 		}
 		
 		if($certsConfig.webServerCertificateAlias -ine $CName) {
-			Write-Verbose "Updating Alias to use $CName"
-			Update-PortalSSLCertificate -PortalHostName $FQDN -SiteName $Sitename -Token $token.token -Referer $Referer -CertAlias $CName 
-		}else {
+            Write-Verbose "Updating Alias to use $CName"
+            try{
+			    Update-PortalSSLCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CertAlias $CName 
+            }catch{
+                Write-Verbose "[WARNING] Unable to Update-PortalSSLCertificate:- $_"
+            }
+		}else{
 			Write-Verbose "SSL Certificate alias $CName is the current one"
 		}        
 
         Write-Verbose "Waiting for $($PortalUrl)/$SiteName/portaladmin/"
 		Wait-ForUrl -Url "$($PortalUrl)/$SiteName/portaladmin/" -HttpMethod 'GET' -LogFailures
 
-		Write-Verbose 'Verifying that SSL Certificates config for site can be retrieved'
+        try{
+		    Write-Verbose 'Verifying that SSL Certificates config for site can be retrieved'
 		$certsConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $Sitename -Token $token.token -Referer $Referer 
-		Write-Verbose "Current Alias for SSL Certificate:- '$($certsConfig.webServerCertificateAlias)'"
-    }else {
+		    Write-Verbose "Current Alias for SSL Certificate:- '$($certsConfig.webServerCertificateAlias)'"
+        }catch{
+            Write-Verbose "[WARNING] Unable to get SSL-CertificatesForPortal:- $_"
+        }
+    }else{
         Write-Verbose "CertificateFileLocation not specified or '$CertificateFileLocation' not accessible"
         Write-Warning "CertificateFileLocation not specified or '$CertificateFileLocation' not accessible"
+    }
+
+    # test and set RootOrIntermediateCertificate
+    foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
+        if ($certsConfig.sslCertificates -icontains $key.Alias){
+            Write-Verbose "Set RootOrIntermediate $($key.Alias) is in List of SSL-Certificates no Action Required"
+        }else{
+            Write-Verbose "Set RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates Import-RootOrIntermediate"
+            try{
+                Import-RootOrIntermediateCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CertAlias $key.Alias -CertificateFilePath $key.Path
+            }catch{
+                Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
+            }
+        }
     }
 }
 
@@ -155,7 +196,10 @@ function Test-TargetResource
 		$PortalEndPoint,
 
 		[System.String]
-		$ServerEndPoint
+		$ServerEndPoint,
+
+        [System.String]
+        $SslRootOrIntermediate
 	)   
   
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -172,8 +216,9 @@ function Test-TargetResource
 	#Wait-ForUrl -Url "https://$($FQDN):7443/$($SiteName)/sharing/rest/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET' -LogFailures -MaximumRedirection -1
 	$Referer = $PortalUrl
     $token = $null
-    try{ 
-        $token = Get-PortalToken -PortalHostName $FQDN -SiteName $SiteName  -Credential $SiteAdministrator -Referer $Referer 
+    try{
+        Wait-ForUrl "https://$($FQDN):7443/$SiteName/sharing/rest/generateToken"
+        $token = Get-PortalToken -PortalHostName $FQDN -SiteName $SiteName -Credential $SiteAdministrator -Referer $Referer
         if(-not($token)) {
             # Unable to retrieve token. Restart the service and try again
             $ServiceName = 'Portal for ArcGIS'
@@ -206,20 +251,39 @@ function Test-TargetResource
         Write-Verbose "Retrieved Portal Token"
     }
     Write-Verbose "Retrieve SSL Certificate for Portal from $FQDN and checking for Alias $CNAME"
-	$certsConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $Sitename -Token $token.token -Referer $Referer 
-    Write-Verbose "Number of certificates:- $($certsConfig.sslCertificates.Length) Certificates:- '$($certsConfig.sslCertificates -join ',')' Current Alias :- '$($certsConfig.webServerCertificateAlias)'"
-	$result = ($certsConfig.sslCertificates -icontains $CName) -and ($certsConfig.webServerCertificateAlias -ieq $CName) 
-    if($result) {
+    try{
+	    $certsConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $Sitename -Token $token.token -Referer $Referer 
+        Write-Verbose "Number of certificates:- $($certsConfig.sslCertificates.Length) Certificates:- '$($certsConfig.sslCertificates -join ',')' Current Alias :- '$($certsConfig.webServerCertificateAlias)'"
+        $result = ($certsConfig.sslCertificates -icontains $CName) -and ($certsConfig.webServerCertificateAlias -ieq $CName) 
+    }catch{
+        Write-Verbose "Error in Get-SSLCertificatesForPortal :- $_"
+        $result = $false
+    }
+	
+    if($result){
         Write-Verbose "Certificate $($certsConfig.webServerCertificateAlias) matches expected alias of '$CNAME'"
     }
     else {
         Write-Verbose "Certificate $($certsConfig.webServerCertificateAlias) does not match expected alias of '$CNAME'"
     }
 
-    if($Ensure -ieq 'Present') {           
-           $result
+    if ($result) { # test for RootOrIntermediate Certificate-List
+        $testRootorIntermediate = $true
+        foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
+            if ($certsConfig.sslCertificates -icontains $key.Alias){
+                Write-Verbose "Test RootOrIntermediate $($key.Alias) is in List of SSL-Certificates"
+            }else{
+                $testRootorIntermediate = $false
+                Write-Verbose "Test RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates"
+                break;
+            }
+        }
+        $result = $testRootorIntermediate
     }
-    elseif($Ensure -ieq 'Absent') {        
+
+    if($Ensure -ieq 'Present'){
+           $result
+    }elseif($Ensure -ieq 'Absent'){
         (-not($result))
     }
 }
@@ -273,6 +337,42 @@ function Import-ExistingCertificate
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
         
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; password = $CertificatePassword  }    
+    $res = Upload-File -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
+    if($res -and $res.Content) {
+        $response = $res | ConvertFrom-Json
+        Check-ResponseStatus $response -Url $ImportCACertUrl
+    } else {
+        Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
+    }
+}
+
+function Import-RootOrIntermediateCertificate
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost', 
+
+        [System.String]
+        $SiteName = 'arcgis', 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer, 
+
+        [System.String]
+        $CertAlias, 
+
+        [System.String]
+        $CertificateFilePath
+    )
+
+    $ImportCertUrl  = "https://$($PortalHostName):7443/$SiteName/portaladmin/security/sslCertificates/importRootOrIntermediate"
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+
+    $props = @{ f= 'json'; token = $Token; alias = $CertAlias; norestart = $true  } # norestart requires ArcGIS Server 10.6 or higher
     $res = Upload-File -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
     if($res -and $res.Content) {
         $response = $res | ConvertFrom-Json
