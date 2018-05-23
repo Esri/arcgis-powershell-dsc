@@ -1,0 +1,13 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_SecurityScan")]
+class ArcGIS_SecurityScan : OMI_BaseResource
+{
+    [Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+    [Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+    [Write, EmbeddedInstance("MSFT_Credential")] String PortalAdministrator;
+    [Write] String HostName;
+    [Key] String ComponentName;
+    [Write] String OutputPath;
+
+};
+
