@@ -1,3 +1,23 @@
+<#
+    .SYNOPSIS
+        Installs a given msi
+    .PARAMETER Ensure
+        Indicates if the Component is to be installed or uninstalled if not present. Take the values Present or Absent. 
+        - "Present" ensures that component is installed, if not already installed. 
+        - "Absent" ensures that component is uninstalled or removed, if installed.
+    .PARAMETER Name
+        Name of MSI Component to be installed.
+    .PARAMETER Path
+        Path to Installer for the MSI Component - Can be a Physical Location or Network Share Address.
+    .PARAMETER ProductId
+        ProductId (GUID) of the Component being Installed.
+    .PARAMETER Arguments
+        Additional Command Line Arguments required by the installer to complete intallation of the give component successfully.
+    .PARAMETER LogPath
+        Optional Path where the Logs generated during the Install will be stored.
+#>
+
+
 function Get-TargetResource
 {
 	[CmdletBinding()]
