@@ -472,13 +472,30 @@ function ServerUpgradeScript {
                 }
 
                 $IsSADomainAccount = if($cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$True}else{$False}
+                $LicenseFilePath = $cf.ConfigData.Server.LicenseFilePath
+                $LicensePassword = $null
+                if($cf.ConfigData.Server.LicensePassword){
+                    $LicensePassword = $cf.ConfigData.Server.LicensePassword
+                }
+                
+                if($cf.ConfigData.GeoEventServer.LicenseFilePath){
+                    $LicenseFilePath = $cf.ConfigData.GeoEventServer.LicenseFilePath
+                    if($cf.ConfigData.GeoEventServer.LicensePassword){
+                        $LicensePassword = $cf.ConfigData.GeoEventServer.LicensePassword
+                    }
+                }
+                
+                if($cf.AllNodes[$i].ServerLicensePath -and $cf.AllNodes[$i].ServerLicensePassword){
+                    $LicenseFilePath = $cf.AllNodes[$i].ServerLicenseFilePath
+                    $LicensePassword = $cf.AllNodes[$i].ServerLicensePassword
+                }
 
                 if($cf.ConfigData.ServerRole -ieq "GeoEvent"){
                     ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
-                                -LicensePath $cf.ConfigData.Server.LicenseFilePath -ServerRole $cf.ConfigData.ServerRole -GeoEventServerInstaller $cf.ConfigData.GeoEventServer.Installer.Path -Verbose
+                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole -GeoEventServerInstaller $cf.ConfigData.GeoEventServer.Installer.Path -Verbose
                 }else{
                     ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
-                                -LicensePath $cf.ConfigData.Server.LicenseFilePath -ServerRole $cf.ConfigData.ServerRole  -Verbose    
+                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole -Verbose    
                 }
                 
                 if($Credential){
@@ -792,16 +809,20 @@ function Configure-ArcGIS
                 }
                 
                 $PrimaryPortalMachine = ""
+                $PrimaryPortal = $null
                 $StandByPortalMachine = ""
+                $StandByPortal = $null
                 $IsMultiMachinePortal = $False
                 
                 for ( $i = 0; $i -lt $HostingConfig.AllNodes.count; $i++ ){
                     $Role = $PortalConfig.AllNodes[$i].Role
                     if($Role -icontains 'Portal'){
                         if(-not($PrimaryPortalMachine)){
-                            $PrimaryPortalMachine= $PortalConfig.AllNodes[$i].NodeName
+                            $PrimaryPortal = $PortalConfig.AllNodes[$i]
+                            $PrimaryPortalMachine = $PrimaryPortal.NodeName
                         }else{
-                            $StandByPortalMachine = $PortalConfig.AllNodes[$i].NodeName
+                            $StandByPortal = $PortalConfig.AllNodes[$i]
+                            $StandByPortalMachine = $StandByPortal.NodeName
                             $IsMultiMachinePortal = $True
                         }
                     }
@@ -860,6 +881,21 @@ function Configure-ArcGIS
                                 }
                             }
                         }
+                        
+                        $LicenseFilePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
+                        $LicensePassword = $null
+                        if($PortalConfig.ConfigData.Server.LicensePassword)
+                        {
+                            $LicensePassword = $PortalConfig.ConfigData.Portal.LicensePassword
+                        }
+
+                        $PrimaryLicenseFilePath = $LicenseFilePath
+                        $PrimaryLicensePassword = $LicensePassword
+                        if($PrimaryPortal.PortalLicenseFilePath -and $PrimaryPortal.PortalLicensePassword)
+                        {
+                            $PrimaryLicenseFilePath = $PrimaryPortal.PortalLicenseFilePath
+                            $PrimaryLicensePassword = $PrimaryPortal.PortalLicensePassword
+                        }
 
                         Write-Host "Portal Upgrade"
                         if($IsMultiMachinePortal){
@@ -875,6 +911,14 @@ function Configure-ArcGIS
                                     }
                                 );
                             }
+                            
+                            $StandbyLicenseFilePath = $LicenseFilePath
+                            $StandbyLicensePassword = $LicensePassword
+                            if($StandbyPortal.PortalLicenseFilePath -and $StandbyPortal.PortalLicensePassword)
+                            {
+                                $StandbyLicenseFilePath = $StandbyPortal.PortalLicenseFilePath
+                                $StandbyLicensePassword = $StandbyPortal.PortalLicensePassword
+                            }
 
                             $PortalUpgradeArgs = @{
                                 ConfigurationData = $cd 
@@ -885,7 +929,10 @@ function Configure-ArcGIS
                                 InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
                                 InstallDir = $PortalConfig.ConfigData.Portal.Installer.InstallDir 
                                 ContentDir = $PortalConfig.ConfigData.Portal.Installer.ContentDir
-                                LicensePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
+                                PrimaryLicensePath = $PrimaryLicenseFilePath
+                                PrimaryLicensePassword = $PrimaryLicensePassword
+                                StandbyLicensePath = $StandbyLicenseFilePath
+                                StandbyLicensePassword = $StandbyLicensePassword 
                                 Context = $PortalConfig.ConfigData.PortalContext
                                 ServiceAccount = $PortalSACredential
                                 IsSADomainAccount = $PortalIsSADomainAccount
@@ -914,7 +961,8 @@ function Configure-ArcGIS
                                     Version = $PortalConfig.ConfigData.Version 
                                     PrimaryPortalMachine = $PrimaryPortalMachine
                                     InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                    LicensePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
+                                    PrimaryLicensePath = $PrimaryLicenseFilePath
+                                    PrimaryLicensePassword = $PrimaryLicensePassword
                                     Context = $PortalConfig.ConfigData.PortalContext
                                     ServiceAccount = $PortalSACredential
                                     IsSADomainAccount = $PortalIsSADomainAccount
@@ -934,7 +982,8 @@ function Configure-ArcGIS
                                     Version = $PortalConfig.ConfigData.Version
                                     PrimaryPortalMachine = $PrimaryPortalMachine
                                     InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                    LicensePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
+                                    PrimaryLicensePath = $PrimaryLicenseFilePath
+                                    PrimaryLicensePassword = $PrimaryLicensePassword
                                     Context = $PortalConfig.ConfigData.PortalContext
                                     ServiceAccount = $PortalSACredential
                                     IsSADomainAccount = $PortalIsSADomainAccount

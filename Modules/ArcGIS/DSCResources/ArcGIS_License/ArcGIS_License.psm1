@@ -38,7 +38,11 @@ function Set-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$LicenseFilePath,
+        $LicenseFilePath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$Password,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -86,7 +90,7 @@ function Set-TargetResource
        
         if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
             Write-Verbose "Version $Version Component $Component" 
-            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Arguments $Arguments
+            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Arguments $Arguments -Password $Password
         }
         else {
             Write-Verbose "Version $Version Component $Component Role $ServerRole" 
@@ -95,7 +99,8 @@ function Set-TargetResource
             Write-Verbose "StdOutputLogFilePath:- $StdOutputLogFilePath" 
             Write-Verbose "StdErrLogFilePath:- $StdErrLogFilePath" 
             License-Software -Product $Component -LicenseFilePath $LicenseFilePath `
-                         -Arguments $Arguments -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath
+                         -Arguments $Arguments -Password $Password -StdOutputLogFilePath $StdOutputLogFilePath `
+                         -StdErrLogFilePath $StdErrLogFilePath
         }
     }else {
         throw "Ensure = 'Absent' not implemented"
@@ -111,7 +116,11 @@ function Test-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$LicenseFilePath,
+        $LicenseFilePath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$Password,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]

@@ -17,6 +17,9 @@ Configuration ServerUpgrade{
         $LicensePath,
 
         [System.String]
+        $LicensePassword,
+
+        [System.String]
         $ServerRole,
         
         [System.String]
@@ -69,6 +72,7 @@ Configuration ServerUpgrade{
         ArcGIS_License ServerLicense
         {
             LicenseFilePath = $LicensePath
+            Password = $LicensePassword
             Ensure = "Present"
             Component = 'Server'
             ServerRole = $ServerRole 
