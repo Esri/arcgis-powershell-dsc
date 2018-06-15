@@ -30,7 +30,19 @@ Configuration PortalUpgrade{
 
         [parameter(Mandatory = $true)]
         [System.String]
-        $LicensePath,
+        $PrimaryLicensePath,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $PrimaryLicensePassword,
+        
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $StandbyLicensePath,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $StandbyLicensePassword,
         
         [parameter(Mandatory = $true)]
         [System.String]
@@ -132,7 +144,8 @@ Configuration PortalUpgrade{
     
             ArcGIS_License PortalLicense
             {
-                LicenseFilePath = $LicensePath
+                LicenseFilePath = $PrimaryLicensePath
+                Password = $PrimaryLicensePassword
                 Ensure = "Present"
                 Component = 'Portal'
                 DependsOn = $Depends
@@ -252,7 +265,8 @@ Configuration PortalUpgrade{
     
             ArcGIS_License PortalLicense
             {
-                LicenseFilePath = $LicensePath
+                LicenseFilePath = $StandbyLicensePath
+                Password = $StandbyLicensePassword
                 Ensure = "Present"
                 Component = 'Portal'
                 DependsOn = $Depends

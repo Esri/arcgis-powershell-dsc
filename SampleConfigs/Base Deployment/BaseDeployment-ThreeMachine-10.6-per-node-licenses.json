@@ -2,70 +2,38 @@
     "AllNodes":  [
                      {
                          "NodeName":  "[Machine 1 Name]",
-                         "Role":  [
-                                      "FileShare"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 2 Name]",
                          "DataStoreTypes":  [ 
-                                              "Relational"
+                                              "Relational",
+                                              "SpatioTemporal"
                                             ],
                          "Role":  [
                                       "DataStore"
                                   ]
+                        
+                     },
+                     {
+                         "NodeName":  "[Machine 2 Name]",
+                         "Role":  [
+                                      "Portal",
+                                      "PortalWebAdaptor"
+                                  ],
+                         "PortalLicenseFilePath": "[OPTIONAL]",
+                         "PortalLicensePassword": "[OPTIONAL]"
                      },
                      {
                          "NodeName":  "[Machine 3 Name]",
                          "Role":  [
-                                    "ServerWebAdaptor",
-                                    "PortalWebAdaptor"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 4 Name]",
-                         "Role":  [
-                                    "ServerWebAdaptor",
-                                    "PortalWebAdaptor"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 5 Name]",
-                         "Role":  [
-                                      "Portal"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 6 Name]",
-                         "Role":  [
-                                      "Portal"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 7 Name]",
-                         "Role":  [
-                                      "Server"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 8 Name]",
-                         "Role":  [
-                                      "Server"
-                                  ]
-                     },
-                     {
-                         "NodeName":   "[Machine 9 Name]",
-                         "Role":  [
-                                      "LoadBalancer"
-                                  ]
+                                      "Server",
+                                      "ServerWebAdaptor"
+                                  ],
+                         "ServerLicenseFilePath": "[OPTIONAL]",
+                         "ServerLicensePassword": "[OPTIONAL]"
                      }
                  ],
     "ConfigData":  {
                        "Version":  "[Version of ArcGIS Deployment]",
                        "ServerContext":  "server",
                        "PortalContext":  "portal",
-                       "FileShareLocalPath":  "[File Share Local Path]",
-                       "FileShareName":  "[File Share Name]",
                        "ServerRole": "GeneralPurposeServer",
                        "Credentials":  {
                                            "PrimarySiteAdmin":  {
@@ -80,23 +48,25 @@
                                                               }
                                        },
                        "Server":  {
-                                      "LicenseFilePath":   "[License File Path - Server ]",
+                                      "LicenseFilePath":   "[License File Path - Server - Will be over ridden by Node Level Licence File ]",
+                                      "LicensePassword": "[License Password - Server - OPTIONAL] - Will be over ridden by Node Level Password",
                                       "Installer":  {
                                                         "Path":  "[Server Installer Path]",
                                                         "InstallDir":  "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
                                                         "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] "
                                                     },
-                                      "ServerDirectoriesRootLocation":  "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\directories",
-                                      "ConfigStoreLocation":  "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\config-store"
+                                      "ServerDirectoriesRootLocation":  "C:\\arcgisserver\\directories",
+                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
                                   },
                        "Portal":  {
-                                      "LicenseFilePath": "[License File Path - Portal ]",
+                                      "LicenseFilePath": "[License File Path - Portal - Will be over ridden by Node Level Licence File]",
+                                      "LicensePassword": "[License Password - Portal - OPTIONAL - Will be over ridden by Node Level Password]",
                                       "Installer":  {
                                                         "Path":  "[Portal Installer Path]",
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
                                                         "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
                                                     },
-                                      "ContentDirectoryLocation":  "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\portalforarcgis\\content\\arcgisportal\\content"
+                                      "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content"
                                   },
                        "DataStore":  {
                                          "ContentDirectoryLocation":  "[Content Dir DataStore - C:\\arcgisdatastore]",
@@ -110,20 +80,6 @@
                                           "Installer":  {
                                                             "Path":  "[WebAdaptor Installer Path]"
                                                         }
-                                      },
-                       "LoadBalancer":  {
-                                          "InstallerPath":  [
-                                                            {
-                                                                "FilePath":  "rewrite_amd64.msi",
-                                                                "Name":"IIS URL Rewrite Module 2",
-                                                                "ProductCode":  "08F0318A-D113-4CF0-993E-50F191D397AD"
-                                                            },
-                                                            {
-                                                                "FilePath":  "requestRouter_x64.msi",
-                                                                "Name":"Microsoft Application Request Routing 3.0",
-                                                                "ProductCode":  "78FD26A2-9214-48CD-AF71-7F33D1A78892"
-                                                            }
-                                                        ]
                                       }
                    }
 }

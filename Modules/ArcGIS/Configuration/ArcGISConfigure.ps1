@@ -406,7 +406,7 @@ Configuration ArcGISConfigure
                         { 
                             Ensure = 'Present'
                             SiteAdministrator = $PSACredential
-                            Directories = ($ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
+                            DirectoriesJSON = ($ConfigurationData.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
                             DependsOn = $Depends
                         }
                         $Depends += "[ArcGIS_Server_RegisterDirectories]Server$($Node.NodeName)RegisterDirectories"
@@ -1020,7 +1020,7 @@ Configuration ArcGISConfigure
                         PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { (Get-FQDN $PrimaryPortalMachine) } else { "" }
                         EnableDebugLogging = if($ConfigurationData.ConfigData.DebugMode) { $true } else { $false }
                         ADServiceUser = $ADServiceCredential
-                        enableAutomaticAccountCreation = if($ConfigurationData.ConfigData.Portal.enableAutomaticAccountCreation) {$true} else {$false}
+                        EnableAutomaticAccountCreation = if($ConfigurationData.ConfigData.Portal.EnableAutomaticAccountCreation) {$true} else {$false}
                     }
 
                     if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Path){

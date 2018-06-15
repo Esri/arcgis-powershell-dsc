@@ -312,7 +312,10 @@ function License-Software
 		$Product, 
 
 		[string]
-		$LicenseFilePath, 
+        $LicenseFilePath, 
+        
+        [string]
+		$Password, 
 
 		[string]
 		$Arguments, 
@@ -329,7 +332,11 @@ function License-Software
         $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
     }
     Write-Verbose "Licensing Product [$Product] using Software Authorization Utility at $SoftwareAuthExePath" -Verbose
+    
     $Params = " $Arguments -lif $licenseFilePath"
+    if($Password){
+        $Params += " -password $Password" 
+    }
     Write-Verbose "[Running Command] $SoftwareAuthExePath $Params" -Verbose
     
     if($StdOutputLogFilePath) {

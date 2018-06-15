@@ -2,7 +2,7 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Server_RegisterDirectories")]
 class ArcGIS_Server_RegisterDirectories : OMI_BaseResource
 {
-	[Key] String Directories;
+	[Key] String DirectoriesJSON;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 };

@@ -33,9 +33,47 @@ function Set-TargetResource
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = Get-FQDN $PortalHostName
     $Referer = "https://localhost"
+
+    $ServiceName = 'Portal for ArcGIS'
+    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
+
+    $RestartRequired = $false
+    $hostname = Get-ConfiguredHostName -InstallDir $InstallDir
+    if($hostname -ieq $FQDN) {
+        Write-Verbose "Configured hostname '$hostname' matches expected value '$FQDN'"        
+    }else {
+        Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'. Setting it"
+        if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
+            # Need to restart the service to pick up the hostname 
+			Write-Verbose "hostname.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
+            $RestartRequired = $true 
+        }
+    }
+
+    $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
+
+    $expectedHostIdentifierType = 'hostname'
+	$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
+	$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
+	if(($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
+        Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
+	}else {
+		Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' does not match expected value '$FQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
+		if(Set-ConfiguredHostIdentifier -InstallDir $InstallDir -HostIdentifier $FQDN -HostIdentifierType $expectedHostIdentifierType) { 
+            # Need to restart the service to pick up the hostidentifier 
+            Write-Verbose "In Portal DataStore Hostidentifier.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
+            $RestartRequired = $true 
+        }
+    }
+    if($RestartRequired) {             
+		Restart-PortalService -ServiceName $ServiceName
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' 
+    }
+
 
     [string]$UpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/upgrade"
     $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters @{f = 'json'; isBackupRequired = $true; isRollbackRequired = $true} -Referer $Referer -TimeOutSec 86400 -LogResponse 
@@ -200,6 +238,38 @@ function Wait-ForPortalToStart
         }catch{
             Write-Verbose "[WARNING]:- Exception:- $($_)"     
         }
+    }
+}
+
+
+function Restart-PortalService
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param
+    (
+        [System.String]
+        $ServiceName = 'Portal for ArcGIS'
+    )
+
+    try 
+    {
+		Write-Verbose "Restarting Service $ServiceName"
+		Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
+		Write-Verbose 'Stopping the service' 
+		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+		Write-Verbose 'Stopped the service'
+	}catch {
+        Write-Verbose "[WARNING] Stopping Service $_"
+    }
+
+	try {
+		Write-Verbose 'Starting the service'
+		Start-Service -Name $ServiceName -ErrorAction Ignore        
+		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+		Write-Verbose "Restarted Service '$ServiceName'"
+	}catch {
+        Write-Verbose "[WARNING] Starting Service $_"
     }
 }
 

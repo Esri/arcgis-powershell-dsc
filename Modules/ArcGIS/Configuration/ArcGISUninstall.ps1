@@ -5,6 +5,7 @@ Configuration ArcGISUninstall
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_FileShare
+    Import-DscResource -Name ArcGIS_InstallMsiPackage
     
     Node $AllNodes.NodeName
     {   
@@ -106,60 +107,30 @@ Configuration ArcGISUninstall
                 'LoadBalancer'{
 
                     $DCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Domain)\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
+                    
+                    $TempFolder = "$($env:SystemDrive)\Temp"
 
-                    Package WebDeployUnistall
+                    if(Test-Path $TempFolder)
                     {
-                        Name        = "Microsoft Web Deploy 2.0"
-                        Ensure      = "Absent"
-                        Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.WebDeploy
-                        Arguments   = " /quiet"
-                        Credential  = $DCredential
-                        ProductId   = "5134B35A-B559-4762-94A4-FD4918977953"
-                    } 
-                    
-                    Package WebPlatformUninstall{
-                        Name = "Microsoft Web Platform Installer 3.0"
-                        ProductId = "CC4878C0-4A6A-49CD-AAA7-DD3FCB06CC84"
-                        Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.WebPlatformInstaller
-                        Arguments = " /quiet"
-                        Credential  = $DCredential
-                        Ensure = "Absent"
+                        Remove-Item -Path $TempFolder -Recurse 
+                    }
+                    if(-not(Test-Path $TempFolder))
+                    {
+                        New-Item $TempFolder -ItemType directory            
                     }
 
-                    Package WebFarmUninstall{
-                        Name = "Microsoft Web Farm Framework Version 2.2"
-                        ProductId = "ECCF2049-1097-4F7D-B2F5-1F9959A89D67"
-                        Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.WebFarmInstall
-                        Arguments = " /quiet"
-                        Credential  = $DCredential
-                        Ensure = "Absent"
-                    }
+                    foreach ($h in $ConfigurationData.ConfigData.LoadBalancer.InstallerPath)
+                    {
+                        $FileName = Split-Path $h.FilePath -leaf
 
-                    Package ExternalDiskCacheUninstall{
-                        Name = "Microsoft External Cache"
-                        ProductId = "9B5EE8C5-108B-4E91-AA52-93607FDC8D9C"
-                        Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.ExternalDiskCache
-                        Arguments = " "
-                        Credential  = $DCredential
-                        Ensure = "Absent"
-                    }
-                    
-                    Package RewriteRuleUninstall{
-                        Name = "IIS URL Rewrite Module 2"
-                        ProductId = "08F0318A-D113-4CF0-993E-50F191D397AD"
-                        Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.RewriteRule
-                        Arguments = " /quiet"
-                        Credential  = $DCredential
-                        Ensure = "Absent"
-                    }
-
-                    Package ARRUninstall{
-                        Name = "Microsoft Application Request Routing 3.0"
-                        ProductId = "78FD26A2-9214-48CD-AF71-7F33D1A78892"
-                        Path = $ConfigurationData.ConfigData.LoadBalancer.InstallerPath.ARRInstall
-                        Arguments = " /quiet"
-                        Credential  = $DCredential
-                        Ensure = "Absent"
+                        ArcGIS_InstallMsiPackage "AIMP_$($h.Name.Replace(' ', '_'))"
+                        {
+                            Name = $h.Name
+                            Path = $ExecutionContext.InvokeCommand.ExpandString("$TempFolder\$FileName")
+                            Ensure = "Absent"
+                            ProductId = $h.ProductId
+                            Arguments = " /quiet"
+                        }
                     }
 
                     WindowsFeature ARRWebServerUninstall {
