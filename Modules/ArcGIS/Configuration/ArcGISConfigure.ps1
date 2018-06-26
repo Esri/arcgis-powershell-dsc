@@ -1814,6 +1814,7 @@ Configuration ArcGISConfigure
                                         Credential =  $PSACredential
                                         RetryIntervalSec = 60
                                         RetryCount = 100
+                                        DependsOn = $Depends
                                     }
                                     $Depends += "[ArcGIS_WaitForComponent]WaitFor$($svr.NodeName)ForLoadBalance"
                                 }
@@ -1841,6 +1842,7 @@ Configuration ArcGISConfigure
                                         Credential =  $PSACredential
                                         RetryIntervalSec = 60
                                         RetryCount = 100
+                                        DependsOn = $Depends
                                     }
                                     $Depends += "[ArcGIS_WaitForComponent]WaitFor$($svr.NodeName)ForLoadBalance"
                                 }
@@ -1868,6 +1870,7 @@ Configuration ArcGISConfigure
                                         Credential =  $PSACredential
                                         RetryIntervalSec = 60
                                         RetryCount = 100
+                                        DependsOn = $Depends
                                     }
                                     $Depends += "[ArcGIS_WaitForComponent]WaitFor$($svr.NodeName)ForLoadBalance"
                                 }
@@ -1881,7 +1884,7 @@ Configuration ArcGISConfigure
                                 HttpsPort = 443
                                 StoreLocation = 'LocalMachine'
                                 StoreName = 'AuthRoot'
-                                DependsOn = @("[ArcGIS_WaitForComponent]WaitFor$($svr.NodeName)ForLoadBalance")
+                                DependsOn = $Depends
                             }
 
                             $Depends += "[ArcGIS_TLSCertificateImport]CertificateImport-$($svr.NodeName)"

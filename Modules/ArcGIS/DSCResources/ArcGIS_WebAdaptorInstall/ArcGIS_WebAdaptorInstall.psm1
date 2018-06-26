@@ -93,7 +93,7 @@ function Set-TargetResource
             if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
             {
                 if(-not((Get-WindowsOptionalFeature -FeatureName $pr -online).State -ieq "Enabled")){
-                    Enable-WindowsOptionalFeature -Online -FeatureName $pr -All
+                    Enable-WindowsOptionalFeature -Online -FeatureName $pr -All -NoRestart
                 }
             }else{
                  Write-Verbose "Please check the Machine Operating System Compatatbilty"
