@@ -627,7 +627,7 @@ function Configure-ArcGIS
             } else {
                 $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major }
             }
-            $ConfigurationParamsHashtable.AllNodes[$i].WMFVersion = $WMFVersion
+            $ConfigurationParamsHashtable.AllNodes[$i].WMFVersion =  [int]$WMFVersion.ToString()
         }
         
         $CommonNodeToAddForPlainText = @{
