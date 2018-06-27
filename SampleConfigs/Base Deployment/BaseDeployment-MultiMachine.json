@@ -116,12 +116,12 @@
                                                             {
                                                                 "FilePath":  "rewrite_amd64.msi",
                                                                 "Name":"IIS URL Rewrite Module 2",
-                                                                "ProductCode":  "08F0318A-D113-4CF0-993E-50F191D397AD"
+                                                                "ProductId":  "08F0318A-D113-4CF0-993E-50F191D397AD"
                                                             },
                                                             {
                                                                 "FilePath":  "requestRouter_x64.msi",
                                                                 "Name":"Microsoft Application Request Routing 3.0",
-                                                                "ProductCode":  "78FD26A2-9214-48CD-AF71-7F33D1A78892"
+                                                                "ProductId":  "78FD26A2-9214-48CD-AF71-7F33D1A78892"
                                                             }
                                                         ]
                                       }
