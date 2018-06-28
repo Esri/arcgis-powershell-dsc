@@ -416,7 +416,7 @@ function Set-TargetResource
         Write-Verbose "Adding Rewrite rule 'LB-RP-HTTPS-Portal' for Url 'https://$($FarmName)/{R:0}'"
         Add-RewriteRule -RuleName 'LB-RP-HTTPS-Portal' -StopProcessing $true -Url '.*' `
                     -RewriteUrl "https://$($FarmName)/{R:0}" -ServerPort $PortalHttpsPort -Filter $filter -PSPath $pspath  
-    }elseif($ComponentType -ieq 'WebAdaptor'){
+    }elseif($ComponentType -ieq 'WebAdaptor' -or $ComponentType -ieq 'ServerWebAdaptor' -or $ComponentType -ieq 'PortalWebAdaptor'){
         $WAHttpPort = 80
         $WAHttpsPort = 443
         $httpBinding = Get-WebBinding -Name $SiteName -Protocol "http" -port $WAHttpPort
@@ -441,12 +441,12 @@ function Set-TargetResource
         }
 
         $filter = '/system.webServer/rewrite/rules'
-        Write-Verbose "Adding Rewrite rule 'LB-RP-HTTP-WA' for Url 'http://$($FarmName)/{R:0}'"
-        Add-RewriteRule -RuleName 'LB-RP-HTTP-WA' -StopProcessing $true -Url '.*' `
+        Write-Verbose "Adding Rewrite rule 'LB-RP-HTTP-WA-$ComponentType' for Url 'http://$($FarmName)/{R:0}'"
+        Add-RewriteRule -RuleName "LB-RP-HTTP-WA-$ComponentType" -StopProcessing $true -Url '.*' `
                     -IsHttp -RewriteUrl "http://$($FarmName)/{R:0}" -ServerPort $WAHttpPort -Filter $filter -PSPath $pspath 
 
-        Write-Verbose "Adding Rewrite rule 'LB-RP-HTTPS-WA' for Url 'https://$($FarmName)/{R:0}'"
-        Add-RewriteRule -RuleName 'LB-RP-HTTPS-WA' -StopProcessing $true -Url '.*' `
+        Write-Verbose "Adding Rewrite rule 'LB-RP-HTTPS-WA-$ComponentType' for Url 'https://$($FarmName)/{R:0}'"
+        Add-RewriteRule -RuleName "LB-RP-HTTPS-WA-$ComponentType" -StopProcessing $true -Url '.*' `
                     -RewriteUrl "https://$($FarmName)/{R:0}" -ServerPort $WAHttpsPort -Filter $filter -PSPath $pspath  
     }
 
@@ -606,16 +606,16 @@ function Test-TargetResource
                         }
                     }   
                 }
-                elseif($ComponentType -ieq 'WebAdaptor'){
+                elseif($ComponentType -ieq 'WebAdaptor' -or $ComponentType -ieq 'ServerWebAdaptor' -or $ComponentType -ieq 'PortalWebAdaptor'){
                     if($result) {            
-                        if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'LB-RP-HTTP-WA' }) -eq $null) {   
-                            Write-Verbose "URL Rewrite Rule 'LB-RP-HTTP-WA' not found"
+                        if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq "LB-RP-HTTP-WA-$ComponentType" }) -eq $null) {   
+                            Write-Verbose "URL Rewrite Rule 'LB-RP-HTTP-WA-$ComponentType' not found"
                             $result = $false
                         }
                     } 
                     if($result) {          
-                        if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'LB-RP-HTTPS-WA' }) -eq $null) {   
-                            Write-Verbose "URL Rewrite Rule 'LB-RP-HTTPS-WA' not found"
+                        if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq "LB-RP-HTTP-WA-$ComponentType" }) -eq $null) {   
+                            Write-Verbose "URL Rewrite Rule 'LB-RP-HTTPS-WA-$ComponentType' not found"
                             $result = $false
                         }
                     }   
