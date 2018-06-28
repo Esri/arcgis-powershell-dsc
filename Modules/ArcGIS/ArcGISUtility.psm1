@@ -763,12 +763,12 @@ function Get-ComponentCode
        [CmdletBinding()]
        param
        (
-        [ValidateSet("Server","Portal","DataStore","GeoEvent","EnterpriseBuilder","ARR","WebFarm")]
+        [ValidateSet("Server","Portal","DataStore","GeoEvent","EnterpriseBuilder")]
         [parameter(Mandatory = $true)]
         [System.String]
               $ComponentName,
 
-        [ValidateSet("10.4","10.4.1","10.5","10.5.1","10.6","3.0","2.2")]
+        [ValidateSet("10.4","10.4.1","10.5","10.5.1","10.6")]
               [parameter(Mandatory = $true)]
               [System.String]
               $Version
@@ -820,14 +820,25 @@ Function Test-Install{
 		[System.String]
 		$Name,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
-		$Version
+        $Version,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProductId
     )
     
     $result = $false
+    $ProdId = $ProductId
+    if(-not($ProductId)){
+        if($Version){
+            $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
+        }else{
+            Throw "Product Id or Version is required for Component $Name"
+        }
+    }
     
-    $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
     if(-not($ProdId.StartsWith('{'))){
         $ProdId = '{' + $ProdId
     }
