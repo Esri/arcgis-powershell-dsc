@@ -149,12 +149,12 @@ Function Trace-DSCJob{
                 foreach($item in $j.Verbose) {
                     if($i -ge $Pos) {
                         if($DebugMode){
-                            Write-Host $item -foregroundcolor yellow
+                            Write-Output $item -foregroundcolor yellow
                         }else{
                             if(($item.Message -match "Start  Test") -or ($item.Message -match "Start  Set") -or ($item.Message -match "End    Test") -or ($item.Message -match "End    Set")){
-                                Write-Host $item -foregroundcolor yellow
+                                Write-Output $item -foregroundcolor yellow
                             }elseif(($item.Message -match "Start  Resource") -or ($item.Message -match "End    Resource")){
-                                Write-Host $item -foregroundcolor green
+                                Write-Output $item -foregroundcolor green
                             }
                         }
                     }
@@ -174,7 +174,7 @@ Function Trace-DSCJob{
                 $i = 0  
                 foreach($item in $j.Error) {
                     if($i -ge $PosError) {
-                        Write-Host "[]$item" -foregroundcolor red
+                        Write-Output "[]$item" -foregroundcolor red
                     }
                     $i++
                 }  
@@ -186,7 +186,7 @@ Function Trace-DSCJob{
         }
     }
 
-    Write-Host "Logs Directory: $LogsPath"
+    Write-Output "Logs Directory: $LogsPath"
 
 }
 function Start-DSCJob {
@@ -204,7 +204,7 @@ function Start-DSCJob {
         $DebugMode = $False
     )
 
-    Write-Host "Starting DSC Job:- $ConfigurationName"
+    Write-Output "Starting DSC Job:- $ConfigurationName"
     $JobTimer = [System.Diagnostics.Stopwatch]::StartNew()
     if($Credential)
     {
@@ -215,8 +215,8 @@ function Start-DSCJob {
         $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose
     }
     Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
-    Write-Host "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
-    Write-Host "$($ConfigurationName) - $($Job.state)"
+    Write-Output "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
+    Write-Output "$($ConfigurationName) - $($Job.state)"
     $result = $False
     if($Job.state -ieq "Completed"){
         $result = $True
@@ -387,14 +387,14 @@ function Get-ArcGISURL
     
     if($PrimaryPortalMachine)
     {
-        Write-Host "Portal Admin URL - $PortalAdminURL"
-        Write-Host "Portal URL - $PortalURL"    
+        Write-Output "Portal Admin URL - $PortalAdminURL"
+        Write-Output "Portal URL - $PortalURL"    
     }
     if($PrimaryServerMachine)
     {
-        Write-Host "Server Admin URL - $ServerAdminURL"
-        Write-Host "Server Manager URL - $ServerURL"
-        Write-Host "Server Rest URL - $RestURL"
+        Write-Output "Server Admin URL - $ServerAdminURL"
+        Write-Output "Server Manager URL - $ServerURL"
+        Write-Output "Server Rest URL - $RestURL"
     }
 }
 
@@ -423,7 +423,7 @@ function ServerUpgradeScript {
     $JobFlag = $True
 
     #ServerWebAdaptorUninstall
-    Write-Host "WA Server Uninstall"
+    Write-Output "WA Server Uninstall"
     ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'}).NodeName){
         $cd = @{
             AllNodes = @(
@@ -451,7 +451,7 @@ function ServerUpgradeScript {
 
     #UpgradeServers
     if($JobFlag){
-        Write-Host "Server Upgrade"
+        Write-Output "Server Upgrade"
         $cfPrimaryServerMachine = ""
         for ( $i = 0; $i -lt $cf.AllNodes.count; $i++ ){
             if($cf.AllNodes[$i].Role -icontains 'Server'){
@@ -510,7 +510,7 @@ function ServerUpgradeScript {
         }
         if($JobFlag){
             #UpgradeServerWebAdaptor
-            Write-Host "WA Server Install"
+            Write-Output "WA Server Install"
             ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'}).NodeName){
                 $cd = @{
                     AllNodes = @(
@@ -567,10 +567,10 @@ function Publish-WebApp
         Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
     }
 
-    Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
+    Write-Output "Dot Sourcing the Configuration:- $ConfigurationName"
     . "$PSScriptRoot\Configuration\$($ConfigurationName).ps1"
     
-    Write-Host "Compiling the Configuration:- $ConfigurationName"
+    Write-Output "Compiling the Configuration:- $ConfigurationName"
     & $ConfigurationName -NodeName $NodeName -WebAppName $WebAppName -SourceDir $SourceDir
 
     if($Credential){
@@ -661,10 +661,10 @@ function Configure-ArcGIS
             if($ValidateFileShare){
                 $JobFlag = $False
 
-                Write-Host "Dot Sourcing the Configuration:- ArcGISInstall"
+                Write-Output "Dot Sourcing the Configuration:- ArcGISInstall"
                 . "$PSScriptRoot\Configuration\ArcGISInstall.ps1" -Verbose:$false
 
-                Write-Host "Compiling the Configuration:- ArcGISInstall"
+                Write-Output "Compiling the Configuration:- ArcGISInstall"
                 ArcGISInstall -ConfigurationData $ConfigurationParamsHashtable
 
                 if($Credential){
@@ -681,10 +681,10 @@ function Configure-ArcGIS
                     
                     $JobFlag = $False
 
-                    Write-Host "Dot Sourcing the Configuration:- ArcGISLicense"
+                    Write-Output "Dot Sourcing the Configuration:- ArcGISLicense"
                     . "$PSScriptRoot\Configuration\ArcGISLicense.ps1" -Verbose:$false
 
-                    Write-Host "Compiling the Configuration:- ArcGISLicense"
+                    Write-Output "Compiling the Configuration:- ArcGISLicense"
                     ArcGISLicense -ConfigurationData $ConfigurationParamsHashtable
                     
                     if($Credential){
@@ -701,10 +701,10 @@ function Configure-ArcGIS
                         
                         $JobFlag = $False
                     
-                        Write-Host "Dot Sourcing the Configuration:- ArcGISConfigure"
+                        Write-Output "Dot Sourcing the Configuration:- ArcGISConfigure"
                         . "$PSScriptRoot\Configuration\ArcGISConfigure.ps1" -Verbose:$false
 
-                        Write-Host "Compiling the Configuration:- ArcGISConfigure"
+                        Write-Output "Compiling the Configuration:- ArcGISConfigure"
                         ArcGISConfigure -ConfigurationData $ConfigurationParamsHashtable
                         
                         if($Credential){
@@ -735,10 +735,10 @@ function Configure-ArcGIS
                 Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
             }    
 
-            Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
+            Write-Output "Dot Sourcing the Configuration:- $ConfigurationName"
             . "$PSScriptRoot\Configuration\$ConfigurationName.ps1" -Verbose:$false
 
-            Write-Host "Compiling the Configuration:- $ConfigurationName"
+            Write-Output "Compiling the Configuration:- $ConfigurationName"
             & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
             
             if($Credential){
@@ -748,28 +748,28 @@ function Configure-ArcGIS
             }
         }
     }elseif($Mode -ieq "Upgrade"){
-        Write-Host "Dot Sourcing the Configuration:- WebAdaptorUninstall"
+        Write-Output "Dot Sourcing the Configuration:- WebAdaptorUninstall"
         . "$PSScriptRoot\Configuration\Upgrades\WebAdaptorUninstall.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- WebAdaptorInstall"
+        Write-Output "Dot Sourcing the Configuration:- WebAdaptorInstall"
         . "$PSScriptRoot\Configuration\Upgrades\WebAdaptorInstall.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- PortalUpgrade"
+        Write-Output "Dot Sourcing the Configuration:- PortalUpgrade"
         . "$PSScriptRoot\Configuration\Upgrades\PortalUpgrade.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- PortalUpgradeStandbyJoin"
+        Write-Output "Dot Sourcing the Configuration:- PortalUpgradeStandbyJoin"
         . "$PSScriptRoot\Configuration\Upgrades\PortalUpgradeStandbyJoin.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- ServerUpgrade"
+        Write-Output "Dot Sourcing the Configuration:- ServerUpgrade"
         . "$PSScriptRoot\Configuration\Upgrades\ServerUpgrade.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- DataStoreUpgradeInstall"
+        Write-Output "Dot Sourcing the Configuration:- DataStoreUpgradeInstall"
         . "$PSScriptRoot\Configuration\Upgrades\DataStoreUpgradeInstall.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- DataStoreUpgradeConfigure"
+        Write-Output "Dot Sourcing the Configuration:- DataStoreUpgradeConfigure"
         . "$PSScriptRoot\Configuration\Upgrades\DataStoreUpgradeConfigure.ps1" -Verbose:$false
 
-        Write-Host "Dot Sourcing the Configuration:- SpatioTemporalDatastoreStart"
+        Write-Output "Dot Sourcing the Configuration:- SpatioTemporalDatastoreStart"
         . "$PSScriptRoot\Configuration\Upgrades\SpatioTemporalDatastoreStart.ps1" -Verbose:$false
 
         
@@ -840,7 +840,7 @@ function Configure-ArcGIS
                 if($HasPortalNodes){
                     $HasPortalWANodes = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor'} | Measure-Object).Count -gt 0
                     if($HasPortalWANodes){
-                        Write-Host "WebAdaptor Uninstall"
+                        Write-Output "WebAdaptor Uninstall"
                         ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'}).NodeName){
                             $cd = @{
                                 AllNodes = @(
@@ -854,7 +854,7 @@ function Configure-ArcGIS
                                 Remove-Item ".\WebAdaptorUninstall" -Force -ErrorAction Ignore -Recurse
                             }
                             
-                            Write-Host "Compiling the Configuration:- Web Adaptor Uninstall for Portal"
+                            Write-Output "Compiling the Configuration:- Web Adaptor Uninstall for Portal"
                             WebAdaptorUninstall -ConfigurationData $cd -Version $PortalConfig.ConfigData.Version -InstallerPath $PortalConfig.ConfigData.WebAdaptor.Installer.Path -Context $PortalConfig.ConfigData.PortalContext -Verbose
 
                             if($Credential){
@@ -897,7 +897,7 @@ function Configure-ArcGIS
                             $PrimaryLicensePassword = $PrimaryPortal.PortalLicensePassword
                         }
 
-                        Write-Host "Portal Upgrade"
+                        Write-Output "Portal Upgrade"
                         if($IsMultiMachinePortal){
                             $cd = @{
                                 AllNodes = @(
@@ -1036,7 +1036,7 @@ function Configure-ArcGIS
                         }
 
                         if($JobFlag -and $HasPortalWANodes){
-                            Write-Host "WebAdaptor Upgrade"
+                            Write-Output "WebAdaptor Upgrade"
                             ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'}).NodeName){
                                 $cd = @{
                                     AllNodes = @(
@@ -1080,7 +1080,7 @@ function Configure-ArcGIS
             
             if($JobFlag){
                 if($HostingConfig){
-                    Write-Host "Hosting Server Upgrade"
+                    Write-Output "Hosting Server Upgrade"
                     if($Credential){
                         $JobFlag = ServerUpgradeScript -cf $HostingConfig -Credential $Credential -DebugMode $DebugMode
                     }else{
@@ -1092,7 +1092,7 @@ function Configure-ArcGIS
             if($JobFlag){
                 if($OtherConfigs){
                     for ( $i = 0; $i -lt $OtherConfigs.count; $i++ ){
-                        Write-Host "Other Server Upgrade"
+                        Write-Output "Other Server Upgrade"
                         if($Credential){
                             $JobFlag = ServerUpgradeScript -cf $OtherConfigs[$i] -Credential $Credential -DebugMode $DebugMode
                         }else{
@@ -1120,7 +1120,7 @@ function Configure-ArcGIS
                     if($HasDataStoreNodes){
                         $Version = $DSConfig.ConfigData.Version
                         $VersionArray = $Version.split(".")
-                        Write-Host "DataStore Upgrade to $Version"
+                        Write-Output "DataStore Upgrade to $Version"
                         if($VersionArray[1] -gt 5){
                             $cd = @{
                                 AllNodes = @(
@@ -1285,7 +1285,7 @@ function Configure-ArcGIS
                                 }
                             }
                             if($JobFlag -and $BigDataStoreMachinesArray){
-                                Write-Host "BigDataStore Upgrade"
+                                Write-Output "BigDataStore Upgrade"
                                 Foreach($nd in $BigDataStoreMachinesArray){
                                     $cd = @{
                                         AllNodes = @(
