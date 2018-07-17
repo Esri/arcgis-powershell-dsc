@@ -196,6 +196,7 @@ function Is-CertificateInTrustedCertificateStore
     finally 
     {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+        [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     }   
 	$global:certCheck
 }
@@ -268,6 +269,7 @@ function Import-CertFromServerIntoTrustedCertificateStore
     finally 
     {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+        [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     }
 }
 

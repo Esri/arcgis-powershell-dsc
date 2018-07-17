@@ -653,6 +653,7 @@ function Register-DataStore
    while(-not($Done)) {
         Write-Verbose "Register DataStore Attempt $NumAttempts"
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates        
+        [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
         [bool]$failed = $false
         $response = $null
         try {

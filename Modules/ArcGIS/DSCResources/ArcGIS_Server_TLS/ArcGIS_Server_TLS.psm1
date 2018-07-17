@@ -661,7 +661,7 @@ function Import-ExistingCertificate
 
     $ImportCACertUrl  = $ServerURL.TrimEnd("/") + "/$SiteName/admin/machines/$MachineName/sslcertificates/importExistingServerCertificate"
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-        
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; certPassword = $CertificatePassword  }    
     $res = Upload-File -url $ImportCACertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'certFile'    
     if($res -and $res.Content) {
@@ -700,7 +700,7 @@ function Import-RootOrIntermediateCertificate
 
     $ImportCertUrl  = "https://$($ServerHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/importRootOrIntermediate"
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; } 
     $res = Upload-File -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'rootCACertificate'    
     if($res -and $res.Content) {
@@ -896,6 +896,7 @@ function Register-WebAdaptorForServer
                   }
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $WebParams
     
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
@@ -927,6 +928,7 @@ function UnRegister-WebAdaptorForServer
                   }
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $WebParams
     
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
@@ -957,6 +959,7 @@ function Get-WebAdaptorsConfigForServer
                   }
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $WebParams
     
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
