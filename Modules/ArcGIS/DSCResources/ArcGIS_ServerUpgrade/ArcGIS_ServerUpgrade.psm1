@@ -78,12 +78,23 @@ function Set-TargetResource
                     $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -LogResponse
                     $currentversion = $Info.currentVersion 
                     if($currentversion -ieq "10.51"){
-                        $currentversion = 10.5.1 
+                        $currentversion = "10.5.1"
+                    }elseif($currentversion -ieq "10.61"){
+                        $currentversion = "10.6.1"
                     }
-                    if($currentversion -ieq  $Version){
-                        Write-Verbose 'Server Upgrade Successfull'
-						$ServerReady = $true
-                        break
+                    
+                    if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){
+                        if($Version.Split('.').Length -eq 3){
+                            if($Version.Split('.')[2] -eq $currentversion.Split('.')[2]){
+                                Write-Verbose 'Server Upgrade Successfull'
+                                $ServerReady = $true
+                                break
+                            }
+                        }else{
+                            Write-Verbose 'Server Upgrade Successfull'
+                            $ServerReady = $true
+                            break
+                        }
                     }
                 }elseif(($ResponseStatus.status -ieq "error") -and ($ResponseStatus.code -ieq '500')){
 					throw $ResponseStatus.messages
