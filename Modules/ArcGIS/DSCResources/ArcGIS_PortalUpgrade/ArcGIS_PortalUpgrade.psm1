@@ -310,7 +310,7 @@ function Upgrade-LivingAtlas
 				}
 			}catch{
 				if($attempts -eq 3){
-					Write-Verbose "Unable to Living Atlas Content For GroupId - $groupId - Please Follow Mannual Steps specified in the Documentation"
+					Write-Verbose "Unable to update Living Atlas Content For GroupId - $groupId - Please Follow Manual Steps specified in the Documentation"
 					$done = $false
 				}
 			}
