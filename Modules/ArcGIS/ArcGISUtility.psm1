@@ -183,7 +183,8 @@ function Wait-ForUrl
     [bool]$Done = $false
     [int]$TotalElapsedTimeInSeconds = 0
     Write-Verbose "Waiting for Url $Url"
-	[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     while((-not($Done)) -and ($TotalElapsedTimeInSeconds -lt $MaxWaitTimeInSeconds)) {
         try {
 			if($HttpMethod -ieq 'GET') {
@@ -201,17 +202,13 @@ function Wait-ForUrl
 						$Done = $true
 						Write-Verbose "Url is ready : $Url"
 					}else{
-						if($LogFailures){
-							Write-Verbose "[Warning]:- Response:- $($resp.Content)"
-						}
+						Write-Verbose "[Warning]:- Response:- $($resp.Content)"
 					}
 				}
 			}
         }
         catch {
-            if($LogFailures) {
-              Write-Verbose "[Warning]:- $($_)"
-            }
+            Write-Verbose "[Warning]:- $($_)"
         }
         if(-not $Done) {
             Start-Sleep -Seconds $SleepTimeInSeconds
@@ -405,6 +402,7 @@ function Invoke-ArcGISWebRequest
     )
 
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $HttpFormParameters
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
                     'Content-Length' = $HttpBody.Length
@@ -768,7 +766,7 @@ function Get-ComponentCode
         [System.String]
               $ComponentName,
 
-        [ValidateSet("10.4","10.4.1","10.5","10.5.1","10.6")]
+        [ValidateSet("10.4","10.4.1","10.5","10.5.1","10.6","10.6.1")]
               [parameter(Mandatory = $true)]
               [System.String]
               $Version
@@ -781,6 +779,7 @@ function Get-ComponentCode
             '10.5' = 'CD87013B-6559-4804-89F6-B6F1A7B31CBC'
             '10.5.1' = '40CC6E89-93A4-4D87-A3FB-11413C218D2C'
             '10.6' = '07606F78-D997-43AE-A9DC-0738D91E8D02'
+            '10.6.1' = 'F62B418D-E9E4-41CE-9E02-167BE4276105'
         }
         Portal = @{      
             '10.4' = 'FA6FCD2D-114C-4C04-A8DF-C2E43979560E'
@@ -788,6 +787,7 @@ function Get-ComponentCode
             '10.5' = '43EF63C6-957B-4DA7-A222-6904053BF222'
             '10.5.1' = 'C7E44FBE-DFA6-4A95-8779-B6C40F3947B7'
             '10.6' = 'FFE4808A-1AD2-41A6-B5AD-2BA312BE6AAA'
+            '10.6.1' = 'ECC6B3B9-A875-4AE3-9C03-8664EB38EED9'
         }
         DataStore = @{             
             '10.4' = 'C351BC6D-BF25-487D-99AB-C963D590A8E8'
@@ -795,6 +795,7 @@ function Get-ComponentCode
             '10.5' = '5EA81114-6FA7-4B4C-BD72-D1C882088AAC'
             '10.5.1' = '75276C83-E88C-43F6-B481-100DA4D64F71'
             '10.6' = '846636C1-53BB-459D-B66D-524F79E40396'
+            '10.6.1' = '53160721-93D8-48F8-9EDD-038794AE756E'
         }        
         GeoEvent = @{             
             '10.4' = '188191AE-5A83-49E8-88CB-1F1DB05F030D'
@@ -802,6 +803,7 @@ function Get-ComponentCode
             '10.5' = '4375BD31-BD98-4166-84D9-E944D77103E8'
             '10.5.1' = 'F11BBE3B-B78F-4E5D-AE45-E3B29063335F'
             '10.6' = '723742C8-6633-4C85-87AC-503507FE222B'
+            '10.6.1' = 'D0586C08-E589-4942-BC9B-E83B2E8B95C2'
         }
         EnterpriseBuilder = @{
             '10.5.1' = '9A57125F-B38F-421F-9C57-F6039BEF2713'

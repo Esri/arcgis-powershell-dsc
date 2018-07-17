@@ -335,7 +335,7 @@ function Import-ExistingCertificate
 
     $ImportCertUrl  = "https://$($PortalHostName):7443/$SiteName/portaladmin/security/sslCertificates/importExistingServerCertificate"
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-        
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls   
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; password = $CertificatePassword  }    
     $res = Upload-File -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
     if($res -and $res.Content) {
@@ -371,7 +371,7 @@ function Import-RootOrIntermediateCertificate
 
     $ImportCertUrl  = "https://$($PortalHostName):7443/$SiteName/portaladmin/security/sslCertificates/importRootOrIntermediate"
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; norestart = $true  } # norestart requires ArcGIS Server 10.6 or higher
     $res = Upload-File -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
     if($res -and $res.Content) {

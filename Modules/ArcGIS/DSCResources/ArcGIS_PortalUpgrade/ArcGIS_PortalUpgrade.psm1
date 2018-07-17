@@ -111,6 +111,11 @@ function Set-TargetResource
 
     Write-Verbose "Reindexing Portal"
     Upgrade-Reindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+
+    Write-Verbose "Upgrading Living Atlas Content"
+    if(Get-LivingAtlasStatus -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
+        Upgrade-LivingAtlas -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+    }
 }
 
 function Test-TargetResource
@@ -148,6 +153,7 @@ function Test-TargetResource
         }
     }
 }
+
 function Upgrade-Reindex(){
 
     [CmdletBinding()]
@@ -184,6 +190,7 @@ function Upgrade-Reindex(){
         Write-Verbose "Reindexing Successful"
     }
 }
+
 function Wait-ForPortalToStart
 {
     [CmdletBinding()]
@@ -223,6 +230,7 @@ function Wait-ForPortalToStart
         $response = $null
         Try {
             [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+            [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
             $response = Invoke-RestMethod -Method Post -Uri $CheckPortalAdminUrl -Headers $Headers -Body $HttpBody -TimeoutSec 30 # -MaximumRedirection 1
             if(($response -ne $null) -and ($response.token -ne $null) -and ($response.token.Length -gt 0))        {    
                 Write-Verbose "Portal returned a token successfully"  
@@ -241,6 +249,75 @@ function Wait-ForPortalToStart
     }
 }
 
+function Get-LivingAtlasStatus
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [System.String]
+        $PortalHttpsUrl, 
+        
+        [System.String]
+        $PortalSiteName = 'arcgis', 
+        
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    )
+    
+    $LAStatusURL = $PortalHttpsUrl.TrimEnd('/') + "/$PortalSiteName/sharing/rest/search"
+    $resp = Invoke-ArcGISWebRequest -Url $LAStatusURL -HttpFormParameters @{ f = 'json'; token = $Token; q = "owner:esri_livingatlas" } -Referer $Referer -LogResponse
+    if($resp.total -gt 0){
+        $true
+    }else{
+        $false
+    }
+}
+
+function Upgrade-LivingAtlas
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHttpsUrl, 
+        
+        [System.String]
+        $PortalSiteName = 'arcgis', 
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    )
+
+    $result = @{}
+    [string[]]$LivingAtlasGroupIds =  "81f4ed89c3c74086a99d168925ce609e", "6646cd89ff1849afa1b95ed670a298b8"
+
+    ForEach ($groupId in $LivingAtlasGroupIds)
+    {
+        $done = $true
+        $attempts = 0
+        while($done){
+            $LAUpgradeURL = $PortalHttpsUrl.TrimEnd('/') + "/$PortalSiteName/portaladmin/system/content/livingatlas/upgrade"
+            try{
+				$resp = Invoke-ArcGISWebRequest -Url $LAUpgradeURL -HttpFormParameters @{ f = 'json'; token = $Token; groupId = $groupId } -Referer $Referer -LogResponse
+				if($resp.status -eq "success"){
+					Write-Verbose "Upgraded Living Atlas Content For GroupId - $groupId"
+					$done = $false
+				}
+			}catch{
+				if($attempts -eq 3){
+					Write-Verbose "Unable to update Living Atlas Content For GroupId - $groupId - Please Follow Manual Steps specified in the Documentation"
+					$done = $false
+				}
+			}
+			$attempts++
+        }
+    }
+}
 
 function Restart-PortalService
 {
