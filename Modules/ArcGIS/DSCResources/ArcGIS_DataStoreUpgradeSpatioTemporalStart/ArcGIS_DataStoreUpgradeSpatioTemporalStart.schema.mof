@@ -1,7 +1,0 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_DataStoreUpgradeSpatioTemporalStart")]
-class ArcGIS_DataStoreUpgradeSpatioTemporalStart : OMI_BaseResource
-{
-	[Key] String ServerHostName;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-};

@@ -1,9 +1,0 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_WaitForSQLServer")]
-class ArcGIS_WaitForSQLServer : OMI_BaseResource
-{
-	[Key] String SQLServerMachineName;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;    
-	[Write, EmbeddedInstance("MSFT_Credential")] String Credential;    
-	[Write,Description("Interval in seconds for retries.")] Uint32 RetryIntervalSec;
-	[Write,Description("Number of times to retry.")] Uint32 RetryCount;
-};

@@ -1,0 +1,348 @@
+<title>Windows PowerShell DSC for ArcGIS Enterprise</title>
+<link rel="stylesheet" href="https://s3-us-west-1.amazonaws.com/patterns.esri.com/files/calcite-web/1.0.0-rc.8/css/calcite-web.min.css">
+<script src="https://s3-us-west-1.amazonaws.com/patterns.esri.com/files/calcite-web/1.0.0-rc.8/js/calcite-web.min.js"></script>
+<style>
+  #background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('https://webapps-cdn.esri.com/CDN/custom-pages/about/static/img/dist/bg/topographic-bg-xl.jpg');
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-size: 100%;
+    opacity: 0.04;
+    filter:alpha(opacity=4);
+    z-index: 0
+}
+</style>
+<div id="background"></div>
+<header class="top-nav">
+  <div class="grid-container">
+    <div class="column-24">
+      <a href="https://www.esri.com/en-us/home"  class="top-nav-title" style="padding:0.5rem 0"><div class="esri-logo modifier-class fade-in" style="margin-top:0.3875rem"></div></a>
+    </div>
+  </div>
+</header>
+<header class="sub-nav" role="banner" style="z-index:1;background: url(https://enterprise.arcgis.com/assets/images/vibrant-banner.jpg?1513898464) no-repeat center 50%;background-color: #ffffff;background-size: cover;">
+    <div class="grid-container">
+      <div class="column-24">
+        <h1 class="sub-nav-title font-size-8 avenir-demi text-white padding-leader-2">Welcome to Windows PowerShell DSC for ArcGIS Enterprise!</h1>
+        <p class="font-size-2 avenir-medium text-white">Here, you'll find all you need to automate your Web GIS installation and administration.</p>
+      </div>
+      <div class="column-24">
+          <div class="panel panel-no-border modifier-class trailer-2 leader-3 modifier-class" style="background-color:rgba(255, 255, 255, 0.4);">
+            <h4 class="trailer-half text-white text-center avenir-medium">ArcGIS Enterprise 10.6.1 is available now!</h4>
+            <p class="text-center trailer-0"><a href="https://enterprise.arcgis.com/en/" class="btn btn-white btn-small text-center">See what's new in 10.6.1</a></p>
+          </div>
+      </div>
+  </div>
+</header>
+
+<div class="panel-white panel-no-padding padding-leader-1 padding-trailer-2 panel-gradient" >
+  <div class="grid-container">
+    <div class="column-24">
+      <h2 class="text-off-black">Get started</h2>
+      <div class="card card-wide trailer-1">
+        <figure class="card-wide-image-wrap">
+          <img class="card-wide-image" src="https://user-images.githubusercontent.com/31675357/36697479-031ec81a-1afc-11e8-8415-0e96ffdbeab2.png"
+            alt="About ArcGIS Enterprise">
+        </figure>
+        <div class="card-content">
+          <h3 class="trailer-half avenir-medium">
+            <a href="https://www.chef.io/chef/">What is ArcGIS Enterprise?</a>
+            </h4>
+            <p class="font-size-1 trailer-1" style="text-align: justify">ArcGIS Enterprise delivers industry-leading mapping and data analysis to your physical or cloud infrastructure. The software platform can be deployed in a variety of configurations — whatever best suits your organization.</p>
+            <span>
+              <a href="https://enterprise.arcgis.com/" class="btn btn-clear card-last">Get acquainted with Enterprise</a>
+            </span>
+        </div>
+      </div>
+      <div class="card card-wide leader-1">
+        <figure class="card-wide-image-wrap">
+          <img class="card-wide-image" src="source\images\powershell_logo.png"
+            alt="About Windows Powershell DSC">
+        </figure>
+        <div class="card-content">
+          <h3 class="trailer-half avenir-medium">
+            <a href="https://docs.microsoft.com/en-us/powershell/dsc/overview">What is Windows PowerShell DSC?</a>
+            </h4>
+            <p class="font-size-1 trailer-1" style="text-align: justify">Windows PowerShell Desired State Configuration (DSC) is a configuration management platform built into Windows
+              that is based on open standards that enables you to manage your IT and development infrastructure with configuration as code.</p>
+            <span>
+              <a href="https://docs.microsoft.com/en-us/powershell/dsc/overview" class="btn btn-clear card-last">Learn more about Windows PowerShell DSC</a>
+            </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel panel-dark panel-no-padding padding-leader-1 panel-gradient" style="z-index:1;background: url(https://www.esri.com/content/esri-sites/en-us/arcgis/products/arcgis-enterprise/what-you-get/_jcr_content/par/grid_container_61157_691305568.img.jpg/1517722032476.jpg) top center no-repeat;
+background-size: cover;">
+  <div class="grid-container">
+    <div class="column-24">
+      <h2 class="text-dark">Configurations for ArcGIS Enterprise deployments</h2>
+      <div class="block-group text-dark-gray block-group-3-up tablet-block-group-2-up phone-block-group-1-up">
+        <div class="card block trailer-2">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062272-f1e0ef56-7ae1-11e8-91d2-2e10d3653450.png"
+              alt="GeoEvent Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black avenir-medium">Setup a single machine base deployment</h4>
+            <p class=" card-last">
+              The fundamental setup of ArcGIS Enterprise is called the
+              <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
+              using Windows PowerShell DSC.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Create-a-base-ArcGIS-Enterprise-deployment-on-one-machine" class="btn btn-clear btn-fill">See the workflow</a>
+        </div>
+        <div class="card block trailer-2">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42065428-b4096b1e-7aef-11e8-834b-5332f88def12.png"
+              alt="GeoEvent Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black avenir-medium">Setup a three machine base deployment</h4>
+            <p class=" card-last">
+              The fundamental setup of ArcGIS Enterprise is called the
+              <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
+              using Windows PowerShell DSC.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Create-a-base-ArcGIS-Enterprise-deployment-on-three-machines" class="btn btn-clear btn-fill">See the workflow</a>
+        </div>
+        <div class="card block trailer-2">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42239300-5b0c1238-7eb8-11e8-8a82-0ad9a8a08b59.png"
+              alt="GeoEvent Server" class="card-image" >
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black avenir-medium">Setup a many machine base deployment</h4>
+            <p class=" card-last">
+              The fundamental setup of ArcGIS Enterprise is called the
+              <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
+              using Chef.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Create-a-base-ArcGIS-Enterprise-deployment-on-many-machines" class="btn btn-clear btn-fill">See the workflow</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel panel-no-padding padding-leader-1 padding-trailer-1 panel-gradient">
+  <div class="grid-container">
+    <div class="column-24">
+      <h2 class="text-off-black">Automate ArcGIS Enterprise Server Roles with Windows PowerShell DSC</h2>
+      <div class="block-group text-dark-gray block-group-4-up tablet-block-group-2-up phone-block-group-1-up">
+        <div class="card block trailer-1">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062202-b2cf6284-7ae1-11e8-869f-094583bea767.png"
+              alt="GeoEvent Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black">Configure GeoEvent Server</h4>
+            <p class="card-last">
+              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              Server for your ArcGIS Enterprise deployment.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Deploy-an-ArcGIS-GeoEvent-Server-site-on-one-machine" class="btn btn-clear btn-fill">Read More</a>
+        </div>
+        <div class="card block trailer-1">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062201-b2ab0dbc-7ae1-11e8-9a93-60fb27c739e6.png"
+              alt="GeoEvent Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black">Configure GeoAnalytics Server</h4>
+            <p class="card-last">
+              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              Server for your ArcGIS Enterprise deployment.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Deploy-an-ArcGIS-GeoAnalytics-Server-site-on-one-machine" class="btn btn-clear btn-fill">Read More</a>
+        </div>
+        <div class="card block trailer-1">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062205-b33edd3a-7ae1-11e8-89ea-6f4e8649b50e.png"
+              alt="GeoEvent Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black">Configure GIS Server</h4>
+            <p class="card-last">
+              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              Server for your ArcGIS Enterprise deployment.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Deploy-an-ArcGIS-GIS-Server-site-on-one-machine" class="btn btn-clear btn-fill">Read More</a>
+        </div>
+        <div class="card block trailer-1">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062204-b3161daa-7ae1-11e8-8a75-80254b19d15d.png"
+              alt="GeoEvent Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black">Configure Raster/Image Server</h4>
+            <p class="card-last">
+              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              Server for your ArcGIS Enterprise deployment.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Deploy-an-ArcGIS-Image-Server-site-on-one-machine" class="btn btn-clear btn-fill">Read More</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<div class="panel panel-dark panel-no-padding padding-leader-1 panel-gradient" style="z-index:1;background: url(https://www.esri.com/content/esri-sites/en-us/arcgis/products/arcgis-enterprise/what-you-get/_jcr_content/par/grid_container_61157_691305568.img.jpg/1517722032476.jpg) top center no-repeat;
+background-size: cover;">
+ <!-- Sample HTML -->
+ <div class="grid-container">
+    <div class="column-24">
+        <h2 class="text-white">Automate ArcGIS Enterprise Upgrades and Uninstalls with Windows PowerShell DSC</h2>
+    
+    <div class="block-group block-group-2-up">
+      <div class="card block trailer-2">
+        <div class="card-content">
+          <h4 class="trailer-half text-off-black avenir-medium">Uninstall a deployment</h4>
+          <p class="text-off-black card-last font-size--1">
+            The fundamental setup of ArcGIS Enterprise is called the
+            <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
+            using Windows PowerShell DSC.
+          </p>
+        </div>
+        <a href="https://github.com/Esri/arcgis-cookbook/wiki/Deploy-a-full-stack-ArcGIS-Enterprise-on-a-single-machine" class="btn btn-clear btn-fill">See the workflow</a>
+      </div>
+      <div class="card block trailer-2">
+        <div class="card-content">
+          <h4 class="trailer-half text-off-black avenir-medium">Upgrade am Enterprise Deployment</h4>
+          <p class="text-off-black card-last font-size--1">
+            The fundamental setup of ArcGIS Enterprise is called the
+            <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
+            using Chef.
+          </p>
+        </div>
+        <a href="https://github.com/Esri/arcgis-cookbook/wiki/Deploy-a-full-stack-ArcGIS-Enterprise-on-a-single-machine" class="btn btn-clear btn-fill">See the workflow</a>
+      </div>
+    </div>
+  </div>
+</div>
+ </div>
+
+
+<div class="text-center leader-1">
+  <p class="font-size-5 avenir-demi fade-in">Let's get started. Visit the
+    <a href="https://github.com/Esri/arcgis-powershell-dsc"><code class="text-blue">arcgis-powershell-dsc</code></a> repository on GitHub.</p>
+</div>
+
+<footer class="footer leader-0 link-dark-gray" role="contentinfo">
+  <div class="grid-container">
+    <nav class="column-6">
+      <h6>ArcGIS</h6>
+      <ul class="list-plain">
+        <li>
+          <a data-langlabel="home" href="http://www.arcgis.com" class="home">Home</a>
+        </li>
+        <li>
+          <a data-langlabel="features" class="anonymous-and-public-only" href="https://www.arcgis.com/features/features.html">Features</a>
+        </li>
+        <li>
+          <a data-langlabel="plans" class="anonymous-and-public-only" href="https://www.arcgis.com/features/plans/pricing.html">Plans</a>
+        </li>
+        <li>
+          <a id="nav-gallery" data-langlabel="gallery" href="https://www.arcgis.com/home/gallery.html">Gallery</a>
+        </li>
+        <li>
+          <a data-langlabel="map" href="https://www.arcgis.com/home/webmap/viewer.html">Map</a>
+        </li>
+        <li>
+          <a data-langlabel="scene" class="hideOnIE " href="https://www.arcgis.com/home/webscene/viewer.html">Scene</a>
+        </li>
+        <li>
+          <a data-langlabel="help" class="anonymous-only" href="https://doc.arcgis.com/en/arcgis-online/">Help</a>
+        </li>
+        <li>
+          <a data-langlabel="nav-groups" class="public-and-org-only hide" href="https://www.arcgis.com/home/groups.html">Groups</a>
+        </li>
+        <li>
+          <a data-langlabel="nav-mycontent" class="public-and-org-only hide" href="https://www.arcgis.com/home/content.html">Content</a>
+        </li>
+        <li>
+          <a data-langlabel="nav-myorg" class="org-only hide " href="https://www.arcgis.com/home/organization.html">Organization</a>
+        </li>
+      </ul>
+    </nav>
+
+    <nav class="column-6">
+      <h6 data-langlabel="arcgis-platform">Arc
+        <span>GIS</span> Platform</h6>
+      <ul class="list-plain">
+        <li>
+          <a data-langlabel="arcgis" href="https://www.arcgis.com/">ArcGIS Online</a>
+        </li>
+        <li>
+          <a data-langlabel="arcgis-for-desktop" href="https://desktop.arcgis.com/">ArcGIS Desktop</a>
+        </li>
+        <li>
+          <a data-langlabel="arcgis-for-server" href="https://server.arcgis.com/">ArcGIS Enterprise</a>
+        </li>
+        <li>
+          <a data-langlabel="arcgis-for-developers" href="https://developers.arcgis.com/">ArcGIS for Developers</a>
+        </li>
+        <li>
+          <a data-langlabel="arcgis-solutions" href="https://solutions.arcgis.com/">ArcGIS Solutions</a>
+        </li>
+        <li>
+          <a data-langlabel="arcgis-marketplace" href="https://marketplace.arcgis.com/">ArcGIS Marketplace</a>
+        </li>
+      </ul>
+    </nav>
+
+    <nav class="column-6">
+      <h6 data-langlabel="about-esri">About Esri</h6>
+      <ul class="list-plain">
+        <li>
+          <a data-langlabel="about-us" href="https://www.esri.com/about-esri/">About Us</a>
+        </li>
+        <li>
+          <a data-langlabel="careers" href="https://www.esri.com/careers/">Careers</a>
+        </li>
+        <li>
+          <a data-langlabel="insiders-blog" href="https://blogs.esri.com/esri/esri-insider/">Insiders Blog</a>
+        </li>
+        <li>
+          <a data-langlabel="user-conference" href="https://www.esri.com/events/user-conference/index.html">User Conference</a>
+        </li>
+        <li>
+          <a data-langlabel="developer-summit" href="https://www.esri.com/events/devsummit/index.html">Developer Summit</a>
+        </li>
+      </ul>
+    </nav>
+
+    <nav class="column-6">
+      <a aria-label="Esri Home" href="https://www.esri.com" class="esri-logo"></a>
+      <section class="footer-social-nav leader-1">
+        <a class="icon-social-twitter" href="https://twitter.com/Esri/"></a>
+        <a class="icon-social-facebook" href="https://www.facebook.com/esrigis"></a>
+        <a class="icon-social-github" href="https://esri.github.io/"></a>
+        <a class="icon-social-contact" href="https://www.esri.com/about-esri/contact/"></a>
+      </section>
+    </nav>
+    <div class="column-24 leader-1">
+      <p>
+        <small>
+          <a href="https://www.esri.com/legal/copyright-trademarks">Copyright &copy; 2017 Esri. </a> All rights reserved. |
+          <a data-langlabel="privacy" href="https://www.esri.com/legal/privacy">Privacy</a> |
+          <a data-langlabel="legal" href="https://www.esri.com/legal/software-license">Legal</a>
+        </small>
+      </p>
+    </div>
+  </div>
+</footer>
