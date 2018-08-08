@@ -2,7 +2,7 @@
     .SYNOPSIS
         Federates a Server with an existing Portal.
     .PARAMETER Ensure
-        Indicates if the federation or unfedration of a GIS Server with a portal will take place. Take the values Present or Absent. 
+        Indicates if the federation or unfedration of a GIS Server with a portal will take place. Take the values Present or Absent.
         - "Present" ensures that of GIS Server is federated with a portal, if not so, federation takes place.
         - "Absent" ensures that GIS Server is not federated with a portal.
     .PARAMETER PortalHostName
@@ -24,11 +24,11 @@
     .PARAMETER ServerSiteAdminUrlContext
         Context of the Server URL on which the Server Admin is to be accessed
     .PARAMETER RemoteSiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Initial Administrator Account
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER ServerFunctions
-        Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more 
+        Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more
     .PARAMETER ServerRole
         Role of the Federate server - (HOSTING_SERVER, FEDERATED_SERVER)
 #>
@@ -63,7 +63,7 @@ function Test-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
         $PortalHostName,
-        
+
         [parameter(Mandatory = $false)]
 		[System.String]
 		$PortalPort = 7443,
@@ -75,7 +75,7 @@ function Test-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
         $ServiceUrlHostName,
-        
+
         [parameter(Mandatory = $false)]
 		[System.String]
 		$ServiceUrlPort = 443,
@@ -87,7 +87,7 @@ function Test-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
         $ServerSiteAdminUrlHostName,
-        
+
         [parameter(Mandatory = $false)]
 		[System.String]
 		$ServerSiteAdminUrlPort = 6443,
@@ -108,27 +108,27 @@ function Test-TargetResource
 		$SiteAdministrator,
 
         [parameter(Mandatory = $false)]
-		[System.String] 
+		[System.String]
         $ServerFunctions = '',
 
         [parameter(Mandatory = $false)]
-		[System.String] 
+		[System.String]
         $ServerRole
 	)
-    
+
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
-    $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"            
-	
+    $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"
+
     $ServerHostName = $ServerSiteAdminUrlHostName
     $ServerContext = $ServerSiteAdminUrlContext
 
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	    
+	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Write-Verbose "Get Portal Token from Deployment '$PortalHostName'"
     $Referer = "https://$($PortalHostName)/$PortalContext"
     $waitForToken = $true
-    $waitForTokenCounter = 0 
+    $waitForTokenCounter = 0
     while ($waitForToken -and $waitForTokenCounter -lt 25) {
         $waitForTokenCounter++
         try{
@@ -137,7 +137,7 @@ function Test-TargetResource
             Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
             Start-Sleep -Seconds 60
         }
-        if($token.token) {    
+        if($token.token) {
             $waitForToken = $false
         }
     }
@@ -148,7 +148,7 @@ function Test-TargetResource
     Write-Verbose "Site Admin Url:- $ServerSiteAdminUrl Service Url:- $ServiceUrl"
 
     $result = $false
-    $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
+    $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer
 	$fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
     if($fedServer) {
         Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl already exists"
@@ -158,7 +158,7 @@ function Test-TargetResource
     }
 
     if($result) {
-        $oauthApp = Get-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
+        $oauthApp = Get-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer
         Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
         $DesiredDomainForRedirect = "https://$($ServerHostName)"
         if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
@@ -166,22 +166,22 @@ function Test-TargetResource
             $result = $false
         }else {
             Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists as required"
-        }        
-    }    
+        }
+    }
 
     if($result -and ($ServerFunctions -or $ServerRole)) {
         Write-Verbose "Get Server Functions Configuration for https://$($ServerHostName)"
         $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
-        $securityConfig = Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config" -HttpFormParameters @{ f= 'json'; token = $serverToken.token } -Referer $Referer -HttpMethod 'GET' 
-        $serverId = $securityConfig.portalProperties.serverId  
-        
+        $securityConfig = Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config" -HttpFormParameters @{ f= 'json'; token = $serverToken.token } -Referer $Referer -HttpMethod 'GET'
+        $serverId = $securityConfig.portalProperties.serverId
+
         if($securityConfig.serverRole -ine $ServerRole) {
             Write-Verbose "Server Role '$($securityConfig.serverRole)' does not match desired value '$ServerRole'"
             $result = $false
         }else {
             Write-Verbose "Server Role '$($securityConfig.serverRole)' matches desired value '$ServerRole'"
         }
-        
+
         if($result -and $ServerFunctions){
             if($securityConfig.serverFunction -ine $ServerFunctions) {
                 Write-Verbose "Server Function '$($securityConfig.serverFunction)' does not match desired value '$ServerFunctions'"
@@ -207,7 +207,7 @@ function Test-TargetResource
             else {
                 Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
             }
-            
+
             Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverFunction)"
             if($fedServer.serverFunction -ine $ServerFunctions) {
                 Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerFunctions'"
@@ -217,14 +217,14 @@ function Test-TargetResource
                 Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' matches desired value '$ServerFunctions'"
             }
         }
-    }    
+    }
 
     if($Ensure -ieq 'Present') {
-	       $result   
+	       $result
     }
-    elseif($Ensure -ieq 'Absent') {        
+    elseif($Ensure -ieq 'Absent') {
         (-not($result))
-    }    
+    }
 }
 
 function Set-TargetResource
@@ -235,7 +235,7 @@ function Set-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
         $PortalHostName,
-        
+
         [parameter(Mandatory = $false)]
 		[System.Int32]
 		$PortalPort = 7443,
@@ -247,7 +247,7 @@ function Set-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
         $ServiceUrlHostName,
-        
+
         [parameter(Mandatory = $false)]
 		[System.Int32]
 		$ServiceUrlPort = 443,
@@ -259,7 +259,7 @@ function Set-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
         $ServerSiteAdminUrlHostName,
-        
+
         [parameter(Mandatory = $false)]
 		[System.Int32]
 		$ServerSiteAdminUrlPort = 6443,
@@ -267,7 +267,7 @@ function Set-TargetResource
         [parameter(Mandatory = $false)]
 		[System.String]
         $ServerSiteAdminUrlContext='arcgis',
-        
+
         [ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure,
@@ -280,28 +280,28 @@ function Set-TargetResource
 		$SiteAdministrator,
 
         [parameter(Mandatory = $false)]
-		[System.String] 
+		[System.String]
         $ServerFunctions = '',
 
         [parameter(Mandatory = $false)]
-		[System.String] 
+		[System.String]
         $ServerRole
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
-    
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
-    $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"  
-    
+    $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"
+
     $ServerHostName = $ServerSiteAdminUrlHostName
     $ServerContext = $ServerSiteAdminUrlContext
 
     Write-Verbose "Get Portal Token from Deployment '$PortalHostName'"
     $Referer = "https://$($PortalHostName):$($PortalPort)/$PortalContext"
     $waitForToken = $true
-    $waitForTokenCounter = 0 
+    $waitForTokenCounter = 0
     while ($waitForToken -and $waitForTokenCounter -lt 25) {
         $waitForTokenCounter++
         try{
@@ -310,7 +310,7 @@ function Set-TargetResource
             Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
             Start-Sleep -Seconds 60
         }
-        if($token.token) {    
+        if($token.token) {
             $waitForToken = $false
         }
     }
@@ -320,10 +320,10 @@ function Set-TargetResource
 
     Write-Verbose "Site Admin Url:- $ServerSiteAdminUrl Service Url:- $ServiceUrl"
 
-    if($Ensure -eq "Present"){        
-        $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
+    if($Ensure -eq "Present"){
+        $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer
         $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
-        if(-not($fedServer)) {        
+        if(-not($fedServer)) {
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl does not exist"
             Federate-Server -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
                             -ServerServiceUrl $ServiceUrl -ServerAdminUrl $ServerSiteAdminUrl -ServerAdminCredential $SiteAdministrator
@@ -331,18 +331,18 @@ function Set-TargetResource
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl already exists"
         }
 
-        $oauthApp = Get-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
+        $oauthApp = Get-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer
         $DesiredDomainForRedirect = "https://$($ServerHostName)"
         Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
         if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
             Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist. Adding it"
             $oauthApp.redirect_uris += $DesiredDomainForRedirect
             Write-Verbose "Updated list of redirect Uris:- $($oauthApp.redirect_uris)"
-            Update-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer -AppObject $oauthApp 
-        
+            Update-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer -AppObject $oauthApp
+
         }else {
             Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists as required"
-        }        
+        }
 
         if($ServerFunctions -or $ServerRole) {
             $ServerFunctionOrig = $ServerFunctions
@@ -350,7 +350,7 @@ function Set-TargetResource
 
             Write-Verbose "Get Server Functions Configuration for https://$($ServerHostName)"
             $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
-            $securityConfig = Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config" -HttpFormParameters @{ f= 'json'; token = $serverToken.token } -Referer $Referer -HttpMethod 'GET' 
+            $securityConfig = Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config" -HttpFormParameters @{ f= 'json'; token = $serverToken.token } -Referer $Referer -HttpMethod 'GET'
             $ServerFunctionFlag = $false
             if($securityConfig.serverFunction -ine $ServerFunctions) {
                 Write-Verbose "Server Function '$($securityConfig.serverFunctions)' does not match desired value '$ServerFunctions'"
@@ -371,9 +371,9 @@ function Set-TargetResource
                 }
             }else {
                 Write-Verbose "Server Role '$($securityConfig.serverRole)' matches desired value '$ServerRole'"
-                
+
             }
-            
+
             if($ServerRoleFlag -or $ServerFunctionFlag){
                 Write-Verbose "Updating Server Role and Function"
                 try {
@@ -385,25 +385,25 @@ function Set-TargetResource
                     Write-Verbose "[WARNING]:- Update operation did not succeed. Error:- $_"
                 }
             }
-            
-            $ServerFunctions = $ServerFunctionOrig 
-            $ServerRole = $ServerRoleOrig  
 
-            if(-not($fedServer)) {  
-                $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
-                $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }  
+            $ServerFunctions = $ServerFunctionOrig
+            $ServerRole = $ServerRoleOrig
+
+            if(-not($fedServer)) {
+                $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer
+                $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
             }
-            
+
             if($fedServer) {
                 Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverFunction)"
                 Write-Verbose "Server Role for federated server with id '$($fedServer.id)' :- $($fedServer.serverRole)"
                 $ServerFunctionFlag = $False
                 if($fedServer.serverFunction -ine $ServerFunctions) {
                     Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerFunctions'"
-                    $ServerFunctionFlag = $true     
+                    $ServerFunctionFlag = $true
                     if(-not($ServerFunctions)){
                         $ServerFunctions = $fedServer.serverFunction
-                    } 
+                    }
                 }
                 else {
                     Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' matches desired value '$ServerFunctions'"
@@ -412,15 +412,15 @@ function Set-TargetResource
                 $ServerRoleFlag = $False
                 if($fedServer.serverRole -ine $ServerRole) {
                     Write-Verbose "Server Role for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerRole'"
-                    $ServerRoleFlag = $true 
+                    $ServerRoleFlag = $true
                     if(-not($ServerRole)){
                         $ServerRole = $fedServer.serverRole
                     }
                 }else{
                     Write-Verbose "Server Role for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
                 }
-                
-                
+
+
                 if($ServerRoleFlag -or $ServerFunctionFlag){
                     Write-Verbose "Updating Portal"
                     try{
@@ -435,22 +435,22 @@ function Set-TargetResource
                         Write-Verbose "The error $($_.Exception)"
                     }
                 }
-                
+
             }
-           
+
         }
     }elseif($Ensure -eq 'Absent') {
         $PortalFQDN = Get-FQDN $PortalHostName
         $ServerFQDN = Get-FQDN $ServerHostName
         $ServerHttpsUrl = "https://$($ServerFQDN):$($ServerSiteAdminUrlPort)/"
-        
-        $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
+
+        $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer
         $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
         if($fedServer) {
             Write-Verbose "Server with Admin URL $ServerSiteAdminUrl already exists"
             try {
                 $resp = UnFederate-Server -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -ServerID $fedServer.id -Token $token.token -Referer $Referer
-                if($resp.error) {			
+                if($resp.error) {
                     Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
                 }else {
                     Write-Verbose 'UnFederation succeeded'
@@ -467,14 +467,14 @@ function Set-TargetResource
                         }
                     }
                 }
-            }catch { 
+            }catch {
                 Write-Verbose "Error during unfederate operation. Error:- $_"
             }
             Write-Verbose "Unfederate Operation causes a web server restart. Waiting for portaladmin endpoint to come back up"
             Wait-ForUrl -Url "https://$($PortalEndPoint):$($PortalPort)/$($PortalContext)/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
         }else{
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl doesn't exists"
-        }   
+        }
     }
 }
 
@@ -483,22 +483,22 @@ function Federate-Server
     [CmdletBinding()]
     param(
         [System.String]
-		$PortalHostName = 'localhost', 
+		$PortalHostName = 'localhost',
 
         [System.String]
 		$SiteName = 'arcgis',
 
         [System.String]
-		$ServerServiceUrl, 
+		$ServerServiceUrl,
 
         [System.String]
-		$ServerAdminUrl, 
+		$ServerAdminUrl,
 
         [System.Management.Automation.PSCredential]
-		$ServerAdminCredential, 
+		$ServerAdminCredential,
 
         [System.String]
-		$PortalToken, 
+		$PortalToken,
 
         [System.String]
 		$Referer,
@@ -507,8 +507,8 @@ function Federate-Server
         [System.Int32]
 		$Port = 7443
     )
-		
-    $FederationUrl = "https://$($PortalHostName):$Port/$SiteName/portaladmin/federation/servers/federate" 
+
+    $FederationUrl = "https://$($PortalHostName):$Port/$SiteName/portaladmin/federation/servers/federate"
     Write-Verbose "Federation EndPoint:- $FederationUrl"
     Write-Verbose "Referer:- $Referer"
     Write-Verbose "Federation Parameters:- url:- $ServerServiceUrl adminUrl = $ServerAdminUrl"
@@ -520,20 +520,20 @@ function UnFederate-Server
     [CmdletBinding()]
     param(
         [System.String]
-		$PortalHostName = 'localhost', 
+		$PortalHostName = 'localhost',
 
         [System.String]
 		$SiteName = 'arcgis',
 
         [System.String]
-		$ServerID, 
+		$ServerID,
 
         [System.String]
-		$Token, 
+		$Token,
 
         [System.String]
         $Referer,
-        
+
         [System.Int32]
         $Port = 7443
     )
@@ -546,15 +546,15 @@ function UnFederate-Server
 function Get-FederatedServers
 {
     [CmdletBinding()]
-    param(        
+    param(
         [System.String]
-		$PortalHostName = 'localhost', 
+		$PortalHostName = 'localhost',
 
         [System.String]
-		$SiteName = 'arcgis', 
+		$SiteName = 'arcgis',
 
         [System.String]
-		$Token, 
+		$Token,
 
         [System.String]
 		$Referer = 'http://localhost',
@@ -563,22 +563,22 @@ function Get-FederatedServers
         [System.Int32]
 		$Port = 7443
     )
-    
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + '/portaladmin/federation/servers/') -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + '/portaladmin/federation/servers/') -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Get-OAuthApplication
 {
     [CmdletBinding()]
-    param(        
+    param(
         [System.String]
-		$PortalHostName = 'localhost', 
+		$PortalHostName = 'localhost',
 
         [System.String]
-		$SiteName = 'arcgis', 
+		$SiteName = 'arcgis',
 
         [System.String]
-		$Token, 
+		$Token,
 
         [System.String]
 		$Referer = 'http://localhost',
@@ -591,22 +591,22 @@ function Get-OAuthApplication
         [System.String]
 		$AppId = 'arcgisonline'
     )
-    
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + "/sharing/oauth2/apps/$($AppId)") -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + "/sharing/oauth2/apps/$($AppId)") -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Update-OAuthApplication
 {
     [CmdletBinding()]
-    param(        
+    param(
         [System.String]
-		$PortalHostName = 'localhost', 
+		$PortalHostName = 'localhost',
 
         [System.String]
-		$SiteName = 'arcgis', 
+		$SiteName = 'arcgis',
 
         [System.String]
-		$Token, 
+		$Token,
 
         [System.String]
 		$Referer = 'http://localhost',
@@ -620,49 +620,49 @@ function Update-OAuthApplication
 		$AppId = 'arcgisonline',
 
         [Parameter(Mandatory=$true)]
-        $AppObject 
+        $AppObject
     )
-    
-    $redirect_uris = ConvertTo-Json $AppObject.redirect_uris -Depth 1    
+
+    $redirect_uris = ConvertTo-Json $AppObject.redirect_uris -Depth 1
     Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + "/sharing/oauth2/apps/$($AppId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; redirect_uris = $redirect_uris } -Referer $Referer -LogResponse
 }
 
 function Update-FederatedServer
 {
     [CmdletBinding()]
-    param(        
+    param(
         [System.String]
-		$PortalHostName = 'localhost', 
+		$PortalHostName = 'localhost',
 
         [System.String]
-		$SiteName = 'arcgis', 
+		$SiteName = 'arcgis',
 
         [System.String]
-		$Token, 
+		$Token,
 
         [System.String]
 		$Referer = 'http://localhost',
 
         [Parameter(Mandatory=$true)]
         [System.String]
-		$ServerId, 
+		$ServerId,
 
         [Parameter(Mandatory=$false)]
         [System.String]
-		$ServerRole, 
+		$ServerRole,
 
         [Parameter(Mandatory=$false)]
         [System.String]
-		$ServerFunction, 
+		$ServerFunction,
 
         [Parameter(Mandatory=$false)]
         [System.Int32]
 		$Port = 7443
     )
-    
-    
+
+
     try{
-    $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -LogResponse 
+    $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -LogResponse
     }catch{
         Write-Verbose "The Error --- $($_.ErrorDet)"
     }
@@ -673,25 +673,25 @@ function Update-FederatedServer
     }
 }
 
-function Get-SecurityConfig 
+function Get-SecurityConfig
 {
     [CmdletBinding()]
     param(
         [System.String]
-		$ServerURL, 
+		$ServerURL,
 
         [System.String]
-		$SiteName, 
+		$SiteName,
 
         [System.String]
-		$Token, 
+		$Token,
 
         [System.String]
 		$Referer
-    ) 
+    )
 
     $GetSecurityConfigUrl  = $ServerURL.TrimEnd("/") + "/$SiteName/admin/security/config/"
-	Invoke-ArcGISWebRequest -Url $GetSecurityConfigUrl -HttpFormParameters  @{ f= 'json'; token = $Token } -Referer $Referer -TimeoutSec 30    
+	Invoke-ArcGISWebRequest -Url $GetSecurityConfigUrl -HttpFormParameters  @{ f= 'json'; token = $Token } -Referer $Referer -TimeoutSec 30
 }
 
 function Update-SecurityConfigForServer
@@ -699,31 +699,31 @@ function Update-SecurityConfigForServer
     [CmdletBinding()]
     param(
         [System.String]
-		$ServerLocalHttpsEndpoint, 
+		$ServerLocalHttpsEndpoint,
 
         [System.String]
-		$ServerContext, 
+		$ServerContext,
 
         [System.String]
-		$Referer, 
+		$Referer,
 
         [System.String]
-		$ServerToken, 
+		$ServerToken,
 
         [System.Int32]
 		$MaxAttempts = 5
-	) 
-    
+	)
+
     $securityConfig = @{
         authenticationTier = 'GIS_SERVER'
     }
-        
-    $WebParams = @{ securityConfig = ConvertTo-Json $securityConfig -Depth 5 -Compress                   
+
+    $WebParams = @{ securityConfig = ConvertTo-Json $securityConfig -Depth 5 -Compress
                     token = $ServerToken
                     f = 'json'
-                  } 
-    
-    $UpdateConfigUrl = "$ServerLocalHttpsEndpoint/$ServerContext/admin/security/config/update" 	
+                  }
+
+    $UpdateConfigUrl = "$ServerLocalHttpsEndpoint/$ServerContext/admin/security/config/update"
 
     $Done = $false
     $NumAttempts = 1
@@ -733,7 +733,7 @@ function Update-SecurityConfigForServer
 			if($NumAttempts -gt 1) {
 				Write-Verbose "Attempt $NumAttempts"
 			}
-			$response = Invoke-ArcGISWebRequest -Url $UpdateConfigUrl -HttpFormParameters $WebParams -Referer $Referer  
+			$response = Invoke-ArcGISWebRequest -Url $UpdateConfigUrl -HttpFormParameters $WebParams -Referer $Referer
             if($response) {
                 Write-Verbose $response
             }
@@ -747,7 +747,7 @@ function Update-SecurityConfigForServer
             Start-Sleep -Seconds 30 # Try again after 60 seconds
         }
         $NumAttempts++
-    }    
+    }
     if(-not($Done) -and $response){
         # Throw an exception if we were not able to update config
         Check-ResponseStatus $response -Url $UpdateConfigUrl
