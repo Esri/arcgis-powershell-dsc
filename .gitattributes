@@ -7,7 +7,7 @@
 *.gitattributes text
 
 # Declare files that will always have CRLF line endings on checkout.
-*.ps1    diff  eol=crlf
+*.ps1    text  eol=crlf
 *.psm1   text  eol=crlf
 *.psd1   text  eol=crlf
 *.psc1   text  eol=crlf
