@@ -291,13 +291,18 @@ function Set-TargetResource
 
             if($DisableServiceDirectory) {
                 Write-Verbose "Get Service Directory Setting"
-                $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $token.token -Referer $Referer
-                Write-Verbose "Current Service Directory Setting:- $($servicesdirectory.enabled)"
+                $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $token.token
+                if($servicesdirectory.enabled -eq "true") {
+                    $dirStatus = "enabled"
+                } else {
+                    $dirStatus = "disabled"
+                }
+                Write-Verbose "Current Service Directory Setting:- $dirStatus"
                 if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
                     Write-Verbose "Updating Service Directory Setting"
                     $servicesdirectory.enabled = (!$DisableServiceDirectory)
                     $servicesdirectory = ConvertTo-Json $servicesdirectory
-                    Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" -Token $token.token -Properties $servicesdirectory -Referer $Referer
+                    Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" -Token $token.token -Properties $servicesdirectory
                 }
             }
 
@@ -423,12 +428,17 @@ function Test-TargetResource
 
     if($result -and $DisableServiceDirectory) {
         Write-Verbose "Get Service Directory Setting"
-        $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $token.token -Referer $Referer
-        Write-Verbose "Current Service Directory Setting:- $($servicesdirectory.enabled)"
+        $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $token.token
+        if($servicesdirectory.enabled -eq "true") {
+            $dirStatus = "enabled"
+        } else {
+            $dirStatus = "disabled"
+        }
+        Write-Verbose "Current Service Directory Setting:- $dirStatus"
         if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
             $result = $false
-            }
         }
+    }
 
     if($result) {
         $ServiceName = 'ArcGIS Server'
@@ -463,7 +473,6 @@ function Test-TargetResource
         (-not($result))
     }
 }
-
 
 <#
     .SYNOPSIS
@@ -1036,26 +1045,14 @@ function Get-AdminSettings
         $SettingUrl,
 
         [System.String]
-        $Token,
-
-        [System.String]
-        $Referer
+        $Token
     )
 
+    $RequestParams = @{ f= 'json'; token = $Token; }
     $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
-    $props = @{ f= 'json'; token = $Token; }
-    $cmdBody = To-HttpBody $props
-    $headers = @{'Content-type'='application/x-www-form-urlencoded'
-                'Content-Length' = $cmdBody.Length
-                'Accept' = 'text/plain'
-                'Referer' = $Referer
-                }
-
-    $res = Invoke-WebRequest -Uri $RequestUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing
-    $response = $res.Content | ConvertFrom-Json
-    #Write-Verbose "Response from Get-AdminSettings ($RequestUrl): $($res.Content)"
-    Check-ResponseStatus $response
-    $response
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
+    Check-ResponseStatus $Response
+    $Response
 }
 
 function Set-AdminSettings
@@ -1073,31 +1070,17 @@ function Set-AdminSettings
         $Token,
 
         [System.String]
-        $Referer,
-
-        [System.String]
         $Properties
     )
 
-    $COProperties = $Properties | ConvertFrom-Json
     $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
-    $props = @{ f= 'json'; token = $Token; }
-    $COProperties.psobject.properties | Foreach { $props[$_.Name] = $_.Value }
-    if ($props['enabled'])
-    {
-        $props['servicesDirEnabled'] = $props['enabled']
-    }
-    $cmdBody = To-HttpBody $props
-    $headers = @{'Content-type'='application/x-www-form-urlencoded'
-                'Content-Length' = $cmdBody.Length
-                'Accept' = 'text/plain'
-                'Referer' = $Referer
-                }
-    $res = Invoke-WebRequest -Uri $RequestUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing
-    $response = $res.Content | ConvertFrom-Json
-    #Write-Verbose "Response from Set-AdminSettings ($RequestUrl): $($res.Content)"
-    Check-ResponseStatus $response
-    $response
+    $COProperties = $Properties | ConvertFrom-Json
+    $RequestParams = @{ f= 'json'; token = $Token; }
+    $COProperties.psobject.properties | ForEach-Object { $RequestParams[$_.Name] = $_.Value }
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
+    Write-Verbose $Response
+    Check-ResponseStatus $Response
+    $Response
 }
 
 Export-ModuleMember -Function *-TargetResource
