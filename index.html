@@ -29,7 +29,7 @@
     <div class="grid-container">
       <div class="column-24">
         <h1 class="sub-nav-title font-size-8 avenir-demi text-white padding-leader-2">Welcome to Windows PowerShell DSC for ArcGIS Enterprise!</h1>
-        <p class="font-size-2 avenir-medium text-white">Here, you'll find all you need to automate your Web GIS installation and administration.</p>
+        <p class="font-size-2 avenir-medium text-white">Here, you'll find all you need to automate your Web GIS installation and administration from PowerShell.</p>
       </div>
       <div class="column-24">
           <div class="panel panel-no-border modifier-class trailer-2 leader-3 modifier-class" style="background-color:rgba(255, 255, 255, 0.4);">
@@ -51,18 +51,18 @@
         </figure>
         <div class="card-content">
           <h3 class="trailer-half avenir-medium">
-            <a href="https://www.chef.io/chef/">What is ArcGIS Enterprise?</a>
+            <a href="https://enterprise.arcgis.com/en/get-started/latest/windows/what-is-arcgis-enterprise-.htm">What is ArcGIS Enterprise?</a>
             </h4>
             <p class="font-size-1 trailer-1" style="text-align: justify">ArcGIS Enterprise delivers industry-leading mapping and data analysis to your physical or cloud infrastructure. The software platform can be deployed in a variety of configurations — whatever best suits your organization.</p>
             <span>
-              <a href="https://enterprise.arcgis.com/" class="btn btn-clear card-last">Get acquainted with Enterprise</a>
+              <a href="https://enterprise.arcgis.com/en/get-started/latest/windows/what-is-arcgis-enterprise-.htm" class="btn btn-clear card-last">Get acquainted with Enterprise</a>
             </span>
         </div>
       </div>
       <div class="card card-wide leader-1">
         <figure class="card-wide-image-wrap">
           <img class="card-wide-image" src="source\images\powershell_logo.png"
-            alt="About Windows Powershell DSC">
+            alt="About Windows PowerShell DSC">
         </figure>
         <div class="card-content">
           <h3 class="trailer-half avenir-medium">
@@ -87,45 +87,39 @@ background-size: cover;">
       <div class="block-group text-dark-gray block-group-3-up tablet-block-group-2-up phone-block-group-1-up">
         <div class="card block trailer-2">
           <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062272-f1e0ef56-7ae1-11e8-91d2-2e10d3653450.png"
-              alt="GeoEvent Server" class="card-image">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610841-fe768e80-a7b2-11e8-9ba7-395337aaee95.png"
+              alt="Single-machine deployment" class="card-image">
           </figure>
           <div class="card-content">
-            <h4 class="trailer-half text-off-black avenir-medium">Setup a single machine base deployment</h4>
+            <h4 class="trailer-half text-off-black avenir-medium">Set up a single-machine base deployment</h4>
             <p class=" card-last">
-              The fundamental setup of ArcGIS Enterprise is called the
-              <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
-              using Windows PowerShell DSC.
+              The fundamental setup of ArcGIS Enterprise is called the <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine using Windows PowerShell DSC.
             </p>
           </div>
           <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Create-a-base-ArcGIS-Enterprise-deployment-on-one-machine" class="btn btn-clear btn-fill">See the workflow</a>
         </div>
         <div class="card block trailer-2">
           <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42065428-b4096b1e-7aef-11e8-834b-5332f88def12.png"
-              alt="GeoEvent Server" class="card-image">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610840-fe768e80-a7b2-11e8-971c-d79c29a17b11.png"
+              alt="Three-machine deployment" class="card-image">
           </figure>
           <div class="card-content">
-            <h4 class="trailer-half text-off-black avenir-medium">Setup a three machine base deployment</h4>
+            <h4 class="trailer-half text-off-black avenir-medium">Set up a three-machine base deployment</h4>
             <p class=" card-last">
-              The fundamental setup of ArcGIS Enterprise is called the
-              <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
-              using Windows PowerShell DSC.
+              This workflow automates the setup of a base ArcGIS Enterprise deployment on three machines, with the ArcGIS Server, Portal for ArcGIS, and ArcGIS Data Store components each getting their own machine.
             </p>
           </div>
           <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Create-a-base-ArcGIS-Enterprise-deployment-on-three-machines" class="btn btn-clear btn-fill">See the workflow</a>
         </div>
         <div class="card block trailer-2">
           <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42239300-5b0c1238-7eb8-11e8-8a82-0ad9a8a08b59.png"
-              alt="GeoEvent Server" class="card-image" >
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610842-fe768e80-a7b2-11e8-9db9-90d36d65b8fd.png"
+              alt="Many-machine deployment" class="card-image" >
           </figure>
           <div class="card-content">
-            <h4 class="trailer-half text-off-black avenir-medium">Setup a many machine base deployment</h4>
+            <h4 class="trailer-half text-off-black avenir-medium">Set up a many-machine deployment</h4>
             <p class=" card-last">
-              The fundamental setup of ArcGIS Enterprise is called the
-              <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
-              using Chef.
+              With this formula, you can customize your base deployment to be on as many machines as you want. The sample workflow sets up a five-machine deployment, with ArcGIS Server installed on two machines.
             </p>
           </div>
           <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Create-a-base-ArcGIS-Enterprise-deployment-on-many-machines" class="btn btn-clear btn-fill">See the workflow</a>
@@ -138,17 +132,31 @@ background-size: cover;">
 <div class="panel panel-no-padding padding-leader-1 padding-trailer-1 panel-gradient">
   <div class="grid-container">
     <div class="column-24">
-      <h2 class="text-off-black">Automate ArcGIS Enterprise Server Roles with Windows PowerShell DSC</h2>
+      <h2 class="text-off-black">Automate the setup of powerful analytics servers</h2>
       <div class="block-group text-dark-gray block-group-4-up tablet-block-group-2-up phone-block-group-1-up">
         <div class="card block trailer-1">
           <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062202-b2cf6284-7ae1-11e8-869f-094583bea767.png"
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610849-03d3d900-a7b3-11e8-83d4-6ce326d8fe84.png"
+              alt="GIS Server" class="card-image">
+          </figure>
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black">Configure GIS Server</h4>
+            <p class="card-last">
+              ArcGIS GIS Server is at the center of powerful spatial analysis. This workflow will install and configure ArcGIS GIS
+              Server for your ArcGIS Enterprise deployment.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Deploy-an-ArcGIS-GIS-Server-site-on-one-machine" class="btn btn-clear btn-fill">Read More</a>
+        </div>        
+		<div class="card block trailer-1">
+          <figure class="card-image-wrap">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610872-282fb580-a7b3-11e8-9d68-3c3d9de9b782.png"
               alt="GeoEvent Server" class="card-image">
           </figure>
           <div class="card-content">
             <h4 class="trailer-half text-off-black">Configure GeoEvent Server</h4>
             <p class="card-last">
-              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This workflow will install and configure GeoEvent
               Server for your ArcGIS Enterprise deployment.
             </p>
           </div>
@@ -156,13 +164,13 @@ background-size: cover;">
         </div>
         <div class="card block trailer-1">
           <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062201-b2ab0dbc-7ae1-11e8-9a93-60fb27c739e6.png"
-              alt="GeoEvent Server" class="card-image">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610848-03d3d900-a7b3-11e8-9377-c4c1cdd04d86.png"
+              alt="GeoAnalytics Server" class="card-image">
           </figure>
           <div class="card-content">
             <h4 class="trailer-half text-off-black">Configure GeoAnalytics Server</h4>
             <p class="card-last">
-              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              ArcGIS GeoAnalytics Server tackles big problems with big data. This workflow will install and configure GeoAnalytics
               Server for your ArcGIS Enterprise deployment.
             </p>
           </div>
@@ -170,27 +178,13 @@ background-size: cover;">
         </div>
         <div class="card block trailer-1">
           <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062205-b33edd3a-7ae1-11e8-89ea-6f4e8649b50e.png"
-              alt="GeoEvent Server" class="card-image">
+            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/44610846-03d3d900-a7b3-11e8-825a-e304149fe64b.png"
+              alt="Image Server" class="card-image">
           </figure>
           <div class="card-content">
-            <h4 class="trailer-half text-off-black">Configure GIS Server</h4>
+            <h4 class="trailer-half text-off-black">Configure Image Server</h4>
             <p class="card-last">
-              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
-              Server for your ArcGIS Enterprise deployment.
-            </p>
-          </div>
-          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Deploy-an-ArcGIS-GIS-Server-site-on-one-machine" class="btn btn-clear btn-fill">Read More</a>
-        </div>
-        <div class="card block trailer-1">
-          <figure class="card-image-wrap">
-            <img class="card-image" src="https://user-images.githubusercontent.com/31675357/42062204-b3161daa-7ae1-11e8-8a75-80254b19d15d.png"
-              alt="GeoEvent Server" class="card-image">
-          </figure>
-          <div class="card-content">
-            <h4 class="trailer-half text-off-black">Configure Raster/Image Server</h4>
-            <p class="card-last">
-              ArcGIS GeoEvent Server unlocks storage and analysis of real-time data streams. This cookbook will install and configure GeoEvent
+              ArcGIS Image Server enables massive processing and analysis of your raster imagery. This workflow will install and configure Image
               Server for your ArcGIS Enterprise deployment.
             </p>
           </div>
@@ -204,37 +198,32 @@ background-size: cover;">
 <div class="panel panel-dark panel-no-padding padding-leader-1 panel-gradient" style="z-index:1;background: url(https://www.esri.com/content/esri-sites/en-us/arcgis/products/arcgis-enterprise/what-you-get/_jcr_content/par/grid_container_61157_691305568.img.jpg/1517722032476.jpg) top center no-repeat;
 background-size: cover;">
  <!-- Sample HTML -->
- <div class="grid-container">
+  <div class="grid-container">
     <div class="column-24">
-        <h2 class="text-white">Automate ArcGIS Enterprise Upgrades and Uninstalls with Windows PowerShell DSC</h2>
-    
-    <div class="block-group block-group-2-up">
-      <div class="card block trailer-2">
-        <div class="card-content">
-          <h4 class="trailer-half text-off-black avenir-medium">Uninstall a deployment</h4>
-          <p class="text-off-black card-last font-size--1">
-            The fundamental setup of ArcGIS Enterprise is called the
-            <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
-            using Windows PowerShell DSC.
-          </p>
+      <h2 class="text-white">Automate upgrades and uninstalls with Windows PowerShell DSC</h2>
+      <div class="block-group block-group-2-up">
+        <div class="card block trailer-2">
+          <div class="card-content">
+            <h4 class="trailer-half text-off-black avenir-medium">Upgrade a deployment</h4>
+            <p class="text-off-black card-last font-size--1">
+              When it comes time to upgrade to a new version of ArcGIS Enterprise, use this simple workflow.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Upgrade-an-ArcGIS-Enterprise-deployment" class="btn btn-clear btn-fill">See the workflow</a>
         </div>
-        <a href="https://github.com/Esri/arcgis-cookbook/wiki/Deploy-a-full-stack-ArcGIS-Enterprise-on-a-single-machine" class="btn btn-clear btn-fill">See the workflow</a>
-      </div>
-      <div class="card block trailer-2">
-        <div class="card-content">
-          <h4 class="trailer-half text-off-black avenir-medium">Upgrade am Enterprise Deployment</h4>
-          <p class="text-off-black card-last font-size--1">
-            The fundamental setup of ArcGIS Enterprise is called the
-            <b>base deployment</b>. This workflow automates the setup of a base ArcGIS Enterprise deployment on a single machine
-            using Chef.
-          </p>
+        <div class="card block trailer-2">
+	        <div class="card-content">
+            <h4 class="trailer-half text-off-black avenir-medium">Uninstall a deployment</h4>
+            <p class="text-off-black card-last font-size--1">
+              Uninstalling an ArcGIS Enterprise deployment with Windows PowerShell DSC is easy.
+            </p>
+          </div>
+          <a href="https://github.com/Esri/arcgis-powershell-dsc/wiki/Uninstall-an-ArcGIS-Enterprise-deployment" class="btn btn-clear btn-fill">See the workflow</a>
         </div>
-        <a href="https://github.com/Esri/arcgis-cookbook/wiki/Deploy-a-full-stack-ArcGIS-Enterprise-on-a-single-machine" class="btn btn-clear btn-fill">See the workflow</a>
       </div>
     </div>
   </div>
 </div>
- </div>
 
 
 <div class="text-center leader-1">
