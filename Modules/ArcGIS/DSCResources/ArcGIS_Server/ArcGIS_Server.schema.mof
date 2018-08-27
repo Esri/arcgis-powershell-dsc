@@ -1,4 +1,3 @@
-
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Server")]
 class ArcGIS_Server : OMI_BaseResource
 {
@@ -13,5 +12,5 @@ class ArcGIS_Server : OMI_BaseResource
 	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
 	[Write] String PeerServerHostName;
 	[Write] String Platform;
+	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
 };
-
