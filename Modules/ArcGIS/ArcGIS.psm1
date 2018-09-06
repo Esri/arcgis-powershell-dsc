@@ -6,50 +6,53 @@ function Get-FQDN
         [ValidateNotNullOrEmpty()]
         [string]$MachineName
     )
-
-    [bool]$ResolvedDns = $false
-    [int]$NumOfDnsResolutionAttempts = 0
-    $Dns = $Null
-    while((-not $ResolvedDns) -and ($NumOfDnsResolutionAttempts -lt 10))
-    {        
-        $DnsRecord = $null
-        Try {
-            if(Get-Command 'Resolve-DnsName' -ErrorAction Ignore) {
-                $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1                     
-				if($DnsRecord -eq $null) {
-					$DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore                
-				}
+    if($MachineName -as [ipaddress]){
+        $Dns = $MachineName
+    }else{
+        [bool]$ResolvedDns = $false
+        [int]$NumOfDnsResolutionAttempts = 0
+        $Dns = $Null
+        while((-not $ResolvedDns) -and ($NumOfDnsResolutionAttempts -lt 10))
+        {        
+            $DnsRecord = $null
+            Try {
+                if(Get-Command 'Resolve-DnsName' -ErrorAction Ignore) {
+                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1                     
+                    if($DnsRecord -eq $null) {
+                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore                
+                    }
+                }
+                if($DnsRecord -eq $null) {
+                    $machine = (Get-WmiObject -Class Win32_ComputerSystem).Name
+                    $domain = (Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter IPEnabled=TRUE -ComputerName $MachineName).DNSDomain
+                    $Dns = "$($machine).$($domain)"
+                    $ResolvedDns = $true
+                }
             }
-            if($DnsRecord -eq $null) {
-                $machine = (Get-WmiObject -Class Win32_ComputerSystem).Name
-                $domain = (Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter IPEnabled=TRUE -ComputerName $MachineName).DNSDomain
-                $Dns = "$($machine).$($domain)"
-                $ResolvedDns = $true
+            Catch {
+                Write-Verbose "Error Resolving DNS $($_)"            
             }
-        }
-        Catch {
-            Write-Verbose "Error Resolving DNS $($_)"            
-        }
-        if($DnsRecord -ne $null) {
-            [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.WindowsAzure.ServiceRuntime')
-            $UseIP = $false
-            if (('Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment' -as [type]) -and ([Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment]::DeploymentId -ne $null))
-            {
-                $UseIP = $true
-                Write-Verbose "Running on Microsoft Azure Cloud Service VM (Web/Worker) Role. Using IP Address instead of hostnames"
-            }
-            $Dns = if($UseIP) { $DnsRecord.IPAddress } else { $DnsRecord.Name }
-            if($Dns -ne $null -and $Dns.Length -gt 0)
-            {
-                $ResolvedDns = $true
-            }
-            else {
+            if($DnsRecord -ne $null) {
+                [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.WindowsAzure.ServiceRuntime')
+                $UseIP = $false
+                if (('Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment' -as [type]) -and ([Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment]::DeploymentId -ne $null))
+                {
+                    $UseIP = $true
+                    Write-Verbose "Running on Microsoft Azure Cloud Service VM (Web/Worker) Role. Using IP Address instead of hostnames"
+                }
+                $Dns = if($UseIP) { $DnsRecord.IPAddress } else { $DnsRecord.Name }
+                if($Dns -ne $null -and $Dns.Length -gt 0)
+                {
+                    $ResolvedDns = $true
+                }
+                else {
+                    Start-Sleep -Seconds 15
+                }
+            } elseif(-not($ResolvedDns)) {
                 Start-Sleep -Seconds 15
             }
-        } elseif(-not($ResolvedDns)) {
-            Start-Sleep -Seconds 15
+            $NumOfDnsResolutionAttempts++
         }
-        $NumOfDnsResolutionAttempts++
     }
     if(-not $Dns){         
         throw "Unable to resolve DNS for $MachineName"          
