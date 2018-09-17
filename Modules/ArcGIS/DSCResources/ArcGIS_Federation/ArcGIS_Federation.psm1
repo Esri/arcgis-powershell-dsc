@@ -24,9 +24,9 @@
     .PARAMETER ServerSiteAdminUrlContext
         Context of the Server URL on which the Server Admin is to be accessed
     .PARAMETER RemoteSiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Initial Administrator Account
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER ServerFunctions
         Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more 
     .PARAMETER ServerRole

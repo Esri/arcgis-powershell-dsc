@@ -12,7 +12,7 @@
     .PARAMETER ExternalDNSName
         Enternal Endpoint of Portal in case a LB or WebAdaptor is installed - Needs for dummy Web Adaptor and WebContext URL to registered for the portal
     .PARAMETER PortalAdministrator
-         A MSFT_Credential Object - Primary Site Adminstrator
+         A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER AdminEMail
         Additional User Details - Email of the Administrator.
     .PARAMETER AdminSecurityQuestionIndex

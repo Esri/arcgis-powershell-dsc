@@ -6,7 +6,7 @@
         - "Present" ensures that a server site is created or the server is joined to an existing site.
         - "Absent" ensures that existing server site is deleted (Not Implemented).
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER DirectoriesJSON
         List of Registered Directories in JSON Format
 #>

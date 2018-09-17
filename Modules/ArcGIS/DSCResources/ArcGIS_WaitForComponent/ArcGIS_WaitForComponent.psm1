@@ -12,7 +12,7 @@
         - "Present" ensures that machine waits for a target machine, for which the present node has a dependency on.
         - "Absent" - not implemented.
     .PARAMETER Credential
-         A MSFT_Credential Object - Primary Site Adminstrator for the Component for which the present node needs to wait for.
+         A MSFT_Credential Object - Primary Site Administrator for the Component for which the present node needs to wait for.
     .PARAMETER RetryIntervalSec
         Time Interval after which the Resource will again check the status of the resource on the remote machine for which the node is waiting for.
     .PARAMETER RetryCount

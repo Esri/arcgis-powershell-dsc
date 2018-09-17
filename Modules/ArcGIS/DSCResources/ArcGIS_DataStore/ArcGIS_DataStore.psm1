@@ -11,7 +11,7 @@
     .PARAMETER ServerHostName
         HostName of the GIS Server for which you want to create and register a data store.
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator to access the GIS Server. 
+        A MSFT_Credential Object - Primary Site Administrator to access the GIS Server. 
     .PARAMETER ContentDirectory
          Path for the ArcGIS Data Store directory. This directory contains the data store files, plus the relational data store backup directory.
     .PARAMETER DatabaseBackupsDirectory

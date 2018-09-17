@@ -10,7 +10,7 @@
     .PARAMETER ServerDirectoriesRootLocation
         Path to Server Root Directories - Can be a Physical Location or Network Share Address
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER Join
         Boolean to indicate whether to Join or Create a new Site
     .PARAMETER PeerServerHostName

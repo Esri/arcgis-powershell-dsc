@@ -8,7 +8,7 @@
     .PARAMETER Name
         Name of the Geoevent Server Resource
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator for the Server
+        A MSFT_Credential Object - Primary Site Administrator for the Server
     .PARAMETER WebSocketContextUrl
         WebSocket Url for GeoEvent Server
     .PARAMETER SiteAdminUrl
