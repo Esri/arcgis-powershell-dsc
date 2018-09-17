@@ -551,7 +551,6 @@ function Set-TargetResource {
             
             if ($ExternalDNSName){
                 $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-                Write-Verbose "One of the system properties for WebContextURL '$($sysProps.WebContextURL)' or privatePortalURL '$($sysProps.privatePortalURL)' does not match expected values"
                 if ($sysProps.WebContextURL -ine $ExpectedWebContextUrl) {
                     Write-Verbose "Portal System Properties > WebContextUrl is NOT correctly set to '$($ExpectedWebContextUrl)'"
                     if (-not($sysProps.WebContextURL)) {

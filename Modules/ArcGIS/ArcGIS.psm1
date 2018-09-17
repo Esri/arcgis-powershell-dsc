@@ -258,7 +258,7 @@ function Get-ArcGISURL
 
     if($PrimaryPortalMachineNode)
     {
-        $PortalExternalDNSName = Get-FQDN $PrimaryServerMachineNode.NodeName
+        $PortalExternalDNSName = Get-FQDN $PrimaryPortalMachineNode.NodeName
         
         if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
         {
@@ -338,7 +338,7 @@ function Get-ArcGISURL
         $RestURL = "https://$ServerExternalDNSName/$ServerContext/rest"
     }
     
-    if($PrimaryServerMachineNode)
+    if($PrimaryPortalMachineNode)
     {
         Write-Host "Portal Admin URL - $PortalAdminURL"
         Write-Host "Portal URL - $PortalURL"    
