@@ -4,9 +4,6 @@ Configuration WebAdaptorInstall{
         [System.String]
         $WebAdaptorRole,
         
-        [System.Array]
-        $PreRequisiteWindowsFeatures,
-        
         [System.String]
         $Version,
         

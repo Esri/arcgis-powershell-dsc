@@ -476,9 +476,9 @@ function ServerUpgradeScript {
                 if(Test-Path ".\WebAdaptorInstall") {
                     Remove-Item ".\WebAdaptorInstall" -Force -ErrorAction Ignore -Recurse
                 }
-                WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "ServerWebAdaptor" -PreRequisiteWindowsFeatures $cf.ConfigData.WebAdaptor.PreRequisiteWindowsFeatures -Version $cf.ConfigData.Version `
-                                -InstallerPath $cf.ConfigData.WebAdaptor.Installer.Path -Context $cf.ConfigData.ServerContext -ComponentHostName $cfPrimaryServerMachine `
-                                -PSACredential $cfPSACredential -Verbose
+                WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "ServerWebAdaptor" -Version $cf.ConfigData.Version `
+                                    -InstallerPath $cf.ConfigData.WebAdaptor.Installer.Path -Context $cf.ConfigData.ServerContext `
+                                    -ComponentHostName $cfPrimaryServerMachine  -PSACredential $cfPSACredential -Verbose
                 if($Credential){
                     $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -Credential $Credential -DebugMode $DebugMode
                 }else{
@@ -744,8 +744,6 @@ function Configure-ArcGIS
         Write-Host "Dot Sourcing the Configuration:- SpatioTemporalDatastoreStart"
         . "$PSScriptRoot\Configuration\Upgrades\SpatioTemporalDatastoreStart.ps1" -Verbose:$false
 
-        
-
         $HostingConfig = $null
 
         $OtherConfigs = @()
@@ -781,20 +779,20 @@ function Configure-ArcGIS
                 }
                 
                 $PrimaryPortalMachine = ""
-                $PrimaryPortal = $null
+                $PrimaryPortalMachineNode = $null
                 $StandByPortalMachine = ""
-                $StandByPortal = $null
+                $StandByPortalMachineNode = $null
                 $IsMultiMachinePortal = $False
                 
                 for ( $i = 0; $i -lt $HostingConfig.AllNodes.count; $i++ ){
                     $Role = $PortalConfig.AllNodes[$i].Role
                     if($Role -icontains 'Portal'){
                         if(-not($PrimaryPortalMachine)){
-                            $PrimaryPortal = $PortalConfig.AllNodes[$i]
-                            $PrimaryPortalMachine = $PrimaryPortal.NodeName
+                            $PrimaryPortalMachineNode = $PortalConfig.AllNodes[$i]
+                            $PrimaryPortalMachine = $PrimaryPortalMachineNode.NodeName
                         }else{
-                            $StandByPortal = $PortalConfig.AllNodes[$i]
-                            $StandByPortalMachine = $StandByPortal.NodeName
+                            $StandByPortalMachineNode = $PortalConfig.AllNodes[$i]
+                            $StandByPortalMachine = $StandByPortalMachineNode.NodeName
                             $IsMultiMachinePortal = $True
                         }
                     }
@@ -838,19 +836,28 @@ function Configure-ArcGIS
                     }
 
                     if($JobFlag){
-                        $HasLoadBalancer = (($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }  | Measure-Object).Count -gt 0)
-                        $ExternalDNSName = [System.Net.DNS]::GetHostByName($PrimaryPortalMachine).HostName
-                        if($PortalConfig.ConfigData.Portal.SslCertifcate){
-                            $ExternalDNSName = $PortalConfig.ConfigData.Portal.SslCertifcate.Alias
-                        }else{
-                            if($HasLoadBalancer){
-                                $LBMachine = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }| Sort-Object | Select-Object -First 1).NodeName
-                                $ExternalDNSName = [System.Net.DNS]::GetHostByName($LBMachine).HostName
-                            }else{
-                                if((($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0) -and $PortalConfig.ConfigData.PortalContext){
-                                    $PortalWAMachine = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor') }| Select-Object -First 1).NodeName
-                                    $ExternalDNSName = [System.Net.DNS]::GetHostByName($PortalWAMachine).HostName
+                        
+                        if(($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
+                            $PortalWAMachineNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
+                            $ExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
+                            if(($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
+                            {
+                                $ExternalDNSName = ($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
+                            }
+
+                            if(($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
+                                $LoadbalancerNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')} | Select-Object -First 1)
+                                $ExternalDNSName = Get-FQDN $LoadbalancerNode.NodeName
+                                if(($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
+                                {
+                                    $ExternalDNSName = ($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
                                 }
+                            }
+                        }else{
+                            $ExternalDNSName = Get-FQDN $PrimaryPortalMachine
+                            if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
+                            {
+                                $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
                             }
                         }
                         
@@ -863,10 +870,10 @@ function Configure-ArcGIS
 
                         $PrimaryLicenseFilePath = $LicenseFilePath
                         $PrimaryLicensePassword = $LicensePassword
-                        if($PrimaryPortal.PortalLicenseFilePath -and $PrimaryPortal.PortalLicensePassword)
+                        if($PrimaryPortalMachineNode.PortalLicenseFilePath -and $PrimaryPortalMachineNode.PortalLicensePassword)
                         {
-                            $PrimaryLicenseFilePath = $PrimaryPortal.PortalLicenseFilePath
-                            $PrimaryLicensePassword = $PrimaryPortal.PortalLicensePassword
+                            $PrimaryLicenseFilePath = $PrimaryPortalMachineNode.PortalLicenseFilePath
+                            $PrimaryLicensePassword = $PrimaryPortalMachineNode.PortalLicensePassword
                         }
 
                         Write-Host "Portal Upgrade"
@@ -886,10 +893,10 @@ function Configure-ArcGIS
                             
                             $StandbyLicenseFilePath = $LicenseFilePath
                             $StandbyLicensePassword = $LicensePassword
-                            if($StandbyPortal.PortalLicenseFilePath -and $StandbyPortal.PortalLicensePassword)
+                            if($StandByPortalMachineNode.PortalLicenseFilePath -and $StandByPortalMachineNode.PortalLicensePassword)
                             {
-                                $StandbyLicenseFilePath = $StandbyPortal.PortalLicenseFilePath
-                                $StandbyLicensePassword = $StandbyPortal.PortalLicensePassword
+                                $StandbyLicenseFilePath = $StandByPortalMachineNode.PortalLicenseFilePath
+                                $StandbyLicensePassword = $StandByPortalMachineNode.PortalLicensePassword
                             }
 
                             $PortalUpgradeArgs = @{
@@ -945,7 +952,6 @@ function Configure-ArcGIS
                                     IsMultiMachinePortal = $False
                                     <#FileShareMachine = $FileShareMachine
                                     FileShareName = $PortalConfig.ConfigData.FileShareName #>
-                                    
                                 }
                             }else{
                                 $PortalUpgradeArgs = @{
@@ -1021,9 +1027,9 @@ function Configure-ArcGIS
                                 if(Test-Path ".\WebAdaptorInstall") {
                                     Remove-Item ".\WebAdaptorInstall" -Force -ErrorAction Ignore -Recurse
                                 }    
-                                WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "PortalWebAdaptor" -PreRequisiteWindowsFeatures $PortalConfig.ConfigData.WebAdaptor.PreRequisiteWindowsFeatures -Version $PortalConfig.ConfigData.Version `
-                                                -InstallerPath $PortalConfig.ConfigData.WebAdaptor.Installer.Path -Context $PortalConfig.ConfigData.PortalContext -ComponentHostName $PrimaryPortalMachine `
-                                                -PSACredential $PortalPSACredential -Verbose
+                                WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "PortalWebAdaptor" -Version $PortalConfig.ConfigData.Version `
+                                                    -InstallerPath $PortalConfig.ConfigData.WebAdaptor.Installer.Path -Context $PortalConfig.ConfigData.PortalContext `
+                                                    -ComponentHostName $PrimaryPortalMachine -PSACredential $PortalPSACredential -Verbose
                                 if($Credential){
                                     $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -Credential $Credential -DebugMode $DebugMode
                                 }else{
