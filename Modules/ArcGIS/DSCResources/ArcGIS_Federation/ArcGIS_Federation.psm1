@@ -120,7 +120,7 @@ function Test-TargetResource
 
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
     if($ServiceUrlPort -eq 443){
-        "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
+        $ServiceUrl ="https://$($ServiceUrlHostName)/$ServiceUrlContext" 
     }
     $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"            
 	if($ServerSiteAdminUrlPort -eq 443){
