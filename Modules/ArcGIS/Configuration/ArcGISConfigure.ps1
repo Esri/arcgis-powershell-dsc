@@ -747,6 +747,37 @@ Configuration ArcGISConfigure
 
                     if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
                     {
+                        ForEach($svr in ($AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor'}))
+                        {
+                            if(-not($svr.NodeName -ieq $Node.NodeName)){
+                                if($Node.WMFVersion -gt 4){
+                                    $NodeFQDN = Get-FQDN $svr.NodeName
+                                    WaitForAll "WaitForAllWA$($svr.NodeName)ForPortal"{
+                                        ResourceName = "[ArcGIS_WebAdaptor]ConfigurePortal$($NodeFQDN)"
+                                        NodeName = $svr.NodeName
+                                        RetryIntervalSec = 60
+                                        RetryCount = 100
+                                        DependsOn = $Depends
+                                    }
+                                    $Depends += "[WaitForAll]WaitForAllWA$($svr.NodeName)ForPortal"
+                                }else{
+                                    ArcGIS_WaitForComponent "WaitForWA$($svr.NodeName)ForPortal"
+                                    {
+                                        Component = "PortalWA"
+                                        InvokingComponent = "Portal"
+                                        ComponentHostName =  (Get-FQDN $svr.NodeName)
+                                        ComponentContext = $ConfigurationData.ConfigData.PortalContext
+                                        Ensure = "Present"
+                                        Credential =  $PSACredential
+                                        RetryIntervalSec = 60
+                                        RetryCount = 100
+                                        DependsOn = $Depends
+                                    }
+                                    $Depends += "[ArcGIS_WaitForComponent]WaitForWA$($svr.NodeName)ForPortal"
+                                }
+                            }
+                        }
+                        
                         $SSLCertificate = $Node.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1
                         ArcGIS_Portal_TLS "Portal_TLS$($Node.NodeName)"                                   
                         {
@@ -756,7 +787,7 @@ Configuration ArcGISConfigure
                             CName = $SSLCertificate.Alias
                             CertificateFileLocation = $SSLCertificate.Path
                             CertificatePassword = $SSLCertificate.Password
-                            DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
+                            DependsOn = $Depends
                             SslRootOrIntermediate = $SslRootOrIntermediate
                         }
                     }
