@@ -49,7 +49,7 @@ Configuration WebAdaptorInstall{
         {
             Ensure = "Present"
             Component = $Component
-            HostName = $MachineFQDN 
+            HostName =  $Node.ExternalHostName
             ComponentHostName = [System.Net.DNS]::GetHostByName($ComponentHostName).HostName
             Context = $Context
             OverwriteFlag = $False
