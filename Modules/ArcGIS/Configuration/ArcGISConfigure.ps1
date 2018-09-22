@@ -673,30 +673,34 @@ Configuration ArcGISConfigure
                     
                     $Depends += @('[ArcGIS_Service_Account]Portal_RunAs_Account')
 
-                    if(($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
-                        $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
-                        $ExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
-                        if(($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
-                        {
-                            $ExternalDNSName = ($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
-                        }
-
-                        if(($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
-                            $LoadbalancerNode = ($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')} | Select-Object -First 1)
-                            $ExternalDNSName = Get-FQDN $LoadbalancerNode.NodeName
-                            if(($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
+                    if($ConfigurationData.ConfigData.ExternalLoadBalancer){
+                        $ExternalDNSName = $ConfigurationData.ConfigData.ExternalLoadBalancer
+                    }else{
+                        if(($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
+                            $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
+                            $ExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
+                            if(($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
                             {
-                                $ExternalDNSName = ($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
+                                $ExternalDNSName = ($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
+                            }
+
+                            if(($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
+                                $LoadbalancerNode = ($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')} | Select-Object -First 1)
+                                $ExternalDNSName = Get-FQDN $LoadbalancerNode.NodeName
+                                if(($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
+                                {
+                                    $ExternalDNSName = ($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
+                                }
+                            }
+                        }else{
+                            $ExternalDNSName = Get-FQDN $PrimaryPortalMachine
+                            if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
+                            {
+                                $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
                             }
                         }
-                    }else{
-                        $ExternalDNSName = Get-FQDN $PrimaryPortalMachine
-                        if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
-                        {
-                            $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
-                        }
                     }
-
+                    
                     if($Node.NodeName -ine $PrimaryPortalMachine)
                     {
                         if($Node.WMFVersion -gt 4){

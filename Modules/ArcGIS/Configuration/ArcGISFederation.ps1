@@ -79,6 +79,10 @@ Configuration ArcGISFederation
                         }
                     }
 
+                    if($ConfigurationData.ConfigData.ExternalLoadBalancer){
+                        $PortalHostName = $ConfigurationData.ConfigData.ExternalLoadBalancer
+                    }
+
                     $PortalPort = 443
                     $PortalContext = $ConfigurationData.ConfigData.PortalContext
                 }else{
@@ -111,6 +115,9 @@ Configuration ArcGISFederation
                         $SSLCertificate = $LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1
                         $ServerHostName = $SSLCertificate.Alias
                     }
+                }
+                if($ConfigurationData.ConfigData.ExternalLoadBalancer){
+                    $ServerHostName = $ConfigurationData.ConfigData.ExternalLoadBalancer
                 }
                 $ServerPort = 443
                 $ServerContext = $ConfigurationData.ConfigData.ServerContext

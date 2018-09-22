@@ -295,6 +295,10 @@ function Get-ArcGISURL
         }
     }
     
+    if($ConfigurationData.ConfigData.ExternalLoadBalancer){
+        $LBExternalDNSName = $ConfigurationData.ConfigData.ExternalLoadBalancer
+    }
+
     if((($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0))
     {
         $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
