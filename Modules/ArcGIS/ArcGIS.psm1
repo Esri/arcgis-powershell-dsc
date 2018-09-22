@@ -296,6 +296,7 @@ function Get-ArcGISURL
     }
     
     if($ConfigurationData.ConfigData.ExternalLoadBalancer){
+        $HasLoadBalancer = $true
         $LBExternalDNSName = $ConfigurationData.ConfigData.ExternalLoadBalancer
     }
 
