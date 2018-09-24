@@ -76,7 +76,7 @@ function Set-TargetResource
                 if(($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error')){
                     Write-Verbose "Server Upgrade is likely done!"
                     $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -LogResponse
-                    $currentversion = $Info.currentVersion 
+                    $currentversion = "$($Info.currentVersion)"
                     if($currentversion -ieq "10.51"){
                         $currentversion = "10.5.1"
                     }elseif($currentversion -ieq "10.61"){

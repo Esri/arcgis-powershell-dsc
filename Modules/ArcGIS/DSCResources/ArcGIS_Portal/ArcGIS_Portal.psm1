@@ -12,7 +12,7 @@
     .PARAMETER ExternalDNSName
         Enternal Endpoint of Portal in case a LB or WebAdaptor is installed - Needs for dummy Web Adaptor and WebContext URL to registered for the portal
     .PARAMETER PortalAdministrator
-         A MSFT_Credential Object - Primary Site Adminstrator
+         A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER AdminEMail
         Additional User Details - Email of the Administrator.
     .PARAMETER AdminSecurityQuestionIndex
@@ -523,7 +523,7 @@ function Set-TargetResource {
             Write-Verbose "[WARNING] Unable to retrieve current log settings from portal admin"
         }
 
-        if ($ExternalDNSName -and $PortalEndPoint -and -not($Join) <#-and $PortalContext#>) {
+        if ($PortalEndPoint -and -not($Join) <#-and $PortalContext#>) {
             Write-Verbose "Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/' to intialize"
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -LogFailures
 
@@ -548,11 +548,9 @@ function Set-TargetResource {
             if (-not($sysProps)) {
                 $sysProps = @{ }
             }
-            $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-            $ExpectedPrivatePortalUrl = "https://$($PortalEndPoint):7443/arcgis" # "https://$($ExternalDNSName)/$($PortalContext)" 
-            if (($sysProps.WebContextURL -ine $ExpectedWebContextUrl) -or ($sysProps.privatePortalURL -ine $ExpectedPrivatePortalUrl)) {
-				
-                Write-Verbose "One of the system properties for WebContextURL '$($sysProps.WebContextURL)' or privatePortalURL '$($sysProps.privatePortalURL)' does not match expected values"
+            
+            if ($ExternalDNSName){
+                $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"
                 if ($sysProps.WebContextURL -ine $ExpectedWebContextUrl) {
                     Write-Verbose "Portal System Properties > WebContextUrl is NOT correctly set to '$($ExpectedWebContextUrl)'"
                     if (-not($sysProps.WebContextURL)) {
@@ -565,65 +563,69 @@ function Set-TargetResource {
                 else {
                     Write-Verbose "Portal System Properties > WebContextUrl is correctly set to '$($sysProps.WebContextURL)'"
                 }
+            }
 
-                if ($sysProps.privatePortalURL -ine $ExpectedPrivatePortalUrl) {
-                    Write-Verbose "Portal System Properties > privatePortalURL is NOT correctly set to '$($ExpectedPrivatePortalUrl)'"
-                    if (-not($sysProps.privatePortalURL)) {
-                        Add-Member -InputObject $sysProps -MemberType NoteProperty -Name 'privatePortalURL' -Value $ExpectedPrivatePortalUrl
+            $ExpectedPrivatePortalUrl = "https://$($PortalEndPoint):7443/arcgis" # "https://$($ExternalDNSName)/$($PortalContext)" 
+            if ($sysProps.privatePortalURL -ine $ExpectedPrivatePortalUrl) {
+                Write-Verbose "Portal System Properties > privatePortalURL is NOT correctly set to '$($ExpectedPrivatePortalUrl)'"
+                if (-not($sysProps.privatePortalURL)) {
+                    Add-Member -InputObject $sysProps -MemberType NoteProperty -Name 'privatePortalURL' -Value $ExpectedPrivatePortalUrl
+                }
+                else {
+                    $sysProps.privatePortalURL = $ExpectedPrivatePortalUrl
+                }			
+            }
+            else {
+                Write-Verbose "Portal System Properties > privatePortalURL is correctly set to '$($sysProps.privatePortalURL)'"
+            }
+
+
+            Write-Verbose "Updating Portal System Properties"
+            try {
+                Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -Properties $sysProps
+            } catch {
+                Write-Verbose "Error setting Portal System Properties :- $_"
+                Write-Verbose "Request: Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $($token.token) -Referer $Referer -Properties $sysProps"
+            }
+            Write-Verbose "Waiting 5 minutes for web server to apply changes before polling for endpoint being available" 
+            Start-Sleep -Seconds 300 # Add a 5 minute wait to allow the web server to go down
+            Write-Verbose "Updated Portal System Properties. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
+            Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 300 -HttpMethod 'GET' -LogFailures
+            Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
+            
+            if ($ExternalDNSName){
+                $WebAdaptorUrl = "https://$($ExternalDNSName)/$($PortalContext)"
+                $WebAdaptorsForPortal = Get-WebAdaptorsForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
+                Write-Verbose "Current number of WebAdaptors on Portal:- $($WebAdaptorsForPortal.webAdaptors.Length)"
+                $AlreadyExists = $false
+                $WebAdaptorsForPortal.webAdaptors | Where-Object { $_.httpPort -eq 80 -and $_.httpsPort -eq 443 } | ForEach-Object {
+                    if ($_.webAdaptorURL -ine $WebAdaptorUrl) {
+                        Write-Verbose "Unregister Web Adaptor with Url $WebAdaptorUrl"
+                        UnRegister-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -WebAdaptorId $_.id             
                     }
                     else {
-                        $sysProps.privatePortalURL = $ExpectedPrivatePortalUrl
-                    }			
-                }
-                else {
-                    Write-Verbose "Portal System Properties > privatePortalURL is correctly set to '$($sysProps.privatePortalURL)'"
+                        Write-Verbose "Webadaptor with require properties URL $($_.webAdaptorURL) and Name $($_.machineName) already exists"
+                        $AlreadyExists = $true
+                    }
                 }
 
-                Write-Verbose "Updating Portal System Properties to set WebContextUrl to $ExpectedWebContextUrl and privatePortalURl to $ExpectedPrivatePortalUrl"
-                try {
-                    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-                    Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -Properties $sysProps
-                } catch {
-                    Write-Verbose "Error setting Portal System Properties :- $_"
-                    Write-Verbose "Request: Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $($token.token) -Referer $Referer -Properties $sysProps"
+                if (-not($AlreadyExists)) {        
+                    #Register the ExternalDNSName and PortalEndPoint as a web adaptor for Portal
+                    Write-Verbose "Registering the ExternalDNSName Endpoint with Url $WebAdaptorUrl and MachineName $PortalEndPoint as a Web Adaptor for Portal"
+                    try{
+                        Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                        Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443
+                    } catch {
+                        Write-Verbose "Error registering Webadaptor for Portal :- $_"    
+                        Write-Verbose "Request: Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $($token.token) -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443"
+                    }
+                    Write-Verbose "Waiting 3 minutes for web server to apply changes before polling for endpoint being available"
+                    Start-Sleep -Seconds 180 # Add a 3 minute wait to allow the web server to go down
+                    Write-Verbose "Updated Web Adaptors which causes a web server restart. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
+                    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 300 -HttpMethod 'GET' -LogFailures
+                    Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
                 }
-                Write-Verbose "Waiting 5 minutes for web server to apply changes before polling for endpoint being available" 
-                Start-Sleep -Seconds 300 # Add a 5 minute wait to allow the web server to go down
-                Write-Verbose "Updated Portal System Properties. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
-                Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 300 -HttpMethod 'GET' -LogFailures
-                Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
-            }
-
-            $WebAdaptorUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-            $WebAdaptorsForPortal = Get-WebAdaptorsForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-            Write-Verbose "Current number of WebAdaptors on Portal:- $($WebAdaptorsForPortal.webAdaptors.Length)"
-            $AlreadyExists = $false
-            $WebAdaptorsForPortal.webAdaptors | Where-Object { $_.httpPort -eq 80 -and $_.httpsPort -eq 443 } | ForEach-Object {
-                if ($_.webAdaptorURL -ine $WebAdaptorUrl) {
-                    Write-Verbose "Unregister Web Adaptor with Url $WebAdaptorUrl"
-                    UnRegister-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -WebAdaptorId $_.id             
-                }
-                else {
-                    Write-Verbose "Webadaptor with require properties URL $($_.webAdaptorURL) and Name $($_.machineName) already exists"
-                    $AlreadyExists = $true
-                }
-            }
-
-            if (-not($AlreadyExists)) {        
-                #Register the ExternalDNSName and PortalEndPoint as a web adaptor for Portal
-                Write-Verbose "Registering the ExternalDNSName Endpoint with Url $WebAdaptorUrl and MachineName $PortalEndPoint as a Web Adaptor for Portal"
-                try{
-                    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-                    Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443
-                } catch {
-                    Write-Verbose "Error registering Webadaptor for Portal :- $_"    
-                    Write-Verbose "Request: Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $($token.token) -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443"
-                }
-                Write-Verbose "Waiting 3 minutes for web server to apply changes before polling for endpoint being available"
-                Start-Sleep -Seconds 180 # Add a 3 minute wait to allow the web server to go down
-                Write-Verbose "Updated Web Adaptors which causes a web server restart. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
-                Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 300 -HttpMethod 'GET' -LogFailures
-                Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
             }
 
             Write-Verbose "Retrieve token to verify that portal has come back up"
@@ -829,16 +831,18 @@ function Test-TargetResource {
             Wait-ForUrl "https://$($FQDN):7443/arcgis/sharing/rest/generateToken"
             $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
             $result = $token.token
-            if ($result -and $ExternalDNSName) {
+            if ($result) {
                 # Check if web context URL is set correctly							
                 $sysProps = Get-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-                $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"	
-                if ($sysProps.WebContextURL -ieq $ExpectedWebContextUrl) {
-                    Write-Verbose "Portal System Properties > WebContextUrl is correctly set to '$($ExpectedWebContextUrl)'"
-                }
-                else {
-                    $result = $false
-                    Write-Verbose "Portal System Properties > WebContextUrl is NOT correctly set to '$($ExpectedWebContextUrl)'"
+                if ($ExternalDNSName){
+                    $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"	
+                    if ($sysProps.WebContextURL -ieq $ExpectedWebContextUrl) {
+                        Write-Verbose "Portal System Properties > WebContextUrl is correctly set to '$($ExpectedWebContextUrl)'"
+                    }
+                    else {
+                        $result = $false
+                        Write-Verbose "Portal System Properties > WebContextUrl is NOT correctly set to '$($ExpectedWebContextUrl)'"
+                    }
                 }
 
                 if ($result -and $PortalEndPoint) {
@@ -856,7 +860,7 @@ function Test-TargetResource {
                     }
                 }
 				
-                if ($result) {
+                if ($result -and $ExternalDNSName) {
                     $ExpectedUrl = "https://$ExternalDNSName/$PortalContext"
                     $webadaptorConfigs = Get-WebAdaptorsForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
                     $result = $false

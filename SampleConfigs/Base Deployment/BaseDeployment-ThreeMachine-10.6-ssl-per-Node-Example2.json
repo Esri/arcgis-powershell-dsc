@@ -7,22 +7,41 @@
                                               "SpatioTemporal"
                                             ],
                          "Role":  [
-                                      "DataStore"
-                                  ]
+                                      "DataStore",
+                                      "Server"
+                                  ],
+                         "SslCertifcates":  [{
+                                            "Path":  "[Server SSL Certificate Path]",
+                                            "Password":  "[Server SSL Password]",
+                                            "Alias":  "[Server CName Alias]",
+                                            "Target" :["Server"]
+                                        }
+                                    ]
                      },
                      {
                          "NodeName":  "[Machine 2 Name]",
                          "Role":  [
-                                      "Portal",
+                                      "ServerWebAdaptor",
                                       "PortalWebAdaptor"
-                                  ]
+                                  ],
+                         "SslCertifcates":  [{
+                                            "Path":  "[WebAdaptor SSL Certificate Path]",
+                                            "Password":  "[WebAdaptor SSL Password]",
+                                            "Alias":  "[WebAdaptor CName Alias]",
+                                            "Target" :["WebAdaptor"]
+                                        }]
                      },
                      {
                          "NodeName":  "[Machine 3 Name]",
                          "Role":  [
-                                      "Server",
-                                      "ServerWebAdaptor"
-                                  ]
+                                      "Portal"
+                                  ],
+                         "SslCertifcates":  [{
+                                                "Path":  "[Portal SSL Certificate Path]",
+                                                "Password":  "[Portal SSL Password]",
+                                                "Alias":  "[Portal CName Alias]",
+                                                "Target" : ["Portal"]
+                                            }]
                      }
                  ],
     "ConfigData":  {
@@ -42,6 +61,16 @@
                                                                   "IsDomainAccount": false
                                                               }
                                        },
+						"SslRootOrIntermediate" : [
+													{
+														"Alias":	"[ROOT-CA Alias]",
+														"Path":		"[ROOT-CA SSL Certificate Path]"
+													},
+													{
+														"Alias":	"[Intermediate-CA Alias]",
+														"Path":		"[Intermediate-CA SSL Certificate Path]"
+													}
+												],
                        "Server":  {
                                       "LicenseFilePath":   "[License File Path - Server ]",
                                       "Installer":  {
@@ -50,12 +79,7 @@
                                                         "InstallDirPython":  "[Python Install Dir - Ex. C:\\Python27] "
                                                     },
                                       "ServerDirectoriesRootLocation":  "C:\\arcgisserver\\directories",
-                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store",
-                                      "SslCertifcate":  {
-                                                            "Path":  "[Server SSL Certificate Path]",
-                                                            "Password":  "[Server SSL Password]",
-                                                            "Alias":  "[Server CName Alias]"
-                                                        }
+                                      "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
                                   },
                        "Portal":  {
                                       "LicenseFilePath": "[License File Path - Portal ]",
@@ -64,12 +88,7 @@
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
                                                         "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
                                                     },
-                                      "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content",
-                                      "SslCertifcate":  {
-                                                            "Path":  "[Portal SSL Certificate Path]",
-                                                            "Password":  "[Portal SSL Password]",
-                                                            "Alias":  "[Portal CName Alias]"
-                                                        }
+                                      "ContentDirectoryLocation":  "C:\\portalforarcgis\\content\\arcgisportal\\content"
                                   },
                        "DataStore":  {
                                          "ContentDirectoryLocation":  "[Content Dir DataStore - C:\\arcgisdatastore]",

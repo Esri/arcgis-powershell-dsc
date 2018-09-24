@@ -13,11 +13,9 @@
     .PARAMETER Path
         Installer Path of the Webdaptor.
     .PARAMETER Arguments
-        A MSFT_Credential Object - Primary Site Adminstrator.
+        A MSFT_Credential Object - Primary Site Administrator.
     .PARAMETER LogPath
         Path where the Install logs will be saved.
-    .PARAMETER PreRequisiteWindowsFeatures
-        PreRequisiteWindowsFeatures Features Required to be installed before Web Adaptor Installation takes place.
 #>
 
 function Get-TargetResource

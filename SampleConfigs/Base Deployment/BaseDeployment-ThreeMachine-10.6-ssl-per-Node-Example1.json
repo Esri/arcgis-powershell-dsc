@@ -7,37 +7,42 @@
                                               "SpatioTemporal"
                                             ],
                          "Role":  [
-                                      "DataStore",
-                                      "Server"
-                                  ],
-                         "SslCertifcate":  {
-                                            "Path":  "[Server SSL Certificate Path]",
-                                            "Password":  "[Server SSL Password]",
-                                            "Alias":  "[Server CName Alias]"
-                                        }
+                                      "DataStore"
+                                  ]
                      },
                      {
                          "NodeName":  "[Machine 2 Name]",
                          "Role":  [
-                                      "ServerWebAdaptor",
-                                      "PortalWebAdaptor"
+                                    "Server",          
+                                    "ServerWebAdaptor",
+                                    
                                   ],
-                         "SslCertifcate":  {
-                                            "Path":  "[WebAdaptor SSL Certificate Path]",
-                                            "Password":  "[WebAdaptor SSL Password]",
-                                            "Alias":  "[WebAdaptor CName Alias]"
-                                        }
+                         "SslCertifcates":  [
+                                        {
+                                            "Path":  "[Server SSL Certificate Path]",
+                                            "Password":  "[Server SSL Password]",
+                                            "Alias":  "[Server CName Alias]",
+                                            "Target" :["Server"]
+                                        },            
+                                        {
+                                            "Path":  "[Server WebAdaptor SSL Certificate Path]",
+                                            "Password":  "[Server WebAdaptor SSL Password]",
+                                            "Alias":  "[Server WebAdaptor CName Alias]",
+                                            "Target" :["WebAdaptor"]
+                                        }]
                      },
                      {
                          "NodeName":  "[Machine 3 Name]",
                          "Role":  [
-                                      "Portal"
+                                      "Portal",
+                                      "PortalWebAdaptor"
                                   ],
-                         "SslCertifcate":  {
-                                                "Path":  "[Portal SSL Certificate Path]",
-                                                "Password":  "[Portal SSL Password]",
-                                                "Alias":  "[Portal CName Alias]"
-                                            }
+                         "SslCertifcates":  [{
+                                                "Path":  "[Common Cert for Portal and Portal Webadaptor SSL Certificate Path]",
+                                                "Password":  "[Common Cert SSL Password]",
+                                                "Alias":  "[Common Cert CName Alias]",
+                                                "Target" : ["Portal", "WebAdaptor"]
+                                            }]
                      }
                  ],
     "ConfigData":  {

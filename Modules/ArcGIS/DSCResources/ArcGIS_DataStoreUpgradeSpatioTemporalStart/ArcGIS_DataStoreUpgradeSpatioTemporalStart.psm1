@@ -8,7 +8,7 @@
     .PARAMETER ServerHostName
          HostName of the GIS Server for which the datastore was created and registered.
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator to access the GIS Server. 
+        A MSFT_Credential Object - Primary Site Administrator to access the GIS Server. 
 #>
 
 function Get-TargetResource

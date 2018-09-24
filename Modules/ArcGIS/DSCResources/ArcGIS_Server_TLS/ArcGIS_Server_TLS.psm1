@@ -8,7 +8,7 @@
     .PARAMETER SiteName
         Site Name or Default Context of Server
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator.
+        A MSFT_Credential Object - Primary Site Administrator.
     .PARAMETER CertificateFileLocation
         Certificate Path from where to fetch the certificate to be installed.
     .PARAMETER CertificatePassword

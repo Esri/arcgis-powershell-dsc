@@ -31,6 +31,7 @@ Configuration ServerUpgrade{
     Import-DscResource -ModuleName ArcGIS 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
+    Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_ServerUpgrade 
     
     Node $AllNodes.NodeName {

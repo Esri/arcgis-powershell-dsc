@@ -24,9 +24,9 @@
     .PARAMETER ServerSiteAdminUrlContext
         Context of the Server URL on which the Server Admin is to be accessed
     .PARAMETER RemoteSiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Initial Administrator Account
     .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Adminstrator
+        A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER ServerFunctions
         Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more 
     .PARAMETER ServerRole
@@ -119,8 +119,13 @@ function Test-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
+    if($ServiceUrlPort -eq 443){
+        $ServiceUrl ="https://$($ServiceUrlHostName)/$ServiceUrlContext" 
+    }
     $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"            
-	
+	if($ServerSiteAdminUrlPort -eq 443){
+        $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName)/$ServerSiteAdminUrlContext"  
+    }
     $ServerHostName = $ServerSiteAdminUrlHostName
     $ServerContext = $ServerSiteAdminUrlContext
 
@@ -293,8 +298,13 @@ function Set-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
+    if($ServiceUrlPort -eq 443){
+        $ServiceUrl = "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
+    }
     $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"  
-    
+    if($ServerSiteAdminUrlPort -eq 443){
+        $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName)/$ServerSiteAdminUrlContext"  
+    }
     $ServerHostName = $ServerSiteAdminUrlHostName
     $ServerContext = $ServerSiteAdminUrlContext
 

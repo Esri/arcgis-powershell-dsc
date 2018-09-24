@@ -11,14 +11,12 @@ Configuration ArcGISConfigure
     Import-DscResource -Name ArcGIS_DataStore
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
-    Import-DscResource -Name ArcGIS_Federation
     Import-DscResource -Name ArcGIS_TLSCertificateImport
     Import-DscResource -Name ArcGIS_LB
     Import-DscResource -Name ArcGIS_GeoEvent
     Import-DSCResource -Name ArcGIS_EGDB
     Import-DSCResource -Name ArcGIS_WaitForComponent
     Import-DSCResource -Name ArcGIS_WaitForFileShare
-    Import-DSCResource -Name ArcGIS_WaitForSQLServer
     Import-DSCResource -Name ArcGIS_DataStoreItem
     Import-DSCResource -Name ArcGIS_Server_TLS
     Import-DSCResource -Name ArcGIS_Portal_TLS
@@ -31,6 +29,7 @@ Configuration ArcGISConfigure
     $PrimaryBigDataStore = ""
     $PrimaryTileCache = ""
     $FileShareMachine = ""
+
     for ( $i = 0; $i -lt $AllNodes.count; $i++ )
     {
 
@@ -74,18 +73,6 @@ Configuration ArcGISConfigure
     { 
         $SslRootOrIntermediate = if($ConfigurationData.ConfigData.SslRootOrIntermediate) { $ConfigurationData.ConfigData.SslRootOrIntermediate | ConvertTo-Json } else {''}
         
-        $HasSSLCertificatesPerNode = $true
-        for ( $i = 0; $i -lt $AllNodes.count; $i++ )
-        {
-            if($HasSSLCertificatesPerNode -and -not($AllNodes[$i].SslCertifcate)){
-                $Roles = $AllNodes[$i].Role
-                if((@("Server", "Portal", "ServerWebAdaptor","PortalWebAdaptor", "LoadBalancer") | ?{$Roles -contains $_}).Count -gt 1)
-                {
-                    $HasSSLCertificatesPerNode = $False
-                }                
-            }
-        }
-
         $MachineFQDN = Get-FQDN $Node.NodeName
 
         $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
@@ -99,23 +86,6 @@ Configuration ArcGISConfigure
             $ADServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ADServiceUser.UserName, $ADServicePassword )
         } else {
             $ADServiceCredential = $null
-        }
-
-        $Federation = if($ConfigurationData.ConfigData.Federation){$true}else{$false}
-
-        if(-not($Federation))
-        {
-            $ServerCheck = (($AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0)
-            $DataStoreCheck = (($AllNodes | Where-Object { $_.Role -icontains 'DataStore' }  | Measure-Object).Count -gt 0)
-            $PortalCheck = (($AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 0)
-            if($ServerCheck -and $PortalCheck)
-            {
-                $Federation = $True
-                if($DataStoreCheck)
-                {
-                    $HostingServer = $True
-                }
-            }
         }
 
         if(-Not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
@@ -410,7 +380,6 @@ Configuration ArcGISConfigure
                             DependsOn = $Depends
                         }
                         $Depends += "[ArcGIS_Server_RegisterDirectories]Server$($Node.NodeName)RegisterDirectories"
-                        
                     }
 
                     if($ConfigurationData.ConfigData.GeoEventServer) 
@@ -423,7 +392,7 @@ Configuration ArcGISConfigure
                             DependsOn = $Depends
                             DataDir = "$env:ProgramData\Esri\GeoEvent"
                             IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
-                        }  
+                        }
 
                         $Depends += "[ArcGIS_Service_Account]GeoEvent_RunAs_Account"
 
@@ -524,271 +493,36 @@ Configuration ArcGISConfigure
                             $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
                         }
                     }
-
-                    if(($Node.NodeName -ieq $PrimaryServerMachine) -and $HasSQLServer)
+                    
+                    if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'Server'}  | Measure-Object).Count -gt 0)
                     {
-                        ForEach($svr in ($AllNodes | Where-Object { $_.Role -icontains 'SQLServer' }))
-                        {
-                            
-                            $DatabaseServerAdministratorPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.SQLServer.DatabaseAdminUser.Password -AsPlainText -Force
-                            $DatabaseServerAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.SQLServer.DatabaseAdminUser.UserName, $DatabaseServerAdministratorPassword )
-
-                            if($Node.WMFVersion -gt 4){
-                                WaitForAll "WaitForAllSQLServer$($svr.NodeName)"{
-                                    ResourceName = "[Script]CreateDatabaseAdminUser"
-                                    NodeName = $svr.NodeName
-                                    RetryIntervalSec = 60
-                                    RetryCount = 60
-                                    DependsOn = $Depends
-                                }
-                                $Depends += "[WaitForAll]WaitForAllSQLServer$($svr.NodeName)"
-                            }else{
-                                ArcGIS_WaitForSQLServer "WaitForSQLServer$($svr.NodeName)"
-                                {
-                                    SQLServerMachineName = (Get-FQDN $svr.NodeName)
-                                    Ensure = 'Present'
-                                    Credential = $DatabaseServerAdministratorCredential
-                                    RetryIntervalSec = 60
-                                    RetryCount = 60
-                                }
-                                $Depends += "[WaitForAll]ArcGIS_WaitForSQLServer$($svr.NodeName)"
-                            }
-
-                            $SDEUserPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.SQLServer.SDEUser.Password -AsPlainText -Force
-                            $SDEUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.SQLServer.SDEUser.UserName, $SDEUserPassword )
-                            
-                            $DatabaseUserPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.SQLServer.DatabaseUser.Password -AsPlainText -Force
-                            $DatabaseUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.SQLServer.DatabaseUser.UserName, $DatabaseUserPassword )
-
-                            $DatabaseServerHostName = (Get-FQDN $svr.NodeName)
-                            $DatabaseName = $ConfigurationData.ConfigData.SQLServer.DatabaseName
-
-                            if(($DatabaseOption -ine 'None') -and $DatabaseServerHostName -and $DatabaseName -and $DatabaseServerAdministratorCredential -and $SDEUserCredential -and $DatabaseUserCredential)
-                            {
-                                ArcGIS_EGDB RegisterEGDB
-                                {
-                                    DatabaseServer              = $DatabaseServerHostName
-                                    DatabaseName                = $DatabaseName
-                                    ServerSiteAdministrator     = $PSACredential
-                                    DatabaseServerAdministrator = $DatabaseServerAdministratorCredential
-                                    SDEUser                     = $SDEUserCredential
-                                    DatabaseUser                = $DatabaseUserCredential
-                                    IsManaged                   = $ConfigurationData.ConfigData.SQLServer.IsManaged
-                                    EnableGeodatabase           = $ConfigurationData.ConfigData.SQLServer.EnableGeodatabase
-                                    DatabaseType                = 'SQLServerDatabase'
-                                    Ensure                      = 'Present'
-                                    DependsOn                   = $Depends
-                                }
-                                $Depends += "[ArcGIS_EGDB]RegisterEGDB"
-                            }
-                        }
-                    }
-    
-                    if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Path){
+                        $SSLCertificate = $Node.SslCertifcates | Where-Object { $_.Target -icontains 'Server' }  | Select-Object -First 1
                         ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
                         {
                             Ensure = 'Present'
                             SiteName = 'arcgis'
                             SiteAdministrator = $PSACredential                         
-                            CName = $Node.SslCertifcate.Alias
+                            CName = $SSLCertificate.Alias
                             RegisterWebAdaptorForCName = $False
-                            CertificateFileLocation = $Node.SslCertifcate.Path
-                            CertificatePassword = $Node.SslCertifcate.Password
+                            CertificateFileLocation = $SSLCertificate.Path
+                            CertificatePassword = $SSLCertificate.Password
                             EnableSSL = $True
                             SslRootOrIntermediate = $SslRootOrIntermediate
                             DependsOn =  $Depends
                         }
-                    }elseif((($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer') -or ($_.Role -icontains 'ServerWebAdaptor') }  | Measure-Object).Count -eq 0) -and $ConfigurationData.ConfigData.Server.SslCertifcate.Path){
-                        ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-                        {
-                            Ensure = 'Present'
-                            SiteName = 'arcgis'
-                            SiteAdministrator = $PSACredential                         
-                            CName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                            RegisterWebAdaptorForCName = $False
-                            CertificateFileLocation = $ConfigurationData.ConfigData.Server.SslCertifcate.Path
-                            CertificatePassword = $ConfigurationData.ConfigData.Server.SslCertifcate.Password
-                            EnableSSL = $True
-                            SslRootOrIntermediate = $SslRootOrIntermediate
-                            DependsOn =  $Depends
-                        } 
-                    }else{
-                        ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-                        {
-                            Ensure = 'Present'
-                            SiteName = 'arcgis'
-                            SiteAdministrator = $PSACredential                         
-                            CName = $MachineFQDN
-                            RegisterWebAdaptorForCName = $False
-                            EnableSSL = $True
-                            DependsOn =  $Depends
-                        } 
                     }
-                    #Check if to add fallbacks in case per node cert is not given or missing.
-
-                    if($Federation -and ($Node.NodeName -ieq $PrimaryServerMachine) -and (($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer' -or $_.Role -icontains 'ServerWebAdaptor')}  | Measure-Object).Count -eq 0))
-                    {
-                        if(($AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor'}  | Measure-Object).Count -eq 0)
-                        {
-                            if($PrimaryPortalMachine)
+                    else{
+                        if(@("10.5","10.5.1","10.4.1").Contains($ConfigurationData.ConfigData.Version)){
+                            ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
                             {
-                                if($PrimaryServerMachine -ine $PrimaryPortalMachine)
-                                {
-                                    $PortalHostName = if($HasSSLCertificatesPerNode -and $PrimaryPortalMachineNode.SslCertifcate.Alias){ $PrimaryPortalMachineNode.SslCertifcate.Alias }else{ Get-FQDN $PrimaryPortalMachine }
-                                    $PortalPort = 7443
-                                    $PortalContext = "arcgis"
-
-                                    if($Node.WMFVersion -gt 4){
-                                        WaitForAll "WaitForAllPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"{
-                                            ResourceName = "[ArcGIS_Portal]Portal$($PrimaryPortalMachine)"
-                                            NodeName = $PrimaryPortalMachine
-                                            RetryIntervalSec = 60
-                                            RetryCount = 60
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[WaitForAll]WaitForAllPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"
-                                    }else{
-                                        ArcGIS_WaitForComponent "WaitForPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"{
-                                            Component = "Portal"
-                                            InvokingComponent = "Server"
-                                            ComponentHostName = $PortalHostName
-                                            ComponentContext = $PortalContext
-                                            Ensure = "Present"
-                                            Credential =  $PSACredential
-                                            RetryIntervalSec = 60
-                                            RetryCount = 60
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[ArcGIS_WaitForComponent]WaitForPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"
-                                    }
-                                }
-                                else
-                                {
-                                    Write-Verbose "Federation happens in primary portal machine"
-                                }
-                            }elseif($ConfigurationData.ConfigData.Federation){
-                                $PortalHostName = $ConfigurationData.ConfigData.Federation.PortalHostName
-                                $PortalPort = $ConfigurationData.ConfigData.Federation.PortalPort
-                                $PortalContext = $ConfigurationData.ConfigData.Federation.PortalContext
-                                
-                                $PortalFedPSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Federation.PrimarySiteAdmin.Password -AsPlainText -Force
-                                $PortalFedPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Federation.PrimarySiteAdmin.UserName, $PortalFedPSAPassword )
-                            }else{
-                                throw('Something went wrong! Unknown Error! Please Debug!')
-                            }
-                        }
-                        elseif(($AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' }  | Measure-Object).Count -gt 0)
-                        {
-                            $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
-                            $PortalWAMachineName = $PortalWAMachineNode.NodeName
-                            $PortalHostName = if($HasSSLCertificatesPerNode -and $PortalWAMachineName.SslCertifcate.Alias){ $PortalWAMachineNode.SslCertifcate.Alias }else{ Get-FQDN $PortalWAMachineName }
-                            $PortalPort = 443
-                            $PortalContext = $ConfigurationData.ConfigData.PortalContext
-
-                            if($Node.WMFVersion -gt 4){
-                                WaitForAll "WaitForAllWebadaptorPortalConfigFederation$($PortalWAMachineName)"{
-                                    ResourceName = "[ArcGIS_WebAdaptor]ConfigurePortal$($PortalHostName)"
-                                    NodeName = $PortalWAMachineName
-                                    RetryIntervalSec = 60
-                                    RetryCount = 60
-                                    DependsOn = $Depends
-                                }
-                                $Depends += "[WaitForAll]WaitForAllPortalConfigToCompleteServerFederation$($PortalWAMachineName)"
-                            }else{
-                                ArcGIS_WaitForComponent "WaitForWebadaptorPortalConfigFederation$($PortalWAMachineName)"
-                                {
-                                    Component = "PortalWA"
-                                    InvokingComponent = "Server"
-                                    ComponentHostName = $PortalHostName
-                                    ComponentContext = $PortalContext
-                                    Ensure = "Present"
-                                    Credential =  $PSACredential
-                                    RetryIntervalSec = 60
-                                    RetryCount = 60
-                                    DependsOn = $Depends
-                                }
-                                $Depends += "[ArcGIS_WaitForComponent]WaitForWebadaptorPortalConfigFederation$($PortalWAMachineName)"
-                            }
-                        }
-
-                        if($PortalHostName -and $PortalPort -and $PortalContext )
-                        {
-                            $FederationFlag = $True
-                            if($HostingServer)
-                            {
-                                if($PrimaryDataStore)
-                                {
-                                    if($Node.WMFVersion -gt 4){
-                                        WaitForAll "WaitForAllDataStoreInServer$($PrimaryDataStore)"{
-                                            ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
-                                            NodeName = $PrimaryDataStore
-                                            RetryIntervalSec = 60
-                                            RetryCount = 100
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[WaitForAll]WaitForAllDataStoreInServer$($PrimaryDataStore)"
-                                    }else{
-                                        ArcGIS_WaitForComponent  "WaitForDataStoreInServer$($PrimaryDataStore)"
-                                        {
-                                            Component = "DataStore"
-                                            InvokingComponent = "Server"
-                                            ComponentHostName = (Get-FQDN $PrimaryServerMachine)
-                                            ComponentContext = "arcgis"
-                                            Ensure = "Present"
-                                            Credential =  $PSACredential
-                                            RetryIntervalSec = 60
-                                            RetryCount = 100
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[ArcGIS_WaitForComponent]WaitForDataStoreInServer$($PrimaryDataStore)"
-                                    }
-                                }
-                                else
-                                {
-                                    $FederationFlag = $False
-                                }
-                            }
-
-                            if($FederationFlag)
-                            {
-                                if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){
-                                    $ServerFEDHostName = $Node.SslCertifcate.Alias
-                                }else{
-                                    if($ConfigurationData.ConfigData.Server.SslCertifcate.Alias){
-                                        $ServerFEDHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                    }else{
-                                        $ServerFEDHostName = $MachineFQDN
-                                    }
-                                }
-                                if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){
-                                    $PortalFEDHostName = $Node.SslCertifcate.Alias
-                                }else{
-                                    if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                                        $PortalFEDHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                    }else{
-                                        $PortalFEDHostName = $PortalHostName
-                                    }
-                                }
-
-                                ArcGIS_Federation FederateInServer
-                                {
-                                    PortalHostName = $PortalFEDHostName
-                                    PortalPort = $PortalPort
-                                    PortalContext = $PortalContext
-                                    ServiceUrlHostName = $ServerFedHostName
-                                    ServiceUrlContext = 'arcgis'
-                                    ServiceUrlPort = 6443
-                                    ServerSiteAdminUrlHostName = $ServerFedHostName
-                                    ServerSiteAdminUrlPort = 6443
-                                    ServerSiteAdminUrlContext ='arcgis'
-                                    Ensure = "Present"
-                                    RemoteSiteAdministrator = if($PortalFedPSACredential){$PortalFedPSACredential}else{$PSACredential}
-                                    SiteAdministrator = $PSACredential
-                                    ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
-                                    ServerFunctions = $ConfigurationData.ConfigData.ServerRole
-                                    DependsOn = $Depends
-                                }
-                            }
+                                Ensure = 'Present'
+                                SiteName = 'arcgis'
+                                SiteAdministrator = $PSACredential                         
+                                CName = $MachineFQDN
+                                RegisterWebAdaptorForCName = $False
+                                EnableSSL = $True
+                                DependsOn =  $Depends
+                            } 
                         }
                     }
                 }
@@ -939,42 +673,34 @@ Configuration ArcGISConfigure
                     
                     $Depends += @('[ArcGIS_Service_Account]Portal_RunAs_Account')
 
-                    $ExternalDNSName =(Get-FQDN $PrimaryPortalMachine) 
-                    if($Node.SslCertifcate){
-                        $ExternalDNSName = $Node.SslCertifcate.Alias
-                    }else{
-                        if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                            $ExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                        }else{
-                            $ExternalDNSName = (Get-FQDN $Node.NodeName)
-                        }
-                    }
-                    if(($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
-                        $LBMachine = ($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer') }| Sort-Object | Select-Object -First 1)
-                        if($LBMachine.SslCertifcate){
-                            $ExternalDNSName = $LBMachine.SslCertifcate.Alias
-                        }else{
-                            if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                                $ExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                            }else{
-                                $ExternalDNSName = (Get-FQDN $LBMachine.NodeName)
-                            }
-                        }
+                    if($ConfigurationData.ConfigData.ExternalLoadBalancer){
+                        $ExternalDNSName = $ConfigurationData.ConfigData.ExternalLoadBalancer
                     }else{
                         if(($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
-                            $PortalWAMachine = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor') }| Select-Object -First 1)
-                            if($PortalWAMachine.SslCertifcate){
-                                $ExternalDNSName = $PortalWAMachine.SslCertifcate.Alias
-                            }else{
-                                if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                                    $ExternalDNSName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                }else{
-                                    $ExternalDNSName = (Get-FQDN $PortalWAMachine.NodeName)
+                            $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
+                            $ExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
+                            if(($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
+                            {
+                                $ExternalDNSName = ($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
+                            }
+
+                            if(($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
+                                $LoadbalancerNode = ($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')} | Select-Object -First 1)
+                                $ExternalDNSName = Get-FQDN $LoadbalancerNode.NodeName
+                                if(($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
+                                {
+                                    $ExternalDNSName = ($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
                                 }
+                            }
+                        }else{
+                            $ExternalDNSName = Get-FQDN $PrimaryPortalMachine
+                            if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
+                            {
+                                $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
                             }
                         }
                     }
-
+                    
                     if($Node.NodeName -ine $PrimaryPortalMachine)
                     {
                         if($Node.WMFVersion -gt 4){
@@ -1023,117 +749,50 @@ Configuration ArcGISConfigure
                         EnableAutomaticAccountCreation = if($ConfigurationData.ConfigData.Portal.EnableAutomaticAccountCreation) {$true} else {$false}
                     }
 
-                    if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Path){
+                    if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
+                    {
+                        ForEach($svr in ($AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor'}))
+                        {
+                            if(-not($svr.NodeName -ieq $Node.NodeName)){
+                                if($Node.WMFVersion -gt 4){
+                                    $NodeFQDN = Get-FQDN $svr.NodeName
+                                    WaitForAll "WaitForAllWA$($svr.NodeName)ForPortal"{
+                                        ResourceName = "[ArcGIS_WebAdaptor]ConfigurePortal$($NodeFQDN)"
+                                        NodeName = $svr.NodeName
+                                        RetryIntervalSec = 60
+                                        RetryCount = 100
+                                        DependsOn = $Depends
+                                    }
+                                    $Depends += "[WaitForAll]WaitForAllWA$($svr.NodeName)ForPortal"
+                                }else{
+                                    ArcGIS_WaitForComponent "WaitForWA$($svr.NodeName)ForPortal"
+                                    {
+                                        Component = "PortalWA"
+                                        InvokingComponent = "Portal"
+                                        ComponentHostName =  (Get-FQDN $svr.NodeName)
+                                        ComponentContext = $ConfigurationData.ConfigData.PortalContext
+                                        Ensure = "Present"
+                                        Credential =  $PSACredential
+                                        RetryIntervalSec = 60
+                                        RetryCount = 100
+                                        DependsOn = $Depends
+                                    }
+                                    $Depends += "[ArcGIS_WaitForComponent]WaitForWA$($svr.NodeName)ForPortal"
+                                }
+                            }
+                        }
+                        
+                        $SSLCertificate = $Node.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1
                         ArcGIS_Portal_TLS "Portal_TLS$($Node.NodeName)"                                   
                         {
                             Ensure = 'Present'
                             SiteName = 'arcgis'
                             SiteAdministrator = $PSACredential
-                            CName = $Node.SslCertifcate.Alias
-                            CertificateFileLocation = $Node.SslCertifcate.Path
-                            CertificatePassword = $Node.SslCertifcate.Password
-                            DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
+                            CName = $SSLCertificate.Alias
+                            CertificateFileLocation = $SSLCertificate.Path
+                            CertificatePassword = $SSLCertificate.Password
+                            DependsOn = $Depends
                             SslRootOrIntermediate = $SslRootOrIntermediate
-                        }
-                    }elseif((($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer') -or ($_.Role -icontains 'PortalWebAdaptor') }  | Measure-Object).Count -eq 0) -and $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                        ArcGIS_Portal_TLS "Portal_TLS$($Node.NodeName)"                                   
-                        {
-                            Ensure = $Ensure
-                            SiteName = $PortalContext
-                            SiteAdministrator = $PSACredential
-                            CName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                            CertificateFileLocation = $ConfigurationData.ConfigData.Portal.SslCertifcate.Path
-                            CertificatePassword = $ConfigurationData.ConfigData.Portal.SslCertifcate.Password
-                            DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
-                            SslRootOrIntermediate = $SslRootOrIntermediate
-                        }
-                    }else{
-                        #install self signed certificate
-                    }
-                    
-                    if($Federation -and $Node.NodeName -ieq $PrimaryPortalMachine -and (($AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer') -or ($_.Role -icontains 'ServerWebAdaptor') -or ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -eq 0))
-                    {
-                       if($PrimaryPortalMachine -and ($PrimaryServerMachine -ieq $PrimaryPortalMachine))
-                       {
-                            $PortalHostName = if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Path){$Node.SslCertifcate.Alias}else{ Get-FQDN $PrimaryPortalMachine }
-                            $PortalPort = 7443
-                            $PortalContext = 'arcgis'
-                            $FederationFlag = $True
-                            if($HostingServer)
-                            {
-                                if($PrimaryDataStore)
-                                {
-                                    if($Node.WMFVersion -gt 4){
-                                        WaitForAll "WaitForAllDataStoreInPortal$($PrimaryDataStore)"{
-                                            ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
-                                            NodeName = $PrimaryDataStore
-                                            RetryIntervalSec = 60
-                                            RetryCount = 100
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[WaitForAll]WaitForAllDataStoreInPortal$($PrimaryDataStore)"
-                                    }else{
-                                        ArcGIS_WaitForComponent  "WaitForDataStoreInPortal$($PrimaryDataStore)"
-                                        {
-                                            Component = "DataStore"
-                                            InvokingComponent = "Portal"
-                                            ComponentHostName = (Get-FQDN $PrimaryServerMachine)
-                                            ComponentContext = "arcgis"
-                                            Ensure = "Present"
-                                            Credential =  $PSACredential
-                                            RetryIntervalSec = 60
-                                            RetryCount = 100
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[ArcGIS_WaitForComponent]WaitForDataStoreInPortal$($PrimaryDataStore)"
-                                    }
-                                }
-                                else
-                                {
-                                    $FederationFlag = $False
-                                }
-                            }
-                            if($FederationFlag)
-                            {
-                                if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){
-                                    $ServerFEDHostName = $Node.SslCertifcate.Alias
-                                }else{
-                                    if($ConfigurationData.ConfigData.Server.SslCertifcate.Alias){
-                                        $ServerFEDHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                    }else{
-                                        $ServerFEDHostName = $MachineFQDN
-                                    }
-                                }
-
-                                if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){
-                                    $PortalFEDHostName = $Node.SslCertifcate.Alias
-                                }else{
-                                    if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                                        $PortalFEDHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                    }else{
-                                        $PortalFEDHostName = $PortalHostName
-                                    }
-                                }
-
-                                ArcGIS_Federation FederateInPortal
-                                {
-                                    PortalHostName = $PortalFEDHostName
-                                    PortalPort = $PortalPort
-                                    PortalContext = $PortalContext
-                                    ServiceUrlHostName = $ServerFEDHostName
-                                    ServiceUrlContext = 'arcgis'
-                                    ServiceUrlPort = 6443
-                                    ServerSiteAdminUrlHostName = $ServerFEDHostName
-                                    ServerSiteAdminUrlPort = 6443
-                                    ServerSiteAdminUrlContext ='arcgis'
-                                    Ensure = "Present"
-                                    RemoteSiteAdministrator = $PSACredential
-                                    SiteAdministrator = $PSACredential
-                                    ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
-                                    ServerFunctions = $ConfigurationData.ConfigData.ServerRole
-                                    DependsOn = @("[ArcGIS_Portal]Portal$($Node.NodeName)")
-                                }
-                            }
                         }
                     }
                 }
@@ -1377,34 +1036,16 @@ Configuration ArcGISConfigure
                                 Protocol              = "TCP" 
                             }
 
-                            if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Path -and $Node.SslCertifcate.Password -and $Node.SslCertifcate.Alias){
-                                $CertificateFileLocation = $Node.SslCertifcate.Path 
-                                $CertificatePassword = $Node.SslCertifcate.Password
-                                $Alias = $Node.SslCertifcate.Alias
-                            }else{
-                                if($Node.Role -icontains 'ServerWebAdaptor' -and $ConfigurationData.ConfigData.Server.SslCertifcate.Path)
-                                {
-                                    $Alias = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                    $CertificateFileLocation = $ConfigurationData.ConfigData.Server.SslCertifcate.Path
-                                    $CertificatePassword = $ConfigurationData.ConfigData.Server.SslCertifcate.Password
-                                }
-                                elseif($Node.Role -icontains 'PortalWebAdaptor' -and $ConfigurationData.ConfigData.Portal.SslCertifcate.Path)
-                                {
-                                    $Alias = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                    $CertificateFileLocation = $ConfigurationData.ConfigData.Portal.SslCertifcate.Path
-                                    $CertificatePassword = $ConfigurationData.ConfigData.Portal.SslCertifcate.Password
-                                }
-                            }
-
-                            if($CertificateFileLocation -and $CertificatePassword -and $Alias)
+                            if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
                             {
+                                $SSLCertificate = $Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1
                                 ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
                                 {
                                     WebSiteName = 'Default Web Site'
-                                    ExternalDNSName = $Alias
+                                    ExternalDNSName = $SSLCertificate.Alias
                                     Ensure = 'Present'
-                                    CertificateFileLocation = $CertificateFileLocation
-                                    CertificatePassword = $CertificatePassword
+                                    CertificateFileLocation = $SSLCertificate.Path
+                                    CertificatePassword =  $SSLCertificate.Password
                                     DependsOn = $Depends
                                 }
                             }
@@ -1454,11 +1095,13 @@ Configuration ArcGISConfigure
                                         <#}#>
                                     }
                                     
+                                    $HostName = if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias}else{ $MachineFQDN }
+
                                     ArcGIS_WebAdaptor "ConfigureServer$($MachineFQDN)"
                                     {
                                         Ensure = "Present"
                                         Component = 'Server'
-                                        HostName = $MachineFQDN 
+                                        HostName = $HostName
                                         ComponentHostName = (Get-FQDN $PrimaryServerMachine)
                                         Context = $ConfigurationData.ConfigData.ServerContext
                                         OverwriteFlag = $False
@@ -1502,12 +1145,14 @@ Configuration ArcGISConfigure
                                             $Depends += "[ArcGIS_WaitForComponent]WaitForPortalConfigToComplete$($PrimaryPortalMachine)"
                                         }
                                     }
-
+                                    
+                                    $HostName = if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias}else{ $MachineFQDN }
+                                
                                     ArcGIS_WebAdaptor "ConfigurePortal$($MachineFQDN)"
                                     {
                                         Ensure = "Present"
                                         Component = 'Portal'
-                                        HostName = $MachineFQDN 
+                                        HostName = $HostName
                                         ComponentHostName =  (Get-FQDN $PrimaryPortalMachine)
                                         Context = $ConfigurationData.ConfigData.PortalContext
                                         OverwriteFlag = $False
@@ -1515,199 +1160,6 @@ Configuration ArcGISConfigure
                                         DependsOn = $Depends
                                     }
                                     $Depends += "[ArcGIS_WebAdaptor]ConfigurePortal$($MachineFQDN)"
-                                }
-                            }
-
-                            if($Federation -and (($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }  | Measure-Object).Count -eq 0) -and $Node.Role -icontains "ServerWebAdaptor")
-                            {
-                                if(($AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' }  | Measure-Object).Count -gt 0)
-                                {
-                                    if(($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor') -and -not($_.Role -icontains 'ServerWebAdaptor')}  | Measure-Object).Count -gt 0)
-                                    {
-                                        $PortalWAMachineNode =  ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor') -and -not($_.Role -icontains 'ServerWebAdaptor')} | Select-Object -First 1)
-                                        $PortalWAMachineName = $PortalWAMachineNode.NodeName
-                                        if($PortalWAMachineName -ine $Node.NodeName)
-                                        {
-                                            $PortalWAMachineHostName = Get-FQDN $PortalWAMachineName
-                                            if($Node.WMFVersion -gt 4){
-                                                WaitForAll "WaitForAllWebadaptorPortalConfigFederation$($PortalWAMachineName)"{
-                                                    ResourceName = "[ArcGIS_WebAdaptor]ConfigurePortal$($PortalWAMachineHostName)"
-                                                    NodeName = $PortalWAMachineName
-                                                    RetryIntervalSec = 60
-                                                    RetryCount = 100
-                                                    DependsOn = $Depends
-                                                }
-                                                $Depends += "[WaitForAll]WaitForAllWebadaptorPortalConfigFederation$($PortalWAMachineName)"
-                                            }else{
-                                                ArcGIS_WaitForComponent "WaitForWebadaptorPortalConfigFederation$($PortalWAMachineName)"
-                                                {
-                                                    Component = "PortalWA"
-                                                    InvokingComponent = "WebAdaptor"
-                                                    ComponentHostName = $PortalWAMachineHostName
-                                                    ComponentContext = $ConfigurationData.ConfigData.PortalContext
-                                                    Ensure = "Present"
-                                                    Credential =  $PSACredential
-                                                    RetryIntervalSec = 60
-                                                    RetryCount = 100
-                                                    DependsOn = $Depends
-                                                }
-                                                $Depends += "[ArcGIS_WaitForComponent]WaitForWebadaptorPortalConfigFederation$($PortalWAMachineName)"
-                                            }
-                                        }
-
-                                        $PortalHostName = if($HasSSLCertificatesPerNode -and $PortalWAMachineNode.SslCertifcate){ $PortalWAMachineNode.SslCertifcate.Alias }else{ (Get-FQDN $PortalWAMachineName) }                                        
-                                    }
-                                    else
-                                    {
-                                        $PortalHostName = if($HasSSLCertificatesPerNode -and $Node.SslCertifcate){ $Node.SslCertifcate.Alias }else{ $MachineFQDN }
-                                    }
-                                    $PortalPort = 443
-                                    $PortalContext = $ConfigurationData.ConfigData.PortalContext
-                                }
-                                else
-                                {
-                                    if(($AllNodes | Where-Object { ($_.Role -icontains 'Portal')}  | Measure-Object).Count -gt 0)
-                                    {
-                                        $PortalHostName = if($HasSSLCertificatesPerNode -and $PrimaryPortalMachineNode.SslCertifcate){ $PrimaryPortalMachineNode.SslCertifcate.Alias }else{ Get-FQDN $PrimaryPortalMachine }
-                                        $PortalPort = 7443
-                                        $PortalContext = "arcgis"
-                                        if($Node.WMFVersion -gt 4){
-                                            WaitForAll "WaitForAllPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"{
-                                                ResourceName = "[ArcGIS_Portal]Portal$($PrimaryPortalMachine)"
-                                                NodeName = $PrimaryPortalMachine
-                                                RetryIntervalSec = 60
-                                                RetryCount = 100
-                                                DependsOn = $Depends
-                                            }
-                                            $Depends += "[WaitForAll]WaitForAllPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"
-                                        }else{
-                                            ArcGIS_WaitForComponent "WaitForPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"
-                                            {
-                                                Component = "Portal"
-                                                InvokingComponent = "WebAdaptor"
-                                                ComponentHostName = $PortalHostName
-                                                ComponentContext = $PortalContext
-                                                Ensure = "Present"
-                                                Credential =  $PSACredential
-                                                RetryIntervalSec = 60
-                                                RetryCount = 100
-                                            }
-                                            $Depends += "[ArcGIS_WaitForComponent]WaitForPortalConfigToCompleteServerFederation$($PrimaryPortalMachine)"
-                                        }
-                                    }
-                                    else
-                                    {
-                                        $PortalHostName = $ConfigurationData.ConfigData.Federation.PortalHostName
-                                        $PortalPort = $ConfigurationData.ConfigData.Federation.PortalPort
-                                        $PortalContext = $ConfigurationData.ConfigData.Federation.PortalContext
-
-                                        $PortalFedPSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Federation.PrimarySiteAdmin.Password -AsPlainText -Force
-                                        $PortalFedPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Federation.PrimarySiteAdmin.UserName, $PortalFedPSAPassword )
-                                    }
-                                }
-                                
-                                if($ConfigurationData.ConfigData.ServerContext -and $PrimaryServerMachine)
-                                {
-                                    if($PortalHostName -and $PortalPort -and $PortalContext)
-                                    {
-                                        $FederationFlag = $True
-                                        if($HostingServer)
-                                        {
-                                            if($PrimaryDataStore)
-                                            {
-                                                if($PrimaryDataStore -ine $PrimaryPortalMachine)
-                                                {
-                                                    if($Node.WMFVersion -gt 4){
-                                                        WaitForAll "WaitForAllDataStoreInWebAdaptor$($PrimaryDataStore)"{
-                                                            ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
-                                                            NodeName = $PrimaryDataStore
-                                                            RetryIntervalSec = 60
-                                                            RetryCount = 120
-                                                            DependsOn = $Depends
-                                                        }
-                                                        $Depends += "[WaitForAll]WaitForAllDataStoreInWebAdaptor$($PrimaryDataStore)"
-                                                    }else{
-                                                        ArcGIS_WaitForComponent  "WaitForDataStoreInWebAdaptor$($PrimaryDataStore)"
-                                                        {
-                                                            Component = "DataStore"
-                                                            InvokingComponent = "WebAdaptor"
-                                                            ComponentHostName = (Get-FQDN $PrimaryServerMachine)
-                                                            ComponentContext = "arcgis"
-                                                            Ensure = "Present"
-                                                            Credential =  $PSACredential
-                                                            RetryIntervalSec = 60
-                                                            RetryCount = 120
-                                                            DependsOn = $Depends
-                                                        }
-                                                        $Depends += "[ArcGIS_WaitForComponent]WaitForDataStoreInWebAdaptor$($PrimaryDataStore)"
-                                                    }
-                                                }
-                                            }
-                                            else
-                                            {
-                                                $FederationFlag = $False
-                                            }
-                                        }
-                                        if($FederationFlag)
-                                        {
-                                            if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){
-                                                $ServerFEDHostName = $Node.SslCertifcate.Alias
-                                            }else{
-                                                if($ConfigurationData.ConfigData.Server.SslCertifcate.Alias){
-                                                    $ServerFEDHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                                }else{
-                                                    $ServerFEDHostName = $MachineFQDN
-                                                }
-                                            }
-
-                                            if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){
-                                                $PortalFEDHostName = $Node.SslCertifcate.Alias
-                                            }else{
-                                                if($ConfigurationData.ConfigData.Portal.SslCertifcate.Alias){
-                                                    $PortalFEDHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                                }else{
-                                                    $PortalFEDHostName = $PortalHostName
-                                                }
-                                            }
-                                            
-                                            if($ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled){
-                                                $ServerSiteAdminUrlHostName = $ServerFEDHostName
-                                                $ServerSiteAdminUrlPort = 443
-                                                $ServerSiteAdminUrlContext = $ConfigurationData.ConfigData.ServerContext
-                                            }else{
-                                                if($HasSSLCertificatesPerNode -and $PrimaryServerMachineNode.SslCertifcate.Alias){
-                                                    $ServerSiteAdminUrlHostName = $PrimaryServerMachineNode.SslCertifcate.Alias
-                                                }else{
-                                                    $ServerSiteAdminUrlHostName = (Get-FQDN $PrimaryServerMachine)
-                                                }
-                                                $ServerSiteAdminUrlPort = 6443
-                                                $ServerSiteAdminUrlContext = 'arcgis'
-                                            }
-                                            
-                                            ArcGIS_Federation FederateInWA
-                                            {
-                                                PortalHostName = $PortalFEDHostName
-                                                PortalPort = $PortalPort
-                                                PortalContext = $PortalContext
-                                                ServiceUrlHostName = $ServerFEDHostName
-                                                ServiceUrlPort = 443
-                                                ServiceUrlContext = $ConfigurationData.ConfigData.ServerContext
-                                                ServerSiteAdminUrlHostName = $ServerSiteAdminUrlHostName
-                                                ServerSiteAdminUrlPort = $ServerSiteAdminUrlPort
-                                                ServerSiteAdminUrlContext = $ServerSiteAdminUrlContext
-                                                Ensure = "Present"
-                                                RemoteSiteAdministrator = if($PortalFedPSACredential){$PortalFedPSACredential}else{$PSACredential}
-                                                SiteAdministrator = $PSACredential
-                                                ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
-                                                ServerFunctions = $ConfigurationData.ConfigData.ServerRole
-                                                DependsOn = $Depends
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        throw "[Warning]:No PortalHostName or PortalPort or PortalContext set for Federation" 
-                                    }
                                 }
                             }
                         }
@@ -1755,10 +1207,8 @@ Configuration ArcGISConfigure
                     }
                 }
                 'LoadBalancer'{
-
                     if(($AllNodes | Where-Object { $_.Role -icontains 'ServerWebAdaptor' -or $_.Role -icontains 'PortalWebAdaptor'}).count -gt 0)
                     {
-                        
                         $MemberServers = ($AllNodes | Where-Object { $_.Role -icontains 'ServerWebAdaptor' }).NodeName
                         $MemberPortals = ($AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' }).NodeName
                         
@@ -1889,36 +1339,17 @@ Configuration ArcGISConfigure
 
                             $Depends += "[ArcGIS_TLSCertificateImport]CertificateImport-$($svr.NodeName)"
                         }
-                        if($HasSSLCertificatesPerNode){
-                            if($Node.SslCertifcate.Path -and $Node.SslCertifcate.Password -and $Node.SslCertifcate.Alias){
-                                $Alias = $Node.SslCertifcate.Alias
-                                $CertificateFileLocation = $Node.SslCertifcate.Path
-                                $CertificatePassword = $Node.SslCertifcate.Password
-                            }
-                        }else{
-                            if($Node.Role -icontains 'LoadBalancer' -and $ConfigurationData.ConfigData.Server.SslCertifcate.Path)
-                            {
-                                if($ConfigurationData.ConfigData.Server.SslCertifcate){
-                                    $Alias = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                                    $CertificateFileLocation = $ConfigurationData.ConfigData.Server.SslCertifcate.Path
-                                    $CertificatePassword = $ConfigurationData.ConfigData.Server.SslCertifcate.Password
-                                }elseif($ConfigurationData.ConfigData.Portal.SslCertifcate){
-                                    $Alias = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                                    $CertificateFileLocation = $ConfigurationData.ConfigData.Portal.SslCertifcate.Path
-                                    $CertificatePassword = $ConfigurationData.ConfigData.Portal.SslCertifcate.Password
-                                }
-                            }
-                        }
-
-                        if($CertificateFileLocation -and $CertificatePassword -and $Alias)
+                        
+                        if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
                         {
+                            $SSLCertificate = $Node.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1
                             ArcGIS_IIS_TLS "LoadBalancerCertificateInstall$($Node.NodeName)"
                             {
                                 WebSiteName = 'Default Web Site'
-                                ExternalDNSName = $Alias
+                                ExternalDNSName = $SSLCertificate.Alias
                                 Ensure = 'Present'
-                                CertificateFileLocation = $CertificateFileLocation
-                                CertificatePassword = $CertificatePassword
+                                CertificateFileLocation =  $SSLCertificate.Path
+                                CertificatePassword = $SSLCertificate.Password
                                 DependsOn = $Depends
                             }
                         }
@@ -1934,212 +1365,6 @@ Configuration ArcGISConfigure
                         }
                         
                         $Depends += "[ArcGIS_IIS_TLS]LoadBalancerCertificateInstall$($Node.NodeName)"
-
-
-                        if($Federation -and ($ConfigurationData.ConfigData.PortalContext -or $ConfigurationData.ConfigData.ServerContext))
-                        {    
-                            if($MemberPortals)
-                            {
-                                $PortalHostName = if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){ $Node.SslCertifcate.Alias }else{ Get-FQDN $MachineFQDN }
-                                $PortalPort = 443
-                                $PortalContext = $ConfigurationData.ConfigData.PortalContext
-                            }
-                            else
-                            {
-                                if($PrimaryPortalMachine)
-                                {
-                                    $PortalHostName = if($HasSSLCertificatesPerNode -and $PrimaryPortalMachineNode.SslCertifcate.Alias){ $PrimaryPortalMachineNode.SslCertifcate.Alias }else{ Get-FQDN $PrimaryPortalMachine }
-                                    $PortalPort = 7443
-                                    $PortalContext = "arcgis"
-                                    
-                                    if($Node.WMFVersion -gt 4){
-                                        WaitForAll "WaitForAllPortalConfigToCompleteWAFederation$($PrimaryPortalMachine)"{
-                                            ResourceName = "[ArcGIS_Portal]Portal$($PrimaryPortalMachine)"
-                                            NodeName = $PrimaryPortalMachine
-                                            RetryIntervalSec = 60
-                                            RetryCount = 100
-                                            DependsOn = $Depends
-                                        }
-                                        $Depends += "[WaitForAll]WaitForAllPortalConfigToCompleteWAFederation$($PrimaryPortalMachine)"
-                                    }else{
-                                        ArcGIS_WaitForComponent "WaitForPortalConfigToCompleteWAFederation$($PrimaryPortalMachine)"
-                                        {
-                                            Component = "Portal"
-                                            InvokingComponent = "LoadBalancer"
-                                            ComponentHostName = $PortalHostName
-                                            ComponentContext = $PortalContext
-                                            Ensure = "Present"
-                                            Credential =  $PSACredential
-                                            RetryIntervalSec = 60
-                                            RetryCount = 100
-                                        }
-                                        $Depends += "[ArcGIS_WaitForComponent]WaitForPortalConfigToCompleteWAFederation$($PrimaryPortalMachine)"
-                                    }
-                                }
-                                elseif($ConfigurationData.ConfigData.Federation)
-                                {
-                                    $PortalHostName = $ConfigurationData.ConfigData.Federation.PortalHostName
-                                    $PortalPort = $ConfigurationData.ConfigData.Federation.PortalPort
-                                    $PortalContext = $ConfigurationData.ConfigData.Federation.PortalContext
-
-                                    $PortalFedPSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Federation.PrimarySiteAdmin.Password -AsPlainText -Force
-                                    $PortalFedPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Federation.PrimarySiteAdmin.UserName, $PortalFedPSAPassword )
-                                }
-                            }
-                            
-                            if($MemberServers)
-                            {
-                                $ServerHostName = if($HasSSLCertificatesPerNode -and $Node.SslCertifcate.Alias){ $Node.SslCertifcate.Alias }else{ Get-FQDN $MachineFQDN }
-                                $ServerContext = $ConfigurationData.ConfigData.ServerContext
-                                $ServerPort = 443
-                            }
-                            elseif(-not($MemberServers) -and $PrimaryServerMachine)
-                            {
-                                $ServerHostName = if($HasSSLCertificatesPerNode -and $PrimaryServerMachineNode.SslCertifcate.Alias) { $PrimaryServerMachineNode.SslCertifcate.Alias }else{ Get-FQDN $PrimaryServerMachine  }    
-                                $ServerContext = 'arcgis'
-                                $ServerPort = 6443
-                            }
-
-                            if($PortalHostName -and $PortalPort -and $PortalContext -and $ServerHostName -and $ServerContext -and $ServerPort)
-                            {
-                                $FederationFlag = $True
-                                if($HostingServer)
-                                {
-                                    if($PrimaryDataStore)
-                                    {
-                                        if($Node.WMFVersion -gt 4){
-                                            WaitForAll "WaitForAllDataStoreInLB$($PrimaryDataStore)"{
-                                                ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
-                                                NodeName = $PrimaryDataStore
-                                                RetryIntervalSec = 60
-                                                RetryCount = 100
-                                                DependsOn = $Depends
-                                            }
-                                            $Depends += "[WaitForAll]WaitForAllDataStoreInLB$($PrimaryDataStore)"
-                                        }else{
-                                            ArcGIS_WaitForComponent "WaitForDataStoreInLB$($PrimaryDataStore)"
-                                            {
-                                                Component = "DataStore"
-                                                InvokingComponent = "LoadBalancer"
-                                                ComponentHostName = (Get-FQDN $PrimaryServerMachine)
-                                                ComponentContext = "arcgis"
-                                                Ensure = "Present"
-                                                Credential =  $PSACredential
-                                                RetryIntervalSec = 60
-                                                RetryCount = 100
-                                                DependsOn = $Depends
-                                            }
-                                            $Depends += "[ArcGIS_WaitForComponent]WaitForDataStoreInLB$($PrimaryDataStore)"
-                                        }
-                                    }
-                                    else
-                                    {
-                                        $FederationFlag = $False
-                                    }
-                                }
-                                if($FederationFlag)
-                                {
-                                    if($ConfigurationData.ConfigData.WebAdaptor.AdminAccessEnabled){
-                                        $ServerSiteAdminUrlHostName = $ServerHostName
-                                        $ServerSiteAdminUrlPort = $ServerPort
-                                        $ServerSiteAdminUrlContext = $ServerContext
-                                    }else{
-                                        $ServerSiteAdminUrlHostName =  if($HasSSLCertificatesPerNode -and $PrimaryServerMachineNode.SslCertifcate.Alias){ $PrimaryServerMachineNode.SslCertifcate.Alias }else{ Get-FQDN $PrimaryServerMachine }
-                                        $ServerSiteAdminUrlPort = 6443
-                                        $ServerSiteAdminUrlContext = 'arcgis'
-                                    }
-
-                                    ArcGIS_Federation FederateInLB
-                                    {
-                                        PortalHostName = $PortalHostName
-                                        PortalPort =  $PortalPort
-                                        PortalContext = $PortalContext
-                                        ServiceUrlHostName = $ServerHostName
-                                        ServiceUrlContext = $ServerContext
-                                        ServiceUrlPort = $ServerPort
-                                        ServerSiteAdminUrlHostName = $ServerSiteAdminUrlHostName
-                                        ServerSiteAdminUrlPort = $ServerSiteAdminUrlPort
-                                        ServerSiteAdminUrlContext = $ServerSiteAdminUrlContext
-                                        Ensure = "Present"
-                                        RemoteSiteAdministrator = if($PortalFedPSACredential){$PortalFedPSACredential}else{$PSACredential}
-                                        SiteAdministrator = $PSACredential
-                                        ServerRole = if($HostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
-                                        ServerFunctions = $ConfigurationData.ConfigData.ServerRole
-                                        DependsOn = $Depends
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                'SqlServer'{
-                    xFirewall Server_FirewallRule_Database
-                    {
-                            Name                  = "SQL Server Database IN" 
-                            DisplayName           = "SQL Server Database 1433" 
-                            DisplayGroup          = "SQL Server" 
-                            Ensure                = 'Present'
-                            Access                = "Allow" 
-                            State                 = "Enabled" 
-                            Profile               = @("Domain","Private","Public") 
-                            LocalPort             = "1433"                         
-                            Protocol              = "TCP" 
-                            DependsOn             = @('[Script]SQLServerInstall')
-                    }
-
-                    Script SetMixedModeAuthentication
-                    {
-                        GetScript = {
-                            $null
-                        }
-                        TestScript = 
-                        {                    
-                            $result = $false
-                            [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SqlServer.SMO') 
-                            $s = new-object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName" 
-                            $result = ($s.Settings.LoginMode -ieq [Microsoft.SqlServer.Management.SMO.ServerLoginMode]::Mixed)
-                            $result
-                        }
-                        SetScript =
-                        {
-                            [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SqlServer.SMO')
-                            $s = new-object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName"
-                            $s.Settings.LoginMode = [Microsoft.SqlServer.Management.SMO.ServerLoginMode]::Mixed
-                            $s.Alter()
-                            Stop-Service -Name 'MSSQLSERVER' -Force
-                            Start-Sleep -Seconds 5
-                            Start-Service -Name 'MSSQLSERVER'
-                        }
-                        DependsOn = @('[xFirewall]Server_FirewallRule_Database')
-                    }
-
-                    $DatabaseAdminUserName = $ConfigurationData.ConfigData.SQLServer.DatabaseAdminUser.UserName
-                    $DatabaseAdminPassword = $ConfigurationData.ConfigData.SQLServer.DatabaseAdminUser.Password
-
-                    Script CreateDatabaseAdminUser
-                    {
-                        GetScript = {
-                            $null
-                        }
-                        TestScript = 
-                        {                    
-                            [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SqlServer.SMO') | Out-Null
-                            $s = new-object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName" 
-                            (($s.logins).Name -contains $using:DatabaseAdminUserName)    
-                        }
-                        SetScript =
-                        {
-                            [System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SqlServer.SMO')
-                            $s = new-object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName"
-                            [Microsoft.SqlServer.Management.Smo.Login]$login = New-Object Microsoft.SqlServer.Management.Smo.Login $s,$using:DatabaseAdminUserName
-                            $login.LoginType = [Microsoft.SqlServer.Management.Smo.LoginType]::SqlLogin      
-                            $login.Create($using:DatabaseAdminPassword)
-                            $login.AddToRole("sysadmin")
-                            $login.AddToRole("dbcreator")
-                            $login.AddToRole("serveradmin")
-                            $login.Alter()
-                        }
-                        DependsOn = @('[Script]SetMixedModeAuthentication')
                     }
                 }
             }

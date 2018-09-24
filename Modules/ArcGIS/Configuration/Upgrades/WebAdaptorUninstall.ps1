@@ -15,8 +15,7 @@ Configuration WebAdaptorUninstall{
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
 
     Node $AllNodes.NodeName {
-        $NodeName = $Node.NodeName
-
+       
         ArcGIS_WebAdaptorInstall WebAdaptorUninstall
         { 
             Context = $Context 
