@@ -1121,10 +1121,12 @@ function Configure-ArcGIS
 
                             for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
                                 $DSNode = $DSConfig.AllNodes[$i].NodeName
-                                $NodeToAdd = @{
-                                    NodeName = $DSNode
+                                if($DSNode.Role -icontains 'DataStore'){
+                                    $NodeToAdd = @{
+                                        NodeName = $DSNode
+                                    }
+                                    $cd.AllNodes += $NodeToAdd 
                                 }
-                                $cd.AllNodes += $NodeToAdd 
                             }
 
                             if(Test-Path ".\DataStoreUpgradeInstall") {
