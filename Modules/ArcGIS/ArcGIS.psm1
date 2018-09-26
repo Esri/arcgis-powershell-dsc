@@ -466,14 +466,17 @@ function ServerUpgradeScript {
                 }
             }
         }
+
         if($JobFlag){
             #UpgradeServerWebAdaptor
             Write-Host "WA Server Install"
-            ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'}).NodeName){
+            ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'})){
+                $WAExternalHostName = if(($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
                 $cd = @{
                     AllNodes = @(
                         @{
-                            NodeName = $WANode
+                            NodeName = $WANode.NodeName
+                            ExternalHostName = $WAExternalHostName
                             PSDscAllowPlainTextPassword = $true
                         }
                     )
