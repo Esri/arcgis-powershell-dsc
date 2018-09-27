@@ -1124,7 +1124,7 @@ function Configure-ArcGIS
 
                             for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
                                 $DSNode = $DSConfig.AllNodes[$i].NodeName
-                                if($DSNode.Role -icontains 'DataStore'){
+                                if($DSConfig.AllNodes[$i].Role -icontains 'DataStore'){
                                     $NodeToAdd = @{
                                         NodeName = $DSNode
                                     }
