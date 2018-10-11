@@ -84,13 +84,12 @@ function Set-TargetResource
         }
         Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion" 
         $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-        $Arguments = " -s -ver $Version"    
         
         Write-Verbose "Licensing from $LicenseFilePath" 
        
         if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
             Write-Verbose "Version $Version Component $Component" 
-            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Arguments $Arguments -Password $Password
+            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Version $Version -Password $Password
         }
         else {
             Write-Verbose "Version $Version Component $Component Role $ServerRole" 
@@ -99,7 +98,7 @@ function Set-TargetResource
             Write-Verbose "StdOutputLogFilePath:- $StdOutputLogFilePath" 
             Write-Verbose "StdErrLogFilePath:- $StdErrLogFilePath" 
             License-Software -Product $Component -LicenseFilePath $LicenseFilePath `
-                         -Arguments $Arguments -Password $Password -StdOutputLogFilePath $StdOutputLogFilePath `
+                         -Version $Version -Password $Password -StdOutputLogFilePath $StdOutputLogFilePath `
                          -StdErrLogFilePath $StdErrLogFilePath
         }
     }else {
