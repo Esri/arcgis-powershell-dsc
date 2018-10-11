@@ -600,26 +600,59 @@ function Configure-ArcGIS
 
         if($Mode -ieq "Install"){ 
 
-            $ValidateFileShare = $False
-         
-            $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
-            $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
-
-            if($IsHAPortal -or $IsHAServer){
-                if((($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'FileShare' }  | Measure-Object).Count -gt 0)){
-                    $ValidateFileShare = $True
-                }else{
-                    if($MappedDriveOverrideFlag){
-                        $ValidateFileShare = $False
-                    }else{
-                        $ValidateFileShare = $False
+            $ValidatePortalFileShare = $false
+            if($ConfigurationParamsHashtable.ConfigData.Portal){
+                $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
+                if($IsHAPortal)
+                {
+                    if($MappedDriveOverrideFlag)
+                    {
+                        $ValidatePortalFileShare = $True
                     }
+                    else
+                    {
+                        if($ConfigurationData.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\'))
+                        {
+                            $ValidatePortalFileShare = $True
+                        }
+                        else
+                        {
+                            throw "Config Directory Location path is not a fileshare path"
+                        }
+                    }
+                }else{
+                    $ValidatePortalFileShare = $True 
                 }
             }else{
-                $ValidateFileShare = $True
+                $ValidatePortalFileShare = $True   
             }
 
-            if($ValidateFileShare){
+            $ValidateServerFileShare = $false
+            $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
+            if($IsHAServer)
+            {
+                if($MappedDriveOverrideFlag)
+                {
+                    $ValidateServerFileShare = $True
+                }
+                else
+                {
+                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\') -and $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\'))
+                    {
+                        $ValidateServerFileShare = $True
+                    }
+                    else
+                    {
+                        throw "One or both of Config Store Location and Server Directories Root Location is not a fileshare path"
+                    }
+                }
+            }
+            else
+            {
+                $ValidateServerFileShare = $True 
+            }
+
+            if($ValidateServerFileShare -and $ValidatePortalFileShare){
                 $JobFlag = $False
 
                 Write-Host "Dot Sourcing the Configuration:- ArcGISInstall"
@@ -703,7 +736,7 @@ function Configure-ArcGIS
                     }
                 }
             }else{
-                throw "FileShare not present required for HA Setup!"  
+                throw "File directory validations failed for server or portal. Please check and run again."  
             }
         }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService")){
             if($Mode -ieq "Uninstall"){

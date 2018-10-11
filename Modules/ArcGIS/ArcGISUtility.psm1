@@ -330,7 +330,7 @@ function License-Software
     }
     Write-Verbose "Licensing Product [$Product] using Software Authorization Utility at $SoftwareAuthExePath" -Verbose
     
-    $Params = " $Arguments -lif $licenseFilePath"
+    $Params = " $Arguments -lif '$licenseFilePath'"
     if($Password){
         $Params += " -password $Password" 
     }

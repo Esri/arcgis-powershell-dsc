@@ -268,7 +268,7 @@ Configuration ArcGISConfigure
                     $ConfigStoreLocation =  $ConfigurationData.ConfigData.Server.ConfigStoreLocation
                     $ServerDirectoriesRootLocation = $ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation
 
-                    if($FileShareMachine)
+                    if($FileShareMachine -and $ConfigurationData.ConfigData.FileShareName -and $ConfigStoreLocation.StartsWith('\') -and $ServerDirectoriesRootLocation.StartsWith('\'))
                     {
                         #$ConfigStoreLocation = "\\$($FileShareMachine)\$($ConfigurationData.ConfigData.FileShareName)\$($ConfigurationData.ConfigData.Server.ConfigStoreLocation)"
                         #$ServerDirectoriesRootLocation = "\\$($FileShareMachine)\$($ConfigurationData.ConfigData.FileShareName)\$($ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation)"
@@ -366,7 +366,6 @@ Configuration ArcGISConfigure
                         DependsOn = $Depends
                         LogLevel = if($ConfigurationData.ConfigData.DebugMode) { 'DEBUG' } else { 'WARNING' }
                         SingleClusterMode = if(($AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0) { $true } else { $false }
-                        
                     }
                     
                     $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
@@ -611,7 +610,7 @@ Configuration ArcGISConfigure
                     $Depends += @('[Service]Portal_for_ArcGIS_Service')
 
                     $ContentDirectoryLocation = $ConfigurationData.ConfigData.Portal.ContentDirectoryLocation
-                    if($FileShareMachine -and $ConfigurationData.ConfigData.FileShareName)
+                    if($FileShareMachine -and $ConfigurationData.ConfigData.FileShareName -and $ContentDirectoryLocation.StartsWith('\'))
                     {
                         #$ContentDirectoryLocation = "\\$($FileShareMachine)\$($ConfigurationData.ConfigData.FileShareName)\$($ConfigurationData.ConfigData.Portal.ContentDirectoryLocation)"
                         $FilePathsForPortal = @()
@@ -1190,10 +1189,16 @@ Configuration ArcGISConfigure
                 }
                 'FileShare'{
                     $FilePathsArray = @()
-                    $FilePathsArray += $ConfigurationData.ConfigData.Server.ConfigStoreLocation
-                    $FilePathsArray += $ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation
+                    if(-not($ConfigurationData.ConfigData.Server.ConfigStoreLocation.StartsWith('\') -and $ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\'))){
+                        $FilePathsArray += $ConfigurationData.ConfigData.Server.ConfigStoreLocation
+                        $FilePathsArray += $ConfigurationData.ConfigData.Server.ServerDirectoriesRootLocation
+                    }else{
+                        throw "One or both of the Config Store Location and Server Directories Root Location is not a file share location"
+                    }
                     if($ConfigurationData.ConfigData.Portal){
-                        $FilePathsArray += $ConfigurationData.ConfigData.Portal.ContentDirectoryLocation
+                        if($ConfigurationData.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\')){
+                            $FilePathsArray += $ConfigurationData.ConfigData.Portal.ContentDirectoryLocation
+                        }
                     }
                     
                     ArcGIS_FileShare FileShare
