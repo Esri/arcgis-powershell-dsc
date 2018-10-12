@@ -839,8 +839,6 @@ function Configure-ArcGIS
                     }
                 }
 
-                #$FileShareMachine = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'FileShare' }).NodeName
-
                 $PortalSAPassword = ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
                 $PortalSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalSAPassword )
                 $PortalIsSADomainAccount = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$True}else{$False}
@@ -964,8 +962,6 @@ function Configure-ArcGIS
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $ExternalDNSName 
                                 IsMultiMachinePortal = $IsMultiMachinePortal
-                                <#FileShareMachine = $FileShareMachine
-                                FileShareName = $PortalConfig.ConfigData.FileShareName#>
                             }
                         }else{
                             $cd = @{
@@ -977,45 +973,24 @@ function Configure-ArcGIS
                                 )
                             }
                             
-                            if($FileShareMachine -and $ConfigurationData.ConfigData.FileShareName){
-                                $PortalUpgradeArgs = @{
-                                    ConfigurationData = $cd 
-                                    OldVersion = $PortalConfig.ConfigData.OldVersion
-                                    Version = $PortalConfig.ConfigData.Version 
-                                    PrimaryPortalMachine = $PrimaryPortalMachine
-                                    InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                    PrimaryLicensePath = $PrimaryLicenseFilePath
-                                    PrimaryLicensePassword = $PrimaryLicensePassword
-                                    Context = $PortalConfig.ConfigData.PortalContext
-                                    ServiceAccount = $PortalSACredential
-                                    IsSADomainAccount = $PortalIsSADomainAccount
-                                    PrimarySiteAdmin = $PortalPSACredential 
-                                    PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
-                                    ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                    ExternalDNSName = $ExternalDNSName 
-                                    IsMultiMachinePortal = $False
-                                    <#FileShareMachine = $FileShareMachine
-                                    FileShareName = $PortalConfig.ConfigData.FileShareName #>
-                                }
-                            }else{
-                                $PortalUpgradeArgs = @{
-                                    ConfigurationData = $cd 
-                                    OldVersion = $PortalConfig.ConfigData.OldVersion
-                                    Version = $PortalConfig.ConfigData.Version
-                                    PrimaryPortalMachine = $PrimaryPortalMachine
-                                    InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                    PrimaryLicensePath = $PrimaryLicenseFilePath
-                                    PrimaryLicensePassword = $PrimaryLicensePassword
-                                    Context = $PortalConfig.ConfigData.PortalContext
-                                    ServiceAccount = $PortalSACredential
-                                    IsSADomainAccount = $PortalIsSADomainAccount
-                                    PrimarySiteAdmin = $PortalPSACredential 
-                                    PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
-                                    ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                    ExternalDNSName = $ExternalDNSName 
-                                    IsMultiMachinePortal = $False
-                                }
+                            $PortalUpgradeArgs = @{
+                                ConfigurationData = $cd 
+                                OldVersion = $PortalConfig.ConfigData.OldVersion
+                                Version = $PortalConfig.ConfigData.Version 
+                                PrimaryPortalMachine = $PrimaryPortalMachine
+                                InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
+                                PrimaryLicensePath = $PrimaryLicenseFilePath
+                                PrimaryLicensePassword = $PrimaryLicensePassword
+                                Context = $PortalConfig.ConfigData.PortalContext
+                                ServiceAccount = $PortalSACredential
+                                IsSADomainAccount = $PortalIsSADomainAccount
+                                PrimarySiteAdmin = $PortalPSACredential 
+                                PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
+                                ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
+                                ExternalDNSName = $ExternalDNSName 
+                                IsMultiMachinePortal = $False
                             }
+                            
                         }
                         if(Test-Path ".\PortalUpgrade") {
                             Remove-Item ".\PortalUpgrade" -Force -ErrorAction Ignore -Recurse
@@ -1045,8 +1020,6 @@ function Configure-ArcGIS
                                 PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $ExternalDNSName 
-                                <#FileShareMachine = $FileShareMachine
-                                FileShareName = $PortalConfig.ConfigData.FileShareName#>
                             }
 
                             PortalUpgradeStandbyJoin @PortalUpgradeStandbyArgs -Verbose

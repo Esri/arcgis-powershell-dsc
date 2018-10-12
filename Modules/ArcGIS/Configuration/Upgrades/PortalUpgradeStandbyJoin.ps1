@@ -23,15 +23,7 @@ Configuration PortalUpgradeStandbyJoin{
         [parameter(Mandatory = $true)]
         [AllowEmptyString()]
         [System.String]
-        $ExternalDNSName<#,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $FileShareMachine,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $FileShareName#>
+        $ExternalDNSName
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
@@ -48,7 +40,6 @@ Configuration PortalUpgradeStandbyJoin{
         $NodeName = $Node.NodeName
         $MachineFQDN = [System.Net.DNS]::GetHostByName($NodeName).HostName
         $PrimaryPortalFQDN = [System.Net.DNS]::GetHostByName($PrimaryPortalMachine).HostName
-        #$ContentDirectoryLocation = "\\$($FileShareMachine)\$($FileShareName)\$($ContentDirectoryLocation)"
         
         ArcGIS_Portal "PortalStandBy"
         {
