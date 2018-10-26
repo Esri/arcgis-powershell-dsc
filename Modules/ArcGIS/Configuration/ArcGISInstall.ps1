@@ -70,7 +70,7 @@ Configuration ArcGISInstall{
                         Name = "Server"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
-                        Arguments = "/qn InstallDir=$($ConfigurationData.ConfigData.Server.Installer.InstallDir) INSTALLDIR1=$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)";
+                        Arguments = "/qn INSTALLDIR=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`" USER_NAME=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName) PASSWORD=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Password)";
                         Ensure = "Present"
                     }
 
@@ -137,7 +137,7 @@ Configuration ArcGISInstall{
                         Name = "Portal"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Portal.Installer.Path
-                        Arguments = "/qn INSTALLDIR=$($ConfigurationData.ConfigData.Portal.Installer.InstallDir) CONTENTDIR=$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)";
+                        Arguments = "/qn INSTALLDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.InstallDir)`" CONTENTDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)`" USER_NAME=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName) PASSWORD=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Password)";
                         Ensure = "Present"
                     }
 
@@ -158,7 +158,7 @@ Configuration ArcGISInstall{
                         Name = "DataStore"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
-                        Arguments = "/qn InstallDir=$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)"
+                        Arguments = "/qn INSTALLDIR=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`" USER_NAME=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName) PASSWORD=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Password)";
                         Ensure = "Present"
                     }
 
