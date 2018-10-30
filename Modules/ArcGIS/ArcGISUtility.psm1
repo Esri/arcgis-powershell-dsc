@@ -315,7 +315,7 @@ function License-Software
 		$Password, 
 
 		[string]
-		$Arguments, 
+		$Version, 
 
 		[string]
 		$StdOutputLogFilePath, 
@@ -330,9 +330,9 @@ function License-Software
     }
     Write-Verbose "Licensing Product [$Product] using Software Authorization Utility at $SoftwareAuthExePath" -Verbose
     
-    $Params = " $Arguments -lif $licenseFilePath"
+    $Params = '-s -ver {0} -lif "{1}"' -f $Version,$licenseFilePath
     if($Password){
-        $Params += " -password $Password" 
+        $Params = '-s -ver {0} -lif "{1}" -password {2}' -f $Version,$licenseFilePath,$Password
     }
     Write-Verbose "[Running Command] $SoftwareAuthExePath $Params" -Verbose
     

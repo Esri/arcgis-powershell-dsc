@@ -466,14 +466,17 @@ function ServerUpgradeScript {
                 }
             }
         }
+
         if($JobFlag){
             #UpgradeServerWebAdaptor
             Write-Host "WA Server Install"
-            ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'}).NodeName){
+            ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'})){
+                $WAExternalHostName = if(($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
                 $cd = @{
                     AllNodes = @(
                         @{
-                            NodeName = $WANode
+                            NodeName = $WANode.NodeName
+                            ExternalHostName = $WAExternalHostName
                             PSDscAllowPlainTextPassword = $true
                         }
                     )
@@ -597,26 +600,59 @@ function Configure-ArcGIS
 
         if($Mode -ieq "Install"){ 
 
-            $ValidateFileShare = $False
-         
-            $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
-            $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
-
-            if($IsHAPortal -or $IsHAServer){
-                if((($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'FileShare' }  | Measure-Object).Count -gt 0)){
-                    $ValidateFileShare = $True
-                }else{
-                    if($MappedDriveOverrideFlag){
-                        $ValidateFileShare = $False
-                    }else{
-                        $ValidateFileShare = $False
+            $ValidatePortalFileShare = $false
+            if($ConfigurationParamsHashtable.ConfigData.Portal){
+                $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
+                if($IsHAPortal)
+                {
+                    if($MappedDriveOverrideFlag)
+                    {
+                        $ValidatePortalFileShare = $True
                     }
+                    else
+                    {
+                        if($ConfigurationData.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\'))
+                        {
+                            $ValidatePortalFileShare = $True
+                        }
+                        else
+                        {
+                            throw "Config Directory Location path is not a fileshare path"
+                        }
+                    }
+                }else{
+                    $ValidatePortalFileShare = $True 
                 }
             }else{
-                $ValidateFileShare = $True
+                $ValidatePortalFileShare = $True   
             }
 
-            if($ValidateFileShare){
+            $ValidateServerFileShare = $false
+            $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
+            if($IsHAServer)
+            {
+                if($MappedDriveOverrideFlag)
+                {
+                    $ValidateServerFileShare = $True
+                }
+                else
+                {
+                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\') -and $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\'))
+                    {
+                        $ValidateServerFileShare = $True
+                    }
+                    else
+                    {
+                        throw "One or both of Config Store Location and Server Directories Root Location is not a fileshare path"
+                    }
+                }
+            }
+            else
+            {
+                $ValidateServerFileShare = $True 
+            }
+
+            if($ValidateServerFileShare -and $ValidatePortalFileShare){
                 $JobFlag = $False
 
                 Write-Host "Dot Sourcing the Configuration:- ArcGISInstall"
@@ -700,7 +736,7 @@ function Configure-ArcGIS
                     }
                 }
             }else{
-                throw "FileShare not present required for HA Setup!"  
+                throw "File directory validations failed for server or portal. Please check and run again."  
             }
         }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService")){
             if($Mode -ieq "Uninstall"){
@@ -802,8 +838,6 @@ function Configure-ArcGIS
                         }
                     }
                 }
-
-                #$FileShareMachine = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'FileShare' }).NodeName
 
                 $PortalSAPassword = ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
                 $PortalSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalSAPassword )
@@ -928,8 +962,6 @@ function Configure-ArcGIS
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $ExternalDNSName 
                                 IsMultiMachinePortal = $IsMultiMachinePortal
-                                <#FileShareMachine = $FileShareMachine
-                                FileShareName = $PortalConfig.ConfigData.FileShareName#>
                             }
                         }else{
                             $cd = @{
@@ -941,45 +973,24 @@ function Configure-ArcGIS
                                 )
                             }
                             
-                            if($FileShareMachine -and $ConfigurationData.ConfigData.FileShareName){
-                                $PortalUpgradeArgs = @{
-                                    ConfigurationData = $cd 
-                                    OldVersion = $PortalConfig.ConfigData.OldVersion
-                                    Version = $PortalConfig.ConfigData.Version 
-                                    PrimaryPortalMachine = $PrimaryPortalMachine
-                                    InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                    PrimaryLicensePath = $PrimaryLicenseFilePath
-                                    PrimaryLicensePassword = $PrimaryLicensePassword
-                                    Context = $PortalConfig.ConfigData.PortalContext
-                                    ServiceAccount = $PortalSACredential
-                                    IsSADomainAccount = $PortalIsSADomainAccount
-                                    PrimarySiteAdmin = $PortalPSACredential 
-                                    PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
-                                    ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                    ExternalDNSName = $ExternalDNSName 
-                                    IsMultiMachinePortal = $False
-                                    <#FileShareMachine = $FileShareMachine
-                                    FileShareName = $PortalConfig.ConfigData.FileShareName #>
-                                }
-                            }else{
-                                $PortalUpgradeArgs = @{
-                                    ConfigurationData = $cd 
-                                    OldVersion = $PortalConfig.ConfigData.OldVersion
-                                    Version = $PortalConfig.ConfigData.Version
-                                    PrimaryPortalMachine = $PrimaryPortalMachine
-                                    InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                    PrimaryLicensePath = $PrimaryLicenseFilePath
-                                    PrimaryLicensePassword = $PrimaryLicensePassword
-                                    Context = $PortalConfig.ConfigData.PortalContext
-                                    ServiceAccount = $PortalSACredential
-                                    IsSADomainAccount = $PortalIsSADomainAccount
-                                    PrimarySiteAdmin = $PortalPSACredential 
-                                    PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
-                                    ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                    ExternalDNSName = $ExternalDNSName 
-                                    IsMultiMachinePortal = $False
-                                }
+                            $PortalUpgradeArgs = @{
+                                ConfigurationData = $cd 
+                                OldVersion = $PortalConfig.ConfigData.OldVersion
+                                Version = $PortalConfig.ConfigData.Version 
+                                PrimaryPortalMachine = $PrimaryPortalMachine
+                                InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
+                                PrimaryLicensePath = $PrimaryLicenseFilePath
+                                PrimaryLicensePassword = $PrimaryLicensePassword
+                                Context = $PortalConfig.ConfigData.PortalContext
+                                ServiceAccount = $PortalSACredential
+                                IsSADomainAccount = $PortalIsSADomainAccount
+                                PrimarySiteAdmin = $PortalPSACredential 
+                                PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
+                                ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
+                                ExternalDNSName = $ExternalDNSName 
+                                IsMultiMachinePortal = $False
                             }
+                            
                         }
                         if(Test-Path ".\PortalUpgrade") {
                             Remove-Item ".\PortalUpgrade" -Force -ErrorAction Ignore -Recurse
@@ -1009,8 +1020,6 @@ function Configure-ArcGIS
                                 PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $ExternalDNSName 
-                                <#FileShareMachine = $FileShareMachine
-                                FileShareName = $PortalConfig.ConfigData.FileShareName#>
                             }
 
                             PortalUpgradeStandbyJoin @PortalUpgradeStandbyArgs -Verbose
@@ -1121,10 +1130,12 @@ function Configure-ArcGIS
 
                             for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
                                 $DSNode = $DSConfig.AllNodes[$i].NodeName
-                                $NodeToAdd = @{
-                                    NodeName = $DSNode
+                                if($DSConfig.AllNodes[$i].Role -icontains 'DataStore'){
+                                    $NodeToAdd = @{
+                                        NodeName = $DSNode
+                                    }
+                                    $cd.AllNodes += $NodeToAdd 
                                 }
-                                $cd.AllNodes += $NodeToAdd 
                             }
 
                             if(Test-Path ".\DataStoreUpgradeInstall") {
