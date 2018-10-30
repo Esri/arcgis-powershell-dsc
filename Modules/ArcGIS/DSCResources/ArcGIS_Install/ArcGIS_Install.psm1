@@ -137,7 +137,7 @@ function Set-TargetResource
                     $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.msi' -Recurse | Select-Object -First 1
                     $ExecPath = $SetupExe.FullName
                     if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-                            throw "Neither .exe nor .msi not found in extracted contents to install"
+                            throw "Neither .exe nor .msi found in extracted contents to install"
                     }               
                 }               
             }
