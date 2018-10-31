@@ -611,7 +611,7 @@ function Configure-ArcGIS
                     }
                     else
                     {
-                        if($ConfigurationData.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\'))
+                        if($ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\'))
                         {
                             $ValidatePortalFileShare = $True
                         }
@@ -875,8 +875,8 @@ function Configure-ArcGIS
                     }
 
                     if($JobFlag){
-                        if($ConfigurationData.ConfigData.ExternalLoadBalancer){
-                            $ExternalDNSName = $ConfigurationData.ConfigData.ExternalLoadBalancer
+                        if($PortalConfig.ConfigData.ExternalLoadBalancer){
+                            $ExternalDNSName = $PortalConfig.ConfigData.ExternalLoadBalancer
                         }else{
                             if(($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
                                 $PortalWAMachineNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
