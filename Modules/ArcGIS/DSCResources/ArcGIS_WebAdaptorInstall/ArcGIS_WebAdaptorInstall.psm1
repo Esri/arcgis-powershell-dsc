@@ -189,6 +189,7 @@ function Set-TargetResource
                 }
                 Write-Verbose "msiexec /x ""$ProdId"" /quiet"
                 Start-Process 'msiexec' -ArgumentList "/x ""$ProdId"" /quiet" -wait
+                Remove-WebConfigurationLocation -Name "Default Web Site/$($Context)"
                 break
             }
         }
