@@ -459,7 +459,7 @@ function Test-TargetResource
         }
 
         if($resultSpatioTemporal) {
-            $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
+            $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
             if($resultSpatioTemporal) {
                 Write-Verbose 'Big data store is started'
             }else {
@@ -470,13 +470,8 @@ function Test-TargetResource
     }
 	
     if(($result -or $resultSpatioTemporal) -and $DataStoreTypes) { 
-        if(-not($token)) {  
-			$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-		}
-    
-        Write-Verbose $token.token
-        
-        $info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://$($MachineFQDN):2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($FQDN):6443/arcgis" `
+        $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+		$info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($FQDN):6443/arcgis" `
                                    -Token $token.token -Referer $Referer 
         
         foreach($dstype in $DataStoreTypes) {

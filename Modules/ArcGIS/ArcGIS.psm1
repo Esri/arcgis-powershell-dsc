@@ -712,21 +712,38 @@ function Configure-ArcGIS
                         }
 
                         if($JobFlag){
-                            Write-Host "Dot Sourcing the Configuration:- ArcGISFederation"
-                            . "$PSScriptRoot\Configuration\ArcGISFederation.ps1" -Verbose:$false
+
+                            $RemoteFederation = if($ConfigurationParamsHashtable.ConfigData.Federation){$true}else{$false}
+            
+                            $PortalServerFederation = $False
                             
-                            Write-Host "Compiling the Configuration:- ArcGISFederation"
-                            ArcGISFederation -ConfigurationData $ConfigurationParamsHashtable 
-                            
-                            if($Credential){
-                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISFederation -Credential $Credential -DebugMode $DebugMode
-                            }else{
-                                
-                                $JobFlag = Start-DSCJob -ConfigurationName ArcGISFederation -DebugMode $DebugMode
+                            if(-not($RemoteFederation))
+                            {
+                                $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0)
+                                $PortalCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 0)
+                                if($ServerCheck -and $PortalCheck)
+                                {
+                                    $PortalServerFederation = $True
+                                }
                             }
 
-                            if(Test-Path ".\ArcGISFederation") {
-                                Remove-Item ".\ArcGISFederation" -Force -ErrorAction Ignore -Recurse
+                            if($RemoteFederation -or $PortalServerFederation){
+                                Write-Host "Dot Sourcing the Configuration:- ArcGISFederation"
+                                . "$PSScriptRoot\Configuration\ArcGISFederation.ps1" -Verbose:$false
+                                
+                                Write-Host "Compiling the Configuration:- ArcGISFederation"
+                                ArcGISFederation -ConfigurationData $ConfigurationParamsHashtable 
+                                
+                                if($Credential){
+                                    $JobFlag = Start-DSCJob -ConfigurationName ArcGISFederation -Credential $Credential -DebugMode $DebugMode
+                                }else{
+                                    
+                                    $JobFlag = Start-DSCJob -ConfigurationName ArcGISFederation -DebugMode $DebugMode
+                                }
+
+                                if(Test-Path ".\ArcGISFederation") {
+                                    Remove-Item ".\ArcGISFederation" -Force -ErrorAction Ignore -Recurse
+                                }
                             }
                         }
                     
