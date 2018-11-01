@@ -318,7 +318,7 @@ function Get-ArcGISURL
     {
         $ServerWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor')} | Select-Object -First 1)
         $ServerWAMachineName = $ServerWAMachineNode.NodeName
-        $ServerHostName = Get-FQDN $ServerWAMachineName
+        $ServerExternalDNSName = Get-FQDN $ServerWAMachineName
         if(($ServerWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
         {
             $SSLCertificate = $ServerWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1
