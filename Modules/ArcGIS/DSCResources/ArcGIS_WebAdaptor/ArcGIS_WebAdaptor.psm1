@@ -112,7 +112,7 @@ function Set-TargetResource
                 }
 
                 $SiteURL = "https://$($ComponentHostName):6443"
-                $WAUrl = "http://$($HostName)/$($Context)/webadaptor"
+                $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
                 Write-Verbose $WAUrl
                 $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
                 Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'

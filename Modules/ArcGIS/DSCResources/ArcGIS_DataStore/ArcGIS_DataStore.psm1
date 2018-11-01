@@ -244,10 +244,10 @@ function Set-TargetResource
             Write-Verbose "A Data Store has been registered. Now checking if this machine ($env:ComputerName) with FQDN '$MachineFQDN' belongs to it"
             $result = Test-MachineParticipatingInBigDataStore -ServerURL $ServerURL -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
             if($result) {
-                Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' already participates in the data store"
+                Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' already participates in a Spatio Temporal data store"
                 $DsRegistered = $true
             }else {
-                Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' does NOT participates in the registered data store"
+                Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' does NOT participates in a registered Spatio Temporal data store"
             }
         }else {
             Write-Verbose "A Spatiotemporal Big Data Store has not been registered."
@@ -459,7 +459,7 @@ function Test-TargetResource
         }
 
         if($resultSpatioTemporal) {
-            $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
+            $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
             if($resultSpatioTemporal) {
                 Write-Verbose 'Big data store is started'
             }else {
@@ -470,13 +470,8 @@ function Test-TargetResource
     }
 	
     if(($result -or $resultSpatioTemporal) -and $DataStoreTypes) { 
-        if(-not($token)) {  
-			$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-		}
-    
-        Write-Verbose $token.token
-        
-        $info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://$($MachineFQDN):2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($FQDN):6443/arcgis" `
+        $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+		$info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($FQDN):6443/arcgis" `
                                    -Token $token.token -Referer $Referer 
         
         foreach($dstype in $DataStoreTypes) {
@@ -852,7 +847,8 @@ function Test-MachineParticipatingInBigDataStore
 		$i = 0
 		while(-not($done) -and ($i -lt $response.items.length)) {
 			$dataStorePath = $response.items[$i].path	
-			if($dataStorePath) {		
+			$dsType = $response.items[$i].info.dsFeature
+			if($dataStorePath -and ($dsType -ieq "spatioTemporal")) {
 				Write-Verbose "NoSQL DataStore $dataStorePath found"        
 				$MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $dataStorePath + '/machines'
 				$response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token }  -Referer $Referer 
@@ -972,7 +968,17 @@ function Test-SpatiotemporalBigDataStoreStarted
    $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters @{ f = 'json'; token = $Token; types = 'nosql' }  -Referer $Referer    
    $dataStorePath = $null
    if($response.items -and $response.items.length -gt 0) {
-        $dataStorePath = $response.items[0].path
+        $done = $false
+		$i = 0
+		while(-not($done) -and ($i -lt $response.items.length)) {
+            $dsType = $response.items[$i].info.dsFeature
+			if($dsType -ieq "spatioTemporal") {		
+				Write-Verbose "SpatioTemporal DataStore $dataStorePath found"        
+                $dataStorePath = $response.items[$i].path
+                $done = $true
+			}
+			$i = $i + 1
+		}
    } else {
        throw "Spatiotemporal Big DataStore not found in arcgis data items"
    }

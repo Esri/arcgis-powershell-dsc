@@ -47,7 +47,7 @@ Configuration ArcGISFederation
                 }
             }
             
-            if($RemoteFederation -and $PortalServerFederation){
+            if($RemoteFederation -or $PortalServerFederation){
                 if($RemoteFederation){
                     $PortalHostName = $ConfigurationData.ConfigData.Federation.PortalHostName
                     $PortalPort = $ConfigurationData.ConfigData.Federation.PortalPort
