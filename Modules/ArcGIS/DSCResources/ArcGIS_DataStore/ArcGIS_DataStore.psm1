@@ -637,7 +637,7 @@ function Register-DataStore
                     serverURL = $ServerSiteUrl
                     dsSettings = '{"directory":"' + $DataStoreContentDirectory.Replace('\', '\\') + '"' + $featuresJson + '}'
                   }  
-   Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
+   #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
    $HttpBody = To-HttpBody $WebParams
    
    $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'    

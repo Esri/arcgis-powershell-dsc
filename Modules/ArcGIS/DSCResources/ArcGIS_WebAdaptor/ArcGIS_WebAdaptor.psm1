@@ -126,8 +126,9 @@ function Set-TargetResource
                 Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
                 $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
             }
-            Write-Verbose "Executing $ExecPath with arguments $Arguments"
-            Write-Verbose "$ExecPath $Arguments"
+            Write-Verbose "Executing Web Adaptor CLI Tool for Configuration"
+            #Write-Verbose "Executing $ExecPath with arguments $Arguments"
+            #Write-Verbose "$ExecPath $Arguments"
             #Start-Process -FilePath $ExecPath -ArgumentList $Arguments -Wait
 
             $psi = New-Object System.Diagnostics.ProcessStartInfo

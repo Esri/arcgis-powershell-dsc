@@ -595,7 +595,7 @@ function Create-Site
     Wait-ForUrl -Url $baseHostUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'
 
     $httpRequestBody = To-HttpBody -props $requestParams
-    Write-Verbose $requestParams
+    #Write-Verbose $requestParams
     $response = Invoke-RestMethod -Method Post -Uri $createNewSiteUrl -Body $httpRequestBody -TimeoutSec $TimeOut
 
     if ($response.status -and ($response.status -ieq "error")) {

@@ -1119,7 +1119,7 @@ Configuration ArcGISConfigure
                                 {
                                     if($PrimaryPortalMachine -ine $Node.NodeName)
                                     {
-                                        if($Node.WMFVersion -gt 4){
+                                        <#if($Node.WMFVersion -gt 4){
                                             WaitForAll "WaitForAllPortalConfigToComplete$($PrimaryPortalMachine)"{
                                                 ResourceName = "[ArcGIS_Portal]Portal$($PrimaryPortalMachine)"
                                                 NodeName = $PrimaryPortalMachine
@@ -1128,7 +1128,7 @@ Configuration ArcGISConfigure
                                                 DependsOn = $Depends
                                             }
                                             $Depends += "[WaitForAll]WaitForAllPortalConfigToComplete$($PrimaryPortalMachine)"
-                                        }else{
+                                        }else{#>
                                             ArcGIS_WaitForComponent "WaitForPortalConfigToComplete$($PrimaryPortalMachine)"
                                             {
                                                 Component = "Portal"
@@ -1142,7 +1142,7 @@ Configuration ArcGISConfigure
                                                 DependsOn = $Depends
                                             }
                                             $Depends += "[ArcGIS_WaitForComponent]WaitForPortalConfigToComplete$($PrimaryPortalMachine)"
-                                        }
+                                        <#}#>
                                     }
                                     
                                     $HostName = if(($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($Node.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias}else{ $MachineFQDN }
