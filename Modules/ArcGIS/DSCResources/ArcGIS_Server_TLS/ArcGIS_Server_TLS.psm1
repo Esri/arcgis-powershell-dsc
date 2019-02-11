@@ -103,6 +103,7 @@ function Set-TargetResource
 	$FQDN = Get-FQDN $env:COMPUTERNAME
     $ServerUrl = "http://$($FQDN):6080"
     $ServerHttpsUrl = "https://localhost:6443"   
+    $GeoEventServerHttpsUrl = "https://localhost:6143"
     Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" 
     $Referer = $ServerUrl
                            
@@ -242,7 +243,8 @@ function Set-TargetResource
 			try {				
 				Write-Verbose 'Starting the service'
 				Start-Service -Name $GeoEventServiceName -ErrorAction Ignore       
-				Wait-ForServiceToReachDesiredState -ServiceName $GeoEventServiceName -DesiredState 'Running'
+                Wait-ForServiceToReachDesiredState -ServiceName $GeoEventServiceName -DesiredState 'Running'
+                Wait-ForUrl -Url "$GeoEventServerHttpsUrl/geoevent/admin" -SleepTimeInSeconds 20 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET'
 				Write-Verbose "Restarted Service $GeoEventServiceName"
 			}catch {
 				Write-Verbose "[WARNING] While Starting Service $_"
