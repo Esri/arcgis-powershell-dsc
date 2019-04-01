@@ -23,8 +23,10 @@
         #Not Sure - Boolean to indicate to whether to enable SSL on Server Site
     .PARAMETER ImportOnly
         #Not Sure - Boolean to indicate to if the Certificate is be created or Imported
+    .PARAMETER SslRootOrIntermediate
+        Takes a JSON string list of all the root or intermediate certificates to import
 #>
-        
+
 function Get-TargetResource
 {
 	[CmdletBinding()]
@@ -93,17 +95,9 @@ function Set-TargetResource
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
 
     $RestartRequired = $false
-    if(-not(Test-HardenedSSLOnArcGISServerJVM -InstallDir $InstallDir)){
-        Write-Verbose 'Hardening SSL on ArcGIS Server JVM'
-        Set-HardenedSSLOnArcGISServerJVM -InstallDir $InstallDir
-
-		$RestartRequired = $true
-    }
-
+    
 	$FQDN = Get-FQDN $env:COMPUTERNAME
-    $ServerUrl = "http://$($FQDN):6080"
-    $ServerHttpsUrl = "https://localhost:6443"   
-    $GeoEventServerHttpsUrl = "https://localhost:6143"
+    $ServerUrl = "https://$($FQDN):6443"
     Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" 
     $Referer = $ServerUrl
                            
@@ -122,8 +116,8 @@ function Set-TargetResource
 		    $enableResponse = EnableHTTPS-OnSecurityConfig -ServerURL $ServerURL -SiteName $SiteName -Token $token.token -SecurityConfig $secConfig -Referer $Referer
 		  
 		    # Changing the protocol will cause the web server to restart.
-		    Write-Verbose "Waiting for Url '$ServerHttpsUrl/$SiteName/admin' to respond"
-		    Wait-ForUrl -Url "$ServerHttpsUrl/$SiteName/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
+		    Write-Verbose "Waiting for Url '$ServerUrl/$SiteName/admin' to respond"
+		    Wait-ForUrl -Url "$ServerUrl/$SiteName/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
 	    }
     }
 
@@ -204,8 +198,8 @@ function Set-TargetResource
         }
 
         # Adding an SSL Certificate will cause the web server to restart. Wait for it to come back
-		Write-Verbose "Waiting for Url '$ServerHttpsUrl/$SiteName/admin' to respond"
-		Wait-ForUrl -Url "$ServerHttpsUrl/$SiteName/admin" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 120 -HttpMethod 'GET'
+		Write-Verbose "Waiting for Url '$ServerUrl/$SiteName/admin' to respond"
+		Wait-ForUrl -Url "$ServerUrl/$SiteName/admin" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 120 -HttpMethod 'GET'
 
         if(-not($ImportOnly)) {
             Write-Verbose "Desired CName:- $CName Check if machine is using this"
@@ -219,7 +213,7 @@ function Set-TargetResource
 
                 # Updating an SSL Certificate will cause the web server to restart.
 		        Write-Verbose "Waiting for Url '$ServerURL/$SiteName/admin' to respond"
-		        Wait-ForUrl -Url "$ServerHttpsUrl/$SiteName/admin" -SleepTimeInSeconds 20 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET'
+		        Wait-ForUrl -Url "$ServerUrl/$SiteName/admin" -SleepTimeInSeconds 20 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET'
             }
         }else {
             Write-Verbose "Import Only Scenario. No need to update certificate alias for Machine"                
@@ -228,6 +222,7 @@ function Set-TargetResource
 		$GeoEventServiceName = 'ArcGISGeoEvent' 
 		$GeoEventService = Get-Service -Name $GeoEventServiceName -ErrorAction Ignore
 		if($GeoEventService.Status -ieq 'Running') {
+            $GeoEventServerHttpsUrl = "https://localhost:6143"
 			###
 			### If the SSL Certificate is changed. Restart the GeoEvent Service so that it will pick up the new certificate 
 			###
@@ -373,7 +368,7 @@ function Test-TargetResource
     $result = $false
        
     $FQDN = Get-FQDN $env:COMPUTERNAME
-    $ServerUrl = "http://$($FQDN):6080"    
+    $ServerUrl = "https://$($FQDN):6443"    
         
     Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
 
@@ -457,19 +452,6 @@ function Test-TargetResource
 		$result = $true
 	}
 
-    if($result) {
-        Write-Verbose "Checking if JVM has SSL Configuration Hardened"
-        $ServiceName = 'ArcGIS Server'
-        $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-        $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-        $IsHardened = Test-HardenedSSLOnArcGISServerJVM -InstallDir $InstallDir
-		if(-not($IsHardened)) { 
-			Write-Verbose 'JVM is not hardened for SSL'
-			$result = $false 
-		}
-    }
-
     if($result -and $CName -and $RegisterWebAdaptorForCName) {
         Write-Verbose "Checking Web Adaptors"
         $WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl $ServerUrl -SiteName $SiteName `
@@ -501,60 +483,6 @@ function Test-TargetResource
     }
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
-    }
-}
-
-function Test-HardenedSSLOnArcGISServerJVM
-{
-    [CmdletBinding()]
-    param(
-        [string]
-        $InstallDir
-    )
-
-    $hardened = $false
-    $PropsFile = Join-Path $InstallDir 'framework\runtime\jre\lib\security\java.security'
-    if(Test-Path $PropsFile){
-        Get-Content $PropsFile| ForEach-Object {    
-            if($_.StartsWith('jdk.tls.disabledAlgorithms=')){
-                $splits = $_.ToString().Split('=')
-                $trimmed = $splits[$splits.Length-1].Replace(' ','').Split(',')                
-                if(($trimmed -icontains 'SSLV3') -and ($trimmed -icontains 'RC4') -and ($trimmed -icontains 'RC4')) {
-                    Write-Verbose "ArcGIS Server JVM has all the neccessary TLS algorithms disabled"
-                    $hardened = $true
-                }
-            }
-        }
-    }
-    $hardened
-}
-
-function Set-HardenedSSLOnArcGISServerJVM
-{
-    [CmdletBinding()]
-    param(
-        [string]
-        $InstallDir
-    )
-
-    $hardened = $false
-    $PropsFile = Join-Path $InstallDir 'framework\runtime\jre\lib\security\java.security'
-    if(Test-Path $PropsFile){
-        $Text = @()
-        $Changed = $false
-        Get-Content $PropsFile| ForEach-Object {    
-            if($_.ToString().StartsWith('jdk.tls.disabledAlgorithms=')){
-                Write-Verbose "Updating $_ to 'jdk.tls.disabledAlgorithms=SSLv3, DHE, RC4'"
-                $Text += 'jdk.tls.disabledAlgorithms=SSLv3, DHE, RC4'    
-                $Changed = $true
-            }
-            else {
-                $Text += $_
-            }
-        }
-        if($Changed){
-            Set-Content -Path $PropsFile -Value $Text
-        }
     }
 }
 
@@ -828,7 +756,7 @@ function Get-Machines
     [CmdletBinding()]
     param(
         [string]$ServerURL, 
-        [string]$SiteName, 
+        [string]$SiteName = 'arcgis', 
         [string]$Token, 
         [string]$Referer
     )
@@ -898,7 +826,7 @@ function Register-WebAdaptorForServer
                   }
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+	[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $WebParams
     
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
@@ -930,7 +858,7 @@ function UnRegister-WebAdaptorForServer
                   }
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+	[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $WebParams
     
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
@@ -961,7 +889,7 @@ function Get-WebAdaptorsConfigForServer
                   }
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+	[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     $HttpBody = To-HttpBody $WebParams
     
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
@@ -986,7 +914,7 @@ function Get-AllSSLCertificateCNamesForMachine
         [string]$MachineName
     )
 
-    Invoke-ArcGISWebRequest -Url "http://$($ServerHostName):6080/$SiteName/admin/machines/$MachineName/sslcertificates/" -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' 
+    Invoke-ArcGISWebRequest -Url "https://$($ServerHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/" -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' 
 }
 
 function Get-SSLCertificateForMachine 
@@ -1011,13 +939,13 @@ function Get-SSLCertificateForMachine
 
     try 
     {
-        $res = Invoke-WebRequest -Uri $CertUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
+       $res = Invoke-WebRequest -Uri $CertUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
        ### Response is not valid JSON. Hence use Regex
-        #Write-Verbose "Response $($res.Content)"
+       #Write-Verbose "Response $($res.Content)"
        if(-not($res.Content)){
             Write-Verbose "[WARNING] Response from $CertUrl is NULL"
             $null
-        }else {
+       }else {
            if($res.Content.IndexOf('error') -gt -1){
                 $json = $res.Content | ConvertFrom-Json
 				$errMsgs = ($json.messages -join ', ')
@@ -1025,7 +953,7 @@ function Get-SSLCertificateForMachine
 					Write-Verbose "[WARNING] Response from $CertUrl is $errMsgs"
 				}
                 $null 
-            }else {
+           }else {
                 $IssuerValue = $null
                 $Issuer = [regex]::matches($res.Content, '"[Ii]ssuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
                 $Issuer.Groups | %{ 

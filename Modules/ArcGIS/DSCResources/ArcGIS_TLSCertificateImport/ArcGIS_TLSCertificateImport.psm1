@@ -13,6 +13,8 @@
         Location of the Store where the SSL Certificate will be imported
     .PARAMETER StoreName
         Store Name in the Store Location where the SSL Certificate will be imported
+    .PARAMETER SiteAdministrator
+        Credential to the Access the link to import Certificates into Trusted Store.
     .PARAMETER HttpsPort
         Port to which this certificate will be binded
 #>
@@ -25,8 +27,8 @@ function Get-TargetResource
 	(
         [ValidateSet("Present","Absent")]
 		[System.String]
-		$Ensure,
-
+        $Ensure,
+        
         [parameter(Mandatory = $true)]
 		[System.String]
 		$HostName,
@@ -43,10 +45,14 @@ function Get-TargetResource
 		[System.String]
 		$StoreName = 'Root',
 
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]
+		$SiteAdministrator,
+
         [parameter(Mandatory = $true)]
 		[uint32]
 		$HttpsPort
-	)
+    )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
@@ -80,6 +86,10 @@ function Test-TargetResource
 		[System.String]
 		$StoreName = 'Root',
 
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]
+		$SiteAdministrator,
+
         [parameter(Mandatory = $true)]
 		[uint32]
 		$HttpsPort
@@ -87,9 +97,10 @@ function Test-TargetResource
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
+	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
+    $FQDN = Get-FQDN $HostName  
     $AppPath = $ApplicationPath.TrimStart('/')
-    $Url =  "https://$($HostName):$($HttpsPort)/$AppPath"
+    $Url =  "https://$($FQDN):$($HttpsPort)/$AppPath"
     Write-Verbose "Test Certificate existence from '$Url' in $StoreLocation and $StoreName"
     $result = Is-CertificateInTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName
     if($Ensure -ieq 'Present') {
@@ -125,22 +136,27 @@ function Set-TargetResource
 		[System.String]
 		$StoreName = 'Root',
 
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]
+		$SiteAdministrator,
+
         [parameter(Mandatory = $true)]
 		[uint32]
 		$HttpsPort
-	)
+    )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') 
     {
 	    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	   
+        $FQDN = Get-FQDN $HostName  
         $AppPath = $ApplicationPath.TrimStart('/')
-        $Url =  "https://$($HostName):$($HttpsPort)/$AppPath"
+        $Url =  "https://$($FQDN):$($HttpsPort)/$AppPath"
         Write-Verbose "Certificate import from '$Url' into $StoreLocation and $StoreName"     
         if(-not(Is-CertificateInTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName)) {
             Write-Verbose "Import certificate from $Url"
-            Import-CertFromServerIntoTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName 
+            Import-CertFromServerIntoTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName -SiteAdministrator $SiteAdministrator
         }
 
     }else {
@@ -196,10 +212,26 @@ function Is-CertificateInTrustedCertificateStore
     finally 
     {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-        [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+		[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     }   
 	$global:certCheck
 }
+
+function Get-AllSSLCertificateCNamesForMachine 
+{
+    [CmdletBinding()]
+    param(
+        [string]$ServerHostName = 'localhost', 
+        [string]$SiteName = 'arcgis', 
+        [string]$Token, 
+        [string]$Referer, 
+        [string]$MachineName
+    )
+
+    Invoke-ArcGISWebRequest -Url "https://$($ServerHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/" -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' 
+}
+
+
 
 function Import-CertFromServerIntoTrustedCertificateStore
 {
@@ -215,43 +247,87 @@ function Import-CertFromServerIntoTrustedCertificateStore
 
         [parameter(Mandatory = $false)]
 		[System.String]
-		$StoreName = 'Root'
+		$StoreName = 'Root',
+
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]
+		$SiteAdministrator
 	)
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {
+
         [System.Security.Cryptography.X509Certificates.X509Certificate2]$cert = $args[1]
         [System.Net.Security.SslPolicyErrors]$errors = $args[3]    
+        # Import Certificate into ArcGIS Server (establish trust between JVM)
+        if($SiteAdministrator) {
+            $FQDN = Get-FQDN $env:COMPUTERNAME
+            $ServerUrl = "https://$($FQDN):6443"    
+            $SiteName = 'arcgis'
+       
+            #Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
+            $Referer = $ServerUrl
 
-        $CertOnDiskPath = Join-Path $env:TEMP "$($cert.Thumbprint).cer"
-        Set-Content -Path $CertOnDiskPath -Value ($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)) -Encoding Byte -Force
+            $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
             
-        $Subject = $cert.Subject            
-        $Splits = $Subject -split ','
-        foreach($split in $Splits) {
-            $SubSplit = $split -split '='
-            $SubSplitKey = $SubSplit | Select-Object -First 1
-            $SubSplitValue = $SubSplit | Select-Object -Last 1
-            if($SubSplit -ieq 'CN'){
-                $Issuer = $SubSplitValue
-                $break
+            $CertOnDiskPath = Join-Path $env:TEMP "$($cert.Thumbprint).cer"
+            Set-Content -Path $CertOnDiskPath -Value ($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)) -Encoding Byte -Force
+            
+            
+            $Subject = $cert.Subject            
+            $Splits = $Subject -split ','
+            foreach($split in $Splits) {
+                $SubSplit = $split -split '='
+                $SubSplitKey = $SubSplit | Select-Object -First 1
+                $SubSplitValue = $SubSplit | Select-Object -Last 1
+                if($SubSplit -ieq 'CN'){
+                    $Issuer = $SubSplitValue
+                    $break
+                }
             }
-        }
             
-        $ub = New-Object System.UriBuilder -ArgumentList $Url
-        $Alias = "$($ub.Host)-$($ub.Port)"
-        Write-Verbose "Thumbprint of certificate is $($cert.Thumbprint). Issue is $($Issuer). Alias being used is $($Alias)."
-        if(Test-Path $CertOnDiskPath -ErrorAction Ignore) {
-            Remove-Item $CertOnDiskPath -Force -ErrorAction Ignore
-        }
-        if(-not(Test-Path "Cert:\$StoreLocation\$StoreName\$($cert.Thumbprint)")) {
-            Write-Verbose "Importing Certificate '$($cert.Thumbprint)' to $StoreName store in $StoreLocation"
-            $certStore = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Store $StoreName, $StoreLocation
-            $certStore.Open("MaxAllowed")
-            $certStore.Add($cert)
-            $certStore.Close()            
-            Write-Verbose "Imported Certificate to $StoreName store in $StoreLocation"
+            $ub = New-Object System.UriBuilder -ArgumentList $Url
+            $Alias = "$($ub.Host)-$($ub.Port)"
+
+            Write-Verbose "Thumbprint of certificate is $($cert.Thumbprint). Issue is $($Issuer). Alias being used is $($Alias)."
+            if($Alias) {
+                            
+                $certNames = Get-AllSSLCertificateCNamesForMachine -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN 
+                if($certNames.certificates -icontains $Alias) {
+                    Write-Verbose "Certificate with alias $Alias already exists for Machine $FQDN"
+                }else{
+                    Write-Verbose "Certificate with alias $Alias not found for Machine $FQDN"
+                    $ImportCACertUrl  = $ServerURL.TrimEnd("/") + "/$SiteName/admin/machines/$FQDN/sslcertificates/importRootOrIntermediate"
+                    $props = @{ f= 'json'; token = $token.token; alias = $Alias  }    
+                    Write-Verbose "Import Certificate URL:- $ImportCACertUrl"
+                    Upload-File -url $ImportCACertUrl -filePath $CertOnDiskPath `
+                                -fileContentType 'application/pkix-cert' -fileParameterName 'rootCACertificate' `
+                                -fileName "$($cert.Thumbprint).cer" -Referer $Referer -formParams $props
+                }
+                
+            }else {
+                 Write-Verbose 'Unable to determine alias from certificate exposed by web server'
+            }
+
+            if(Test-Path $CertOnDiskPath -ErrorAction Ignore) {
+                Remove-Item $CertOnDiskPath -Force -ErrorAction Ignore
+            }
         }else {
-            Write-Verbose "Certificate '$($cert.Thumbprint)' already exists in $StoreName store in $StoreLocation"
+            Write-Verbose "Not importing SSL Certificate into ArcGIS Server"
+        }
+
+        if($errors -ne [System.Net.Security.SslPolicyErrors]::None) {
+            
+            if(-not(Test-Path "Cert:\$StoreLocation\$StoreName\$($cert.Thumbprint)")) {
+                Write-Verbose "Importing Certificate '$($cert.Thumbprint)' to $StoreName store in $StoreLocation"
+                $certStore = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Store $StoreName, $StoreLocation
+                $certStore.Open("MaxAllowed")
+                $certStore.Add($cert)
+                $certStore.Close()            
+                Write-Verbose "Imported Certificate to $StoreName store in $StoreLocation"
+            }else {
+                Write-Verbose "Certificate '$($cert.Thumbprint)' already exists in $StoreName store in $StoreLocation"
+            }
+
         }
     }
 
@@ -269,7 +345,7 @@ function Import-CertFromServerIntoTrustedCertificateStore
     finally 
     {
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-        [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+		[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     }
 }
 

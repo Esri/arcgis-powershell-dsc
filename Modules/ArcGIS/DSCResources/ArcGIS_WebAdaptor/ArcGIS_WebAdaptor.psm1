@@ -15,6 +15,8 @@
         Context with which the WebAdaptor is to be Configured, same as the one with which it was installed.
     .PARAMETER OverwriteFlag
         Boolean to indicate whether overwrite of the webadaptor settings already configured should take place or not.
+    .PARAMETER SiteAdministrator
+        A MSFT_Credential Object - Primary Site Administrator.
     .PARAMETER AdminAccessEnabled
         Boolean to indicate whether Admin Access to Sever Admin API and Manager is enabled or not. Default - True
 #>
@@ -102,7 +104,16 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {
         try
         {
-            $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
+            $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+            $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
+            foreach($wa in $WAInstalls){
+                if($wa.InstallLocation -match "\\$($Context)\\" -and $wa.Version.StartsWith("10.7.")){
+                    $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe'
+                    break
+                }
+            }
+
+            $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
             $Arguments = ""
             if($Component -ieq 'Server') {
                 
@@ -126,7 +137,6 @@ function Set-TargetResource
                 Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
                 $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
             }
-            Write-Verbose "Executing Web Adaptor CLI Tool for Configuration"
             #Write-Verbose "Executing $ExecPath with arguments $Arguments"
             #Write-Verbose "$ExecPath $Arguments"
             #Start-Process -FilePath $ExecPath -ArgumentList $Arguments -Wait
@@ -182,13 +192,13 @@ function Set-TargetResource
                 
                 if(-not($AlreadyExists)) {        
 					#Register the ExternalDNSName and PortalEndPoint as a web adaptor for Portal
-					Write-Verbose "Registering the ExternalDNSName Endpoint with Url $WebAdaptorUrl and MachineName $ExternalDNSName as a Web Adaptor for Portal"
+					Write-Verbose "Registering the Endpoint with Url $WebAdaptorUrl as a Web Adaptor for Portal"
 					Register-WebAdaptorForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer `
                                                                         -WebAdaptorUrl $WebAdaptorUrl -MachineName $HostName -MachineIP $MachineIP -HttpPort 80 -HttpsPort 443
                     
                     Write-Verbose "Waiting 3 minutes for web server to apply changes before polling for endpoint being available"
                     Start-Sleep -Seconds 180 # Add a 3 minute wait to allow the web server to go down
-                    Write-Verbose "Updated Web Adaptors which causes a web server restart. Waiting for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
+                    Write-Verbose "Updating Web Adaptors which causes a web server restart. Waiting for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
                     Wait-ForUrl -Url "https://$($PortalFQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 360 -HttpMethod 'GET' -LogFailures
                     Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
                     
@@ -210,7 +220,7 @@ function Set-TargetResource
                     $pspath = "$env:SystemDrive\inetpub\wwwroot\$($Context)\WebAdaptor.config"
                     $WAConfigFile = New-Object System.Xml.XmlDocument
                     $WAConfigFile.Load($pspath)
-                    $SharedK = Get-SharedKey -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
+                    $SharedK = Get-SharedKeyForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
                     
                     if($WAConfigFile.SelectSingleNode("//Config/Portal/SharedKey")){
                         $nd = $WAConfigFile.SelectSingleNode("//Config/Portal/SharedKey")
@@ -285,7 +295,7 @@ function Set-TargetResource
                     Write-Verbose "WebAppPool Recycled. Sleeping for a minute for it to comeback up."
                     Start-Sleep -Seconds 60
                 }catch{
-                    Write-Verbose "[WARNING]:- Some Error Occured: $_"
+                    Write-Verbose "[WARNING]:- Error Occured: $_"
                 }
             }
         }
@@ -363,7 +373,11 @@ function Test-TargetResource
                 if($OverwriteFlag){
                   $result =  $false
                 }else{
-                   $result =  $true
+                    if(URLAvailable("https://$Hostname/$Context/portaladmin")){
+                        $result =  $true
+                    }else{
+                        $result =  $false
+                    }
                 }
             }else{
                 $result = $false
@@ -437,7 +451,7 @@ function Get-PortalMachines
     $MachineNames
 }
 
-function Get-SharedKey
+function Get-SharedKeyForPortal
 {
     [CmdletBinding()]
     param(

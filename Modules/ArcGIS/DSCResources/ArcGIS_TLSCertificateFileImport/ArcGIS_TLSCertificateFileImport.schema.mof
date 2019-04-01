@@ -1,0 +1,11 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_TLSCertificateFileImport")]
+class ArcGIS_TLSCertificateFileImport: OMI_BaseResource
+{
+	[Key] String CertificatePath;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Write, EmbeddedInstance("MSFT_Credential")] String CertificatePassword;
+	[Key, ValueMap{"CurrentUser","LocalMachine"}, Values{"CurrentUser","LocalMachine"}] String StoreLocation;
+	[Key, ValueMap{"AuthRoot","CertificateAuthority","My","Root","Trust"}, Values{"AuthRoot","CertificateAuthority","My","Root","Trust"}] String StoreName;
+};
+

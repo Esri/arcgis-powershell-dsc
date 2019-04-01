@@ -1,0 +1,7 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Disk")] 
+class ArcGIS_Disk : OMI_BaseResource
+{
+    [key] string DriveLetter;
+    [write] uint32 SizeInGB;
+};

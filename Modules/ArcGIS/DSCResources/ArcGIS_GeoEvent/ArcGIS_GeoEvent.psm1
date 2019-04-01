@@ -24,8 +24,8 @@ function Get-TargetResource
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name
-    )
-    
+	)
+
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$null
@@ -42,8 +42,8 @@ function Set-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
-
+        $SiteAdministrator,
+        
         [parameter(Mandatory = $true)]
 		[System.String]
 		$WebSocketContextUrl,
@@ -60,14 +60,17 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+    $version = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+    $versionarray = $version.Split('.')
 
-	$ServiceName = 'ArcGISGeoEvent'
+    $ServiceName = 'ArcGISGeoEvent'
+    $GatewayServiceName = 'ArcGISGeoEventGateway'
     if($Ensure -ieq 'Present') {   
-		 		
+        
         Write-Verbose "Stopping the service '$ServiceName'"    
-		Stop-Service -Name $ServiceName -ErrorAction Ignore       
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-
+        Stop-Service -Name $ServiceName -ErrorAction Ignore    
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+        
         Write-Verbose "Installing Windows Feature: IIS-WebSockets as a PreReq for GeoEvents Server"
         if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
         {
@@ -79,7 +82,7 @@ function Set-TargetResource
         }
 
 		$FQDN = Get-FQDN $env:ComputerName
-		$ServerUrl = "http://$($FQDN):6080"   
+		$ServerUrl = "https://$($FQDN):6443"   
 		$Referer = $ServerUrl
 		Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
 		$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
@@ -90,9 +93,28 @@ function Set-TargetResource
         if(-not($LocalRepositoryPath)) {
             $LocalRepositoryPath = Join-Path $env:SystemDrive 'arcgisserver\local\zookeeper'
             Write-Verbose "Using default path $LocalRepositoryPath"
-        }        
+        }       
 
-        #-->Check with Nikhil
+        $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
+        $syncService = $platformServices.platformservices | Where-Object { $_.type -ieq 'SYNCHRONIZATION_SERVICE' }
+        if(-not($syncService)){ 
+            throw "No Synchronization Service found in platform service" 
+        }
+        $syncServiceId = $syncService.id
+        Write-Verbose "ID of Synchronization Service is $syncServiceId"
+
+        if(-not($syncServiceId)){ 
+            throw "No Synchronization Service found in platform service" 
+        }
+        $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
+        Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
+        if($synchronizationService.configuredState -ine 'STARTED') {
+            Write-Verbose "Synchronization Service is already stopped"
+        }else {
+            Write-Verbose "Synchronization Service is already started"
+            Stop-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer         
+        }
+    
         $ZooKeeperFolder = Join-Path $LocalRepositoryPath 'zookeeper'
         if(Test-Path $ZooKeeperFolder) {
             Write-Verbose "Deleting ZooKeeper folder $ZooKeeperFolder"
@@ -147,12 +169,21 @@ function Set-TargetResource
             throw "No Synchronization Service found in platform service" 
         }
         $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
-        Write-Verbose "Status of Message Bus is $($synchronizationService.configuredState)"
+        Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
         if($synchronizationService.configuredState -ine 'STARTED') {
-            Write-Verbose "Synchronization Service is not started. Starting it"
-            Start-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer         
+            if(([int]$versionarray[1]) -lt 6){
+                Write-Verbose "Synchronization Service is not started. Starting it"
+                Start-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer         
+            }else{
+                Write-Verbose "Synchronization Service is already stopped"
+            }
         }else {
-            Write-Verbose "Synchronization Service is already started"
+            if(([int]$versionarray[1]) -lt 6){
+                Write-Verbose "Synchronization Service is already started"
+            }else{
+                Write-Verbose "Synchronization Service is already started. stopping it"
+                Stop-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer            
+            }
         }
 
         Write-Verbose "Checking if WebSocketContextURL in sys props is $WebSocketContextUrl"
@@ -171,8 +202,10 @@ function Set-TargetResource
        
         Write-Verbose "Starting the service '$ServiceName'"    
 		Start-Service -Name $ServiceName -ErrorAction Ignore       
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running' -Verbose
+        Write-Verbose "Starting Sleep - 60 Seconds"
+        Start-Sleep -Seconds 60
+        Write-Verbose "Ended Sleep - 60 Seconds"
     }else{
         Write-Warning 'Absent not implemented'
     }
@@ -204,8 +237,8 @@ function Test-TargetResource
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
-    )
-    
+	)
+
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -213,10 +246,12 @@ function Test-TargetResource
 	$ServiceName = 'ArcGISGeoEvent'
     $result = $true    
     $result = (Get-Service -Name $ServiceName -ErrorAction Ignore).Status -ieq 'Running'
-    
+    $version = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+    $versionarray = $version.Split('.')
+
     if($result) {
         $FQDN = Get-FQDN $env:ComputerName
-		$ServerUrl = "http://$($FQDN):6080"   
+		$ServerUrl = "https://$($FQDN):6443"   
 		$Referer = $ServerUrl
 		Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
 		$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
@@ -260,24 +295,34 @@ function Test-TargetResource
     }
 
     if($result) {
-		$platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
+        $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
         $syncService = $platformServices.platformservices | Where-Object { $_.type -ieq 'SYNCHRONIZATION_SERVICE' }
-        if(-not($syncService)){ 
+        if(-not($syncService) -and (([int]$versionarray[1]) -lt 6)){ 
             throw "No Synchronization Service found in platform service" 
         }
         $syncServiceId = $syncService.id
         Write-Verbose "ID of Synchronization Service is $syncServiceId"
 
-        if(-not($syncServiceId)){ 
+        if(-not($syncServiceId) -and (([int]$versionarray[1]) -lt 6)){ 
             throw "No Synchronization Service found in platform service" 
         }
-        $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $messageBusId -Referer $Referer 
-        Write-Verbose "Status of Message Bus is $($synchronizationService.configuredState)"
-        if($synchronizationService.configuredState -ine 'STARTED') {
-            Write-Verbose "Synchronization Service is not started"
-            $result = $false            
-        }else {
-            Write-Verbose "Synchronization Service is started"
+        $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
+        Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
+        Write-Verbose $versionarray[1]
+        if(([int]$versionarray[1]) -lt 6){
+            if($synchronizationService.configuredState -ine 'STARTED') {
+                Write-Verbose "Synchronization Service is not started. It should be started!"
+                $result = $false            
+            }else {
+                Write-Verbose "hello - Synchronization Service is started."
+            }
+        }else{
+            if($synchronizationService.configuredState -ine 'STARTED') {
+                Write-Verbose "Synchronization Service is not started."
+            }else {
+                Write-Verbose "Synchronization Service is started. It should be stopped!"
+                $result = $false 
+            }
         }
     }
 
@@ -314,10 +359,11 @@ function Get-ArcGISMachineProperties
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
 
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/machines/' + $MachineName + '/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+    Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/machines/' + $MachineName + '/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Set-ArcGISMachineProperties
@@ -345,7 +391,7 @@ function Set-ArcGISMachineProperties
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080,
+        $ServerPort = 6443,
 
         [Parameter(Mandatory=$true)]
         $MachineProperties
@@ -364,7 +410,8 @@ function Set-ArcGISMachineProperties
                 f = 'json'
                 token = $Token
               }   
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/machines/' + $MachineName + '/edit') -HttpFormParameters $Props -Referer $Referer -HttpMethod 'POST' 
+              $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/machines/' + $MachineName + '/edit') -HttpFormParameters $Props -Referer $Referer -HttpMethod 'POST' 
 }
 
 function Get-ArcGISAdminSystemProperties
@@ -389,10 +436,10 @@ function Get-ArcGISAdminSystemProperties
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/properties/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/properties/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Get-ArcGISAdminConfigStore
@@ -417,10 +464,10 @@ function Get-ArcGISAdminConfigStore
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/configstore/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/configstore/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Set-ArcGISAdminSystemProperties
@@ -445,13 +492,13 @@ function Set-ArcGISAdminSystemProperties
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080,
+        $ServerPort = 6443,
 
         [Parameter(Mandatory=$true)]
         $Properties
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/properties/update') -HttpFormParameters @{ f = 'json'; token = $Token; properties = (ConvertTo-Json $Properties -Depth 5) } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/properties/update') -HttpFormParameters @{ f = 'json'; token = $Token; properties = (ConvertTo-Json $Properties -Depth 5) } -Referer $Referer
 }
 
 function Get-ArcGISPlatformServices
@@ -476,10 +523,10 @@ function Get-ArcGISPlatformServices
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/platformservices/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + '/admin/system/platformservices/') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Get-ArcGISPlatformServiceStatus
@@ -508,10 +555,10 @@ function Get-ArcGISPlatformServiceStatus
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + "/admin/system/platformservices/$PlatformServiceId/status/") -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + "/admin/system/platformservices/$PlatformServiceId/status/") -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -TimeOutSec 90
 }
 
 function Start-ArcGISPlatformService
@@ -540,10 +587,10 @@ function Start-ArcGISPlatformService
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + "/admin/system/platformservices/$PlatformServiceId/start/") -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -TimeOutSec 90
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + "/admin/system/platformservices/$PlatformServiceId/start/") -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -TimeOutSec 90
 }
 
 function Stop-ArcGISPlatformService
@@ -572,10 +619,10 @@ function Stop-ArcGISPlatformService
                 
         [System.Int32]
         [Parameter(Mandatory=$false)]
-        $ServerPort = 6080
+        $ServerPort = 6443
     )
-
-   Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):$($ServerPort)/$SiteName" + "/admin/system/platformservices/$PlatformServiceId/stop/") -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    $Scheme = if($ServerPort -eq 6080 -or $ServerPort -eq 80) { 'http' } else { 'https' }
+   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$($ServerPort)/$SiteName" + "/admin/system/platformservices/$PlatformServiceId/stop/") -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 Export-ModuleMember -Function *-TargetResource

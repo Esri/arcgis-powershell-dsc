@@ -3,6 +3,8 @@
         Resource Implements application level to handle cross node dependencies specific to the ArcGIS Enterprise Stack
     .PARAMETER Component
         Name of the Component for which the present node needs to wait for. Values accepted - Server, Portal, ServerWA, PortalWA, DataStore, SpatioTemporal, TileCache, SQLServer
+    .PARAMETER InvokingComponent
+        Name of component which will be waiting for component. Values accepted - Server, Portal, WebAdaptor, DataStore, LoadBalancer, PortalUpgrade
     .PARAMETER ComponentHostName
         HostName of the Component for which the present node needs to wait for.
     .PARAMETER ComponentContext
@@ -35,7 +37,6 @@ function Get-TargetResource
         [ValidateSet("Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
-
                
         [parameter(Mandatory = $true)]
 		[System.String]
@@ -101,7 +102,7 @@ function Set-TargetResource
         Write-Verbose "Attempt $NumCount - $Component"
         try {
             if($Component -ieq "Server"){
-                $token = Get-ServerToken -ServerEndPoint "http://$($ComponentHostName):6080" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
+                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking for site on '$ComponentHostName'"
                 $Done = ($token.token -ne $null)
                 if($Done){
@@ -112,7 +113,7 @@ function Set-TargetResource
                 $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
                 $Done = ($token.token -ne $null)
             }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache"){
-                $token = Get-ServerToken -ServerEndPoint "http://$($ComponentHostName):6080" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
+                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking if all datastore types passed as Params are registered"
                 if($Component -ieq "DataStore"){
                     $AdditionalParams = 'Relational'
@@ -121,7 +122,7 @@ function Set-TargetResource
                 }elseif($Component -ieq "TileCache"){
                     $AdditionalParams = 'TileCache'
                 }
-                $Done = Test-DataStoreRegistered -ServerURL "http://$($ComponentHostName):6080" -Token $token.token -Referer $Referer -Type $AdditionalParams
+                $Done = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostName):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
             }elseif($Component -ieq "PortalWA"){
                 $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
                 $Done = ($token.token -ne $null)
@@ -210,7 +211,7 @@ function Test-TargetResource
     try {
         if($Component -ieq "Server"){
             Write-Verbose "Checking for Server site"
-            $token = Get-ServerToken -ServerEndPoint "http://$($ComponentHostName):6080" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
+            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
             $result = ($token.token -ne $null)
             if($result){
                 Write-Verbose "Server Site Exists. Was able to retrieve token for PSA"
@@ -235,7 +236,7 @@ function Test-TargetResource
                 Write-Verbose "Unable to detect if Portal Site Exists. Was NOT able to retrieve token for PSA"
             }
         }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache"){
-            $token = Get-ServerToken -ServerEndPoint "http://$($ComponentHostName):6080" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
+            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
             
             Write-Verbose "Checking if data store is registered"
             if($Component -ieq "DataStore"){
@@ -245,7 +246,7 @@ function Test-TargetResource
             }elseif($Component -ieq "TileCache"){
                 $AdditionalParams = 'TileCache'
             }
-            $result = Test-DataStoreRegistered -ServerURL "http://$($ComponentHostName):6080" -Token $token.token -Referer $Referer -Type $AdditionalParams
+            $result = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostName):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
             if($result){
                 Write-Verbose "All Types of DataStores are registered."
             }else{

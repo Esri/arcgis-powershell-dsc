@@ -6,6 +6,7 @@ class ArcGIS_TLSCertificateImport : OMI_BaseResource
 	[Key] String ApplicationPath;
 	[Key] uint32 HttpsPort;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Key, ValueMap{"CurrentUser","LocalMachine"}, Values{"CurrentUser","LocalMachine"}] String StoreLocation;
 	[Key, ValueMap{"AuthRoot","CertificateAuthority","My","Root","Trust"}, Values{"AuthRoot","CertificateAuthority","My","Root","Trust"}] String StoreName;
 };

@@ -11,8 +11,11 @@
         Local Path on Machine for the FileShare.
     .PARAMETER Credential
 		UserName or Domain Account UserName which will have access to the File Share over the network.
-	.PARAMETER FileshareSubPaths
-		FileShare SubPaths to be created.
+	.PARAMETER IsDomainAccount
+		Is Credential a Domain Account.
+	.PARAMETER FilePaths
+		FileShare Paths to be created.
+	
 #>
 
 function Get-TargetResource
@@ -99,12 +102,14 @@ function Set-TargetResource
 			$acl.SetAccessRule($accessRule)
 			$acl | Set-Acl $FileShareLocalPath
 		}
-		$FilePathArray = $FilePaths -Split ","
-		ForEach($path in $FilePathArray){
-			if(-not(Test-FileSharePath -FilePath $path -Credential $Credential)){
-				Create-FileShareFolder -FilePath $path -Credential $Credential
-			} 
-		 }
+		if(($null -ne $FilePaths) -and ($FilePaths -ne "")){
+			$FilePathArray = $FilePaths -Split ","
+			ForEach($path in $FilePathArray){
+				if(-not(Test-FileSharePath -FilePath $path -Credential $Credential)){
+					Create-FileShareFolder -FilePath $path -Credential $Credential
+				} 
+			}
+		}
     }
     elseif($Ensure -eq 'Absent') {
 		if ($share = Get-WmiObject -Class Win32_Share -Filter "Name='$FileShareName'"){ 
@@ -170,8 +175,7 @@ function Test-TargetResource
 			Throw "File Share Local Path already has a FileShare defined for it. Please Choose Another One!"
 		}
 	}
-
-	if($result){
+	if($result -and (($null -ne $FilePaths) -and ($FilePaths -ne ""))){
 		$result = $false
 		$FilePathArray = $FilePaths -Split ","
 		ForEach($path in $FilePathArray){

@@ -57,12 +57,12 @@ function Set-TargetResource
     $FQDN = Get-FQDN $env:COMPUTERNAME    
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-	Write-Verbose "Waiting for Server 'http://$($FQDN):6080/arcgis/admin' to initialize"
-    Wait-ForUrl "http://$($FQDN):6080/arcgis/admin" -HttpMethod 'GET'
+	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
+    Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
 
     if($Ensure -ieq 'Present') {        
         $Referer = 'http://localhost' 
-        $ServerUrl = "http://$($FQDN):6080"
+        $ServerUrl = "https://$($FQDN):6443"
         try {  
             Write-Verbose "Getting the Token for site '$ServerUrl'"
             $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
@@ -118,7 +118,7 @@ function Test-TargetResource
     $FQDN = Get-FQDN $env:COMPUTERNAME   
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'http://localhost'
-    $ServerUrl = "http://$($FQDN):6080"
+    $ServerUrl = "https://$($FQDN):6443"
     $result = $true
     Write-Verbose "Getting the Token for site '$ServerUrl'"
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 

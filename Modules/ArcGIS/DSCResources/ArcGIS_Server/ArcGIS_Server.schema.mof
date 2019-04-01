@@ -1,16 +1,17 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Server")]
+
+[ClassVersion("1.0.0.0"), FriendlyName("")]
 class ArcGIS_Server : OMI_BaseResource
 {
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-	[Key] String ConfigurationStoreLocation;
+    [Key] String ConfigurationStoreLocation;
 	[Write] String ServerDirectoriesRootLocation;
 	[Write] String ConfigStoreCloudStorageConnectionString;
 	[Write] String ConfigStoreCloudStorageConnectionSecret;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
     [Write, Description("Is Joining Existing site")] Boolean Join;
+	[Write] String PeerServerHostName;
     [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
 	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
-	[Write] String PeerServerHostName;
 	[Write] String Platform;
-	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
 };
+

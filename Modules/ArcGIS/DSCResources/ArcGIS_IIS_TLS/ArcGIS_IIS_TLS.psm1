@@ -29,9 +29,9 @@ function Get-TargetResource
 		[System.String]
 		$ExternalDNSName
 	)
-
+    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
+	
 	$null
 }
 

@@ -1,6 +1,8 @@
 <#
     .SYNOPSIS
         Configures A Datastore Item with the GIS server. ("Folder","CloudStore","RasterStore","BigDataFileShare")
+    .PARAMETER Name
+        Data Store Item Name Identifier
     .PARAMETER Ensure
         Take the values Present or Absent. 
         - "Present" ensures that DataStore Item is Configured if not.
@@ -71,7 +73,7 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-		$Port = 6080,
+		$Port = 6443,
 
         [parameter(Mandatory = $true)]
 		[ValidateSet("Folder","CloudStore","RasterStore","BigDataFileShare")]
@@ -87,13 +89,15 @@ function Test-TargetResource
         [System.String]
 		$DataStoreEndpoint
 	)
-    
+
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$result = $false
     $FQDN = Get-FQDN $HostName
-    $ServerUrl = "http://$($FQDN):$Port"    
+    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    $ServerUrl = "$($Scheme)://$($FQDN):$Port"
+      
     Write-Verbose "ServerURL:- $ServerUrl"
     $Referer = 'http://locahost'
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName $SiteName -Credential $SiteAdministrator -Referer $Referer 
@@ -172,7 +176,7 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-		$Port = 6080,
+		$Port = 6443,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -190,7 +194,8 @@ function Set-TargetResource
 	)
 	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 	$FQDN = Get-FQDN $HostName
-    $ServerUrl = "http://$($FQDN):$Port"    
+    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    $ServerUrl = "$($Scheme)://$($FQDN):$Port"
     Write-Verbose "ServerURL:- $ServerUrl"
     $Referer = 'http://locahost'
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName $SiteName -Credential $SiteAdministrator -Referer $Referer 
@@ -243,7 +248,7 @@ function Get-DataStoreItemsOfType
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'http://localhost:6080', 
+        [System.String]$ServerURL = 'https://localhost:6443', 
         [System.String]$SiteName = 'arcgis', 
         [System.String]$Token, 
         [System.String]$Referer = 'http://localhost',
@@ -259,7 +264,7 @@ function Register-SharedFolderDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'http://localhost:6080', 
+        [System.String]$ServerURL = 'https://localhost:6443', 
         [System.String]$SiteName = 'arcgis', 
         [System.String]$Token, 
         [System.String]$Referer = 'http://localhost',
@@ -281,7 +286,7 @@ function Register-BigDataFileShareDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'http://localhost:6080', 
+        [System.String]$ServerURL = 'https://localhost:6443', 
         [System.String]$SiteName = 'arcgis', 
         [System.String]$Token, 
         [System.String]$Referer = 'http://localhost',
@@ -304,7 +309,7 @@ function Register-RasterDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'http://localhost:6080', 
+        [System.String]$ServerURL = 'https://localhost:6443', 
         [System.String]$SiteName = 'arcgis', 
         [System.String]$Token, 
         [System.String]$Referer = 'http://localhost',
@@ -328,7 +333,7 @@ function Register-AzureCloudDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'http://localhost:6080', 
+        [System.String]$ServerURL = 'https://localhost:6443', 
         [System.String]$SiteName = 'arcgis', 
         [System.String]$Token, 
         [System.String]$Referer = 'http://localhost',

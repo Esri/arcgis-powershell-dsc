@@ -42,7 +42,7 @@ function Get-TargetResource
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-	$null
+    $null
 }
 
 function Set-TargetResource
@@ -74,20 +74,19 @@ function Set-TargetResource
 
     if($Ensure -ieq 'Present') {
        try{ 
-        $ServerUrl = "http://$($ServerHostName):6080"   
-        $ServerHttpsUrl = "https://$($ServerHostName):6443" 
+        $ServerUrl = "https://$($ServerHostName):6443"   
         $Referer = $ServerUrl
 
-        Wait-ForUrl -Url "$($ServerHttpsUrl)/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
+        Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
 
         $Done = $false
         $NumAttempts = 0
         while(-not($Done) -and ($NumAttempts -lt 3)) {
             try {
-                $token = Get-ServerToken -ServerEndPoint $ServerHttpsUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+                $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
             }
             catch {
-                Write-Verbose "[WARNING]:- Server at $ServerHttpsUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
+                Write-Verbose "[WARNING]:- Server at $ServerUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
             }
             if($token) {
                 Write-Verbose "Retrieved server token successfully"
@@ -98,55 +97,68 @@ function Set-TargetResource
             }
         }
     
-        $info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" `
-                                        -Token $token.token -Referer $Referer 
+        $datastoreConfigFilePath = "$ContentDirectory\\etc\\arcgis-data-store-config.json"
+        $datastoreConfigJSONObject = (ConvertFrom-Json (Get-Content $datastoreConfigFilePath -Raw))
+        $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
+
+        #Hit the server endpoint to get the replication role
+        $info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator `
+                                    -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" -Token $token.token -Referer $Referer 
 
         $dstypesarray = [System.Collections.ArrayList]@()
-
+        
         if($info.relational.registered) {
-            $dstypesarray.Add('relational')
+            Write-Verbose "Relational Replication Role - $($datastoreConfigHashtable["store.relational"]["replication.role"])"
+            if($datastoreConfigHashtable["store.relational"]["replication.role"] -ieq "PRIMARY"){
+                $dstypesarray.Add('relational')
+            }
         }
         if($info.tileCache.registered) {
-            $dstypesarray.Add('tilecache')
+            Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
+            if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY"){
+                $dstypesarray.Add('tilecache')
+            }
         }
         if($info.spatioTemporal.registered) {
             $dstypesarray.Add('spatiotemporal')
         }
         
-        $dstypes = $dstypesarray -join ","
-        Write-Verbose $dstypes
-        $ServerAdminUrl = "$($ServerHttpsUrl)/arcgis"
-	    $ExecPath = Join-Path $InstallDir 'tools\configuredatastore.bat'
-        $Arguments = "$($ServerAdminUrl) $($SiteAdministrator.GetNetworkCredential().UserName) $($SiteAdministrator.GetNetworkCredential().Password) $($ContentDirectory) --stores $dstypes"
-        
-        write-verbose "$ExecPath $Arguments"
+        if($dstypesarray.Length -gt 0){
+            $dstypes = $dstypesarray -join ","
+            Write-Verbose $dstypes
+            $ServerAdminUrl = "$($ServerUrl)/arcgis"
+            $ExecPath = Join-Path $InstallDir 'tools\configuredatastore.bat'
+            $Arguments = "$($ServerAdminUrl) $($SiteAdministrator.GetNetworkCredential().UserName) $($SiteAdministrator.GetNetworkCredential().Password) $($ContentDirectory) --stores $dstypes"
+            
+            write-verbose "$ExecPath $Arguments"
 
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $ExecPath
-        $psi.Arguments = $Arguments
-        $psi.UseShellExecute = $false #start the process from it's own executable file    
-        $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-        $psi.RedirectStandardError = $true #enable the process to read from standard error
-        $psi.EnvironmentVariables["AGSDATASTORE"] = [environment]::GetEnvironmentVariable("AGSDATASTORE","Machine")
-        $p = [System.Diagnostics.Process]::Start($psi)
-        $p.WaitForExit()
-        $op = $p.StandardOutput.ReadToEnd()
-        if($op -and $op.Length -gt 0) {
-            Write-Verbose "Output of execution:- $op"
-        }
-        $err = $p.StandardError.ReadToEnd()
-        if($p.ExitCode -eq 0) {                    
-            Write-Verbose "Upgraded correctly"
-            $result = $true
-        }else {
-            Write-Verbose "Upgraded did not succeed. Process exit code:- $($p.ExitCode)"
-            if($err -and $err.Length -gt 0) {
-                Write-Verbose $err
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $ExecPath
+            $psi.Arguments = $Arguments
+            $psi.UseShellExecute = $false #start the process from it's own executable file    
+            $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+            $psi.RedirectStandardError = $true #enable the process to read from standard error
+            $psi.EnvironmentVariables["AGSDATASTORE"] = [environment]::GetEnvironmentVariable("AGSDATASTORE","Machine")
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $p.WaitForExit()
+            $op = $p.StandardOutput.ReadToEnd()
+            if($op -and $op.Length -gt 0) {
+                Write-Verbose "Output of execution:- $op"
+            }
+            $err = $p.StandardError.ReadToEnd()
+            if($p.ExitCode -eq 0) {                    
+                Write-Verbose "Upgraded correctly"
+                $result = $true
+            }else {
+                Write-Verbose "Upgraded did not succeed. Process exit code:- $($p.ExitCode)"
+                if($err -and $err.Length -gt 0) {
+                    Write-Verbose $err
+                }
             }
         }   
     }
     catch{
-        write-verbose "Some Error - $($_)"
+        write-verbose "[Error] - $($_)"
     } 
     }else{
         Write-Verbose "Do Nothing for now"
@@ -182,13 +194,13 @@ function Test-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
-    $ServerUrl = "http://$($ServerHostName):6080"   
+    $ServerUrl = "https://$($ServerHostName):6443"   
     $Referer = $ServerUrl
     Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
     $result = $true
     $info = Invoke-ArcGISWebRequest -Url "https://localhost:2443/arcgis/datastoreadmin/configure" -HttpFormParameters @{ f = 'json'}  -Referer $Referer -HttpMethod 'GET' -LogResponse 
     
-    if($info.upgrading -and ($info.upgrading -ieq 'outplace')){
+    if($info.upgrading -and (($info.upgrading -ieq 'outplace') -or ($info.upgrading -ieq 'inplace'))){
         $result = $false
     }
 

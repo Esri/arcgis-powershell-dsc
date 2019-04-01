@@ -1,0 +1,13 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_NotebookServer")]
+class ArcGIS_NotebookServer : OMI_BaseResource
+{
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+    [Key] String ConfigurationStoreLocation;
+	[Write] String ServerDirectoriesRootLocation;
+	[Write] String ConfigStoreCloudStorageConnectionString;
+	[Write] String ConfigStoreCloudStorageConnectionSecret;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+    [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
+	[Write] String WebContextURL;
+};

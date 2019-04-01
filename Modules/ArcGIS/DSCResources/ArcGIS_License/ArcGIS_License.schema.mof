@@ -5,8 +5,8 @@ class ArcGIS_License : OMI_BaseResource
 	[Key] String LicenseFilePath;
 	[Write, Description("Optional License Password if applicable")] String Password;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-	[Write, ValueMap{"Server","Portal","Desktop","Pro"}, Values{"Server","Portal","Desktop","Pro"}] String Component;
-	[Write, ValueMap{"ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer"}, Values{"ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer"}] String ServerRole;
+	[Write, ValueMap{"Server","Portal","Desktop","Pro","NotebookServer"}, Values{"Server","Portal","Desktop","Pro","NotebookServer"}] String Component;
+	[Write, ValueMap{"ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer", "NotebookServer"}, Values{"ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer"}] String ServerRole;
 	[Write, Description("Forcing to License")] Boolean Force;
 };
 

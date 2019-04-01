@@ -1,0 +1,10 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_RemoteFile")]
+class ArcGIS_RemoteFile : OMI_BaseResource
+{
+	[Key] String Url;
+	[Write] String DestinationPath;
+	[Write] Boolean Force;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+};
+
