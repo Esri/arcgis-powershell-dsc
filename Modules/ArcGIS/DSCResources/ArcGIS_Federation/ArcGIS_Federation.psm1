@@ -120,7 +120,7 @@ function Test-TargetResource
 
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
     if($ServiceUrlPort -eq 443){
-        $ServiceUrl ="https://$($ServiceUrlHostName)/$ServiceUrlContext" 
+        $ServiceUrl = "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
     }
     $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"            
 	if($ServerSiteAdminUrlPort -eq 443){
@@ -131,7 +131,7 @@ function Test-TargetResource
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	    
     Write-Verbose "Get Portal Token from Deployment '$PortalHostName'"
-    $Referer = "https://$($PortalHostName)/$PortalContext"
+    $Referer = "https://$($PortalHostName):$($PortalPort)/$PortalContext"
     $waitForToken = $true
     $waitForTokenCounter = 0 
     while ($waitForToken -and $waitForTokenCounter -lt 25) {
@@ -160,6 +160,39 @@ function Test-TargetResource
         $result = $true
     }else {
         Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl does not exist"
+    }
+
+    if($ServerRole -ieq "HOSTING_SERVER"){
+        if($result) {
+            $servers = Get-RegisteredServersForPortal -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer 
+            $server = $servers.servers | Where-Object { $_.isHosted -eq $true }
+            if(-not($server)) {
+                $result = $false
+                Write-Verbose "No hosted Server has been detected"
+            }else {
+                $result = ($server -and ($server.url -ieq $ServiceUrl))
+                if(-not($result)) {
+                    Write-Verbose "The URL of the hosted server'$($server.url)' does not match expected '$ServiceUrl'"
+                }
+            }
+        }
+    
+        # if($result) {
+        #     $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
+        #     if(-not($serverToken.token)) {
+        #         Write-Verbose "Get Server Token Response:- $serverToken"
+        #         throw "Unable to retrieve Server Token for '$($SiteAdministrator.UserName)'"
+        #     }else{
+        #         Write-Verbose "Retrieved Server Token"
+        #     }
+
+        #     Write-Verbose 'Retrieve Current Security Config:'
+        #     $CurrentSecurityConfig = Get-SecurityConfig -ServerURL "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -SiteName $ServerContext -Token $serverToken.token -Referer $Referer
+        #     Write-Verbose "Current Security Config:- $($CurrentSecurityConfig.authenticationTier)"
+        #     Write-Verbose "Current Portal Url:- $($CurrentSecurityConfig.portalProperties.portalUrl)"
+        #     $ExpectedUrl = "https://$($PortalHostName):$($PortalPort)/$PortalContext"
+        #     $result = (('ARCGIS_PORTAL' -ieq $CurrentSecurityConfig.authenticationTier) -and ($ExpectedUrl -ieq $CurrentSecurityConfig.portalProperties.portalUrl))
+        # }
     }
 
     if($result) {
@@ -297,6 +330,8 @@ function Set-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     
+    $PortalFQDN = Get-FQDN $PortalHostName
+    
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
     if($ServiceUrlPort -eq 443){
         $ServiceUrl = "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
@@ -333,26 +368,73 @@ function Set-TargetResource
     if($Ensure -eq "Present"){        
         $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
         $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
+        if($ServerRole -ieq "HOSTING_SERVER"){
+            if(-not($fedServer) -or ($fedServer.serverRole -ine 'HOSTING_SERVER')){
+                Write-Verbose "Could not find a federated server that is the hosting server and whose URL matches expected values"
+                $existingFedServer = $fedServers.servers | Where-Object { $_.adminUrl -ieq $ServerSiteAdminUrl }
+                if($existingFedServer) {
+                    Write-Verbose "Server with Admin URL $ServerSiteAdminUrl already exists"
+                    if($existingFedServer.url -ine $ServiceUrl) {
+                        Write-Verbose "Server with admin URL $ServerSiteAdminUrl already exits, but its public URL '$($existingFedServer.url)' does match expected '$ServiceUrl'"					
+                        try {
+                            $resp = UnFederate-Server -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -ServerID $existingFedServer.id -Token $token.token -Referer $Referer
+                            if($resp.error) {			
+                                Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
+                            }else {
+                                Write-Verbose 'UnFederation succeeded'
+                            }
+                        }catch { 
+                            Write-Verbose "Error during unfederate operation. Error:- $_"
+                        }
+                        Write-Verbose "Unfederate Operation causes a web server restart. Waiting for portaladmin endpoint to come back up"
+                        Wait-ForUrl -Url "https://$($PortalEndPoint):7443/$($PortalSiteName)/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
+                    }
+                }
+            }
+        }
+ 
         if(-not($fedServer)) {        
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl does not exist"
-            Federate-Server -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
+            [bool]$Done = $false
+            [int]$NumOfAttempts = 0
+            while(($Done -eq $false) -and ($NumOfAttempts -lt 3))
+            {
+                $resp = Federate-Server -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
                             -ServerServiceUrl $ServiceUrl -ServerAdminUrl $ServerSiteAdminUrl -ServerAdminCredential $SiteAdministrator
+                if($resp.error) {			
+                    Write-Verbose "[ERROR]:- Federation returned error. Error:- $($resp.error)"
+                    if(-not($ServerSiteAdminUrlHostName -as [ipaddress]) -and ($NumOfAttempts -eq 2)){
+                        # We don't Throw and error for Max HA due to Current workaround for issue with last() ARM function incorrectly detecting circular dependency
+                        # As a result we run federation on Web-1 and Portal-Sec'
+                        throw "[ERROR]:- Federation returned error. Error:- $($resp.error)"
+                    }
+                    if($NumOfAttempts -gt 1) {
+                        Write-Verbose "Waiting for 30 seconds!"
+                    }
+                    Start-Sleep -Seconds 30
+                    $NumOfAttempts++
+                }else {
+                    Write-Verbose 'Federation succeeded. Now updating server as the Hosted Server'
+                    $Done = $true
+                }
+            }   
         }else {
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl already exists"
         }
 
-        $oauthApp = Get-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
-        $DesiredDomainForRedirect = "https://$($ServerHostName)"
-        Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
-        if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
-            Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist. Adding it"
-            $oauthApp.redirect_uris += $DesiredDomainForRedirect
-            Write-Verbose "Updated list of redirect Uris:- $($oauthApp.redirect_uris)"
-            Update-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer -AppObject $oauthApp 
-        
-        }else {
-            Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists as required"
-        }        
+        if($ServerRole -ine "HOSTING_SERVER"){
+            $oauthApp = Get-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
+            $DesiredDomainForRedirect = "https://$($ServerHostName)"
+            Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
+            if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
+                Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist. Adding it"
+                $oauthApp.redirect_uris += $DesiredDomainForRedirect
+                Write-Verbose "Updated list of redirect Uris:- $($oauthApp.redirect_uris)"
+                Update-OAuthApplication -PortalHostName $PortalHostName -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer -AppObject $oauthApp 
+            }else {
+                Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists as required"
+            }        
+        }
 
         if($ServerFunctions -or $ServerRole) {
             $ServerFunctionOrig = $ServerFunctions
@@ -430,19 +512,18 @@ function Set-TargetResource
                     Write-Verbose "Server Role for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
                 }
                 
-                
                 if($ServerRoleFlag -or $ServerFunctionFlag){
                     Write-Verbose "Updating Portal"
                     try{
                         $response = Update-FederatedServer -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer `
                                                     -ServerId $fedServer.id -ServerRole $ServerRole -ServerFunction $ServerFunctions
                         if($response.error) {
-                            Write-Verbose "[WARNING]:- Update operation did not succeed. Error:- $($response.error.message)"
+                            Write-Verbose "[WARNING]:- Update operation did not succeed. Error:- $($response.error)"
                         }elseif($response.status -ieq "success"){
                             Write-Verbose "Server Role for Federated Server with id '$($fedServer.id)' was updated to '$ServerRole'"
                         }
                     }catch{
-                        Write-Verbose "The error $($_.Exception)"
+                        throw $_
                     }
                 }
                 
@@ -450,16 +531,14 @@ function Set-TargetResource
            
         }
     }elseif($Ensure -eq 'Absent') {
-        $PortalFQDN = Get-FQDN $PortalHostName
-        $ServerFQDN = Get-FQDN $ServerHostName
-        $ServerHttpsUrl = "https://$($ServerFQDN):$($ServerSiteAdminUrlPort)/"
+        $ServerHttpsUrl = "https://$($ServerHostName):$($ServerSiteAdminUrlPort)/"
         
         $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
         $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
         if($fedServer) {
             Write-Verbose "Server with Admin URL $ServerSiteAdminUrl already exists"
             try {
-                $resp = UnFederate-Server -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -ServerID $fedServer.id -Token $token.token -Referer $Referer
+                $resp = UnFederate-Server -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -ServerID $fedServer.id -Token $token.token -Referer $Referer
                 if($resp.error) {			
                     Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
                 }else {
@@ -522,7 +601,7 @@ function Federate-Server
     Write-Verbose "Federation EndPoint:- $FederationUrl"
     Write-Verbose "Referer:- $Referer"
     Write-Verbose "Federation Parameters:- url:- $ServerServiceUrl adminUrl = $ServerAdminUrl"
-    Invoke-ArcGISWebRequest -Url $FederationUrl -Verbose -HttpFormParameters @{ f='json'; url = $ServerServiceUrl; adminUrl = $ServerAdminUrl; username = $ServerAdminCredential.UserName; password = $ServerAdminCredential.GetNetworkCredential().Password; token = $PortalToken } -Referer $Referer -LogResponse -TimeOutSec 90
+    Invoke-ArcGISWebRequest -Url $FederationUrl -Verbose -HttpFormParameters @{ f='json'; url = $ServerServiceUrl; adminUrl = $ServerAdminUrl; username = $ServerAdminCredential.UserName; password = $ServerAdminCredential.GetNetworkCredential().Password; token = $PortalToken } -Referer $Referer -LogResponse -TimeOutSec 180
 }
 
 function UnFederate-Server
@@ -575,6 +654,30 @@ function Get-FederatedServers
     )
     
     Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + '/portaladmin/federation/servers/') -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+}
+
+function Get-RegisteredServersForPortal 
+{
+    param(
+        [System.String]
+		$PortalHostName, 
+
+        [System.String]
+        $SiteName, 
+        
+        [Parameter(Mandatory=$false)]
+        [System.Int32]
+		$Port = 7443,
+
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer
+    )
+    
+    $GetServersUrl = "https://$($PortalHostName):$Port/$SiteName/sharing/rest/portals/self/servers/" 
+	Invoke-ArcGISWebRequest -Url $GetServersUrl -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer       
 }
 
 function Get-OAuthApplication
@@ -670,16 +773,13 @@ function Update-FederatedServer
 		$Port = 7443
     )
     
-    
     try{
-    $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -LogResponse 
-    }catch{
-        Write-Verbose "The Error --- $($_.ErrorDet)"
-    }
-    if($response){
+        $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 120 -LogResponse 
+        Write-Verbose ($response | ConvertTo-Json -Depth 5 -Compress)
         $response
-    }else{
-        @{status = @("success")}
+    }catch{
+        Write-Verbose "[WARNING] Error - $($_)"
+        @{ error = $_ }
     }
 }
 

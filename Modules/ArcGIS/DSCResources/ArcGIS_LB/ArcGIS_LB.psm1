@@ -299,7 +299,7 @@ function Set-TargetResource
     if(!$config) 
     {
         Write-Verbose "Configuration for '$filter' does not exist in '$pspath'. Adding it"
-        $config = @{ enabled = $true; reverseRewriteHostInResponseHeaders = $false } 
+        $config = @{ enabled = $true; reverseRewriteHostInResponseHeaders = $false; timeout = "00:02:00" } 
         Set-WebConfiguration -InputObject $config -Filter $filter -PSPath $pspath
         Write-Verbose "Finished Updating the configuration for '$filter' at '$pspath'"
     }

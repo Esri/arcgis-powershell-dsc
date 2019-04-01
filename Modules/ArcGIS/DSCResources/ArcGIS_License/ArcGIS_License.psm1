@@ -7,6 +7,8 @@
         - "Absent" ensures that Component in Unlicensed (Not Implemented).
     .PARAMETER LicenseFilePath
         Path to License File 
+    .PARAMETER Password
+        Optional Password for the corresponding License File 
     .PARAMETER Component
         Product being Licensed (Server or Portal)
     .PARAMETER ServerRole
@@ -48,11 +50,11 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
 
-        [ValidateSet("Server","Portal","Desktop","Pro")]
+        [ValidateSet("Server","Portal","Desktop","Pro","NotebookServer")]
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
         
@@ -76,9 +78,10 @@ function Set-TargetResource
                 $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
             } 
             $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-            $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $Component -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+            $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+            $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
         }catch{
-            
+            throw "Couldn't Find The Product - $Component"            
         }finally{
             $ErrorActionPreference = "Continue"; #Reset the error action pref to default
         }
@@ -125,11 +128,11 @@ function Test-TargetResource
 		[System.String]
 		$Ensure,
 
-		[ValidateSet("Server","Portal","Desktop","Pro")]
+		[ValidateSet("Server","Portal","Desktop","Pro","NotebookServer")]
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
         
@@ -150,9 +153,10 @@ function Test-TargetResource
             $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
         } 
         $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-        $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $Component -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+        $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+        $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
     }catch{
-        
+        throw "Couldn't Find The Product - $Component"        
     }finally{
         $ErrorActionPreference = "Continue"; #Reset the error action pref to default
     }
@@ -232,6 +236,10 @@ function Test-TargetResource
 		    }
 		    elseif($ServerRole -ieq 'GeoAnalytics') {
 			    $searchtext = 'geoasvr'
+            }
+            elseif($Component -ieq 'NotebookServer') {
+                $searchtexts += 'notebooksstdsvr'
+			    $searchtext = 'notebooksadvsvr'
 		    }
             $searchtexts += $searchtext
             foreach($text in $searchtexts) {

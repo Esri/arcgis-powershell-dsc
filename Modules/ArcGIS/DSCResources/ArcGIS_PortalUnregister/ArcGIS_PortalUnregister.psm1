@@ -19,7 +19,7 @@ function Get-TargetResource
         [System.String]
         $Version
 	)
-    
+
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null

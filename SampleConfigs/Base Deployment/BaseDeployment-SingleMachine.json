@@ -62,6 +62,7 @@
                                   },
                        "Portal":  {
                                       "LicenseFilePath": "[License File Path - Portal ]",
+                                      "PortalLicenseUserType": "[Portal License User Type - Required for 10.7 and above]",
                                       "Installer":  {
                                                         "Path":  "[Portal Installer Path]",
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",

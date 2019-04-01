@@ -13,36 +13,16 @@
                      {
                          "NodeName":  "[Machine 2 Name]",
                          "Role":  [
-                                    "Server",          
-                                    "ServerWebAdaptor",
-                                    
-                                  ],
-                         "SslCertifcates":  [
-                                        {
-                                            "Path":  "[Server SSL Certificate Path]",
-                                            "Password":  "[Server SSL Password]",
-                                            "Alias":  "[Server CName Alias]",
-                                            "Target" :["Server"]
-                                        },            
-                                        {
-                                            "Path":  "[Server WebAdaptor SSL Certificate Path]",
-                                            "Password":  "[Server WebAdaptor SSL Password]",
-                                            "Alias":  "[Server WebAdaptor CName Alias]",
-                                            "Target" :["WebAdaptor"]
-                                        }]
+                                      "Portal",
+                                      "PortalWebAdaptor"
+                                  ]
                      },
                      {
                          "NodeName":  "[Machine 3 Name]",
                          "Role":  [
-                                      "Portal",
-                                      "PortalWebAdaptor"
-                                  ],
-                         "SslCertifcates":  [{
-                                                "Path":  "[Common Cert for Portal and Portal Webadaptor SSL Certificate Path]",
-                                                "Password":  "[Common Cert SSL Password]",
-                                                "Alias":  "[Common Cert CName Alias]",
-                                                "Target" : ["Portal", "WebAdaptor"]
-                                            }]
+                                      "Server",
+                                      "ServerWebAdaptor"
+                                  ]
                      }
                  ],
     "ConfigData":  {
@@ -62,16 +42,6 @@
                                                                   "IsDomainAccount": false
                                                               }
                                        },
-						"SslRootOrIntermediate" : [
-													{
-														"Alias":	"[ROOT-CA Alias]",
-														"Path":		"[ROOT-CA SSL Certificate Path]"
-													},
-													{
-														"Alias":	"[Intermediate-CA Alias]",
-														"Path":		"[Intermediate-CA SSL Certificate Path]"
-													}
-												],
                        "Server":  {
                                       "LicenseFilePath":   "[License File Path - Server ]",
                                       "Installer":  {
@@ -84,6 +54,7 @@
                                   },
                        "Portal":  {
                                       "LicenseFilePath": "[License File Path - Portal ]",
+                                      "PortalLicenseUserType": "[Portal License User Type - Required for 10.7 and above]",
                                       "Installer":  {
                                                         "Path":  "[Portal Installer Path]",
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",

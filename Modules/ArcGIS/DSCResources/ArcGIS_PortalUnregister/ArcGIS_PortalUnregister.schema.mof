@@ -1,3 +1,4 @@
+
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_PortalUnregister")]
 class ArcGIS_PortalUnregister : OMI_BaseResource
 {

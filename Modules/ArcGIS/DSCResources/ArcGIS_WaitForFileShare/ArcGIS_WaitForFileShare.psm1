@@ -3,6 +3,8 @@
         Resource Implements a wait for to check if the file share is available, if not waits for it.
     .PARAMETER FilePaths
         String Array of File Shares Paths to check for while waiting
+    .PARAMETER Credential
+        A MSFT_Credential Object - Credentials to access FileShare Path.
     .PARAMETER Ensure
         Take the values Present or Absent. 
         - "Present" ensures that machine waits for a target machine, for which the present node has a dependency on.

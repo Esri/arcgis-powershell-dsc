@@ -60,7 +60,7 @@ function Get-FQDN
     $Dns
 }
 
-function ConvertPSObjectToHashtable
+function Convert-PSObjectToHashtable
 {
     param (
         [Parameter(ValueFromPipeline)]
@@ -74,7 +74,7 @@ function ConvertPSObjectToHashtable
         if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string])
         {
             $collection = @(
-                foreach ($object in $InputObject) { ConvertPSObjectToHashtable $object }
+                foreach ($object in $InputObject) { Convert-PSObjectToHashtable $object }
             )
 
             Write-Output -NoEnumerate $collection
@@ -85,7 +85,7 @@ function ConvertPSObjectToHashtable
 
             foreach ($property in $InputObject.PSObject.Properties)
             {
-                $hash[$property.Name] = ConvertPSObjectToHashtable $property.Value
+                $hash[$property.Name] = Convert-PSObjectToHashtable $property.Value
             }
 
             $hash
@@ -190,8 +190,8 @@ Function Trace-DSCJob{
     }
 
     Write-Host "Logs Directory: $LogsPath"
-
 }
+
 function Start-DSCJob {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
@@ -260,9 +260,9 @@ function Get-ArcGISURL
     {
         $PortalExternalDNSName = Get-FQDN $PrimaryPortalMachineNode.NodeName
         
-        if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
+        if(($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
         {
-            $PortalExternalDNSName = ($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
+            $PortalExternalDNSName = ($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
         }
 
         $PortalAdminURL = "https://$($PortalExternalDNSName):7443/arcgis/portaladmin"
@@ -273,9 +273,9 @@ function Get-ArcGISURL
     {
         $ServerExternalDNSName = Get-FQDN $PrimaryServerMachineNode.NodeName
         
-        if(($PrimaryServerMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Server'}  | Measure-Object).Count -gt 0)
+        if(($PrimaryServerMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Server'}  | Measure-Object).Count -gt 0)
         {
-            $PortalExternalDNSName = ($PrimaryServerMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Server' }  | Select-Object -First 1).Alias
+            $PortalExternalDNSName = ($PrimaryServerMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Server' }  | Select-Object -First 1).Alias
         }
         
         $ServerAdminURL = "https://$($ServerExternalDNSName):6443/arcgis/admin"
@@ -288,9 +288,9 @@ function Get-ArcGISURL
     {
         $LBMachine = ($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }| Sort-Object | Select-Object -First 1)
         $LBExternalDNSName = Get-FQDN $LBMachine.NodeName
-        if(($LBMachine.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
+        if(($LBMachine.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
         {
-            $SSLCertificate = $LBMachine.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1
+            $SSLCertificate = $LBMachine.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1
             $LBExternalDNSName = $SSLCertificate.Alias
         }
     }
@@ -304,9 +304,9 @@ function Get-ArcGISURL
     {
         $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
         $PortalExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
-        if(($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
+        if(($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
         {
-            $PortalExternalDNSName = ($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
+            $PortalExternalDNSName = ($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
         }
 
         if($HasLoadBalancer)
@@ -319,9 +319,9 @@ function Get-ArcGISURL
         $ServerWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor')} | Select-Object -First 1)
         $ServerWAMachineName = $ServerWAMachineNode.NodeName
         $ServerExternalDNSName = Get-FQDN $ServerWAMachineName
-        if(($ServerWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
+        if(($ServerWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
         {
-            $SSLCertificate = $ServerWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1
+            $SSLCertificate = $ServerWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1
             $ServerExternalDNSName = $SSLCertificate.Alias
         }
 
@@ -330,7 +330,6 @@ function Get-ArcGISURL
         }
     }
     
-
     if($PortalContext)
     {
         $PortalAdminURL = "https://$PortalExternalDNSName/$PortalContext/portaladmin"
@@ -371,6 +370,9 @@ function ServerUpgradeScript {
         [System.Boolean]
         $DebugMode = $False
     )
+
+    $SevenZipInstallerPath = if($cf.ConfigData.SevenZipInstallerPath){$cf.ConfigData.SevenZipInstallerPath}else{$null}
+    $SevenZipInstallerDir = if($cf.ConfigData.SevenZipInstallerDir){$cf.ConfigData.SevenZipInstallerDir}else{$null}
 
     $cfSAPassword = ConvertTo-SecureString $cf.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
     $cfSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($cf.ConfigData.Credentials.ServiceAccount.UserName, $cfSAPassword )
@@ -450,10 +452,12 @@ function ServerUpgradeScript {
 
                 if($cf.ConfigData.ServerRole -ieq "GeoEvent"){
                     ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
-                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole -GeoEventServerInstaller $cf.ConfigData.GeoEventServer.Installer.Path -Verbose
+                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole -GeoEventServerInstaller $cf.ConfigData.GeoEventServer.Installer.Path `
+                                -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
                 }else{
                     ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
-                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole -Verbose    
+                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole `
+                                -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose    
                 }
                 
                 if($Credential){
@@ -466,12 +470,11 @@ function ServerUpgradeScript {
                 }
             }
         }
-
         if($JobFlag){
             #UpgradeServerWebAdaptor
             Write-Host "WA Server Install"
             ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'})){
-                $WAExternalHostName = if(($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
+                $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
                 $cd = @{
                     AllNodes = @(
                         @{
@@ -486,7 +489,8 @@ function ServerUpgradeScript {
                 }
                 WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "ServerWebAdaptor" -Version $cf.ConfigData.Version `
                                     -InstallerPath $cf.ConfigData.WebAdaptor.Installer.Path -Context $cf.ConfigData.ServerContext `
-                                    -ComponentHostName $cfPrimaryServerMachine  -PSACredential $cfPSACredential -Verbose
+                                    -ComponentHostName $cfPrimaryServerMachine -PSACredential $cfPSACredential `
+                                    -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
                 if($Credential){
                     $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -Credential $Credential -DebugMode $DebugMode
                 }else{
@@ -529,7 +533,7 @@ function Publish-WebApp
     }
 
     Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
-    . "$PSScriptRoot\Configuration\$($ConfigurationName).ps1"
+    . "$PSScriptRoot\Configurations-OnPrem\$($ConfigurationName).ps1"
     
     Write-Host "Compiling the Configuration:- $ConfigurationName"
     & $ConfigurationName -NodeName $NodeName -WebAppName $WebAppName -SourceDir $SourceDir
@@ -550,10 +554,10 @@ function Configure-ArcGIS
         [System.Array]
         $ConfigurationParametersFile,    
 
-        [ValidateSet("Install","Uninstall","Upgrade","PublishGISService")]
+        [ValidateSet("Install","InstallLicense","InstallLicenseConfigure","Uninstall","Upgrade","PublishGISService")]
         [Parameter(Position = 1)]
         [System.String]
-        $Mode = 'Install',
+        $Mode = 'InstallLicenseConfigure',
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -573,14 +577,14 @@ function Configure-ArcGIS
         $DebugMode = $true
     }
 
-    if($Mode -ieq "Install" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService"){
+    if($Mode -ieq "Install" -or $Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService"){
 
         Foreach($cf in $ConfigurationParametersFile){
             if(-not($ConfigurationParamsJSON)){
                 $ConfigurationParamsJSON = (ConvertFrom-Json (Get-Content $cf -Raw))
             }
         }
-        $ConfigurationParamsHashtable = ConvertPSObjectToHashtable $ConfigurationParamsJSON
+        $ConfigurationParamsHashtable = Convert-PSObjectToHashtable $ConfigurationParamsJSON
         for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
             if ($Credential)
             {
@@ -598,8 +602,7 @@ function Configure-ArcGIS
        
         $ConfigurationParamsHashtable.AllNodes += $CommonNodeToAddForPlainText 
 
-        if($Mode -ieq "Install"){ 
-
+        if($Mode -ieq "Install" -or $Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure"){ 
             $ValidatePortalFileShare = $false
             if($ConfigurationParamsHashtable.ConfigData.Portal){
                 $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
@@ -656,7 +659,7 @@ function Configure-ArcGIS
                 $JobFlag = $False
 
                 Write-Host "Dot Sourcing the Configuration:- ArcGISInstall"
-                . "$PSScriptRoot\Configuration\ArcGISInstall.ps1" -Verbose:$false
+                . "$PSScriptRoot\Configurations-OnPrem\ArcGISInstall.ps1" -Verbose:$false
 
                 Write-Host "Compiling the Configuration:- ArcGISInstall"
                 ArcGISInstall -ConfigurationData $ConfigurationParamsHashtable
@@ -671,12 +674,12 @@ function Configure-ArcGIS
                     Remove-Item ".\ArcGISInstall" -Force -ErrorAction Ignore -Recurse
                 }
 
-                if($JobFlag){
+                if($JobFlag -eq $True -and ($Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure")){
                     
                     $JobFlag = $False
 
                     Write-Host "Dot Sourcing the Configuration:- ArcGISLicense"
-                    . "$PSScriptRoot\Configuration\ArcGISLicense.ps1" -Verbose:$false
+                    . "$PSScriptRoot\Configurations-OnPrem\ArcGISLicense.ps1" -Verbose:$false
 
                     Write-Host "Compiling the Configuration:- ArcGISLicense"
                     ArcGISLicense -ConfigurationData $ConfigurationParamsHashtable
@@ -691,12 +694,12 @@ function Configure-ArcGIS
                         Remove-Item ".\ArcGISLicense" -Force -ErrorAction Ignore -Recurse
                     }
                     
-                    if($JobFlag){
+                    if($JobFlag -eq $True -and ($Mode -ieq "InstallLicenseConfigure")){
                         
                         $JobFlag = $False
                     
                         Write-Host "Dot Sourcing the Configuration:- ArcGISConfigure"
-                        . "$PSScriptRoot\Configuration\ArcGISConfigure.ps1" -Verbose:$false
+                        . "$PSScriptRoot\Configurations-OnPrem\ArcGISConfigure.ps1" -Verbose:$false
 
                         Write-Host "Compiling the Configuration:- ArcGISConfigure"
                         ArcGISConfigure -ConfigurationData $ConfigurationParamsHashtable
@@ -711,12 +714,9 @@ function Configure-ArcGIS
                             Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
                         }
 
-                        if($JobFlag){
-
+                        if($JobFlag -eq $True){
                             $RemoteFederation = if($ConfigurationParamsHashtable.ConfigData.Federation){$true}else{$false}
-            
                             $PortalServerFederation = $False
-                            
                             if(-not($RemoteFederation))
                             {
                                 $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0)
@@ -729,7 +729,7 @@ function Configure-ArcGIS
 
                             if($RemoteFederation -or $PortalServerFederation){
                                 Write-Host "Dot Sourcing the Configuration:- ArcGISFederation"
-                                . "$PSScriptRoot\Configuration\ArcGISFederation.ps1" -Verbose:$false
+                                . "$PSScriptRoot\Configurations-OnPrem\ArcGISFederation.ps1" -Verbose:$false
                                 
                                 Write-Host "Compiling the Configuration:- ArcGISFederation"
                                 ArcGISFederation -ConfigurationData $ConfigurationParamsHashtable 
@@ -747,7 +747,7 @@ function Configure-ArcGIS
                             }
                         }
                     
-                        if($JobFlag){ 
+                        if($JobFlag -eq $True){ 
                             Get-ArcGISURL $ConfigurationParamsHashtable
                         }
                     }
@@ -766,7 +766,7 @@ function Configure-ArcGIS
             }    
 
             Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
-            . "$PSScriptRoot\Configuration\$ConfigurationName.ps1" -Verbose:$false
+            . "$PSScriptRoot\Configurations-OnPrem\$ConfigurationName.ps1" -Verbose:$false
 
             Write-Host "Compiling the Configuration:- $ConfigurationName"
             & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
@@ -779,28 +779,28 @@ function Configure-ArcGIS
         }
     }elseif($Mode -ieq "Upgrade"){
         Write-Host "Dot Sourcing the Configuration:- WebAdaptorUninstall"
-        . "$PSScriptRoot\Configuration\Upgrades\WebAdaptorUninstall.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\WebAdaptorUninstall.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- WebAdaptorInstall"
-        . "$PSScriptRoot\Configuration\Upgrades\WebAdaptorInstall.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\WebAdaptorInstall.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- PortalUpgrade"
-        . "$PSScriptRoot\Configuration\Upgrades\PortalUpgrade.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\PortalUpgrade.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- PortalUpgradeStandbyJoin"
-        . "$PSScriptRoot\Configuration\Upgrades\PortalUpgradeStandbyJoin.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\PortalUpgradeStandbyJoin.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- ServerUpgrade"
-        . "$PSScriptRoot\Configuration\Upgrades\ServerUpgrade.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\ServerUpgrade.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- DataStoreUpgradeInstall"
-        . "$PSScriptRoot\Configuration\Upgrades\DataStoreUpgradeInstall.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\DataStoreUpgradeInstall.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- DataStoreUpgradeConfigure"
-        . "$PSScriptRoot\Configuration\Upgrades\DataStoreUpgradeConfigure.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\DataStoreUpgradeConfigure.ps1" -Verbose:$false
 
         Write-Host "Dot Sourcing the Configuration:- SpatioTemporalDatastoreStart"
-        . "$PSScriptRoot\Configuration\Upgrades\SpatioTemporalDatastoreStart.ps1" -Verbose:$false
+        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\SpatioTemporalDatastoreStart.ps1" -Verbose:$false
 
         $HostingConfig = $null
 
@@ -808,7 +808,7 @@ function Configure-ArcGIS
 
         Foreach($cf in $ConfigurationParametersFile){
             $cfJSON = (ConvertFrom-Json (Get-Content $cf -Raw))
-            $cfHashtable = ConvertPSObjectToHashtable $cfJSON
+            $cfHashtable = Convert-PSObjectToHashtable $cfJSON
             
             $HasPortalNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0
             $HasServerNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0
@@ -828,14 +828,16 @@ function Configure-ArcGIS
         }
 
         $JobFlag = $True
-        if($JobFlag){
-            if($HostingConfig -or (-not($HostingConfig) -and $OtherConfigs)){
+        if($JobFlag -eq $True){
+            if($HostingConfig -or (-not($HostingConfig) -and $OtherConfigs)){              
                 if(-not($HostingConfig)){
                     $PortalConfig = $OtherConfigs[0]
                 }else{
                     $PortalConfig = $HostingConfig
                 }
                 
+                $SevenZipInstallerPath = if($PortalConfig.ConfigData.SevenZipInstallerPath){$PortalConfig.ConfigData.SevenZipInstallerPath}else{$null}
+                $SevenZipInstallerDir = if($PortalConfig.ConfigData.SevenZipInstallerDir){$PortalConfig.ConfigData.SevenZipInstallerDir}else{$null}
                 $PrimaryPortalMachine = ""
                 $PrimaryPortalMachineNode = $null
                 $StandByPortalMachine = ""
@@ -891,31 +893,31 @@ function Configure-ArcGIS
                         }
                     }
 
-                    if($JobFlag){
+                    if($JobFlag -eq $True){
                         if($PortalConfig.ConfigData.ExternalLoadBalancer){
                             $ExternalDNSName = $PortalConfig.ConfigData.ExternalLoadBalancer
                         }else{
                             if(($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
                                 $PortalWAMachineNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
                                 $ExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
-                                if(($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
+                                if(($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
                                 {
-                                    $ExternalDNSName = ($PortalWAMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
+                                    $ExternalDNSName = ($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
                                 }
 
                                 if(($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
                                     $LoadbalancerNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')} | Select-Object -First 1)
                                     $ExternalDNSName = Get-FQDN $LoadbalancerNode.NodeName
-                                    if(($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
+                                    if(($LoadbalancerNode.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
                                     {
-                                        $ExternalDNSName = ($LoadbalancerNode.SslCertifcates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
+                                        $ExternalDNSName = ($LoadbalancerNode.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
                                     }
                                 }
                             }else{
                                 $ExternalDNSName = Get-FQDN $PrimaryPortalMachine
-                                if(($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
+                                if(($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
                                 {
-                                    $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertifcates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
+                                    $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
                                 }
                             }
                         }
@@ -979,6 +981,8 @@ function Configure-ArcGIS
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $ExternalDNSName 
                                 IsMultiMachinePortal = $IsMultiMachinePortal
+                                SevenZipInstallerPath = $SevenZipInstallerPath
+                                SevenZipInstallerDir = $SevenZipInstallerDir
                             }
                         }else{
                             $cd = @{
@@ -1006,8 +1010,9 @@ function Configure-ArcGIS
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $ExternalDNSName 
                                 IsMultiMachinePortal = $False
+                                SevenZipInstallerPath = $SevenZipInstallerPath
+                                SevenZipInstallerDir = $SevenZipInstallerDir
                             }
-                            
                         }
                         if(Test-Path ".\PortalUpgrade") {
                             Remove-Item ".\PortalUpgrade" -Force -ErrorAction Ignore -Recurse
@@ -1020,7 +1025,7 @@ function Configure-ArcGIS
                         }
 
 
-                        if($IsMultiMachinePortal -and $JobFlag){
+                        if($IsMultiMachinePortal -and ($JobFlag -eq $True)){
                             $cd = @{
                                 AllNodes = @(
                                     @{
@@ -1029,14 +1034,24 @@ function Configure-ArcGIS
                                     }
                                 );
                             }
+
+                            $StandbyLicenseFilePath = $LicenseFilePath
+                            if($StandByPortalMachineNode.PortalLicenseFilePath)
+                            {
+                                $StandbyLicenseFilePath = $StandByPortalMachineNode.PortalLicenseFilePath
+                            }
+                        
                             $PortalUpgradeStandbyArgs = @{
                                 ConfigurationData = $cd 
+                                Version = $PortalConfig.ConfigData.Version 
                                 PrimaryPortalMachine = $PrimaryPortalMachine 
                                 Context = $PortalConfig.ConfigData.PortalContext
                                 PrimarySiteAdmin = $PortalPSACredential 
                                 PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                ExternalDNSName = $ExternalDNSName 
+                                ExternalDNSName = $ExternalDNSName
+                                LicenseFilePath = $StandbyLicenseFilePath
+                                UserLicenseType = if($PortalConfig.ConfigData.Portal.PortalLicenseUserType){ $PortalConfig.ConfigData.Portal.PortalLicenseUserType }else{ $null }
                             }
 
                             PortalUpgradeStandbyJoin @PortalUpgradeStandbyArgs -Verbose
@@ -1047,10 +1062,10 @@ function Configure-ArcGIS
                             }
                         }
 
-                        if($JobFlag -and $HasPortalWANodes){
+                        if(($JobFlag -eq $True) -and $HasPortalWANodes){
                             Write-Host "WebAdaptor Upgrade"
                             ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'})){
-                                $WAExternalHostName = if(($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertifcates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
+                                $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
                                 $cd = @{
                                     AllNodes = @(
                                         @{
@@ -1065,7 +1080,8 @@ function Configure-ArcGIS
                                 }    
                                 WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "PortalWebAdaptor" -Version $PortalConfig.ConfigData.Version `
                                                     -InstallerPath $PortalConfig.ConfigData.WebAdaptor.Installer.Path -Context $PortalConfig.ConfigData.PortalContext `
-                                                    -ComponentHostName $PrimaryPortalMachine -PSACredential $PortalPSACredential -Verbose
+                                                    -ComponentHostName $PrimaryPortalMachine -PSACredential $PortalPSACredential `
+                                                    -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
                                 if($Credential){
                                     $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -Credential $Credential -DebugMode $DebugMode
                                 }else{
@@ -1092,7 +1108,7 @@ function Configure-ArcGIS
                 }
             }
             
-            if($JobFlag){
+            if($JobFlag -eq $True){
                 if($HostingConfig){
                     Write-Host "Hosting Server Upgrade"
                     if($Credential){
@@ -1103,7 +1119,7 @@ function Configure-ArcGIS
                 }
             }
 
-            if($JobFlag){
+            if($JobFlag -eq $True){
                 if($OtherConfigs){
                     for ( $i = 0; $i -lt $OtherConfigs.count; $i++ ){
                         Write-Host "Other Server Upgrade"
@@ -1116,7 +1132,7 @@ function Configure-ArcGIS
                 }
             }
             
-            if($JobFlag){
+            if($JobFlag -eq $True){
                 if($HostingConfig -or (-not($HostingConfig) -and $OtherConfigs)){
                     if(-not($HostingConfig)){
                         $DSConfig = $OtherConfigs[0]
@@ -1124,6 +1140,9 @@ function Configure-ArcGIS
                         $DSConfig = $HostingConfig
                     }
 
+                    $SevenZipInstallerPath = if($DSConfig.ConfigData.SevenZipInstallerPath){$DSConfig.ConfigData.SevenZipInstallerPath}else{$null}
+                    $SevenZipInstallerDir = if($DSConfig.ConfigData.SevenZipInstallerDir){$DSConfig.ConfigData.SevenZipInstallerDir}else{$null}
+                    
                     $DSSAPassword = ConvertTo-SecureString $DSConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
                     $DSSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($DSConfig.ConfigData.Credentials.ServiceAccount.UserName, $DSSAPassword )
 
@@ -1160,7 +1179,8 @@ function Configure-ArcGIS
                             }
 
                             DataStoreUpgradeInstall -ConfigurationData $cd -Version $DSConfig.ConfigData.Version -ServiceAccount $DSSACredential `
-                                -InstallerPath $DSConfig.ConfigData.DataStore.Installer.Path -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Verbose
+                                -InstallerPath $DSConfig.ConfigData.DataStore.Installer.Path -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir `
+                                -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
                             if($Credential){
                                 $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeInstall -Credential $Credential -DebugMode $DebugMode
                             }else{
@@ -1212,7 +1232,7 @@ function Configure-ArcGIS
                                 }
                             }
 
-                            if($JobFlag -and $PrimaryTileCache -and ($PrimaryDataStore -ne $PrimaryTileCache)){
+                            if(($JobFlag -eq $True) -and $PrimaryTileCache -and ($PrimaryDataStore -ne $PrimaryTileCache)){
                                 $cd = @{
                                     AllNodes = @(
                                         @{
@@ -1233,7 +1253,7 @@ function Configure-ArcGIS
                                 }
                             }
 
-                            if($JobFlag -and $PrimaryBigDataStore -and ($PrimaryDataStore -ne $PrimaryTileCache) -and ($PrimaryDataStore -ne $PrimaryBigDataStore)){
+                            if(($JobFlag -eq $True) -and $PrimaryBigDataStore -and ($PrimaryDataStore -ne $PrimaryTileCache) -and ($PrimaryDataStore -ne $PrimaryBigDataStore)){
                                 $cd = @{
                                     AllNodes = @(
                                         @{
@@ -1273,7 +1293,8 @@ function Configure-ArcGIS
                                     }
                                 
                                     DataStoreUpgradeInstall -ConfigurationData $cd -Version $DSConfig.ConfigData.Version -ServiceAccount $DSSACredential `
-                                        -InstallerPath $DSConfig.ConfigData.DataStore.Installer.Path  -Verbose
+                                        -InstallerPath $DSConfig.ConfigData.DataStore.Installer.Path `
+                                        -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
                                     if($Credential){
                                         $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeInstall -Credential $Credential -DebugMode $DebugMode
                                     }else{
@@ -1283,7 +1304,7 @@ function Configure-ArcGIS
                                     if(Test-Path ".\DataStoreUpgradeConfigure") {
                                         Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
                                     }
-                                    if($JobFlag){
+                                    if($JobFlag -eq $True){
                                         DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
                                             -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Verbose
                                         if($Credential){
@@ -1295,12 +1316,12 @@ function Configure-ArcGIS
                                     if($DSConfig.AllNodes[$i].DataStoreTypes -icontains "SpatioTemporal"){
                                         $BigDataStoreMachinesArray += $DSNode
                                     }
-                                    if($JobFlag){
+                                    if($JobFlag -eq $True){
                                         break
                                     }
                                 }
                             }
-                            if($JobFlag -and $BigDataStoreMachinesArray){
+                            if(($JobFlag -eq $True) -and $BigDataStoreMachinesArray){
                                 Write-Host "BigDataStore Upgrade"
                                 Foreach($nd in $BigDataStoreMachinesArray){
                                     $cd = @{
@@ -1320,7 +1341,7 @@ function Configure-ArcGIS
                                     }else{
                                         $JobFlag = Start-DSCJob -ConfigurationName SpatioTemporalDatastoreStart -DebugMode $DebugMode
                                     }
-                                    if($JobFlag){
+                                    if($JobFlag -eq $True){
                                         break
                                     }
                                 }

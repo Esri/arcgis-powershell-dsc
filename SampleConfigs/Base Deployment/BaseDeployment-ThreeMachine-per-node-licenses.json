@@ -7,41 +7,27 @@
                                               "SpatioTemporal"
                                             ],
                          "Role":  [
-                                      "DataStore",
-                                      "Server"
-                                  ],
-                         "SslCertifcates":  [{
-                                            "Path":  "[Server SSL Certificate Path]",
-                                            "Password":  "[Server SSL Password]",
-                                            "Alias":  "[Server CName Alias]",
-                                            "Target" :["Server"]
-                                        }
-                                    ]
+                                      "DataStore"
+                                  ]
+                        
                      },
                      {
                          "NodeName":  "[Machine 2 Name]",
                          "Role":  [
-                                      "ServerWebAdaptor",
+                                      "Portal",
                                       "PortalWebAdaptor"
                                   ],
-                         "SslCertifcates":  [{
-                                            "Path":  "[WebAdaptor SSL Certificate Path]",
-                                            "Password":  "[WebAdaptor SSL Password]",
-                                            "Alias":  "[WebAdaptor CName Alias]",
-                                            "Target" :["WebAdaptor"]
-                                        }]
+                         "PortalLicenseFilePath": "[OPTIONAL - Valid Parameter for 10.6.1 and below]",
+                         "PortalLicensePassword": "[OPTIONAL - Valid Parameter for 10.6.1 and below]"
                      },
                      {
                          "NodeName":  "[Machine 3 Name]",
                          "Role":  [
-                                      "Portal"
+                                      "Server",
+                                      "ServerWebAdaptor"
                                   ],
-                         "SslCertifcates":  [{
-                                                "Path":  "[Portal SSL Certificate Path]",
-                                                "Password":  "[Portal SSL Password]",
-                                                "Alias":  "[Portal CName Alias]",
-                                                "Target" : ["Portal"]
-                                            }]
+                         "ServerLicenseFilePath": "[OPTIONAL]",
+                         "ServerLicensePassword": "[OPTIONAL]"
                      }
                  ],
     "ConfigData":  {
@@ -61,18 +47,9 @@
                                                                   "IsDomainAccount": false
                                                               }
                                        },
-						"SslRootOrIntermediate" : [
-													{
-														"Alias":	"[ROOT-CA Alias]",
-														"Path":		"[ROOT-CA SSL Certificate Path]"
-													},
-													{
-														"Alias":	"[Intermediate-CA Alias]",
-														"Path":		"[Intermediate-CA SSL Certificate Path]"
-													}
-												],
                        "Server":  {
-                                      "LicenseFilePath":   "[License File Path - Server ]",
+                                      "LicenseFilePath":   "[License File Path - Server - Will be over ridden by Node Level Licence File ]",
+                                      "LicensePassword": "[License Password - Server - OPTIONAL] - Will be over ridden by Node Level Password",
                                       "Installer":  {
                                                         "Path":  "[Server Installer Path]",
                                                         "InstallDir":  "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
@@ -82,7 +59,9 @@
                                       "ConfigStoreLocation":  "C:\\arcgisserver\\config-store"
                                   },
                        "Portal":  {
-                                      "LicenseFilePath": "[License File Path - Portal ]",
+                                      "LicenseFilePath": "[License File Path - Portal - Will be over ridden by Node Level Licence File]",
+                                      "LicensePassword": "[License Password - Portal - OPTIONAL - Will be over ridden by Node Level Password - Valid Parameter for 10.6.1 and below]",
+                                      "PortalLicenseUserType": "[Portal License User Type - Required for 10.7 and above]",
                                       "Installer":  {
                                                         "Path":  "[Portal Installer Path]",
                                                         "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",

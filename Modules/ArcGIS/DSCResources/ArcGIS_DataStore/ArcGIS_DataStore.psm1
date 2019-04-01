@@ -24,6 +24,8 @@
         The type of data store to create on the machine.('Relational','SpatioTemporal','TileCache'). Value for this can be one or more. 
     .PARAMETER RunAsAccount
         A MSFT_Credential Object - Run as Account for DataStore Window Service.
+    .PARAMETER IsEnvAzure
+        Boolean to Indicate if the Deployment Environment is On-Prem or Azure Cloud Services
 #>
 function Get-TargetResource
 {
@@ -31,7 +33,7 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
-    	[ValidateSet("Present","Absent")]
+        [ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure,
 
@@ -59,9 +61,14 @@ function Get-TargetResource
         $DataStoreTypes,
 
         [System.Management.Automation.PSCredential]
-		$RunAsAccount
+        $RunAsAccount,
+        
+        [System.Boolean]
+		$IsEnvAzure = $false
 	)
+    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
 	$null
 }
 
@@ -99,18 +106,21 @@ function Set-TargetResource
         $DataStoreTypes,
 
         [System.Management.Automation.PSCredential]
-		$RunAsAccount
+		$RunAsAccount,
+        
+        [System.Boolean]
+		$IsEnvAzure = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
-	$MachineFQDN = Get-FQDN $env:ComputerName
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+    $MachineFQDN = Get-FQDN $env:ComputerName
 	
     $ServiceName = 'ArcGIS Data Store'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $DataStoreInstallDirectory = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir.TrimEnd('\')  
 
-    if(-not($DataStoreTypes -icontains "SpatioTemporal")){
+    if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
         $RestartRequired = $false
         $expectedHostIdentifierType = 'hostname'
         $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $DataStoreInstallDirectory
@@ -126,233 +136,167 @@ function Set-TargetResource
                 $RestartRequired = $true 
             }
         }
-   
-        if($RestartRequired)
-        {
+       
+        if($IsEnvAzure){
+            $PropertiesFilePath = Join-Path $DataStoreInstallDirectory 'framework\etc\datastore.properties' 	
+            $PropertyName = 'failover_on_primary_stop'
+            $CurrentValue = Get-PropertyFromPropertiesFile -PropertiesFilePath $PropertiesFilePath -PropertyName $PropertyName
+            Write-Verbose "Current value of property $PropertyName is $CurrentValue"
+            if($CurrentValue -ine 'true') { 
+                Write-Verbose "Property '$PropertyName' will be modified. Need to restart the '$ServiceName' service to pick up changes"
+                $RestartRequired = $true
+            }else {
+                Write-Verbose "Property value '$CurrentValue' for '$PropertyName' matches expected value of 'true'"
+            }
+        }
+	
+        if($RestartRequired){
             Write-Verbose "Stop Service '$ServiceName' before applying property change"
             Stop-Service -Name $ServiceName -Force 
             Write-Verbose 'Stopping the service' 
             Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
             Write-Verbose 'Stopped the service'
             
-            Write-Verbose "Restarting Service '$ServiceName' to pick up property change"
-            Start-Service $ServiceName 
-            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-            Write-Verbose "Restarted Service '$ServiceName'"
+            if(-not($IsEnvAzure) -or ($IsEnvAzure -and (Set-PropertyFromPropertiesFile -PropertiesFilePath $PropertiesFilePath -PropertyName $PropertyName -PropertyValue 'true' -Verbose))){
+                Write-Verbose "Restarting Service '$ServiceName' to pick up property change"
+                Start-Service $ServiceName 
+                Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+                Write-Verbose "Restarted Service '$ServiceName'"
+            }
             
-            Wait-ForUrl -Url "https://$($MachineFQDN):2443/arcgis/datastoreadmin/" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -HttpMethod 'GET'
+            Wait-ForUrl -Url "https://$($MachineFQDN):2443/arcgis/datastoreadmin/configure?f=json" -MaxWaitTimeInSeconds 150 -SleepTimeInSeconds 5 -HttpMethod 'GET' -Verbose
         }else {
             Write-Verbose "Properties are up to date. No need to restart the 'ArcGIS Data Store' Service"
         }	
     }
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = Get-FQDN $ServerHostName
-    $ServerUrl = "http://$($FQDN):6080"   
-    $ServerHttpsUrl = "https://$($FQDN):6443"   
+    $ServerUrl = "https://$($FQDN):6443"   
     $Referer = $ServerUrl
-    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
-    
-    $Done = $false
-	$NumAttempts = 0
-	while(-not($Done) -and ($NumAttempts -lt 10)) {
-		try {
-			$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-		}
-		catch {
-			Write-Verbose "[WARNING]:- Server at $ServerUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
-		}
-		if($token) {
-			Write-Verbose "Retrieved server token successfully"
-			$Done = $true
-		}else {
-			Start-Sleep -Seconds 15
-			$NumAttempts = $NumAttempts + 1
-		}
-	}
-    
-    $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
-    
-    if(-not($DataStoreTypes -icontains "SpatioTemporal")){
+    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -Verbose
+    $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
 
-        Write-Verbose "Checking if data store is registered"
-        $result = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $token.token -Referer $Referer -Type "Relational"
-        if($result) {
-            Write-Verbose "A Data Store has been registered. Now checking if this machine ($env:ComputerName) belongs to it"
-            $result = Test-MachineParticipatingInDataStore -ServerURL $ServerURL -Token $token.token -Referer $Referer -MachineFQDN (Get-FQDN $env:ComputerName)
-            if($result) {
-                Write-Verbose "The machine $($env:ComputerName) already participates in the data store"
-            }
-        }
+    if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
+        Write-Verbose "Ensure the Publishing GP Service (Tool) is started on Server"
+        $PublishingToolsPath = 'System/PublishingTools.GPServer'
+        $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+        Write-Verbose "Service Status :- $serviceStatus"
+        if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
+            Write-Verbose "Starting Service $PublishingToolsPath"
+            Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
         
-        if(-not($result)) {
-
-            # Ensure the Publishing GP Service (Tool) is started
-            $PublishingToolsPath = 'System/PublishingTools.GPServer'
             $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-            Write-Verbose "Service Status :- $serviceStatus"
-            if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
-                Write-Verbose "Starting Service $PublishingToolsPath"
-                Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-            
-                $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-                Write-Verbose "Verifying Service Status :- $serviceStatus"
-            }
-
-            Register-DataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
-                            -ServerSiteUrl "https://$($FQDN):6443/arcgis" -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
-                            -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes
-        } 
-    
-        if($DataStoreTypes) {
-            $info = Get-DataStoreInfo -DataStoreAdminEndpoint 'https://localhost:2443/arcgis/datastoreadmin' -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($FQDN):6443/arcgis" `
-                                    -Token $token.token -Referer $Referer 
-            $allTypesRegistered = $true
-            foreach($dstype in $DataStoreTypes) {
-                if($dstype -ieq 'Relational') {
-                    if(-not($info.relational.registered)) {
-                        Write-Verbose "Data Store Type 'Relational' not registered"
-                        $allTypesRegistered = $false
-                    }else {
-                        Write-Verbose "Data Store Type 'Relational' is registered"
-                    }
-                }
-                elseif($dstype -ieq 'TileCache') {
-                    if(-not($info.tileCache.registered)) {
-                        Write-Verbose "Data Store Type 'TileCache' not registered"
-                        $allTypesRegistered = $false
-                    }else {
-                        Write-Verbose "Data Store Type 'TileCache' is registered"
-                    }
-                }
-            }
-
-            if(-not($allTypesRegistered)) {
-                Write-Verbose "Not all requred data store types '$($DataStoreTypes.ToString())' are registered. Attempting registration again"
-                Register-DataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
-                            -ServerSiteUrl "https://$($FQDN):6443/arcgis" -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
-                            -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes
-            }
+            Write-Verbose "Verifying Service Status :- $serviceStatus"
         }
     }
 
+    $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
+    $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
+                                                            -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
+                                                            -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator
+
+    if($DatastoresToRegister.Count -gt 0){
+        $DatastoresToRegisterString = ($DatastoresToRegister -join ',')
+        Write-Verbose "Registering datastores $DatastoresToRegisterString"
+        Register-DataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
+                            -ServerSiteUrl "https://$($FQDN):6443/arcgis" -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
+                            -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes
+    }
+
     if($DataStoreTypes -icontains "SpatioTemporal"){
-        Write-Verbose "Checking if spatiotemporal big data store is registered"
-        $DsRegistered = $false
-        $result = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $token.token -Referer $Referer -Type "SpatioTemporal"
-        if($result) {
-            Write-Verbose "A Data Store has been registered. Now checking if this machine ($env:ComputerName) with FQDN '$MachineFQDN' belongs to it"
-            $result = Test-MachineParticipatingInBigDataStore -ServerURL $ServerURL -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
-            if($result) {
-                Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' already participates in a Spatio Temporal data store"
-                $DsRegistered = $true
-            }else {
-                Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' does NOT participates in a registered Spatio Temporal data store"
-            }
-        }else {
-            Write-Verbose "A Spatiotemporal Big Data Store has not been registered."
-        }
-        
-        if(-not($DsRegistered)) {
-            Write-Verbose "A Spatiotemporal Big Data Store has not been registered. Registering now."
-            Register-DataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "$ServerHttpsUrl/arcgis" -DataStoreContentDirectory $ContentDirectory `
-                                -ServerAdminUrl "$ServerHttpsUrl/arcgis/admin" -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes
-        }	
         Write-Verbose "Checking if the Spatiotemporal Big Data Store has started."
         if(-not(Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN)) {
             Write-Verbose "Starting the Spatiotemporal Big Data Store."
             Start-SpatiotemporalBigDataStore -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
-            $x = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
-            Write-Verbose "Just Checking:- $($x)"
+            $TestBDSStatus = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
+            Write-Verbose "Just Checking:- $($TestBDSStatus)"
         }else {
             Write-Verbose "The Spatiotemporal Big Data Store is already started."
         }
     }
 
-    if(-not($DataStoreTypes -icontains "SpatioTemporal")){
-        if(-not($IsStandby) -and $DatabaseBackupsDirectory) {
-            $currLocation = Get-BackupLocation
-            Write-Verbose "Current backup location is $currLocation. Requested $DatabaseBackupsDirectory"
-            if($DatabaseBackupsDirectory -ine $currLocation)
+    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and -not($IsStandby) -and $DatabaseBackupsDirectory){
+        $currLocation = Get-BackupLocation
+        Write-Verbose "Current backup location is $currLocation. Requested $DatabaseBackupsDirectory"
+        if($DatabaseBackupsDirectory -ine $currLocation)
+        {
+
+            ### WORKAROUND:- Since the DSC LCM (Local Configuration Manager) runs as Local System, it cannot access network resources
+            ### The workaround is to use Mapped Drives using PS-Drive which is the only currently supported mechanism for accessing network resources
+            ### Hence map a dummy drive  
+
+            #region Map Drive Workaround   
+            $DriveLetter = 'O'    
+            Write-Verbose "About to map $FileShareRoot to $DriveLetter with Credentials $($RunAsAccount.UserName)"            
+            $DriveInfo = $null
+            try {
+                if(Get-PSDrive -Name $DriveLetter -ErrorAction Ignore) {
+                    Remove-PSDrive -Name $DriveLetter -Force
+                }
+                $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $FileShareRoot -Credential $RunAsAccount 
+                Write-Verbose "Mapped Drive $($DriveInfo.Name)"
+            }
+            catch
             {
-
-                ### WORKAROUND:- Since the DSC LCM (Local Configuration Manager) runs as Local System, it cannot access network resources
-                ### The workaround is to use Mapped Drives using PS-Drive which is the only currently supported mechanism for accessing network resources
-                ### Hence map a dummy drive  
-
-                #region Map Drive Workaround   
-                $DriveLetter = 'O'    
-                Write-Verbose "About to map $FileShareRoot to $DriveLetter with Credentials $($RunAsAccount.UserName)"            
-                $DriveInfo = $null
-                try {
+                Write-Verbose "[Warning] Error mapping using network root path $FileShareRoot. Error:- $_"        
+            }
+            if(-not($DriveInfo)) 
+            {
+                Write-Verbose "Unable to map drive using Path $FileShareRoot"
+                [string[]]$Splits = $FileShareRoot.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
+                Write-Verbose "Splits $Splits"
+                $HostName = $Splits[0]
+                Write-Verbose "File Share Host Name $HostName"
+                if(-not($HostName -as [ipaddress])) {
+                    $ipaddress = (Resolve-DnsName -Name $HostName -Type A).IPAddress
+                    Write-Verbose "IP Address of $HostName is $ipaddress"
+                    $filesharePath = [System.String]::Join('\', $Splits, 1, $Splits.Length -1)
+                    $RootPath = "\\$($ipaddress)\$($filesharePath)"
+                    Write-Verbose "Root Path $RootPath"
                     if(Get-PSDrive -Name $DriveLetter -ErrorAction Ignore) {
                         Remove-PSDrive -Name $DriveLetter -Force
                     }
-                    $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $FileShareRoot -Credential $RunAsAccount 
-                    Write-Verbose "Mapped Drive $($DriveInfo.Name)"
-                }
-                catch
-                {
-                    Write-Verbose "[Warning] Error mapping using network root path $FileShareRoot. Error:- $_"        
-                }
-                if(-not($DriveInfo)) 
-                {
-                    Write-Verbose "Unable to map drive using Path $FileShareRoot"
-                    [string[]]$Splits = $FileShareRoot.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
-                    Write-Verbose "Splits $Splits"
-                    $HostName = $Splits[0]
-                    Write-Verbose "File Share Host Name $HostName"
-                    if(-not($HostName -as [ipaddress])) {
-                        $ipaddress = (Resolve-DnsName -Name $HostName -Type A).IPAddress
-                        Write-Verbose "IP Address of $HostName is $ipaddress"
-                        $filesharePath = [System.String]::Join('\', $Splits, 1, $Splits.Length -1)
-                        $RootPath = "\\$($ipaddress)\$($filesharePath)"
-                        Write-Verbose "Root Path $RootPath"
-                        if(Get-PSDrive -Name $DriveLetter -ErrorAction Ignore) {
-                            Remove-PSDrive -Name $DriveLetter -Force
-                        }
-                        Write-Verbose "Attempt to map drive using IP address path $RootPath"
-                        $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $RootPath -Credential $RunAsAccount
-                        if(-not($DriveInfo)){
-                            Write-Verbose "Unable to map drive using IP address either"
-                        }
+                    Write-Verbose "Attempt to map drive using IP address path $RootPath"
+                    $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $RootPath -Credential $RunAsAccount
+                    if(-not($DriveInfo)){
+                        Write-Verbose "Unable to map drive using IP address either"
                     }
                 }
-                #endregion
-
-                $PathOnShare = $DatabaseBackupsDirectory
-                $Pos = $DatabaseBackupsDirectory.IndexOf($FileShareRoot, [System.StringComparison]::InvariantCultureIgnoreCase)
-                if($Pos -gt -1) {
-                    $PathOnShare = $DatabaseBackupsDirectory.Substring($Pos + $FileShareRoot.Length)
-                }
-                if($DriveInfo) 
-                {
-                    $MappedDrivePath = "$($DriveInfo.Name):" + $PathOnShare
-                    $LogsDir = Join-Path $MappedDrivePath 'deploylogs'
-                    Write-Verbose "LogDir:- $LogsDir"
-                    if(-not(Test-Path $LogsDir))
-                    {
-                        Write-Verbose "Creating LogsDir:- $LogsDir"
-                        New-Item $LogsDir -ItemType directory
-                    }
-                    Add-Content (Join-Path $LogsDir 'log.txt') -Value "$(Get-Date) Database backup directory $DatabaseBackupsDirectory" -ErrorAction Ignore
-                }
-
-                if($RunAsAccount) {           
-                    Write-Verbose "Grant RunAsAccount $($RunAsAccount.UserName) permissions on $DatabaseBackupsDirectory using icacls.exe"
-                    Write-Verbose "icacls.exe $DatabaseBackupsDirectory /grant $($RunAsAccount.UserName):(OI)(CI)F"
-                    &icacls.exe $DatabaseBackupsDirectory /grant "$($RunAsAccount.UserName):(OI)(CI)F"
-                }    
-
-                Write-Verbose "Updating backup location to $DatabaseBackupsDirectory"
-                Set-BackupLocation -BackupDirectory $DatabaseBackupsDirectory
-                Write-Verbose "Updated backup location to $DatabaseBackupsDirectory"
-
-                if($DriveInfo) {
-                    Write-Verbose "Remove Mapped Drive $($DriveInfo.Name)"
-                    Remove-PSDrive -Name $DriveInfo.Name -Force
-                }   
             }
+            #endregion
+
+            $PathOnShare = $DatabaseBackupsDirectory
+            $Pos = $DatabaseBackupsDirectory.IndexOf($FileShareRoot, [System.StringComparison]::InvariantCultureIgnoreCase)
+            if($Pos -gt -1) {
+                $PathOnShare = $DatabaseBackupsDirectory.Substring($Pos + $FileShareRoot.Length)
+            }
+            if($DriveInfo) 
+            {
+                $MappedDrivePath = "$($DriveInfo.Name):" + $PathOnShare
+                $LogsDir = Join-Path $MappedDrivePath 'deploylogs'
+                Write-Verbose "LogDir:- $LogsDir"
+                if(-not(Test-Path $LogsDir))
+                {
+                    Write-Verbose "Creating LogsDir:- $LogsDir"
+                    New-Item $LogsDir -ItemType directory
+                }
+                Add-Content (Join-Path $LogsDir 'log.txt') -Value "$(Get-Date) Database backup directory $DatabaseBackupsDirectory" -ErrorAction Ignore
+            }
+
+            if($RunAsAccount) {           
+                Write-Verbose "Grant RunAsAccount $($RunAsAccount.UserName) permissions on $DatabaseBackupsDirectory using icacls.exe"
+                Write-Verbose "icacls.exe $DatabaseBackupsDirectory /grant $($RunAsAccount.UserName):(OI)(CI)F"
+                &icacls.exe $DatabaseBackupsDirectory /grant "$($RunAsAccount.UserName):(OI)(CI)F"
+            }    
+
+            Write-Verbose "Updating backup location to $DatabaseBackupsDirectory"
+            Set-BackupLocation -BackupDirectory $DatabaseBackupsDirectory
+            Write-Verbose "Updated backup location to $DatabaseBackupsDirectory"
+
+            if($DriveInfo) {
+                Write-Verbose "Remove Mapped Drive $($DriveInfo.Name)"
+                Remove-PSDrive -Name $DriveInfo.Name -Force
+            }   
         }
     }
 }
@@ -392,139 +336,88 @@ function Test-TargetResource
         $DataStoreTypes,
 
         [System.Management.Automation.PSCredential]
-		$RunAsAccount
-	)
- 
+        $RunAsAccount,
+        
+        [System.Boolean]
+		$IsEnvAzure = $false
+    )
+    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-	$result = $true
-    $resultSpatioTemporal = $false
-    
+    $result = $true
     
     $FQDN = Get-FQDN $ServerHostName
     $MachineFQDN = Get-FQDN $env:ComputerName
-    $ServerUrl = "http://$($FQDN):6080"   
-    $Referer = $ServerUrl
+    $ServerUrl = "https://$($FQDN):6443"    
+	$Referer = $ServerUrl
     
-    if(-not($DataStoreTypes -icontains "SpatioTemporal")){
-        
-        $ServiceName = 'ArcGIS Data Store'
-        $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-        $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-        $expectedHostIdentifierType = 'hostname'
-        $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
-        $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
-        Write-Verbose "Current value of property hostidentifier is '$hostidentifier' and hostidentifierType is '$hostidentifierType'"
-        if(($hostidentifier -ieq $MachineFQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
-            Write-Verbose "Configured host identifier '$hostidentifier' matches expected value '$MachineFQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
-        }else {
-            Write-Verbose "Configured host identifier '$hostidentifier' does not match expected value '$MachineFQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-            $result = $false
+    if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
+        if($IsEnvAzure){
+            $DataStoreInstallDirectory = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').InstallDir.TrimEnd('\')
+            $PropertiesFile = Join-Path $DataStoreInstallDirectory 'framework\etc\datastore.properties' 
+            $PropertyName = 'failover_on_primary_stop'
+            $CurrentValue = Get-PropertyFromPropertiesFile -PropertiesFilePath $PropertiesFile -PropertyName $PropertyName
+            Write-Verbose "Current value of property $PropertyName is '$CurrentValue'"
+            $result = ($CurrentValue -ieq 'true')
         }
 
-        if($result){
-        	$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
-
-            Write-Verbose "Checking if data store is registered"
-            $result = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $token.token -Referer $Referer -Type "Relational"
-            if($result) {
-                Write-Verbose "A Data Store has been registered. Now checking if this machine ($env:ComputerName) belongs to it"
-                $result = Test-MachineParticipatingInDataStore -ServerURL $ServerURL -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
-                if($result) {
-                    Write-Verbose "The machine $($env:ComputerName) participates in the data store"
-                }else {
-                    Write-Verbose "The machine $($env:ComputerName) does not participate in the data store"
-                }
+        if($result) {
+            $ServiceName = 'ArcGIS Data Store'
+            $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+            $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
+            $expectedHostIdentifierType = 'hostname'
+            $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
+            $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
+            Write-Verbose "Current value of property hostidentifier is '$hostidentifier' and hostidentifierType is '$hostidentifierType'"
+            if(($hostidentifier -ieq $MachineFQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
+                Write-Verbose "Configured host identifier '$hostidentifier' matches expected value '$MachineFQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
+            }else {
+                Write-Verbose "Configured host identifier '$hostidentifier' does not match expected value '$MachineFQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
+                $result = $false
+            }
+        }else {
+            if($IsEnvAzure){
+                Write-Verbose "Property Value for 'failover_on_primary_stop' is not set to expected value 'true'"
             }
         }
-        
     }
 
-    if($DataStoreTypes -icontains "SpatioTemporal"){       
-        $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -Verbose
+    $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+    
+    $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
+    $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
+                                -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
+                                -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator
 
-        Write-Verbose "Checking if Spatiotemporal big data store is registered"
-        $resultSpatioTemporal = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $token.token -Referer $Referer  -type "SpatioTemporal"
-        if($resultSpatioTemporal) {
-            Write-Verbose "A Spatiotemporal Big Data Store has been registered. Now checking if this machine ($env:ComputerName) belongs to it"
-            $resultSpatioTemporal = Test-MachineParticipatingInBigDataStore -ServerURL $ServerURL -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
-            if($resultSpatioTemporal) {
-                Write-Verbose "The machine $($env:ComputerName) participates in the Spatiotemporal big data store"
-            }else {
-                Write-Verbose "The machine $($env:ComputerName) does not participate in the Spatiotemporal big data store"
-            }
-        }else {
-            Write-Verbose "A Spatiotemporal Big Data Store has not been registered."
-        }
-
-        if($resultSpatioTemporal) {
+    if($DatastoresToRegister.Count -gt 0){
+        $result = $false
+    }else{
+        if(($DataStoreTypes -icontains "SpatioTemporal") -and -not($DatastoresToRegister -icontains "SpatioTemporal")){
             $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
             if($resultSpatioTemporal) {
                 Write-Verbose 'Big data store is started'
             }else {
+                $result = $false
                 Write-Verbose 'Big data store is not started'
             }
         }
-        
-    }
-	
-    if(($result -or $resultSpatioTemporal) -and $DataStoreTypes) { 
-        $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-		$info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator -ServerSiteUrl "https://$($FQDN):6443/arcgis" `
-                                   -Token $token.token -Referer $Referer 
-        
-        foreach($dstype in $DataStoreTypes) {
-            if($dstype -ieq 'Relational') {
-                if(-not($info.relational.registered)) {
-                    Write-Verbose "Data Store Type 'Relational' not registered"
-                    $result = $false
-                }else {
-					Write-Verbose "Data Store Type 'Relational' is registered"
-				}
-            }
-            elseif($dstype -ieq 'TileCache') {
-                if(-not($info.tileCache.registered)) {
-                    Write-Verbose "Data Store Type 'TileCache' not registered"
-                    $result = $false
-                }else {
-					Write-Verbose "Data Store Type 'TileCache' is registered"
-				}
-            }
-			elseif($dstype -ieq 'SpatioTemporal') {
-                if(-not($info.spatioTemporal.registered)) {
-                    Write-Verbose "Data Store Type 'SpatioTemporal' not registered"
-                    if($DataStoreTypes -icontains "SpatioTemporal"){
-                        $resultSpatioTemporal = $false
-                    }else{
-                        $result = $false
-                    }
-                }else {
-					Write-Verbose "Data Store Type 'SpatioTemporal' is registered"
-				}
-            }
-        }
-        if(-not($DataStoreTypes.Contains('SpatioTemporal'))){
-            $resultSpatioTemporal = $true
-        }
     }
 
-    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and $result) {
-        if($DatabaseBackupsDirectory) {
-            $currLocation = Get-BackupLocation
-            Write-Verbose "Current backup location is $currLocation"
-            if($DatabaseBackupsDirectory -ine $currLocation){
-                Write-Verbose "Current backup location does not match $DatabaseBackupsDirectory"
-                $result = $false
-            }
+    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and $result -and $DatabaseBackupsDirectory) {
+        $currLocation = Get-BackupLocation
+        Write-Verbose "Current backup location is $currLocation"
+        if($DatabaseBackupsDirectory -ine $currLocation){
+            Write-Verbose "Current backup location does not match $DatabaseBackupsDirectory"
+            $result = $false
         }
     }
 
     if($Ensure -ieq 'Present') {
-	       $result -and $resultSpatioTemporal  
-    }
-    elseif($Ensure -ieq 'Absent') {        
-        (-not($result -and $resultSpatioTemporal))
+        $result
+    }elseif($Ensure -ieq 'Absent') {        
+        -not($result)
     }
 }
 
@@ -558,14 +451,14 @@ function Get-DataStoreInfo
                     serverURL = $ServerSiteUrl      
                     dsSettings = '{"features":{"feature.egdb":true,"feature.nosqldb":true,"feature.bigdata":true}}'
                     getConfigureInfo = 'true'
-                  }  
-        
+                  }       
+
    $HttpBody = To-HttpBody $WebParams
    #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
-   $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'   
-   Wait-ForUrl -Url  $DataStoreConfigureUrl -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 20
+   $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'  
+   Wait-ForUrl -Url  $DataStoreConfigureUrl -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 20 
    Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -LogResponse 
-   
+
 }
 
 function Register-DataStore
@@ -636,40 +529,38 @@ function Register-DataStore
                     password = $ServerSiteAdminCredential.GetNetworkCredential().Password
                     serverURL = $ServerSiteUrl
                     dsSettings = '{"directory":"' + $DataStoreContentDirectory.Replace('\', '\\') + '"' + $featuresJson + '}'
-                  }  
-   #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
-   $HttpBody = To-HttpBody $WebParams
+                  }       
+    #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
+    $HttpBody = To-HttpBody $WebParams
+    
+    $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'    
+    Write-Verbose "Register DataStore at $DataStoreAdminEndpoint with DataStore Content directory at $DataStoreContentDirectory for server $ServerSiteUrl"
    
-   $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'    
-   Write-Verbose "Register DataStore at $DataStoreAdminEndpoint with DataStore Content directory at $DataStoreContentDirectory for server $ServerSiteUrl"
-   
-   [bool]$Done = $false
-   [System.Int32]$NumAttempts = 1
-   while(-not($Done)) {
+    [bool]$Done = $false
+    [System.Int32]$NumAttempts = 1
+    while(-not($Done)) {
         Write-Verbose "Register DataStore Attempt $NumAttempts"
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates        
-        [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+	    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
         [bool]$failed = $false
         $response = $null
         try {
             $alreadyRegistered = $false
             if($NumAttempts -gt 1) {
                 Write-Verbose "Checking if datastore is registered"
-                $dataStoreExists = Test-DataStoreRegistered -ServerURL $ServerAdminUrl -Token $Token -Referer $Referer
-                Write-Verbose "DataStore registration status:- $alreadyRegistered"
+                $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $Token -Referer $Referer `
+                                            -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
+                                            -ServerSiteAdminCredential $ServerSiteAdminCredential
 
-                if($dataStoreExists) {
-                   $alreadyRegistered = Test-MachineParticipatingInDataStore -ServerURL $ServerAdminUrl -Token $Token -Referer $Referer -MachineFQDN $MachineFQDN
-                }
+                $alreadyRegistered = ($DatastoresToRegister.Count -gt 0)
             }            
             if(-not($alreadyRegistered)) {
-                Write-Verbose "Register DataStore on Machine $MachineFQDN"                
-                $response = Invoke-RestMethod -Uri $DataStoreConfigureUrl -Method POST -Body $HttpBody -TimeoutSec 300 -ErrorAction Ignore
-                #Write-Verbose $response  
+                Write-Verbose "Register DataStore on Machine $MachineFQDN"             
+                $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer 'http://localhost' -TimeOutSec 450 -LogResponse -Verbose
                 if($response.error) {
-                    Write-Verbose $response.error 
+                    Write-Verbose "Error Response - $($response.error)"
+                    throw [string]::Format("ERROR: failed. {0}" , $response.error.message)
                 }
-                Check-ResponseStatus $response -Url $DataStoreConfigureUrl
             }
         }
         catch
@@ -691,6 +582,62 @@ function Register-DataStore
     }
 }
 
+function Get-DataStoreTypesToRegister
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ServerURL, 
+
+        [System.String]
+        $DataStoreAdminEndpoint,
+
+        [System.Management.Automation.PSCredential]
+        $ServerSiteAdminCredential, 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer, 
+
+        [System.String]
+        $Type, 
+        
+        [System.Array]
+        $DataStoreTypes, 
+        
+        [System.String]
+        $MachineFQDN
+    )
+
+    $DataStoreInfo = Get-DataStoreInfo -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential `
+                                        -ServerSiteUrl "$ServerURL/arcgis" -Token $Token -Referer $Referer 
+
+    $DatastoresToRegister = @()
+    foreach($dstype in $DataStoreTypes){
+        Write-Verbose "Checking if $dstype Datastore is registered"
+        $serverTestResult = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN
+        $dsTestResult = $false
+        if($dstype -ieq 'Relational'){
+            $dsTestResult = $DataStoreInfo.relational.registered
+        }elseif($dstype -ieq 'TileCache') {
+            $dsTestResult = $DataStoreInfo.tileCache.registered
+        }elseif($dstype -ieq 'SpatioTemporal'){
+            $dsTestResult = $DataStoreInfo.spatioTemporal.registered
+        }
+
+        if($dsTestResult -and $serverTestResult){
+            Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
+        }else{
+            $DatastoresToRegister += $dstype
+            Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' does NOT participates in a registered '$dstype' data store"
+        }
+    }
+
+    $DatastoresToRegister
+}
+
 function Test-DataStoreRegistered
 {
     [CmdletBinding()]
@@ -705,18 +652,39 @@ function Test-DataStoreRegistered
         $Referer, 
 
         [System.String]
-        $Type
+        $Type, 
+        
+        [System.String]
+        $MachineFQDN
     )
-    if($Type -like "SpatioTemporal"  -or $Type -like "TileCache"){
+
+    $result = $false
+
+    if($Type -like "SpatioTemporal" -or $Type -like "TileCache"){
         $DBType ='nosql'
     }else{
         $DBType ='egdb'
-    }
-    
+    }   
+
     $DataItemsUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/findItems' 
     $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $DBType } -Referer $Referer 
-    $registered = $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Measure-Object).Count -gt 0
-    $registered
+    $registered= $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Measure-Object).Count -gt 0
+    if( $DBType -ieq 'nosql'){
+        $registered = $($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Measure-Object).Count -gt 0
+    }
+
+    if($registered){
+        $dataStorePath = $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Select-Object -First 1).path
+        if( $DBType -ieq 'nosql'){
+            $dataStorePath = $($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Select-Object -First 1).path
+        }
+
+        $MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $dataStorePath + '/machines'
+        $response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+        $result = ($response.machines | Where-Object { $_.name -ieq $MachineFQDN } | Measure-Object).Count -gt 0
+    }
+
+    $result
 }
 
 function Start-ServerService
@@ -737,7 +705,7 @@ function Start-ServerService
     )
 
    $ServiceStartOperationUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/services/' + $ServicePath.Trim('/') + '/start' 
-   Invoke-ArcGISWebRequest -Url $ServiceStartOperationUrl -HttpFormParameters  @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET'
+   Invoke-ArcGISWebRequest -Url $ServiceStartOperationUrl -HttpFormParameters  @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -Verbose
 }
 
 function Stop-ServerService
@@ -780,91 +748,6 @@ function Get-ServiceStatus
 
    $ServiceStatusUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/services/' + $ServicePath.Trim('/') + '/status'    
    Invoke-ArcGISWebRequest -Url $ServiceStatusUrl -HttpFormParameters  @{ f = 'json'; token = $Token } -Referer $Referer 
-}
-
-function Test-MachineParticipatingInDataStore
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $ServerURL, 
-        
-        [System.String]
-        $Token, 
-        
-        [System.String]
-        $Referer, 
-        
-        [System.String]
-        $MachineFQDN
-    )
-
-    $DataItemsUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/findItems' 
-    $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters @{ f = 'json'; token = $Token; types = 'egdb' } -Referer $Referer 
-   
-    $dataStorePath = $null
-    if($response.items -and $response.items.length -gt 0) {
-        $dataStorePath = $response.items[0].path
-        Write-Verbose "DataStore $dataStorePath found"        
-    }else {
-        Write-Verbose "DataStore path not found"
-    }
-
-    $exists = $false
-    if($dataStorePath) 
-    {      
-           $MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $dataStorePath + '/machines'
-           $response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
-           $exists = ($response.machines | Where-Object { $_.name -ieq $MachineFQDN } | Measure-Object).Count -gt 0
-    }
-    $exists
-}
-
-function Test-MachineParticipatingInBigDataStore
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $ServerURL, 
-
-        [System.String]
-        $Token, 
-        
-        [System.String]
-        $Referer, 
-
-        [System.String]
-        $MachineFQDN
-    )
-
-    $DataItemsUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/findItems' 
-    $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters @{ f = 'json'; token = $Token; types = 'nosql' } -Referer $Referer 
-    
-    $exists = $false
-    $dataStorePath = $null
-    if($response.items -and $response.items.length -gt 0) {
-		$done = $false
-		$i = 0
-		while(-not($done) -and ($i -lt $response.items.length)) {
-			$dataStorePath = $response.items[$i].path	
-			$dsType = $response.items[$i].info.dsFeature
-			if($dataStorePath -and ($dsType -ieq "spatioTemporal")) {
-				Write-Verbose "NoSQL DataStore $dataStorePath found"        
-				$MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $dataStorePath + '/machines'
-				$response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token }  -Referer $Referer 
-				$exists = ($response.machines | Where-Object { $_.name -ieq $MachineFQDN } | Measure-Object).Count -gt 0
-				if($exists) {
-					Write-Verbose "Machine with FQDN $MachineFQDN found for data store:- $dataStorePath"
-					$done = $true
-				}
-			}
-			$i = $i + 1
-		}
-    }else {
-        Write-Verbose "DataStore path not found"
-    }
-
-    $exists
 }
 
 function Get-BackupLocation
@@ -971,7 +854,7 @@ function Test-SpatiotemporalBigDataStoreStarted
         $done = $false
 		$i = 0
 		while(-not($done) -and ($i -lt $response.items.length)) {
-            $dsType = $response.items[$i].info.dsFeature
+                       $dsType = $response.items[$i].info.dsFeature
 			if($dsType -ieq "spatioTemporal") {		
 				Write-Verbose "SpatioTemporal DataStore $dataStorePath found"        
                 $dataStorePath = $response.items[$i].path
@@ -986,7 +869,7 @@ function Test-SpatiotemporalBigDataStoreStarted
    $Url = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + "$dataStorePath/machines/$MachineFQDN/validate/"
    Write-Verbose $Url
    try {    
-    $response = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST'    
+    $response = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST'   
     $n = $response.nodes | Where-Object {$_.name -ieq (Resolve-DnsName -Type ANY $env:ComputerName).IPAddress}
     Write-Verbose "Machine Ip --> $($n.name)"
     $n -and $response.isHealthy -ieq 'True'
@@ -1029,4 +912,3 @@ function Start-SpatiotemporalBigDataStore
 
 
 Export-ModuleMember -Function *-TargetResource
-

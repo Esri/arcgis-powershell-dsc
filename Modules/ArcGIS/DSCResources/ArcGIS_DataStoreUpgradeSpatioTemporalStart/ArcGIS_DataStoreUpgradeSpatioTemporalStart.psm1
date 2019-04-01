@@ -59,20 +59,19 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {
        try{ 
         $MachineFQDN = Get-FQDN $env:ComputerName
-        $ServerUrl = "http://$($ServerHostName):6080"   
-        $ServerHttpsUrl = "https://$($ServerHostName):6443" 
+        $ServerUrl = "https://$($ServerHostName):6443" 
         $Referer = $ServerUrl
 
-        Wait-ForUrl -Url "$($ServerHttpsUrl)/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
+        Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
 
         $Done = $false
         $NumAttempts = 0
         while(-not($Done) -and ($NumAttempts -lt 3)) {
             try {
-                $token = Get-ServerToken -ServerEndPoint $ServerHttpsUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+                $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
             }
             catch {
-                Write-Verbose "[WARNING]:- Server at $ServerHttpsUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
+                Write-Verbose "[WARNING]:- Server at $ServerUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
             }
             if($token) {
                 Write-Verbose "Retrieved server token successfully"
@@ -86,9 +85,9 @@ function Set-TargetResource
         
         #retart big data store    
         Write-Verbose "Checking if the Spatiotemporal Big Data Store has started."
-        if(-not(Is-SpatiotemporalBigDataStoreStarted -ServerURL $ServerHttpsUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN)) {
+        if(-not(Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN)) {
             Write-Verbose "Starting the Spatiotemporal Big Data Store."
-            Start-SpatiotemporalBigDataStore -ServerURL $ServerHttpsUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
+            Start-SpatiotemporalBigDataStore -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
         }else {
             Write-Verbose "The Spatiotemporal Big Data Store is already started."
         }
@@ -126,20 +125,19 @@ function Test-TargetResource
     $result = $False
 
     $MachineFQDN = Get-FQDN $env:ComputerName
-    $ServerUrl = "http://$($ServerHostName):6080"   
-    $ServerHttpsUrl = "https://$($ServerHostName):6443" 
+    $ServerUrl = "https://$($ServerHostName):6443" 
     $Referer = $ServerUrl
 
-    Wait-ForUrl -Url "$($ServerHttpsUrl)/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
+    Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
 
     $Done = $false
     $NumAttempts = 0
     while(-not($Done) -and ($NumAttempts -lt 3)) {
         try {
-            $token = Get-ServerToken -ServerEndPoint $ServerHttpsUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
+            $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
         }
         catch {
-            Write-Verbose "[WARNING]:- Server at $ServerHttpsUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
+            Write-Verbose "[WARNING]:- Server at $ServerUrl did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
         }
         if($token) {
             Write-Verbose "Retrieved server token successfully"
@@ -151,7 +149,7 @@ function Test-TargetResource
     }
     
     Write-Verbose "Checking if the Spatiotemporal Big Data Store has started."
-    if(Is-SpatiotemporalBigDataStoreStarted -ServerURL $ServerHttpsUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN) {
+    if(Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN) {
         $result = $True
     }
 
@@ -163,7 +161,7 @@ function Test-TargetResource
     }
 }
 
-function Is-SpatiotemporalBigDataStoreStarted
+function Test-SpatiotemporalBigDataStoreStarted
 {
     [CmdletBinding()]
     param(

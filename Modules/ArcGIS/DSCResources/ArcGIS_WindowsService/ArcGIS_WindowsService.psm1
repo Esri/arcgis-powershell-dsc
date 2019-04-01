@@ -48,8 +48,6 @@ CannotSetAccountAccessErrorMessage=Failed to set user policy rights
 "@
 }
 
-Import-LocalizedData  LocalizedData -filename ArcGIS_WindowsService.strings.psd1
-
 <#
 .Synopsis
 Gets a service resource

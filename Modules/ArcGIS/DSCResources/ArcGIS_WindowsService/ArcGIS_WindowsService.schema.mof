@@ -2,13 +2,13 @@
 [ClassVersion("1.0.0"),FriendlyName("ArcGIS_WindowsService")] 
 class ArcGIS_WindowsService : OMI_BaseResource
 {
-  [key] string Name;
-  [key,ValueMap{"Running", "Stopped"},Values{"Running", "Stopped"}] string State;
-  [write,ValueMap{"Automatic", "Manual", "Disabled"},Values{"Automatic", "Manual", "Disabled"}] string StartupType;
-  [write,ValueMap{"LocalSystem", "LocalService", "NetworkService"},Values{"LocalSystem", "LocalService", "NetworkService"}] string BuiltInAccount;
-  [write,EmbeddedInstance("MSFT_Credential")] string Credential;
-  [read] string DisplayName;
-  [read] string Description;
-  [read] string Path;
-  [read] string Dependencies[];
+  [Key, Description("The name for the service")] string Name;
+  [Key, ValueMap{"Running", "Stopped"}, Values{"Running", "Stopped"}, Description("An enumerated value that describes if the service is expected to be running on the machine.\nRunning {default}  \nStopped   \n")] string State;
+  [Write, ValueMap{"Automatic", "Manual", "Disabled"}, Values{"Automatic", "Manual", "Disabled"}, Description("An enumerated value that describes the service start type.\nAutomatic   \nManual   \nDisabled   \n")] string StartupType;
+  [Write, ValueMap{"LocalSystem", "LocalService", "NetworkService"}, Values{"LocalSystem", "LocalService", "NetworkService"}, Description("An enumerated value that describes the built in account the service runs under.\nLocalSystem   \nLocalService   \nNetworkService   \n")] string BuiltInAccount;
+  [Write, EmbeddedInstance("MSFT_Credential"), Description("The optional credentials the service runs under")] string Credential;
+  [Read, Description("The service display name")] string DisplayName;
+  [Read, Description("The service description")] string Description;
+  [Read, Description("The path to the service executable file")] string Path;
+  [Read, Description("A list of service dependencies")] string Dependencies[];
 };
