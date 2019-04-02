@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-        Supports configuration changes and Updates for the Datastore configured with the Server
+        Starts SpatioTemporal Datastore after Upgrade
     .PARAMETER Ensure
         Indicates if the Datatore Upgrade Process should take place. Take the values Present or Absent. 
         - "Present" ensures that DataStore is Upgraded to the version specified.
