@@ -1,0 +1,7 @@
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_BDSUpgradePost")]
+class ArcGIS_BDSUpgradePost : OMI_BaseResource
+{
+	[Key] String ServerHostName;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+};
