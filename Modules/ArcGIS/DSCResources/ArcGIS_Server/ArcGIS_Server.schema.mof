@@ -13,5 +13,6 @@ class ArcGIS_Server : OMI_BaseResource
     [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
 	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
 	[Write] String Platform;
+	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
 };
 
