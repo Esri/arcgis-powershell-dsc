@@ -15,6 +15,10 @@
         Additional Command Line Arguments required by the installer to complete intallation of the give component successfully.
     .PARAMETER LogPath
         Optional Path where the Logs generated during the Install will be stored.
+    .PARAMETER SevenZipMsiInstallerPath
+        Optional Path to location for 7-Zip MSI installer.
+    .PARAMETER SevenZipInstallDir
+        Optional Path to location where 7-Zip will be installed.
 #>
 
 function Get-TargetResource
@@ -40,7 +44,15 @@ function Get-TargetResource
 		$Arguments,
 
 		[System.String]
-		$LogPath,
+        $LogPath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipMsiInstallerPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipInstallDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -57,7 +69,7 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
-        [parameter(Mandatory = $true)]
+		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
 
@@ -74,7 +86,15 @@ function Set-TargetResource
 		$Arguments,
 
 		[System.String]
-		$LogPath,
+        $LogPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipMsiInstallerPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipInstallDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -92,7 +112,7 @@ function Set-TargetResource
         if((Get-Item $Path).length -gt 5mb)
         {
             Write-Verbose 'Self Extracting Installer'
-            $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
+			$ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
             $TempFolder = Join-Path ([System.IO.Path]::GetTempPath()) $ProdId
             if(Test-Path $TempFolder)
             {
@@ -102,17 +122,22 @@ function Set-TargetResource
             {
                 New-Item $TempFolder -ItemType directory            
             }  
-                    
-            $SevenZipPath = Join-Path ${env:ProgramFiles} (Join-Path '7-Zip' '7z.exe')
+                  
+            $SevenZipInstallDirectory = if($SevenZipInstallDir){ $SevenZipInstallDir }else{ Join-Path ${env:ProgramFiles} '7-Zip' }
+            $SevenZipPath = (Join-Path $SevenZipInstallDirectory '7z.exe') 
             if(-not(Test-Path $SevenZipPath)) 
             {
                 Write-Verbose "7Zip not found at $SevenZipPath"
                 Write-Verbose 'Installing 7Zip'
                 
                 $MsiFile = Join-Path $TempFolder '7Zip.msi'
-                Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
-                Write-Verbose "msiexec /i $MsiFile /quiet"
-                Invoke-Expression "msiexec /i $MsiFile /quiet"
+                if($SevenZipMsiInstallerPath){
+                    $MsiFile = $SevenZipMsiInstallerPath
+                }else{
+                    Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
+                }
+                Write-Verbose "msiexec /i $MsiFile /qn  INSTALLDIR=""$SevenZipInstallDirectory"""
+                Start-Process msiexec -ArgumentList "/i $MsiFile /qn INSTALLDIR=""$SevenZipInstallDirectory""" -Wait -Verbose
                 Start-Sleep -Seconds 30 # Allow files to be copied to Program Files
             }
             if(-not(Test-Path $SevenZipPath)) 
@@ -129,17 +154,17 @@ function Set-TargetResource
             $SetupExe = Get-ChildItem -Path $TempFolder -Filter 'Setup.exe' -Recurse | Select-Object -First 1
             $ExecPath = $SetupExe.FullName
             if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-                Write-Verbose 'Setup.exe not found in extracted contents'
-                $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.exe' -Recurse | Select-Object -First 1
-                $ExecPath = $SetupExe.FullName
-                if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-                    Write-Verbose "Executable .exe not found in extracted contents to install. Looking for .msi"
-                    $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.msi' -Recurse | Select-Object -First 1
-                    $ExecPath = $SetupExe.FullName
-                    if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
-                            throw "Neither .exe nor .msi found in extracted contents to install"
-                    }               
-                }               
+               Write-Verbose 'Setup.exe not found in extracted contents'
+               $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.exe' -Recurse | Select-Object -First 1
+               $ExecPath = $SetupExe.FullName
+               if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
+                   Write-Verbose "Executable .exe not found in extracted contents to install. Looking for .msi"
+                   $SetupExe = Get-ChildItem -Path $TempFolder -Filter '*.msi' -Recurse | Select-Object -First 1
+                   $ExecPath = $SetupExe.FullName
+                   if(-not($ExecPath) -or (-not(Test-Path $ExecPath))) {
+                        throw "Neither .exe nor .msi found in extracted contents to install"
+                   }               
+               }               
             }
         
             Write-Verbose "Executing $ExecPath with arguments $Arguments"
@@ -181,7 +206,7 @@ function Set-TargetResource
                             }
                         }
                     }
-                    
+
                     Write-Verbose "Waiting just in case for Portal to finish unpacking any additional dependecies - 120 Seconds"
                     Start-Sleep -Seconds 120
                     if($Version -ieq "10.5"){
@@ -193,11 +218,11 @@ function Set-TargetResource
             }
         }
         else {
-            Write-Verbose "Installing Software using installer at $Path and arguments $Arguments"            
+			Write-Verbose "Installing Software using installer at $Path and arguments $Arguments"            
             if($LogPath) {
                 Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -RedirectStandardOutput $LogPath
             }else {
-                $psi = New-Object System.Diagnostics.ProcessStartInfo
+				$psi = New-Object System.Diagnostics.ProcessStartInfo
                 $psi.FileName = $Path
                 $psi.Arguments = $Arguments
                 $psi.UseShellExecute = $false #start the process from it's own executable file    
@@ -216,13 +241,13 @@ function Set-TargetResource
                 }
             } 
         }
-        Write-Verbose "Validating the $Name Installation"
-        $result = Test-Install -Name $Name -Version $Version
-        if(-not($result)){
-            throw "Failed to Install $Name"
-        }else{
-            Write-Verbose "$Name installation was successful!"
-        }
+		Write-Verbose "Validating the $Name Installation"
+		$result = Test-Install -Name $Name -Version $Version
+		if(-not($result)){
+			throw "Failed to Install $Name"
+		}else{
+			Write-Verbose "$Name installation was successful!"
+		}
     }
     elseif($Ensure -eq 'Absent') {
         $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
@@ -233,7 +258,7 @@ function Set-TargetResource
             $ProdId = $ProdId + '}'
         }
         Write-Verbose "msiexec /x ""$ProdId"" /quiet"
-        Start-Process 'msiexec' -ArgumentList "/x ""$ProdId"" /quiet" -wait
+		Start-Process 'msiexec' -ArgumentList "/x ""$ProdId"" /quiet" -wait
     }
     Write-Verbose "In Set-Resource for $Name"
 }
@@ -244,14 +269,14 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
-        [parameter(Mandatory = $true)]
+		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
 
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Path,
-
+		
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Version,
@@ -261,7 +286,15 @@ function Test-TargetResource
 		$Arguments,
 
 		[System.String]
-		$LogPath,
+        $LogPath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipMsiInstallerPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipInstallDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -270,16 +303,16 @@ function Test-TargetResource
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $result = $false
+	$result = $false
     
     $trueName = if ($Name -ieq 'DataStore') { 'Data Store' } else { $Name }
-    $ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
+	$ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
 	Write-Verbose "Installed Version $($ver.Version)"
 
-    $result = Test-Install -Name $Name -Version $Version
+	$result = Test-Install -Name $Name -Version $Version
 
     if($Ensure -ieq 'Present') {
-	       $result   
+		$result   
     }
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))

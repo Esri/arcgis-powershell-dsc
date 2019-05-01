@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?> 
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+
+<!-- LOG4J configuration -->
+
+<log4j:configuration
+	xmlns:log4j="http://jakarta.apache.org/log4j/" threshold="null"
+	debug="null">
+
+	<!-- Console Appender - Not used -->
+	<appender name="console"
+		class="org.apache.log4j.ConsoleAppender">
+		<param name="target" value="System.out" />
+		<param name="encoding" value="UTF-8" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%m\n" />
+		</layout>
+	</appender>
+
+	<!-- Appender for services logs -->
+	<appender name="file-services-logs"
+		class="com.esri.arcgis.discovery.logharvester.ServerLogAppender">
+		<param name="Threshold" value="DEBUG" />
+		<param name="file" value="C:\\ArcGIS\\serverlogs\\services.log" />
+		<param name="encoding" value="UTF-8" />
+		<param name="MaxFileSize" value="10MB" />
+		<param name="MaxBackupIndex" value="10" />
+		<param name="LayoutPattern"
+			value="%s, %s, %d, %s, %s, %s, %s, %s, %s, %s, [%s]\n" />
+	</appender>
+
+	<!-- Appender for server logs -->
+	<appender name="file-server-logs"
+		class="com.esri.arcgis.discovery.logharvester.ServerLogAppender">
+		<param name="Threshold" value="DEBUG" />
+		<param name="file" value="C:\\ArcGIS\\serverlogs\\server.log" />
+		<param name="encoding" value="UTF-8" />
+		<param name="MaxFileSize" value="10MB" />
+		<param name="MaxBackupIndex" value="10" />
+		<param name="LayoutPattern"
+			value="%s, %s, %d, %s, %s, %s, %s, %s, %s, %s, [%s]\n" />
+	</appender>
+
+	<!--ServerLogHarvester for services logs -->
+	<logger name="com.esri.arcgis.discovery.logharvester"
+		additivity="false">
+		<level value="debug" />
+		<appender-ref ref="file-services-logs" />
+	</logger>
+
+	<!-- Logger in Log4jLogHandler for server logs -->
+	<logger name="com.esri.arcgis.discovery.logging.handlers.Log4jLogHandler"
+		additivity="false">
+		<level value="debug" />
+		<appender-ref ref="file-server-logs" />
+	</logger>
+
+	<!-- Root logger -->
+	<root>
+		<priority value="off" />
+	</root>
+
+</log4j:configuration>

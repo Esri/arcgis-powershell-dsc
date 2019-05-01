@@ -23,7 +23,22 @@ function Get-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$Name
+		$Name,
+
+        [parameter(Mandatory = $true)]
+		[System.Management.Automation.PSCredential]
+		$RunAsAccount,
+
+		[System.String[]]
+		$DataDir,
+
+		[ValidateSet("Present","Absent")]
+		[System.String]
+		$Ensure,
+		
+		[parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsDomainAccount = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -50,8 +65,9 @@ function Set-TargetResource
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
-        $Ensure,
-        
+		$Ensure,
+		
+		[parameter(Mandatory = $false)]
         [System.Boolean]
         $IsDomainAccount = $false
 	)
@@ -61,8 +77,8 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {
         $RunAsUserName = $RunAsAccount.UserName
         $RunAsPassword = $RunAsAccount.GetNetworkCredential().Password
-        $RunAsPassword = $RunAsPassword.Replace('"', '""')
-
+		$RunAsPassword = $RunAsPassword.Replace('"', '""')
+   
         Write-Verbose "RunAsAccount Username:- $RunAsUserName"
         if($RunAsUserName -and $RunAsUserName.StartsWith('.\')){            
             $RunAsUserName = $RunAsUserName.Substring(2) # Remove the current machine prefix
@@ -77,8 +93,8 @@ function Set-TargetResource
            $InstallDir = $InstallDir.TrimEnd('\')
            if(Test-Path $InstallDir) 
            {
-                if(<#$Name -ieq 'ArcGIS Server' -OR $Name -ieq 'Portal for ArcGIS' -or#> $Name -ieq 'ArcGIS Data Store'){
-                    $ExecPath = $InstallDir
+			   if(<#$Name -ieq 'ArcGIS Server' -OR $Name -ieq 'Portal for ArcGIS' -or#> $Name -ieq 'ArcGIS Data Store'){
+					$ExecPath = $InstallDir
                     $Arguments = '/username ' + $($RunAsUserName) + ' /password "' + $($RunAsPassword) +'"'
                     Write-Verbose "Just Checking : - $Arguments"
                     if($Name -ieq 'ArcGIS Server'){
@@ -118,16 +134,16 @@ function Set-TargetResource
                         Write-Verbose "Initialization did not succeed. Process exit code:- $($p.ExitCode) $err"
                     }
 
-                }else{
-                    if(-not(Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
+			   }else{
+				   if(-not(Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
                         Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissions to $InstallDir"
                         Write-Verbose "icacls.exe $InstallDir /grant $($RunAsUserName):(OI)(CI)F"
                         icacls.exe $InstallDir /grant "$($RunAsUserName):(OI)(CI)F"
                     }else {
                         Write-Verbose "RunAs Account '$RunAsUserName' has the required permissions to $InstallDir"
-                    }    
-                }       
-           }
+                    }   
+			   }     
+           	}
         }
 
         if($DataDir) 
@@ -152,8 +168,8 @@ function Set-TargetResource
                         }  else {
                             Write-Verbose "RunAs Account '$RunAsUserName' has the required permissions to $LocalPath"
                         }             
-                    } 
-                }          
+                    }                
+                }
             }
         }
 
@@ -161,7 +177,7 @@ function Set-TargetResource
 			###
 			### GeoEvent needs additional permissions set and delete zookeeper folder
 			###
-			$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'			
+			$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'						
 			if(Test-Path $GeoEventProgramData) {
                 $ZooKeeperFolder = Join-Path $GeoEventProgramData 'zookeeper'
                 if(Test-Path $ZooKeeperFolder) {
@@ -179,52 +195,52 @@ function Set-TargetResource
                     Remove-Item -Path $ZooKeeperFile -Recurse -Force -ErrorAction Ignore
                 }
             }
-
+            
             #Add a check for 10.6
 
 			###
 			### GeoEvent Clean up - the karaf data folder and ProgramData (after stopping the service)
 			### GeoEventGateway Clean up  - the Gatewaylog and ProgramData (after stopping the service)
 			###
-            @('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | %{
-                try {			    
-                    $ServiceName = $_
-                    Write-Verbose "Restarting Service $ServiceName"
-                    Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-                    Write-Verbose 'Stopping the service' 
-                    Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'	
-                    Write-Verbose 'Stopped the service'		    
-                }catch {
-                    Write-Verbose "[WARNING] Stopping Service $_"
-                }
+			@('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | %{
+				try {			    
+					$ServiceName = $_
+					Write-Verbose "Restarting Service $ServiceName"
+					Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
+					Write-Verbose 'Stopping the service' 
+					Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'	
+					Write-Verbose 'Stopped the service'		    
+				}catch {
+					Write-Verbose "[WARNING] Stopping Service $_"
+				}
             }
             
-            if(-not($InstallDir)) {
-                # GeoEvent is always installed in Server's install directory
-                $RegKey = Get-EsriRegistryKeyForService -ServiceName 'ArcGIS Server'
-                $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
+			if(-not($InstallDir)) {
+				# GeoEvent is always installed in Server's install directory
+				$RegKey = Get-EsriRegistryKeyForService -ServiceName 'ArcGIS Server'
+				$InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
             }
             
-            if($InstallDir) {
-                $InstallDir = Join-Path $InstallDir 'GeoEvent'
-                $GeoEventKarafDataFolder = Join-Path $InstallDir 'data'		
-                
-                $GeoEventGatewayLogFolder = Join-Path $InstallDir 'gateway\log'	
+			if($InstallDir) {
+				$InstallDir = Join-Path $InstallDir 'GeoEvent'
+                $GeoEventKarafDataFolder = Join-Path $InstallDir 'data'	
+                	
+				$GeoEventGatewayLogFolder = Join-Path $InstallDir 'gateway\log'		
 
-                $GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'		
-                $GeoEventGatewayProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent-Gateway'
+				$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'		
+				$GeoEventGatewayProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent-Gateway'		
 
-                @($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventProgramData, $GeoEventGatewayProgramData) | %{ 
-                    $FolderToDelete = $_
-                    Write-Verbose "Clean up Folder:- $FolderToDelete"
-                    if(Test-Path $FolderToDelete) {
-                        Write-Verbose "Recursively delete Folder:- $FolderToDelete"
-                        Get-ChildItem -Path $FolderToDelete | %{ Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Ignore }
-                    }
-                }
-            }
-            
-            ###
+				@($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventProgramData, $GeoEventGatewayProgramData) | %{ 
+					$FolderToDelete = $_
+					Write-Verbose "Clean up Folder:- $FolderToDelete"
+					if(Test-Path $FolderToDelete) {
+						Write-Verbose "Recursively delete Folder:- $FolderToDelete"
+						Get-ChildItem -Path $FolderToDelete | %{ Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Ignore }
+					}
+				}
+			}
+
+			###
 			### At 10.5 and beyond GE uses the Zookeeper component of ArcGIS Server which stores in local
 			### 
 			$ZooKeeperFolder = Join-Path $env:SystemDrive 'arcgisserver\local\zookeeper'
@@ -306,7 +322,10 @@ function Set-TargetResource
 				Write-Verbose 'Starting the service'
 				Start-Service -Name $Name -ErrorAction Ignore       
 				Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Running'
-				Write-Verbose "Restarted Service $Name"
+                Write-Verbose "Restarted Service $Name"
+                if($Name -ieq 'ArcGISGeoEvent'){
+                    Start-Sleep -Seconds 180
+                }
 			}catch {
 				Write-Verbose "[WARNING] Starting Service $_"
 			}
@@ -337,7 +356,8 @@ function Test-TargetResource
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure,
-
+		
+		[parameter(Mandatory = $false)]
         [System.Boolean]
         $IsDomainAccount = $false
 	)

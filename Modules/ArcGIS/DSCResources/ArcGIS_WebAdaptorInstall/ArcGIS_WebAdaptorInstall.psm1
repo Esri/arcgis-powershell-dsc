@@ -16,6 +16,10 @@
         A MSFT_Credential Object - Primary Site Administrator.
     .PARAMETER LogPath
         Path where the Install logs will be saved.
+    .PARAMETER SevenZipMsiInstallerPath
+        Optional Path to location for 7-Zip MSI installer.
+    .PARAMETER SevenZipInstallDir
+        Optional Path to location where 7-Zip will be installed.
 #>
 
 function Get-TargetResource
@@ -66,7 +70,15 @@ function Set-TargetResource
 		$Arguments,
 
 		[System.String]
-		$LogPath,
+        $LogPath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipMsiInstallerPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipInstallDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -91,7 +103,7 @@ function Set-TargetResource
             if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
             {
                 if(-not((Get-WindowsOptionalFeature -FeatureName $pr -online).State -ieq "Enabled")){
-                    Enable-WindowsOptionalFeature -Online -FeatureName $pr -All -NoRestart
+                    Enable-WindowsOptionalFeature -Online -FeatureName $pr -All
                 }
             }else{
                  Write-Verbose "Please check the Machine Operating System Compatatbilty"
@@ -114,18 +126,25 @@ function Set-TargetResource
                 New-Item $TempFolder -ItemType directory            
             }  
                        
-            $SevenZipPath = Join-Path ${env:ProgramFiles} (Join-Path '7-Zip' '7z.exe')
+            $SevenZipInstallDirectory = if($SevenZipInstallDir){ $SevenZipInstallDir }else{ Join-Path ${env:ProgramFiles} '7-Zip' }
+            $SevenZipPath = (Join-Path $SevenZipInstallDirectory '7z.exe') 
             if(-not(Test-Path $SevenZipPath)) 
             {
                 Write-Verbose "7Zip not found at $SevenZipPath"
                 Write-Verbose 'Installing 7Zip'
-                  
+                
                 $MsiFile = Join-Path $TempFolder '7Zip.msi'
-                Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
-                Write-Verbose "msiexec /i $MsiFile /quiet"
-                Invoke-Expression "msiexec /i $MsiFile /quiet"
+                if($SevenZipMsiInstallerPath){
+                    $MsiFile = $SevenZipMsiInstallerPath
+                }else{
+                    Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
+                }
+                
+                Write-Verbose "msiexec /i $MsiFile /qn  INSTALLDIR=""$SevenZipInstallDirectory"""
+                Start-Process msiexec -ArgumentList "/i $MsiFile /qn INSTALLDIR=""$SevenZipInstallDirectory""" -Wait -Verbose
                 Start-Sleep -Seconds 30 # Allow files to be copied to Program Files
             }
+
             if(-not(Test-Path $SevenZipPath)) 
             {
                 throw "7-Zip not found at $SevenZipPath"
@@ -221,7 +240,15 @@ function Test-TargetResource
 		$Arguments,
 
 		[System.String]
-		$LogPath,
+        $LogPath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipMsiInstallerPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $SevenZipInstallDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]

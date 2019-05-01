@@ -10,9 +10,17 @@ function Get-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.String]
-		$PortalAdministrator
+		$PortalAdministrator,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $LicenseFilePath = $null,
+        
+        [parameter(Mandatory = $false)]
+		[System.Boolean]
+        $SetOnlyHostNamePropertiesFile
 	)
-	
+    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null
@@ -29,15 +37,23 @@ function Set-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$PortalAdministrator
+        $PortalAdministrator,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $LicenseFilePath = $null,
+        
+        [parameter(Mandatory = $false)]
+		[System.Boolean]
+        $SetOnlyHostNamePropertiesFile
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = Get-FQDN $PortalHostName
     $Referer = "https://localhost"
-
-    $ServiceName = 'Portal for ArcGIS'
+	
+	$ServiceName = 'Portal for ArcGIS'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
 
@@ -71,50 +87,76 @@ function Set-TargetResource
     }
     if($RestartRequired) {             
 		Restart-PortalService -ServiceName $ServiceName
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' 
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
     }
 
+    if(-not($SetOnlyHostNamePropertiesFile)){
 
-    [string]$UpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/upgrade"
-    $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters @{f = 'json'; isBackupRequired = $true; isRollbackRequired = $true} -Referer $Referer -TimeOutSec 86400 -LogResponse 
-    $ResponseJSON = ConvertTo-Json $UpgradeResponse -Compress -Depth 5
-    Write-Verbose "Response received from Upgrade site $ResponseJSON"  
-    if($UpgradeResponse.error) {
-        Write-Verbose
-        throw  "[ERROR]:- $ResponseJSON"
-    }
-    if($Response.status -ieq 'success') {
-        Write-Verbose "Upgrade Successful"
-        if($UpgradeResponse.recheckAfterSeconds -ne $null) 
-        {
-            Write-Verbose "Sleeping for $($UpgradeResponse.recheckAfterSeconds*2) seconds"
-            Start-Sleep -Seconds ($UpgradeResponse.recheckAfterSeconds*2)
+        [string]$UpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/upgrade"
+
+        $WebParams = @{ 
+            isBackupRequired = $true
+            isRollbackRequired = $true
+            f = 'json'
         }
-    }  
-    
-    Wait-ForPortalToStart -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName "arcgis" -PortalAdminCredential $PortalAdministrator -Referer $Referer
 
-    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
-    if(-not($token.token)) {
-        throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
-    }
-    Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
+        $UpgradeResponse = $null
+        if($LicenseFilePath){ 
+            $UpgradeResponse = Upload-File -url $UpgradeUrl -filePath $LicenseFilePath -fileContentType 'application/json' -fileParameterName 'file' `
+                                -Referer $Referer -formParams $WebParams -Verbose 
+        } else{
+            $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 86400 -LogResponse 
+        }
+        $ResponseJSON = ConvertTo-Json $UpgradeResponse -Compress -Depth 5
+        Write-Verbose "Response received from Upgrade site $ResponseJSON"  
+        if($UpgradeResponse.error) {
+            Write-Verbose $UpgradeResponse.error
+            throw  "[ERROR]:- $ResponseJSON"
+        }
+        if($Response.status -ieq 'success') {
+            Write-Verbose "Upgrade Successful"
+            if($UpgradeResponse.recheckAfterSeconds -ne $null) 
+            {
+                Write-Verbose "Sleeping for $($UpgradeResponse.recheckAfterSeconds*2) seconds"
+                Start-Sleep -Seconds ($UpgradeResponse.recheckAfterSeconds*2)
+            }
+        }  
+        
+        Wait-ForPortalToStart -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName "arcgis" -PortalAdminCredential $PortalAdministrator -Referer $Referer
 
-    Write-Verbose "Post Upgrade Step"
-    [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
-    $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -LogResponse 
-    $ResponseJSON = ConvertTo-Json $postUpgradeResponse -Compress -Depth 5
-    Write-Verbose "Response received from Upgrade site $postUpgradeResponse"  
-    if($postUpgradeResponse.status -ieq "success"){
-        Write-Verbose "Post Upgrade Step Successful"
-    }
+        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+        if(-not($token.token)) {
+            throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
+        }
+        Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
 
-    Write-Verbose "Reindexing Portal"
-    Upgrade-Reindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+        if($LicenseFilePath){
+            Write-Verbose 'Populating Licenses'
+            [string]$populateLicenseUrl = "https://$($FQDN):7443/arcgis/portaladmin/license/populateLicense"
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+            $populateLicenseResponse = Invoke-ArcGISWebRequest -Url $populateLicenseUrl -HttpMethod "POST" -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -LogResponse 
+            if ($populateLicenseResponse.error -and $populateLicenseResponse.error.message) {
+                Write-Verbose "Error from Populate Licenses:- $($populateLicenseResponse.error.message)"
+                throw $populateLicenseResponse.error.message
+            }
+        }
 
-    Write-Verbose "Upgrading Living Atlas Content"
-    if(Get-LivingAtlasStatus -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
-        Upgrade-LivingAtlas -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+        Write-Verbose "Post Upgrade Step"
+        [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
+        $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -LogResponse 
+        $ResponseJSON = (ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)
+        Write-Verbose "Response received from post upgrade step $ResponseJSON"  
+        if($postUpgradeResponse.status -ieq "success"){
+            Write-Verbose "Post Upgrade Step Successful"
+        }
+
+        Write-Verbose "Reindexing Portal"
+        Upgrade-Reindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+        
+        Write-Verbose "Upgrading Living Atlas Content"
+        if(Get-LivingAtlasStatus -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
+            Upgrade-LivingAtlas -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+        }
     }
 }
 
@@ -130,28 +172,79 @@ function Test-TargetResource
         
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$PortalAdministrator
+		$PortalAdministrator,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$LicenseFilePath = $null,
+        
+        [parameter(Mandatory = $false)]
+		[System.Boolean]
+        $SetOnlyHostNamePropertiesFile
 	)
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
+    
     $FQDN = Get-FQDN $PortalHostName
     $Referer = "https://localhost"
-    
-    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin" -MaxWaitTimeInSeconds 600 -SleepTimeInSeconds 15 -HttpMethod 'GET'
+    $result = $false
 
-    $TestPortalResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ f = 'json' } -Referer $Referer -LogResponse -HttpMethod 'GET'
-    if($TestPortalResponse.status -ieq "error" -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
-        $false
-    }else{
-        $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -LogResponse -HttpMethod 'GET'
-        if($PortalHealthCheck.status -ieq "success"){
-            $true
-        }else{
-            $jsresponse = ConvertTo-Json $TestPortalResponse -Compress -Depth 5
-            Write-Verbose "[WARNING]:- $jsresponse "
+    $ServiceName = 'Portal for ArcGIS'
+    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
+
+    $hostname = Get-ConfiguredHostName -InstallDir $InstallDir
+    if ($hostname -ieq $FQDN) {
+        Write-Verbose "Configured hostname '$hostname' matches expected value '$FQDN'"
+        $result = $true
+    }
+    else {
+        Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'"
+        $result = $false
+    }
+
+    if ($result) {
+        $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
+
+        $expectedHostIdentifierType = 'hostname'
+		$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
+		$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
+		if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
+            Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
+        }
+        else {
+			Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' does not match expected value '$FQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
+			$result = $false
         }
     }
+
+    if ($result -and -not($SetOnlyHostNamePropertiesFile)) {
+        Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin" -MaxWaitTimeInSeconds 600 -SleepTimeInSeconds 15 -HttpMethod 'GET'
+        try{
+            $TestPortalResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ f = 'json' } -Referer $Referer -LogResponse -HttpMethod 'GET'
+            if($TestPortalResponse.status -ieq "error" -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
+                $result =$false
+            }else{
+                if(($TestPortalResponse.error -ne $null) -and $TestPortalResponse.error.message -ieq 'Token Required.'){
+                    Write-Verbose "Looks Like upgrade already Occured!"
+                    $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -LogResponse -HttpMethod 'GET'
+                    if($PortalHealthCheck.status -ieq "success"){
+                        $result = $true
+                    }
+                }elseif($TestPortalResponse.status -ieq 'error' -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
+                    $result = $false
+                }else{
+                    $jsresponse = ConvertTo-Json $TestPortalResponse -Compress -Depth 5
+                    Write-Verbose "[WARNING]:- $jsresponse "
+                }
+            }
+        }catch{
+            $result = $false
+            Write-Verbose "[WARNING]:- $_"
+        }
+    }
+
+    $result 
 }
 
 function Upgrade-Reindex(){
@@ -182,70 +275,13 @@ function Upgrade-Reindex(){
 
     Write-Verbose "Making request to $ReindexSiteUrl to create the site"
     $Response = Invoke-ArcGISWebRequest -Url $ReindexSiteUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 3000 -LogResponse 
-    Write-Verbose "Response received from Reindex site $Response "  
+    $ResponseJSON = (ConvertTo-JSON $Response -Depth 5 -Compress )
+    Write-Verbose "Response received from Reindex site $ResponseJSON"  
     if($Response.error -and $Response.error.message) {
         throw $Response.error.message
     }
     if($Response.status -ieq 'success') {
         Write-Verbose "Reindexing Successful"
-    }
-}
-
-function Wait-ForPortalToStart
-{
-    [CmdletBinding()]
-    param(
-        [string]$PortalHttpsUrl, 
-        [string]$PortalSiteName, 
-        [System.Management.Automation.PSCredential]$PortalAdminCredential, 
-        [string]$Referer,
-        [int]$MaxAttempts = 40,
-        [int]$SleepTimeInSeconds = 15
-    )
-
-    ##
-    ## Wait for the Portal Admin to start back up
-    ##
-    [string]$CheckPortalAdminUrl = $PortalHttpsUrl.TrimEnd('/') + "/$PortalSiteName/sharing/rest/generateToken"  
-    $WebParams = @{ username = $PortalAdminCredential.UserName 
-                    password = $PortalAdminCredential.GetNetworkCredential().Password                 
-                    client = 'requestip'
-                    f = 'json'
-                  }
-    $HttpBody = To-HttpBody $WebParams
-    [bool]$Done = $false
-    [int]$NumOfAttempts = 0
-    Write-Verbose "Check sharing API Url:- $CheckPortalAdminUrl"
-    $Headers = @{'Content-type'='application/x-www-form-urlencoded'
-                  'Content-Length' = $HttpBody.Length
-                  'Accept' = 'text/plain'     
-                  'Referer' = $Referer             
-                }
-    while(($Done -eq $false) -and ($NumOfAttempts -lt $MaxAttempts))
-    {
-        if($NumOfAttempts -gt 1) {
-            Write-Verbose "Attempt # $NumOfAttempts"            
-        }
-        
-        $response = $null
-        Try {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-            [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
-            $response = Invoke-RestMethod -Method Post -Uri $CheckPortalAdminUrl -Headers $Headers -Body $HttpBody -TimeoutSec 30 # -MaximumRedirection 1
-            if(($response -ne $null) -and ($response.token -ne $null) -and ($response.token.Length -gt 0))        {    
-                Write-Verbose "Portal returned a token successfully"  
-                $Done = $true                
-            }elseif($response -ne $null){
-                Write-Verbose (ConvertTo-Json $response -Compress -Depth 5)
-                if($NumOfAttempts -gt 1) {
-                    Write-Verbose "Sleeping for $SleepTimeInSeconds seconds"
-                }
-                Start-Sleep -Seconds $SleepTimeInSeconds
-                $NumOfAttempts++
-            }
-        }catch{
-            Write-Verbose "[WARNING]:- Exception:- $($_)"     
-        }
     }
 }
 
@@ -310,7 +346,7 @@ function Upgrade-LivingAtlas
 				}
 			}catch{
 				if($attempts -eq 3){
-					Write-Verbose "Unable to update Living Atlas Content For GroupId - $groupId - Please Follow Manual Steps specified in the Documentation"
+					Write-Verbose "Unable to Living Atlas Content For GroupId - $groupId - Please Follow Mannual Steps specified in the Documentation"
 					$done = $false
 				}
 			}
@@ -318,6 +354,67 @@ function Upgrade-LivingAtlas
         }
     }
 }
+
+
+function Wait-ForPortalToStart
+{
+    [CmdletBinding()]
+    param(
+        [string]$PortalHttpsUrl, 
+        [string]$PortalSiteName, 
+        [System.Management.Automation.PSCredential]$PortalAdminCredential, 
+        [string]$Referer,
+        [int]$MaxAttempts = 40,
+        [int]$SleepTimeInSeconds = 15
+    )
+
+    ##
+    ## Wait for the Portal Admin to start back up
+    ##
+    [string]$CheckPortalAdminUrl = $PortalHttpsUrl.TrimEnd('/') + "/$PortalSiteName/sharing/rest/generateToken"  
+    $WebParams = @{ username = $PortalAdminCredential.UserName 
+                    password = $PortalAdminCredential.GetNetworkCredential().Password                   
+                    client = 'requestip'
+                    f = 'json'
+                  }
+    $HttpBody = To-HttpBody $WebParams
+    [bool]$Done = $false
+    [int]$NumOfAttempts = 0
+    Write-Verbose "Check sharing API Url:- $CheckPortalAdminUrl"
+    $Headers = @{'Content-type'='application/x-www-form-urlencoded'
+                  'Content-Length' = $HttpBody.Length
+                  'Accept' = 'text/plain'     
+                  'Referer' = $Referer             
+                }
+    while(($Done -eq $false) -and ($NumOfAttempts -lt $MaxAttempts))
+    {
+        if($NumOfAttempts -gt 1) {
+            Write-Verbose "Attempt # $NumOfAttempts"            
+        }
+        
+        $response = $null
+        Try {
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+			[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+            $response = Invoke-RestMethod -Method Post -Uri $CheckPortalAdminUrl -Headers $Headers -Body $HttpBody -TimeoutSec 30 # -MaximumRedirection 1
+            if($response -ne $null){
+                Write-Verbose (ConvertTo-Json $response -Compress -Depth 5)
+                if(($response.token -ne $null) -and ($response.token.Length -gt 0)){    
+                    Write-Verbose "Portal returned a token successfully"  
+                    $Done = $true                
+                }
+            }
+        }catch{
+            Write-Verbose "[WARNING]:- Exception:- $($_)"     
+        }
+        if($NumOfAttempts -gt 1) {
+            Write-Verbose "Sleeping for $SleepTimeInSeconds seconds"
+        }
+        Start-Sleep -Seconds $SleepTimeInSeconds
+        $NumOfAttempts++
+    }
+}
+
 
 function Restart-PortalService
 {

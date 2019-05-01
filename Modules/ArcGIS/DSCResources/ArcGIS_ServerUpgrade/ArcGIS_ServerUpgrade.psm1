@@ -21,10 +21,10 @@ function Get-TargetResource
 		[System.String]
 		$ServerHostName
 	)
-	
+    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-	$returnValue = @{
+    $returnValue = @{
 		ServerHostName = $ServerHostName
 	}
 
@@ -56,8 +56,8 @@ function Set-TargetResource
     Write-Verbose "Fully Qualified Domain Name :- $ServerHostName"
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-	Write-Verbose "Waiting for Server 'http://$($ServerHostName):6080/arcgis/admin'"
-    Wait-ForUrl "http://$($ServerHostName):6080/arcgis/admin" -HttpMethod 'GET'
+	Write-Verbose "Waiting for Server 'https://$($ServerHostName):6443/arcgis/admin'"
+    Wait-ForUrl "https://$($ServerHostName):6443/arcgis/admin" -HttpMethod 'GET'
 
     if($Ensure -ieq 'Present') {        
         $Referer = "http://localhost"
@@ -77,6 +77,7 @@ function Set-TargetResource
                     Write-Verbose "Server Upgrade is likely done!"
                     $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -LogResponse
                     $currentversion = "$($Info.currentVersion)"
+					Write-Verbose "Current Version Installed - $currentversion"
                     if($currentversion -ieq "10.51"){
                         $currentversion = "10.5.1"
                     }elseif($currentversion -ieq "10.61"){
@@ -96,6 +97,7 @@ function Set-TargetResource
                             break
                         }
                     }
+                    
                 }elseif(($ResponseStatus.status -ieq "error") -and ($ResponseStatus.code -ieq '500')){
 					throw $ResponseStatus.messages
 					break
@@ -131,9 +133,12 @@ function Test-TargetResource
         [System.String]
         $Version
         
-	)
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+    )
+    
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+
     $result = Check-ServerVersion -Version $Version
     
     $Referer = "http://localhost"

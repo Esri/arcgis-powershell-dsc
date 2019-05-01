@@ -22,7 +22,7 @@
     .PARAMETER EnableGeodatabase
         Boolean parameter to Indicate Enabling of a Geo-Database.
     .PARAMETER DatabaseType
-        Type of Database Product used to install the GeoDatabase - "SQLServerDatabase" (PGSQL - Support to be added next)
+        Type of Database Product used to install the GeoDatabase - "AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase"
 #>
 
 function Get-TargetResource
@@ -38,7 +38,7 @@ function Get-TargetResource
         [parameter(Mandatory = $true)]
 		[System.String]
 		$DatabaseName
-    )
+	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 	
@@ -71,11 +71,11 @@ function Set-TargetResource
         [parameter(Mandatory = $true)]
 		[PSCredential]
 		$DatabaseServerAdministrator,
-
+        
         [parameter(Mandatory = $false)]
 		[PSCredential]
         $SDEUser,
-        
+
         [parameter(Mandatory = $true)]
 		[PSCredential]
 		$DatabaseUser,
@@ -89,7 +89,7 @@ function Set-TargetResource
 		$EnableGeodatabase,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("AzureSQLDatabase","SQLServerDatabase")]
+        [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase")]
 		[System.String]
 		$DatabaseType,
 
@@ -97,32 +97,47 @@ function Set-TargetResource
 		[System.String]
 		$Ensure
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    if($Ensure -ieq 'Present') {
-        
+    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+	
+	if($Ensure -ieq 'Present') {
+        #Add check if possible
         Write-Verbose "Sleeping for 2 minutes for the Publishing Service To Come up"
         Start-Sleep -Seconds 120
-
+    
         Write-Verbose "Waiting for 'https://localhost:6443/arcgis/admin/' to intialize"
         Wait-ForUrl -Url 'https://localhost:6443/arcgis/admin/' -LogFailures
 
-        $Referer = 'http://localhost:6080'
+        $Referer = 'https://localhost:6443'
         Write-Verbose "Retrieve token for site admin $($ServerSiteAdministrator.UserName)"
-        $token = Get-ServerToken -ServerEndPoint "http://localhost:6080/" -ServerSiteName 'arcgis' -Referer $Referer -Credential $ServerSiteAdministrator
+        $token = Get-ServerToken -ServerEndPoint "https://localhost:6443/" -ServerSiteName 'arcgis' -Referer $Referer -Credential $ServerSiteAdministrator
 
-        Test-ConnectivityToServer -Server $DatabaseServer -Credential $DatabaseServerAdministrator
-            
-        $ConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Credential $DatabaseServerAdministrator 
-        $DbConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Credential $DatabaseServerAdministrator -Database $DatabaseName
-            
-        [bool]$IsSqlAzure = $DatabaseType -ieq 'AzureSQLDatabase'
+        [bool]$IsPostgres = $DatabaseType -ieq 'AzurePostgreSQLDatabase'
+        [bool]$IsSqlAzure = ($DatabaseType -ieq 'AzureSQLDatabase' -or $DatabaseType -ieq 'AzureMISQLDatabase')
         [string]$mgd = 'Non Managed'
         if($IsManaged) {
             $mgd = 'Managed'
         }
         $SkipLoginExpiration = -not($IsSqlAzure)
+
+        if($IsPostgres){
+            Test-ConnectivityToPostgresServer -Server $DatabaseServer -Database "postgres" -Credential $DatabaseServerAdministrator
+        }else{
+            Test-ConnectivityToServer -Server $DatabaseServer -Credential $DatabaseServerAdministrator
+        }
+        
+        $ConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Credential $DatabaseServerAdministrator
+        $TestDBConnString = $ConnString
+        if($IsPostgres){
+            $ConnString = Create-PostgresDatabaseConnectionString -Server $DatabaseServer -Database $DatabaseName -Credential $DatabaseServerAdministrator
+            $TestDBConnString = Create-PostgresDatabaseConnectionString -Server $DatabaseServer -Database "postgres" -Credential $DatabaseServerAdministrator
+        }
+        
+        $DbConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Credential $DatabaseServerAdministrator -Database $DatabaseName
+        if($IsPostgres){
+            $DbConnString = $ConnString
+        }
+
         $SdeUserName =  'sde'   
         if($SDEUser){
             $SdeUserPassword = $SDEUser.GetNetworkCredential().Password
@@ -132,48 +147,56 @@ function Set-TargetResource
 
         $SDEPassword = ConvertTo-SecureString $SdeUserPassword -AsPlainText -Force
         $SDECredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($SdeUserName, $SDEPassword )
-
+        
         $DatabaseUserName = $DatabaseUser.UserName
         $DatabaseUserPassword = $DatabaseUser.GetNetworkCredential().Password
 
         ###
         ### Ensure Database exists
         ###                
-        if(-not(Does-DatabaseExist $ConnString -DatabaseName $DatabaseName)) {
+        if(-not(Does-DatabaseExist $TestDBConnString -DatabaseName $DatabaseName -IsPostgres:$IsPostgres)) {
             Write-Verbose "Creating Database '$DatabaseName' in Server '$DatabaseServer'"
-            Create-Database -ConnString $ConnString -DatabaseName $DatabaseName        
-			Enable-DatabasePrivilegesForGeoDatabaseAdministrator -ConnString $ConnString -DatabaseName $DatabaseName             
+            Create-Database -ConnString $TestDBConnString -DatabaseName $DatabaseName -IsPostgres:$IsPostgres
+            if(-not($IsPostgres)){
+                Enable-DatabasePrivilegesForGeoDatabaseAdministrator -ConnString $ConnString -DatabaseName $DatabaseName
+            }
         } 
-
         ###
         ### Create SDE User (if not exist)
         ###
-        if(-not(Does-LoginExist -ConnString $ConnString -UserName $SdeUserName)) {
+        if(-not(Does-LoginExist -ConnString $ConnString -UserName $SdeUserName -IsPostgres:$IsPostgres)) {
             Write-Verbose "Creating Login for User '$SdeUserName' in Server '$DatabaseServer'"
-            Create-Login -ConnString $ConnString -Credential $SDECredential -SkipExpiration:$SkipLoginExpiration
+            Create-Login -ConnString $ConnString -Credential $SDECredential -SkipExpiration:$SkipLoginExpiration -IsPostgres:$IsPostgres
         }
         ###
         ### Ensure Sde Exists in the database. If not create one and set its schema.
         ### 
-        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $SdeUserName))
+        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $SdeUserName -IsPostgres:$IsPostgres))
         {                    
             Write-Verbose "Creating User '$SdeUserName' in Database '$DatabaseName'"
-            Create-SqlUser -ConnString $DbConnString -UserName $SdeUserName -DefaultSchema '' # Create with no schema
+            Create-SqlUser -ConnString $DbConnString -Credential $SDECredential -DefaultSchema '' -IsPostgres:$IsPostgres # Create with no schema
 
             $schema = $SdeUserName
-            if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema)){
+            if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
                 Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
-                Create-Schema -ConnString $DbConnString -SchemaName $schema 
+                if($IsPostgres){
+                    Create-SchemaPostgres -ConnString $DbConnString -SchemaName $schema
+                }else{
+                    Create-Schema -ConnString $DbConnString -SchemaName $schema 
+                }
             }
 
             Write-Verbose "Assigning schema '$schema' to User '$SdeUserName' in Database '$DatabaseName'"
-            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $SdeUserName -Schema $schema
+            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $SdeUserName -Schema $schema -IsPostgres:$IsPostgres
         }else {
-            
+
 
             $TestConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Database $DatabaseName -Credential $SDECredential
+            if($IsPostgres){
+                $TestConnString = Create-PostgresDatabaseConnectionString -Server $DatabaseServer -Credential $SDECredential -Database $DatabaseName
+            }
             try {
-                Test-Login -ConnString $TestConnString
+                Test-Login -ConnString $TestConnString -IsPostgres:$IsPostgres
                 Write-Verbose "User account $SdeUserName is a valid login"
             }catch {
                 throw "Unable to login using Credentials provided for $SdeUserName."
@@ -181,66 +204,115 @@ function Set-TargetResource
         }
             
         ##
-        ## Grant neccessary privilages to Geodatabase Administrator 'sde'
+        ## Grant necessary privilages to Geodatabase Administrator 'sde'
         ##
-        Grant-PrivilegesForGeodatabaseAdministrator -ConnString $DbConnString -UserName $SdeUserName -GrantViewDatabaseState:$IsSqlAzure
-
+        Grant-PrivilegesForGeodatabaseAdministrator -ConnString $DbConnString -UserName $SdeUserName -GrantViewDatabaseState:$IsSqlAzure -IsPostgres:$IsPostgres
+        
         ###
         ### Ensure schema 'sde' exists in the database
         ###
         $schema = 'sde' # Needed Schema for ArcSDE
-        if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema)){
+        if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
             Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
-            Create-Schema -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $schema
+			#$DbConnStringForSde = Create-PostgresDatabaseConnectionString -Server $DatabaseServer -UserName $schema -Password $DatabaseServerAdministrator.GetNetworkCredential().Password -Database $DatabaseName 
+            if($IsPostgres){
+				Create-SchemaPostgres -ConnString $ConnString -SchemaName $schema -SchemaOwnerName $schema -DbAdminUsername $DatabaseServerAdministrator.UserName
+			}else{
+				Create-Schema -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $schema 
+			}
         }
             
         ###
         ### Ensure Login for the user exists
-        ###                 
-        if(-not(Does-LoginExist -ConnString $ConnString -UserName $DatabaseUserName)) {
+        ###    
+        if(-not(Does-LoginExist -ConnString $ConnString -UserName $DatabaseUserName -IsPostgres:$IsPostgres)) {
             Write-Verbose "Creating Login for User '$DatabaseUserName' in Server '$DatabaseServer'"
-            Create-Login -ConnString $ConnString -Credential $DatabaseUser -SkipExpiration:$SkipLoginExpiration
-        }                                      
+            Create-Login -ConnString $ConnString -Credential $DatabaseUser -SkipExpiration:$SkipLoginExpiration -IsPostgres:$IsPostgres
+        }    
+                                          
 
         ###
         ### Ensure User Exists. If not create one and set its schema. 
         ### 
-        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $DatabaseUserName))
+        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $DatabaseUserName -IsPostgres:$IsPostgres))
         {
             Write-Verbose "Creating User '$DatabaseUserName' in Database '$DatabaseName'"
-            Create-SqlUser -ConnString $DbConnString -UserName $DatabaseUserName -DefaultSchema '' # create user without schema. This will be assigned in the next step
+            Create-SqlUser -ConnString $DbConnString -Credential $DatabaseUser -DefaultSchema '' -IsPostgres:$IsPostgres # create user without schema. This will be assigned in the next step
                     
             $schema = $DatabaseUserName
-            if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema)) {
+            if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
                 Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
-                Create-Schema -ConnString $DbConnString -SchemaName $schema
+                if($IsPostgres){
+                    Create-SchemaPostgres -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName -DbAdminUsername $DatabaseServerAdministrator.UserName
+                }else{
+                    Create-Schema -ConnString $DbConnString -SchemaName $schema 
+                }
             }
 
             Write-Verbose "Assigning schema '$schema' to User '$DatabaseUserName' in Database '$DatabaseName'"
-            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $DatabaseUserName -Schema $schema
+            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $DatabaseUserName -Schema $schema -IsPostgres:$IsPostgres
 
         }else {
             $TestConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Database $DatabaseName -Credential $DatabaseUser
+            if($IsPostgres){
+                $TestConnString = Create-PostgresDatabaseConnectionString -Server $DatabaseServer -Credential $DatabaseUser -Database $DatabaseName
+            }
             try {
-                Test-Login -ConnString $TestConnString
+                Test-Login -ConnString $TestConnString -IsPostgres:$IsPostgres
                 Write-Verbose "User account $DatabaseUserName is a valid login"
             }catch {
                 throw "Unable to login using Credentials provided for $DatabaseUserName."
             }
         }
 
-        Write-Verbose "Ensuring neccessary privileges for '$DatabaseUserName' in Database '$DatabaseName'"
-        Grant-PrivilegesForSdeUser -ConnString $DbConnString -UserName $DatabaseUserName
+        ###
+        ### Ensure schema DatabaseUserName exists in the database
+        ###
+        $schema = $DatabaseUserName # Needed Schema for ArcSDE
+        if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
+            if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
+                Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
+                if($IsPostgres){
+                    Create-SchemaPostgres -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName -DbAdminUsername $DatabaseServerAdministrator.UserName
+                }else{
+                    Create-Schema -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName
+                }
+            }
 
+            Write-Verbose "Assigning schema '$schema' to User '$DatabaseUserName' in Database '$DatabaseName'"
+            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $DatabaseUserName -Schema $schema -IsPostgres:$IsPostgres
+        }
+
+        Write-Verbose "Ensuring necessary privileges for '$DatabaseUserName' in Database '$DatabaseName'"
+        if($IsPostgres){
+            Grant-PrivilegesForSdeUser -ConnString $ConnString -UserName $DatabaseUserName -IsPostgres -SchemaName 'sde'
+        }else{
+            Grant-PrivilegesForSdeUser -ConnString $DbConnString -UserName $DatabaseUserName -SchemaName 'sde'
+        }
+        
         try {
+			[string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS').RealVersion
+            Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
+            $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
+            Write-Verbose "Product Version of ArcGIS Software Installed:- $Version"
+
+			$DBType =  if($IsPostgres){ "POSTGRESQL" }else{ "SQLSERVER" } 
+
+			$PythonScriptFileName = 'enable_enterprise_gdb.py'   
+            $PythonScriptPath = Join-Path "$env:ProgramFiles\WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_EGDB" $PythonScriptFileName
+            if(-not(Test-Path $PythonScriptPath)){
+                throw "$PythonScriptPath not found"
+            }
+            $PythonInstallDir = (Get-ItemProperty -Path "HKLM:\SOFTWARE\ESRI\Python$($Version)").PythonDir
+            $PythonPath = ((Get-ChildItem -Path $PythonInstallDir -Filter 'python.exe' -Recurse -File) | Select-Object -First 1 -ErrorAction Ignore)
+            if($PythonPath -eq $null) {
+                throw "Python27 not found on machine. Please install Python."
+            }
+            $PythonInterpreterPath = $PythonPath.FullName
 
             if($EnableGeodatabase) 
             {
-                [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS').RealVersion
-                Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
-                $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-                Write-Verbose "Product Version of ArcGIS Software Installed:- $Version"
-
+                
                 $LicenseFilePath = "$env:SystemDrive\Program Files\ESRI\License$($Version)\sysgen\keycodes"
                 if(-not (Test-Path $LicenseFilePath)) {
                     throw "License file not found at expected location $LicenseFilePath" 
@@ -260,21 +332,14 @@ function Set-TargetResource
                     throw "License file that was copied was not found at expected location $LicenseFilePath" 
                 }
 
-                $PythonScriptFileName = 'SqlServer_enable_enterprise_gdb.py'   
-                $PythonScriptPath = Join-Path "$env:ProgramFiles\WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_EGDB" $PythonScriptFileName
-                if(-not(Test-Path $PythonScriptPath)){
-                    throw "$PythonScriptPath not found"
-                }
-                $PythonInstallDir = (Get-ItemProperty -Path "HKLM:\SOFTWARE\ESRI\Python$($Version)").PythonDir
-                $PythonPath = ((Get-ChildItem -Path $PythonInstallDir -Filter 'python.exe' -Recurse -File) | Select-Object -First 1 -ErrorAction Ignore)
-                if($PythonPath -eq $null) {
-                    throw "Python27 not found on machine. Please install Python."
-                }
-                $PythonInterpreterPath = $PythonPath.FullName
-
-                Write-Verbose 'Enabling Geodatabase'            
-                $Arguments = " ""$PythonScriptPath"" -s $DatabaseServer -d $DatabaseName -u $SdeUserName -p $SdeUserPassword -l $LicenseFilePath "
-                Write-Verbose "[Running Command] $PythonInterpreterPath ""$PythonScriptPath"" -s $DatabaseServer -d $DatabaseName -u $SdeUserName -l $LicenseFilePath "
+                Write-Verbose 'Enabling Geodatabase'       
+               
+				$SDEEnableUserName = $SdeUserName
+				if($IsPostgres){ 
+					$SDEEnableUserName = "$($SdeUserName)@$($DatabaseServer.Split(".")[0])"
+				}
+                $Arguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $SDEEnableUserName -p $SdeUserPassword -l $LicenseFilePath"
+                Write-Verbose "[Running Command] $PythonInterpreterPath $Arguments "
                 $StdOutLogFile = [System.IO.Path]::GetTempFileName()
                 $StdErrLogFile = [System.IO.Path]::GetTempFileName()
                 Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait
@@ -298,14 +363,20 @@ function Set-TargetResource
             $OpFolder = $env:TEMP
             $OpFile = "$($DatabaseServer)_$($DatabaseName)_$($DatabaseUserName).sde"
             $SDEFile = Join-Path $OpFolder $OpFile 
-            $PythonScriptFileName = 'SqlServer_create_connection_file.py'
+            $PythonScriptFileName = 'create_connection_file.py'
             $PythonScriptPath = Join-Path "$env:ProgramFiles\WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_EGDB" $PythonScriptFileName
             if(-not(Test-Path $PythonScriptPath)){
                 throw "$PythonScriptPath not found"
             }
 
-            $Arguments = " ""$PythonScriptPath"" -s $DatabaseServer -d $DatabaseName -u $DatabaseUserName -p $DatabaseUserPassword -o $OpFolder -f $OpFile"
-            Write-Verbose "[Running Command] $PythonInterpreterPath ""$PythonScriptPath"" -s $DatabaseServer -d $DatabaseName -u $DatabaseUserName -o $OpFolder -f $OpFile"
+			$DBConnectUserName = $DatabaseUserName
+			if($IsPostgres){ 
+				$DBConnectUserName = "$($DatabaseUserName)@$($DatabaseServer.Split(".")[0])"
+			}
+
+            $Arguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $DBConnectUserName -p $DatabaseUserPassword -o $OpFolder -f $OpFile"
+            
+            Write-Verbose "[Running Command] $PythonInterpreterPath $Arguments"
             $StdOutLogFile = [System.IO.Path]::GetTempFileName()
             $StdErrLogFile = [System.IO.Path]::GetTempFileName()
             Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait
@@ -315,7 +386,11 @@ function Set-TargetResource
                 Write-Verbose $StdOut
             }
             $SDELogContents = $null
-            $SDELogFilePath = Join-Path $env:Temp 'sdedc_SQL Server'
+            if($IsPostgres){
+                $SDELogFilePath = Join-Path $env:Temp 'sde_setup' #check
+            }else{
+                $SDELogFilePath = Join-Path $env:Temp 'sdedc_SQL Server'
+            }
             if(Test-Path $SDELogFilePath) {
                 $SDELogContents = (Get-Content $SDELogFilePath -Raw)
                 Write-Verbose $SDELogContents                
@@ -333,7 +408,7 @@ function Set-TargetResource
             Remove-Item $StdErrLogFile -Force -ErrorAction Ignore
             #endregion    
 
-            $ServerUrl = 'http://localhost:6080/'
+            $ServerUrl = 'https://localhost:6443/'
             $dataItems = Get-ArcGISEGDBDataItems -SiteName 'arcgis' -Token $token.token -Referer $Referer 
             $dataItemForDatabase = $dataItems | Where-Object { $DatabaseServer -ieq $_.SERVER -and $DatabaseName -ieq $_.DATABASE }    
             if(-not($dataItemForDatabase))
@@ -373,7 +448,7 @@ function Set-TargetResource
     }
     elseif($Ensure -ieq 'Absent') {        
         Write-Warning "Absent has not been implemented"
-    }	
+    }
 
 }
 
@@ -398,8 +473,8 @@ function Test-TargetResource
 
         [parameter(Mandatory = $true)]
 		[PSCredential]
-        $DatabaseServerAdministrator,
-        
+		$DatabaseServerAdministrator,
+
         [parameter(Mandatory = $false)]
 		[PSCredential]
         $SDEUser,
@@ -417,19 +492,22 @@ function Test-TargetResource
 		$EnableGeodatabase,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("AzureSQLDatabase","SQLServerDatabase")]
+        [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase")]
 		[System.String]
 		$DatabaseType,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
-		$Ensure
-    )
+		$Ensure,
+        
+        [System.Boolean]
+		$IsEnvAzure = $false
+	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-	
+
     $result = $false    
-    $ServerUrl = 'http://localhost:6080/'
+    $ServerUrl = 'https://localhost:6443/'
     $Referer = $ServerUrl
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
@@ -491,8 +569,8 @@ function Get-ArcGISEGDBDataItems
         [System.String]
         $Referer
     )
-     
-   $response = Invoke-ArcGISWebRequest -Url ("http://$($ServerHostName):6080/$SiteName" + '/admin/data/findItems') -HttpFormParameters @{ f = 'json'; token = $Token; types = 'egdb' } -Referer $Referer 
+    
+   $response = Invoke-ArcGISWebRequest -Url ("https://$($ServerHostName):6443/$SiteName" + '/admin/data/findItems') -HttpFormParameters @{ f = 'json'; token = $Token; types = 'egdb' } -Referer $Referer 
    $DataItems = @()
    foreach($item in $response.items) {
         $DataItem = @{ id = $item.id; isManaged = $item.info.isManaged }
@@ -606,10 +684,10 @@ function Register-EGDBWithServerSite
             $IsManaged
         )
 
-   [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-   [System.Reflection.Assembly]::LoadWithPartialName("System.Net") | Out-Null
-   [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-   [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Net") | Out-Null
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+	[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     ###
     ### Check that the system publishing tool is available
     ###
@@ -762,8 +840,11 @@ function Execute-SqlScalar
 {
 	[CmdletBinding()]
 	param(
-		[string]$ConnString,
-		[string]$sql
+        [System.String]
+        $ConnString,
+
+        [System.String]
+        $sql
 	) 
 
 	### TODO:- SQL Injection Validation
@@ -798,8 +879,11 @@ function Execute-SqlNonQuery
 {
 	[CmdletBinding()]
     param(
-        [string]$ConnString,
-        [string]$sql
+        [System.String]
+        $ConnString,
+
+        [System.String]
+        $sql
     )
 
     if($sql -ne $null -and $sql.Length -gt 0)
@@ -827,18 +911,65 @@ function Execute-SqlNonQuery
     }
 }
 
+function Execute-PostgresQuery{
+    [CmdletBinding()]
+	param(
+        [System.String]
+        $ConnString,
+        
+        [System.String]
+        $sql
+    ) 
+
+    $ConnStringArray = $ConnString.split(";")
+    $HostName = $ConnStringArray[0].split("=")[1]
+    $Port = $ConnStringArray[1].split("=")[1]
+    $Database = $ConnStringArray[2].split("=")[1]
+    $UserName = $ConnStringArray[3].split("=")[1]
+    $Password = $ConnStringArray[4].split("=")[1]
+    $InstallerPath = $ConnStringArray[5].split("=")[1]
+    
+    $PsqlExePath  = Join-Path $InstallerPath "framework\runtime\pgsql\bin\psql.exe"
+    $exeArgsHash = "-h $HostName -p $Port -U $UserName -c ""$($sql)"" -w $Database"
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $PsqlExePath
+    $psi.Arguments =  $exeArgsHash
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+    $psi.EnvironmentVariables["PGPASSWORD"] = $Password
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    $op = $p.StandardOutput.ReadToEnd()
+    $err = $p.StandardError.ReadToEnd()
+    
+    if($p.ExitCode -eq 0) {                    
+        Write-Verbose "Query $sql - Executed Successfully!"
+        if($op -and $op.Length -gt 0) {
+            return $op
+        }
+    }else {
+        throw "Error executing query - $err"
+    }
+}
+
 function Create-DatabaseConnectionString
 {
+    [CmdletBinding()]
     param(
-        [string]
+        [System.String]
         $Server,
-        [string]
+
+        [System.String]
         $Database, 
+
         [System.Management.Automation.PSCredential]
         $Credential, 
+
         [switch]
         $UseIntergratedSecurity
     )
+
     $str = "Data Source=$Server;User ID=$($Credential.UserName);Password=$($Credential.GetNetworkCredential().Password)"
     if($Database -and $Database.Length -gt 0) {
         $str += ";Initial Catalog=$Database"
@@ -849,15 +980,48 @@ function Create-DatabaseConnectionString
     $str
 }
 
-function Test-ConnectivityToServer
+function Create-PostgresDatabaseConnectionString
 {
+    [CmdletBinding()]
     param(
-        [string]
-        $Server, 
+        [System.String]
+        $Server,
+
+        [System.String]
+        $Database, 
+
         [System.Management.Automation.PSCredential]
         $Credential
     )
 
+    $PortalInstallationDirectory = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "Portal" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+    if($PortalInstallationDirectory){
+        $InstallerPath = $PortalInstallationDirectory
+    }else{
+        $DatastoreInstallationDirectory = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "Data Store" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+        if($DatastoreInstallationDirectory){
+            $InstallerPath = $DatastoreInstallationDirectory
+        }else{
+            throw "Neither ArcGIS Portal or ArcGIS Datastore is installed. PSQL needed for the Resource to access Azure PostgreSQL"
+        }
+    }
+	$ServerName = $Server.Split(".")[0]
+	$UserId = "$($Credential.UserName)@$($ServerName)"
+    $str = "Server=$Server;Port=5432;Database=$Database;Uid=$UserId;Pwd=$($Credential.GetNetworkCredential().Password);InstPath=$InstallerPath"
+    $str
+}
+
+function Test-ConnectivityToServer
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $Server, 
+
+        [System.Management.Automation.PSCredential]
+        $Credential
+    )
+    
     $connStr = Create-DatabaseConnectionString -Server $Server -Credential $Credential
     try {
         Does-DatabaseExist -ConnString $connStr -DatabaseName 'master'
@@ -867,183 +1031,523 @@ function Test-ConnectivityToServer
     }
 }
 
+function Test-ConnectivityToPostgresServer
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $Server,
+
+        [System.String]
+        $Database, 
+
+        [System.Management.Automation.PSCredential]
+        $Credential
+    )
+    $connStr = Create-PostgresDatabaseConnectionString -Server $Server -Credential $Credential -Database $Database
+    try {
+        Does-DatabaseExist -ConnString $connStr -DatabaseName $Database -IsPostgres
+    }
+    catch{
+        throw "Unable to connect to Server '$Server' using UserID:- '$($Credential.UserName)'. Please verify that the server is reachable"
+    }
+}
+
 function Test-Login
 {
+    [CmdletBinding()]
     param (
-        [string]$ConnString
+        [System.String]
+        $ConnString,
+
+        [switch]
+        $IsPostgres
     )
-    $sql = 'SELECT COUNT(*) from sys.tables'
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    if($IsPostgres){
+        $sql = 'SELECT COUNT(*) from pg_catalog.pg_user'
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = 'SELECT COUNT(*) from sys.tables'
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }   
 }
 
-function Does-LoginExist([string]$ConnString, [string]$UserName) {
-    $sql = "SELECT COUNT(name) from sys.sql_logins WHERE name = '$UserName'"    
-    $count = Execute-SqlScalar -ConnString $ConnString -sql $sql
-    $count -gt 0
-}
+function Does-LoginExist
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString,
 
-function Create-Login([string]$ConnString,  [System.Management.Automation.PSCredential]$Credential, [switch]$SkipExpiration){
-    $sql = "CREATE LOGIN [$($Credential.UserName)] WITH PASSWORD = '$($Credential.GetNetworkCredential().Password)'"
-    if($SkipExpiration){
-        $sql += ' , CHECK_EXPIRATION=OFF, CHECK_POLICY=ON'
+        [System.String]
+        $UserName,
+
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='$UserName'"    
+        $result = Execute-PostgresQuery -ConnString $ConnString -sql $sql
+        $resultarr = $result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)
+        if($resultarr -imatch "(0 rows)"){
+            $count = 0
+        }else{
+            $count = [int] ($result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)[2])
+        }
+    }else{
+        $sql = "SELECT COUNT(name) from sys.sql_logins WHERE name = '$UserName'"    
+        $count = Execute-SqlScalar -ConnString $ConnString -sql $sql
     }
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    $count -gt 0 
 }
 
-function Delete-Login([string]$ConnString, [string]$UserName){
-    $sql = "DROP LOGIN [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-}
-
-function Create-Database([string]$ConnString, [string]$DatabaseName)
+function Create-Login
 {
-    $sql = "CREATE DATABASE [$DatabaseName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-}
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
 
-function Enable-DatabasePrivilegesForGeoDatabaseAdministrator([string]$ConnString, [string]$DatabaseName)
-{
-    $sql = "ALTER DATABASE [$DatabaseName] SET READ_COMMITTED_SNAPSHOT ON"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        [System.Management.Automation.PSCredential]
+        $Credential,
 
-	$sql = "ALTER DATABASE [$DatabaseName] SET ALLOW_SNAPSHOT_ISOLATION ON"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-}
+        [switch]
+        $SkipExpiration,
 
-function Change-DatabaseOwnership([string]$ConnString, [string]$UserName)
-{
-    $sql = "EXEC sp_changedbowner N'$UserName'"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-}
-
-function Does-DatabaseExist([string]$ConnString, [string]$DatabaseName)
-{
-    $sql = "SELECT COUNT(name) from sys.sysdatabases WHERE name = '$DatabaseName'"   
-    $count = Execute-SqlScalar -ConnString $ConnString -sql $sql
-    $count -gt 0
-}
-
-function Does-SqlUserExist([string]$ConnString, [string]$UserName)
-{
-    $sql = "SELECT COUNT(NAME) FROM SYS.DATABASE_PRINCIPALS WHERE Name = '$UserName'"
-    $count = Execute-SqlScalar -ConnString $ConnString -sql $sql
-    $count -gt 0
-}
-
-function Create-SqlUser([string]$ConnString, [string]$UserName, [string]$DefaultSchema = $UserName)
-{
-    $sql = "CREATE USER [$UserName] FOR LOGIN [$UserName]"
-    if($DefaultSchema -and $DefaultSchema.Length -gt 0){
-        $sql += " WITH DEFAULT_SCHEMA = [$DefaultSchema]"
-    }
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-    if($DefaultSchema -and $DefaultSchema.Length -gt 0) {
-        $sql = "GRANT CONTROL ON SCHEMA::[$DefaultSchema] TO [$UserName]"
+        [switch]
+        $IsPostgres
+    )
+    if($IsPostgres){
+		$sql = "CREATE ROLE $($Credential.UserName) LOGIN ENCRYPTED PASSWORD '$($Credential.GetNetworkCredential().Password)'" 
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "CREATE LOGIN [$($Credential.UserName)] WITH PASSWORD = '$($Credential.GetNetworkCredential().Password)'"
+        if($SkipExpiration){
+            $sql += ' , CHECK_EXPIRATION=OFF, CHECK_POLICY=ON'
+        }
         Execute-SqlNonQuery -ConnString $ConnString -sql $sql
     }
 }
 
-function Assign-SchemaPrivilegesForSqlUser([string]$ConnString, [string]$UserName, [string]$Schema)
+function Delete-Login
 {
-    $sql = "ALTER USER [$UserName] WITH DEFAULT_SCHEMA = [$Schema]"   
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $UserName, 
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "DROP USER $UserName"
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "DROP LOGIN [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }
+}
+function Create-Database
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $DatabaseName, 
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "CREATE DATABASE $DatabaseName"
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "CREATE DATABASE [$DatabaseName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }
+}
+
+function Enable-DatabasePrivilegesForGeoDatabaseAdministrator
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $DatabaseName
+    )
+
+    $sql = "ALTER DATABASE $DatabaseName SET READ_COMMITTED_SNAPSHOT ON"
     Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    $sql = "GRANT CONTROL ON SCHEMA::[$Schema] TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-
-    $sql = "ALTER AUTHORIZATION ON SCHEMA::[$Schema] TO [$UserName]"
+    $sql = "ALTER DATABASE $DatabaseName SET ALLOW_SNAPSHOT_ISOLATION ON"
     Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 }
 
-function Drop-SqlUser([string]$ConnString, [string]$UserName)
+function Change-DatabaseOwnership([string]$ConnString, [string]$UserName,[string]$DatabaseName, [switch]$IsPostgres)
 {
-    $sql = "DROP USER [$UserName]"    
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    if($IsPostgres){
+        $sql = "ALTER DATABASE $DatabaseName OWNER TO $UserName"
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "EXEC sp_changedbowner N'$UserName'"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }
 }
 
-function Does-SchemaExist([string]$ConnString, [string]$SchemaName)
+function Does-DatabaseExist
 {
-    $sql = "SELECT Count(Name) FROM sys.schemas WHERE name = '$SchemaName'"
-    $count = Execute-SqlScalar -ConnString $ConnString -sql $sql
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $DatabaseName, 
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "SELECT 1 AS result FROM pg_database WHERE datname='$DatabaseName'"
+        $result = Execute-PostgresQuery -ConnString $ConnString -sql $sql
+        $resultarr = $result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)
+        if($resultarr -imatch "(0 rows)"){
+            $count = 0
+        }else{
+            $count = [int] ($result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)[2])
+        }
+    }else{
+        $sql = "SELECT COUNT(name) from sys.sysdatabases WHERE name = '$DatabaseName'"   
+        $count = Execute-SqlScalar -ConnString $ConnString -sql $sql  
+    }
+    $count -gt 0 
+}
+
+function Does-SqlUserExist
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $UserName, 
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "SELECT 1 FROM pg_roles WHERE rolname='$UserName'" 
+        $result = Execute-PostgresQuery -ConnString $ConnString -sql $sql
+        $resultarr = $result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)
+        if($resultarr -imatch "(0 rows)"){
+            $count = 0
+        }else{
+            $count = [int] ($result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)[2])
+        }
+    }else{
+        $sql = "SELECT COUNT(NAME) FROM SYS.DATABASE_PRINCIPALS WHERE Name = '$UserName'"
+        $count = Execute-SqlScalar -ConnString $ConnString -sql $sql
+    }
     $count -gt 0
 }
 
-function Create-Schema([string]$ConnString, [string]$SchemaName, [string]$SchemaOwnerName)
+function Create-SqlUser
 {
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.Management.Automation.PSCredential]
+        $Credential, 
+
+        [System.String]
+        $DefaultSchema = $Credential.UserName,
+       
+        [switch]
+        $IsPostgres
+    )
+    $UserName = $Credential.UserName
+    if($IsPostgres){
+		$sql = "CREATE ROLE $UserName LOGIN ENCRYPTED PASSWORD '$($Credential.GetNetworkCredential().Password)'" 
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "CREATE USER [$UserName] FOR LOGIN [$UserName]"
+        if($DefaultSchema -and $DefaultSchema.Length -gt 0){
+            $sql += " WITH DEFAULT_SCHEMA = [$DefaultSchema]"
+        }
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        if($DefaultSchema -and $DefaultSchema.Length -gt 0) {
+            $sql = "GRANT CONTROL ON SCHEMA::[$DefaultSchema] TO [$UserName]"
+            Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        }
+    }
+}
+
+function Assign-SchemaPrivilegesForSqlUser
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $UserName, 
+
+        [System.String]
+        $Schema,
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "ALTER SCHEMA $Schema OWNER TO $UserName"
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "ALTER USER [$UserName] WITH DEFAULT_SCHEMA = [$Schema]"   
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        $sql = "GRANT CONTROL ON SCHEMA::[$Schema] TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        $sql = "ALTER AUTHORIZATION ON SCHEMA::[$Schema] TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }
+}
+
+function Drop-SqlUser
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $UserName,
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "DROP USER $UserName"    
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        $sql = "DROP USER [$UserName]"    
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }
+}
+
+function Does-SchemaExist
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $SchemaName,
+       
+        [switch]
+        $IsPostgres
+    )
+
+    if($IsPostgres){
+        $sql = "SELECT 1 FROM information_schema.schemata WHERE schema_name = '$SchemaName'"
+        $result = Execute-PostgresQuery -ConnString $ConnString -sql $sql
+        $resultarr = $result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)
+        if($resultarr -imatch "(0 rows)"){
+            $count = 0
+        }else{
+            $count = [int] ($result.split([Environment]::NewLine,[System.StringSplitOptions]::RemoveEmptyEntries)[2])
+        }
+	}
+	else{
+		$sql = "SELECT Count(Name) FROM sys.schemas WHERE name = '$SchemaName'"
+		$count = Execute-SqlScalar -ConnString $ConnString -sql $sql
+    }
+    $count -gt 0
+}
+
+function Create-SchemaPostgres
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
+
+        [System.String]
+        $SchemaName,
+       
+        [System.String]
+        $SchemaOwnerName,
+
+        [System.String]
+        $DbAdminUsername
+    )
+    
     if($SchemaOwnerName -and $SchemaOwnerName.Length -gt 0) {
-        $sql = "CREATE SCHEMA [$SchemaName] AUTHORIZATION $SchemaOwnerName" 
-    }
-    else {
-        $sql = "CREATE SCHEMA [$SchemaName]" 
-    }
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+		$sql = "CREATE SCHEMA $SchemaName AUTHORIZATION $DbAdminUsername" 
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+		$sql = "GRANT $SchemaOwnerName TO $DbAdminUsername"
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+		$sql = "ALTER SCHEMA $SchemaName OWNER TO $SchemaOwnerName" 
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+		$sql = "REVOKE $SchemaOwnerName FROM $DbAdminUsername" 
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+	}
+	else {
+		$sql = "CREATE SCHEMA $SchemaName" 
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+	}
 }
 
-function Grant-PrivilegesForGeodatabaseAdministrator([string]$ConnString, [string]$UserName, [switch]$GrantViewDatabaseState)
+function Create-Schema
 {
-    <#
-    $sql = "SP_DROPUSER '$UserName'"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
 
-    $sql = "EXEC sp_changedbowner '$UserName'"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-    #>
+        [System.String]
+        $SchemaName,
+       
+        [System.String]
+        $SchemaOwnerName
+    )
     
-    $sql = "GRANT CREATE PROCEDURE TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    if($SchemaOwnerName -and $SchemaOwnerName.Length -gt 0) {
+		$sql = "CREATE SCHEMA [$SchemaName] AUTHORIZATION $SchemaOwnerName" 
+	}
+	else {
+		$sql = "CREATE SCHEMA [$SchemaName]" 
+	}
+	Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+}
 
-    $sql = "GRANT CREATE FUNCTION TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+function Grant-PrivilegesForGeodatabaseAdministrator
+{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
 
-    $sql = "GRANT CREATE TABLE TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-
-    $sql = "GRANT CREATE VIEW TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-
-    if($GrantViewDatabaseState) {
-        $sql = "GRANT VIEW DATABASE STATE TO [$UserName]"
+        [System.String]
+        $UserName,
+       
+        [switch]
+        $GrantViewDatabaseState,
+       
+        [switch]
+        $IsPostgres
+    )
+    
+    if($IsPostgres){
+        $sql ="GRANT azure_pg_admin TO $UserName";
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        <#
+        $sql = "SP_DROPUSER '$UserName'"
         Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        $sql = "EXEC sp_changedbowner '$UserName'"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        #>
+        Write-Verbose "Granting Permissions"
+        $sql = "GRANT CREATE PROCEDURE TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        $sql = "GRANT CREATE FUNCTION TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        $sql = "GRANT CREATE TABLE TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        $sql = "GRANT CREATE VIEW TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        if($GrantViewDatabaseState) {
+            $sql = "GRANT VIEW DATABASE STATE TO [$UserName]"
+            Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        }	
     }
+
 }
 
-function Grant-PrivilegesForSdeUser([string]$ConnString, [string]$UserName)
+function Grant-PrivilegesForSdeUser
 {
-    #$sql = "EXEC sp_addrolemember N'db_datareader', N'$UserName'"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString, 
 
-    #$sql = "EXEC sp_addrolemember N'db_datawriter', N'$UserName'"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        [System.String]
+        $UserName,
+       
+        [System.String]
+        $SchemaName = "sde",
+       
+        [switch]
+        $IsPostgres
+    )
 
-    #$sql = "EXEC sp_addrolemember N'db_ddladmin', N'$UserName'"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+	if($IsPostgres){
+        $sql ="GRANT USAGE ON SCHEMA $SchemaName TO $UserName";
+        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+    }else{
+        #$sql = "EXEC sp_addrolemember N'db_datareader', N'$UserName'"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    #$sql = "EXEC sp_addrolemember N'db_owner', N'$UserName'"    
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        #$sql = "EXEC sp_addrolemember N'db_datawriter', N'$UserName'"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    $sql = "GRANT CREATE FUNCTION TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        #$sql = "EXEC sp_addrolemember N'db_ddladmin', N'$UserName'"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    $sql = "GRANT CREATE PROCEDURE TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
-    
-    $sql = "GRANT CREATE TABLE TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        #$sql = "EXEC sp_addrolemember N'db_owner', N'$UserName'"    
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    $sql = "GRANT CREATE VIEW TO [$UserName]"
-    Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        $sql = "GRANT CREATE FUNCTION TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    #$sql = "GRANT CONTROL ON SCHEMA::[sde] TO [$UserName]"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        $sql = "GRANT CREATE PROCEDURE TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    #$sql = "GRANT CONTROL ON SCHEMA::[dbo] TO [$UserName]"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        $sql = "GRANT CREATE TABLE TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    #$sql = "GRANT INSERT,UPDATE,DELETE,SELECT to [$UserName]"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        $sql = "GRANT CREATE VIEW TO [$UserName]"
+        Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
-    #$sql = "GRANT CREATE XML SCHEMA COLLECTION to [$UserName]"
-    #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+        #$sql = "GRANT CONTROL ON SCHEMA::[sde] TO [$UserName]"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        #$sql = "GRANT CONTROL ON SCHEMA::[dbo] TO [$UserName]"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        #$sql = "GRANT INSERT,UPDATE,DELETE,SELECT to [$UserName]"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+
+        #$sql = "GRANT CREATE XML SCHEMA COLLECTION to [$UserName]"
+        #Execute-SqlNonQuery -ConnString $ConnString -sql $sql
+    }
 }
 
 
