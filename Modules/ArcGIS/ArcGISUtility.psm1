@@ -1438,7 +1438,7 @@ function Get-ComponentCode
        [CmdletBinding()]
        param
        (
-        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer")]
+        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","Monitor")]
         [parameter(Mandatory = $true)]
         [System.String]
               $ComponentName,
@@ -1488,6 +1488,9 @@ function Get-ComponentCode
         }
         NotebookServer = @{
             '10.7' = '3721E3C6-6302-4C74-ACA4-5F50B1E1FE3A'
+        }
+        Monitor = @{
+            '10.7' = '0497042F-0CBB-40C0-8F62-F1922B90E12E'
         }
     }
     $ProductCodes[$ComponentName][$Version]    
