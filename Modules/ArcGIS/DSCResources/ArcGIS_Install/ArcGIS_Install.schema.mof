@@ -2,7 +2,7 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Install")]
 class ArcGIS_Install : OMI_BaseResource
 {
-	[Key, ValueMap{"Server","Portal","DataStore","GeoEvent","NotebookServer","Monitor"}, Values{"Server","Portal","DataStore","GeoEvent","NotebookServer","Monitor"}] String Name;
+	[Key] String Name;
 	[Write] String Path;
 	[Key] String Version;
 	[Write] String Arguments;
