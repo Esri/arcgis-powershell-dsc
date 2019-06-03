@@ -200,7 +200,7 @@ Function Test-PatchInstalled {
                     # The patch is installed, skip further processing
                     Write-Verbose -Message "Patch already installed: $MSPPath - $Test_QFE_ID"
                     $Test = $True
-                    Break
+                    Return $Test
 
                 }
 
