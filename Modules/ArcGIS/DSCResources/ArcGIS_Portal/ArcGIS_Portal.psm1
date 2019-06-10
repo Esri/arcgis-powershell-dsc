@@ -53,6 +53,8 @@
         Service User to connect the Portal-UserStore to an Active Directory
     .PARAMETER EnableAutomaticAccountCreation
         Enables the automaticAccountCreation on Portal
+    .PARAMETER DisableServiceDirectory
+        Disable the Services Directory on Portal
 #>
 
 function Create-PortalSite {    
@@ -479,8 +481,11 @@ function Set-TargetResource {
         $ADServiceUser,
 
         [System.Boolean]
-        $EnableAutomaticAccountCreation
-	)
+        $EnableAutomaticAccountCreation,
+
+        [System.Boolean]
+        $DisableServiceDirectory
+    )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
@@ -677,7 +682,7 @@ function Set-TargetResource {
 			if (-not($token.token)) {
 				throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
 			}
-			Write-Verbose "Connected to Portal successfully and retrieved token for '$PortalAdminUserName'"
+			Write-Verbose "Connected to Portal successfully and retrieved token for $($PortalAdministrator.UserName)"
             
 
             Set-WCPPWAPortalProperties -PortalHostName $FQDN -ExternalDNSName $ExternalDNSName -PortalEndPoint $PortalEndPoint -PortalContext $PortalContext `
@@ -733,6 +738,26 @@ function Set-TargetResource {
                     Write-Verbose "EnableAutomaticAccountCreation is set to false, enable it"
                     $securityConfig.enableAutomaticAccountCreation = "true"
                     Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
+                }
+            }
+           if ($null -ine $DisableServiceDirectory) {
+                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                if (-not ($token)) {
+                    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
+                }
+                
+                if (-not ($securityConfig)) {
+                    $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+                }
+                
+                if ($securityConfig.disableServicesDirectory -ne "true") {$dirStatus = 'enabled'} else {$dirStatus = 'disabled'}
+                Write-Verbose "Current Service Directory Setting:- $dirStatus"
+                
+                if ($securityConfig.disableServicesDirectory -ne $DisableServiceDirectory) {
+                    $securityConfig.disableServicesDirectory = $DisableServiceDirectory
+                    Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
+                } else {
+                    Write-Verbose "Service directory already $dirStatus"
                 }
             }
         }
@@ -817,7 +842,10 @@ function Test-TargetResource {
         $ADServiceUser,
 
         [System.Boolean]
-        $EnableAutomaticAccountCreation
+        $EnableAutomaticAccountCreation,
+
+        [System.Boolean]
+        $DisableServiceDirectory
 	)
 
 
@@ -892,7 +920,7 @@ function Test-TargetResource {
         }        
     }
 
-    $Referer = 'http://localhost'
+    $Referer = 'http://localhost'   
     if ($result -and -not($Join)) {
         try {
 			Wait-ForUrl "https://$($FQDN):7443/arcgis/sharing/rest/generateToken"
@@ -968,6 +996,26 @@ function Test-TargetResource {
         } else {
             Write-Verbose "EnableAutomaticAccountCreation is already set to true"
         }
+    }
+
+    if ($result -and ($null -ine $DisableServiceDirectory)) {
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+        
+        if (-not ($token)) {
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
+        }
+        
+        if (-not ($securityConfig)) {
+            $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+        }
+        
+        if ($securityConfig.disableServicesDirectory -ne "true") {$dirStatus = 'enabled'} else {$dirStatus = 'disabled'}
+        Write-Verbose "Current Service Directory Setting:- $dirStatus"  
+        
+        if ($securityConfig.disableServicesDirectory -ne $DisableServiceDirectory) {
+            Write-Verbose "Service directory setting does not match. Updating it"
+            $result = $false
+        }  
     }
 
     if ($Ensure -ieq 'Present') {
@@ -1198,8 +1246,6 @@ function Set-PortalLogSettings {
     $FormParameters = @{ f = 'json'; token = $Token; logDir = $LogSettings.logDir; logLevel = $LogSettings.logLevel; maxErrorReportsCount = $LogSettings.maxErrorReportsCount; maxLogFileAge = $LogSettings.maxLogFileAge; usageMeteringEnabled = $LogSettings.usageMeteringEnabled }
     Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/logs/settings/edit") -HttpFormParameters $FormParameters -Referer $Referer -HttpMethod 'POST'
 }
-
-
 
 function Get-PortalSelfDescription {
     [CmdletBinding()]
