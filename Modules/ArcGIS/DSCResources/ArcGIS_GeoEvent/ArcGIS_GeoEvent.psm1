@@ -60,8 +60,10 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    $version = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-    $versionarray = $version.Split('.')
+    $WmiComponentObject = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $VersionArray = $WmiComponentObject.Version.Split('.')
+    $MinorVersion = [int]$VersionArray[1]
+    $IsBuild1071 = $WmiComponentObject.Name -match "10.7.1"
 
     $ServiceName = 'ArcGISGeoEvent'
     $GatewayServiceName = 'ArcGISGeoEventGateway'
@@ -137,25 +139,27 @@ function Set-TargetResource
         }
 
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis'  -Referer $Referer -Token $token.token        
-        $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
-        if(-not($messageBus)){ 
-            throw "No Message Bus found in platform service" 
-        }
-        $messageBusId = $messageBus.id
-        Write-Verbose "ID of Message Bus is $messageBusId"
+        if(($MinorVersion -le 7) -and -not($IsBuild1071)){
+            $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
+            if(-not($messageBus)){ 
+                throw "No Message Bus found in platform service" 
+            }
+            $messageBusId = $messageBus.id
+            Write-Verbose "ID of Message Bus is $messageBusId"
 
-        if(-not($messageBusId)){ 
-            throw "No Message Bus found in platform service" 
-        }
-        $messageBusService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $messageBusId -Referer $Referer 
-        Write-Verbose "Status of Message Bus is $($messageBusService.configuredState)"
-        if($messageBusService.configuredState -ine 'STARTED') {
-            Write-Verbose "Starting Message Bus Service"
-            Start-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $messageBusId -Referer $Referer
-            Write-Verbose "Started Message Bus Service"
-        }
-        else {
-            Write-Verbose "Message Bus Service is already started"
+            if(-not($messageBusId)){ 
+                throw "No Message Bus found in platform service" 
+            }
+            $messageBusService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $messageBusId -Referer $Referer 
+            Write-Verbose "Status of Message Bus is $($messageBusService.configuredState)"
+            if($messageBusService.configuredState -ine 'STARTED') {
+                Write-Verbose "Starting Message Bus Service"
+                Start-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $messageBusId -Referer $Referer
+                Write-Verbose "Started Message Bus Service"
+            }
+            else {
+                Write-Verbose "Message Bus Service is already started"
+            }
         }
 
         $syncService = $platformServices.platformservices | Where-Object { $_.type -ieq 'SYNCHRONIZATION_SERVICE' }
@@ -171,14 +175,14 @@ function Set-TargetResource
         $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
         Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
         if($synchronizationService.configuredState -ine 'STARTED') {
-            if(([int]$versionarray[1]) -lt 6){
+            if($MinorVersion -lt 6){
                 Write-Verbose "Synchronization Service is not started. Starting it"
                 Start-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer         
             }else{
                 Write-Verbose "Synchronization Service is already stopped"
             }
         }else {
-            if(([int]$versionarray[1]) -lt 6){
+            if($MinorVersion -lt 6){
                 Write-Verbose "Synchronization Service is already started"
             }else{
                 Write-Verbose "Synchronization Service is already started. stopping it"
@@ -246,8 +250,10 @@ function Test-TargetResource
 	$ServiceName = 'ArcGISGeoEvent'
     $result = $true    
     $result = (Get-Service -Name $ServiceName -ErrorAction Ignore).Status -ieq 'Running'
-    $version = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-    $versionarray = $version.Split('.')
+    $WmiComponentObject = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $VersionArray = $WmiComponentObject.Version.Split('.')
+    $MinorVersion = [int]$VersionArray[1]
+    $IsBuild1071 = $WmiComponentObject.Name -match "10.7.1"
 
     if($result) {
         $FQDN = Get-FQDN $env:ComputerName
@@ -272,8 +278,8 @@ function Test-TargetResource
         }
     }
 
-    if($result) {
-		$platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
+    if($result -and (($MinorVersion -le 7) -and -not($IsBuild1071))){
+        $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
         $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
         if(-not($messageBus)){ 
             throw "No Message Bus found in platform service" 
@@ -297,24 +303,24 @@ function Test-TargetResource
     if($result) {
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
         $syncService = $platformServices.platformservices | Where-Object { $_.type -ieq 'SYNCHRONIZATION_SERVICE' }
-        if(-not($syncService) -and (([int]$versionarray[1]) -lt 6)){ 
+        if(-not($syncService) -and ($MinorVersion -lt 6)){ 
             throw "No Synchronization Service found in platform service" 
         }
         $syncServiceId = $syncService.id
         Write-Verbose "ID of Synchronization Service is $syncServiceId"
 
-        if(-not($syncServiceId) -and (([int]$versionarray[1]) -lt 6)){ 
+        if(-not($syncServiceId) -and ($MinorVersion -lt 6)){ 
             throw "No Synchronization Service found in platform service" 
         }
         $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
         Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
-        Write-Verbose $versionarray[1]
-        if(([int]$versionarray[1]) -lt 6){
+        Write-Verbose $MinorVersion
+        if($MinorVersion -lt 6){
             if($synchronizationService.configuredState -ine 'STARTED') {
                 Write-Verbose "Synchronization Service is not started. It should be started!"
                 $result = $false            
             }else {
-                Write-Verbose "hello - Synchronization Service is started."
+                Write-Verbose "Synchronization Service is started."
             }
         }else{
             if($synchronizationService.configuredState -ine 'STARTED') {

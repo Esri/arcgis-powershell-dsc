@@ -94,10 +94,11 @@ function Set-TargetResource
         if($FQDN.IndexOf('.') -lt 0) {
             $FQDN = Get-FQDN $MachineEndPoint
         }
-		$PortalUrl = "https://$($FQDN):7443"  
+        $PortalUrl = "https://$($FQDN):7443"  
+        $PortalAdminUrl = "$($PortalUrl)/$SiteName/portaladmin/"
 		$Referer = $PortalUrl
 		try{
-		Wait-ForUrl "https://$($FQDN):7443/$SiteName/sharing/rest/generateToken"
+			Wait-ForUrl "https://$($FQDN):7443/$SiteName/sharing/rest/generateToken"
 			$token = Get-PortalToken -PortalHostName $FQDN -SiteName $SiteName -Credential $SiteAdministrator -Referer $Referer 
 		}catch{
 			throw "[WARNING] Unable to get token:- $_"
@@ -114,32 +115,77 @@ function Set-TargetResource
         }
 		Write-Verbose "Current Alias for SSL Certificate:- '$($certsConfig.webServerCertificateAlias)' Certificates:- '$($certsConfig.sslCertificates -join ',')'"
 
+        $ImportExistingCertFlag = $False
+        $DeleteTempCert = $False
 		if(-not($certsConfig.sslCertificates -icontains $CName)){
 			Write-Verbose "Importing SSL Certificate with alias $CName"
+			$ImportExistingCertFlag = $True
+		}else{
+            Write-Verbose "SSL Certificate with alias $CName already exists"
+            $certConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CName $CName
+            if($CertificateFileLocation -and $CertificatePassword) {
+                Write-Verbose "Examine certificate from $CertificateFileLocation"
+                $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+                $cert.Import($CertificateFileLocation, $CertificatePassword, 'DefaultKeySet')
+                $NewCertThumbprint = $cert.Thumbprint
+                Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
+                if($certConfig.sha1Fingerprint -ine $NewCertThumbprint){
+                    $ImportExistingCertFlag = $True
+                    Write-Verbose "Importing exsting certificate with alias $($CName)-temp"
+                    try{
+                        Import-ExistingCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token `
+                            -Referer $Referer -CertAlias "$($CName)-temp" -CertificateFilePath $CertificateFileLocation -CertificatePassword $CertificatePassword
+                        $DeleteTempCert = $True
+                    }catch{
+                        throw "[WARNING] Error Import-ExistingCertificate:- $_"
+                    }
+
+					try{
+                        Update-PortalSSLCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CertAlias "$($CName)-temp"
+						Write-Verbose "Updating to a temp SSL Certificate causes the web server to restart asynchronously. Waiting 180 seconds before checking for intitialization"
+                        Start-Sleep -Seconds 180
+                        Wait-ForUrl -Url $PortalAdminUrl
+					}catch{
+						throw "[WARNING] Unable to Update-PortalSSLCertificate:- $_"
+					}
+					try{
+                        Write-Verbose "Deleting Portal Certificate with alias $CName"
+                        Delete-PortalCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CName $CName
+                    }catch{
+                        throw "[WARNING] Unable to Delete-PortalCertificate:- $_"
+                    }
+                }
+            }
+        }
+
+        if($ImportExistingCertFlag){
+			Write-Verbose "Importing exsting certificate with alias $CName"
 			try{
 				Import-ExistingCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token `
 					-Referer $Referer -CertAlias $CName -CertificateFilePath $CertificateFileLocation -CertificatePassword $CertificatePassword
 			}catch{
 				throw "[WARNING] Error Import-ExistingCertificate:- $_"
 			}
-		}else{
-			Write-Verbose "SSL Certificate with alias $CName already exists"
-		}
-		
-		if($certsConfig.webServerCertificateAlias -ine $CName) {
+        }
+        
+		if($certsConfig.webServerCertificateAlias -ine $CName -or $ImportExistingCertFlag) {
 			Write-Verbose "Updating Alias to use $CName"
 			try{
 				Update-PortalSSLCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CertAlias $CName 
 				Write-Verbose "Updating an SSL Certificate causes the web server to restart asynchronously. Waiting 180 seconds before checking for intitialization"
-				Start-Sleep -Seconds 180
+                Start-Sleep -Seconds 180
+                Wait-ForUrl -Url $PortalAdminUrl
+                if($DeleteTempCert){
+                    Write-Verbose "Deleting Temp Certificate with alias $($CName)-temp"
+                    Delete-PortalCertificate -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CName "$($CName)-temp"
+                }
 			}catch{
 				throw "[WARNING] Unable to Update-PortalSSLCertificate:- $_"
-			}
+            }
 		}else{
 			Write-Verbose "SSL Certificate alias $CName is the current one"
 		}     
-
-		$PortalAdminUrl = "$($PortalUrl)/$SiteName/portaladmin/"
+		
         Write-Verbose "Waiting for '$PortalAdminUrl' to initialize"
 		Wait-ForUrl -Url $PortalAdminUrl
 
@@ -297,7 +343,8 @@ function Test-TargetResource
 	try{
 		$certsConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $Sitename -Token $token.token -Referer $Referer 
 		Write-Verbose "Number of certificates:- $($certsConfig.sslCertificates.Length) Certificates:- '$($certsConfig.sslCertificates -join ',')' Current Alias :- '$($certsConfig.webServerCertificateAlias)'"
-		$result = ($certsConfig.sslCertificates -icontains $CName) -and ($certsConfig.webServerCertificateAlias -ieq $CName) 
+        $result = ($certsConfig.sslCertificates -icontains $CName) -and ($certsConfig.webServerCertificateAlias -ieq $CName) 
+        
 	}catch{
 		Write-Verbose "Error in Get-SSLCertificatesForPortal :- $_"
 		$result = $false
@@ -305,6 +352,17 @@ function Test-TargetResource
 
 	if($result){
         Write-Verbose "Certificate $($certsConfig.webServerCertificateAlias) matches expected alias of '$CNAME'"
+        $certConfig = Get-SSLCertificatesForPortal -PortalHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -CName $CName
+        if($CertificateFileLocation -and $CertificatePassword) {
+            Write-Verbose "Examine certificate from $CertificateFileLocation"
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+            $cert.Import($CertificateFileLocation, $CertificatePassword, 'DefaultKeySet')
+            $NewCertThumbprint = $cert.Thumbprint
+            Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
+            if($certConfig.sha1Fingerprint -ine $NewCertThumbprint){
+                $result = $false
+            }
+        }
     }
     else {
         Write-Verbose "Certificate $($certsConfig.webServerCertificateAlias) does not match expected alias of '$CNAME'"
@@ -338,6 +396,9 @@ function Get-SSLCertificatesForPortal
         $PortalHostName = 'localhost',
 
         [System.String]
+        $CName,
+
+        [System.String]
         $SiteName = 'arcgis',
 
         [System.String]
@@ -348,11 +409,39 @@ function Get-SSLCertificatesForPortal
     )
 
 	try {
-		Invoke-ArcGISWebRequest -Url "https://$($PortalHostName):7443/$($SiteName)/portaladmin/security/sslCertificates" -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
+        if($CName){
+            Invoke-ArcGISWebRequest -Url "https://$($PortalHostName):7443/$($SiteName)/portaladmin/security/sslCertificates/$($CName)" -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
+        }else{
+            Invoke-ArcGISWebRequest -Url "https://$($PortalHostName):7443/$($SiteName)/portaladmin/security/sslCertificates" -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
+        }
 	}
 	catch {
 		Write-Verbose "[WARNING]:- Get-SSLCertificatesForPortal encountered an error during execution. Error:- $_"
 	}
+}
+
+function Delete-PortalCertificate{
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+
+        [System.String]
+        $CName,
+
+        [System.String]
+        $SiteName = 'arcgis',
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer
+    )
+    try {
+        Invoke-ArcGISWebRequest -Url "https://$($PortalHostName):7443/$($SiteName)/portaladmin/security/sslCertificates/$($CName)/delete" -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -TimeOutSec 120
+    }catch{
+        Write-Verbose "[WARNING]:- Delete-PortalCertificate encountered an error during execution. Error:- $_"
+    }
 }
 
 function Import-ExistingCertificate
@@ -454,4 +543,3 @@ function Update-PortalSSLCertificate
 }
 
 Export-ModuleMember -Function *-TargetResource
-

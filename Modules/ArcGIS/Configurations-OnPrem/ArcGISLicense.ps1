@@ -77,6 +77,59 @@ Configuration ArcGISLicense
                         }
                     }
                 }
+                'Desktop'
+                {
+                    $LicenseFilePath = $ConfigurationData.ConfigData.Desktop.LicenseFilePath
+                    if($ConfigurationData.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
+                        ArcGIS_License "DesktopLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath =  $LicenseFilePath
+                            Password = $LicensePassword
+                            IsSingleUse = $True
+                            Ensure = "Present"
+                            Component = 'Desktop'
+                        }
+                    }
+                }
+                'Pro' 
+                {
+                    $LicenseFilePath = $ConfigurationData.ConfigData.Pro.LicenseFilePath
+                    if($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "SINGLE_USE"){
+                        ArcGIS_License "ProLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath =  $LicenseFilePath
+                            Password = $LicensePassword
+                            IsSingleUse = $True
+                            Ensure = "Present"
+                            Component = 'Pro'
+                        }
+                    }
+                }
+                'LicenseManager'
+                {   
+                    if($ConfigurationData.ConfigData.Pro){
+                        $LicenseFilePath = $ConfigurationData.ConfigData.Pro.LicenseFilePath
+                        ArcGIS_License "ProLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath =  $LicenseFilePath
+                            Password = $LicensePassword
+                            Ensure = "Present"
+                            Component = 'Pro'
+                            Version = $ConfigurationData.ConfigData.ProVersion 
+                        }
+                    }
+                    if($ConfigurationData.ConfigData.Desktop){
+                        $LicenseFilePath = $ConfigurationData.ConfigData.Desktop.LicenseFilePath
+                        ArcGIS_License "DesktopLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath =  $LicenseFilePath
+                            Password = $LicensePassword
+                            Ensure = "Present"
+                            Component = 'Desktop'
+                            Version = $ConfigurationData.ConfigData.DesktopVersion
+                        }
+                    }
+                }
             }
         }
     }

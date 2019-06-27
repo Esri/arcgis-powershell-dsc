@@ -64,8 +64,8 @@
         $DebugMode
     )
 
-    Import-DscResource -Name MSFT_xDisk
-    Import-DscResource -Name MSFT_xSmbShare
+    Import-DscResource -Name ArcGIS_xDisk
+    Import-DscResource -Name ArcGIS_xSmbShare
     Import-DscResource -Name ArcGIS_Disk
 
     $FileShareHostName = $env:ComputerName
@@ -203,6 +203,13 @@ subjectAltName     = @alt_names
 
 	Node localhost
 	{
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         if($OSDiskSize -gt 0)
         {
             ArcGIS_Disk OSDiskSize
@@ -214,7 +221,7 @@ subjectAltName     = @alt_names
 
         if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -260,7 +267,7 @@ subjectAltName     = @alt_names
 		$Accounts = @('NT AUTHORITY\SYSTEM')
 		if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
 		if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-        xSmbShare FileShare
+        ArcGIS_xSmbShare FileShare
 		{
 			Ensure						= 'Present'
 			Name						= $FileShareName

@@ -1,7 +1,7 @@
 Configuration ArcGISRegisterSQLEGDB{
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName ArcGIS
-    Import-DscResource -Name MSFT_xFirewall
+    Import-DscResource -Name ArcGIS_xFirewall
     Import-DSCResource -Name ArcGIS_WaitForSQLServer
     Import-DSCResource -Name ArcGIS_EGDB
     
@@ -85,7 +85,7 @@ Configuration ArcGISRegisterSQLEGDB{
                     }
                 }
                 'SqlServer'{
-                    xFirewall Server_FirewallRule_Database
+                    ArcGIS_xFirewall Server_FirewallRule_Database
                     {
                             Name                  = "SQL Server Database IN" 
                             DisplayName           = "SQL Server Database 1433" 
@@ -122,7 +122,7 @@ Configuration ArcGISRegisterSQLEGDB{
                             Start-Sleep -Seconds 5
                             Start-Service -Name 'MSSQLSERVER'
                         }
-                        DependsOn = @('[xFirewall]Server_FirewallRule_Database')
+                        DependsOn = @('[ArcGIS_xFirewall]Server_FirewallRule_Database')
                     }
 
                     $DatabaseAdminUserName = $ConfigurationData.ConfigData.SQLServer.DatabaseAdminUser.UserName

@@ -14,7 +14,7 @@
         $MachineAdministratorCredential
     )
 
-	Import-DscResource -Name MSFT_xSmbShare
+	Import-DscResource -Name ArcGIS_xSmbShare
 
 	$FileShareHostName = $env:ComputerName    
     $FileShareLocalPath = (Join-Path $env:SystemDrive "ArcGIS\Deployment\Downloads")
@@ -57,7 +57,7 @@
 			$Accounts = @('NT AUTHORITY\SYSTEM')
 			if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
 			if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-			xSmbShare FileShare 
+			ArcGIS_xSmbShare FileShare 
 			{ 
 				Ensure						= 'Present' 
 				Name						= $FileShareName

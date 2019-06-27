@@ -82,17 +82,19 @@ function Set-TargetResource
                         $currentversion = "10.5.1"
                     }elseif($currentversion -ieq "10.61"){
                         $currentversion = "10.6.1"
+                    }elseif($currentversion -ieq "10.71"){
+                        $currentversion = "10.7.1"
                     }
                     
                     if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){
                         if($Version.Split('.').Length -eq 3){
                             if($Version.Split('.')[2] -eq $currentversion.Split('.')[2]){
-                                Write-Verbose 'Server Upgrade Successfull'
+                                Write-Verbose 'Server Upgrade Successful'
                                 $ServerReady = $true
                                 break
                             }
                         }else{
-                            Write-Verbose 'Server Upgrade Successfull'
+                            Write-Verbose 'Server Upgrade Successful'
                             $ServerReady = $true
                             break
                         }

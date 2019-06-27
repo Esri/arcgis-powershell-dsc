@@ -14,5 +14,6 @@ class ArcGIS_Server : OMI_BaseResource
 	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
 	[Write] String Platform;
 	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
+	[Write, Description("Enable Usage Metering")] Boolean EnableUsageMetering;
 };
 

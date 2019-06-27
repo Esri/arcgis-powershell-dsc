@@ -126,7 +126,7 @@ function Set-TargetResource
 
         $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
         if(-not($token.token)) {
-            throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
+            throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
         }
         Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
 

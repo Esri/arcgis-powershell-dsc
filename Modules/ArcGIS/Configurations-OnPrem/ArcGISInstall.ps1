@@ -9,19 +9,20 @@ Configuration ArcGISInstall{
 
         $SevenZipInstallerDir = if($ConfigurationData.ConfigData.SevenZipInstallerDir){$ConfigurationData.ConfigData.SevenZipInstallerDir}else{$null}
         $SevenZipInstallerPath = if($ConfigurationData.ConfigData.SevenZipInstallerPath){$ConfigurationData.ConfigData.SevenZipInstallerPath}else{$null}
-
-        $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-        $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+        if($ConfigurationData.ConfigData.Credentials){
+            $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
+            $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
      
-        if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
-            User ArcGIS_RunAsAccount
-            {
-                UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-                Password = $SACredential
-                FullName = 'ArcGIS Run As Account'
-                Ensure = "Present"
-                PasswordChangeRequired = $false
-                PasswordNeverExpires = $true
+            if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+                User ArcGIS_RunAsAccount
+                {
+                    UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                    Password = $SACredential
+                    FullName = 'ArcGIS Run As Account'
+                    Ensure = "Present"
+                    PasswordChangeRequired = $false
+                    PasswordNeverExpires = $true
+                }
             }
         }
 
@@ -57,6 +58,18 @@ Configuration ArcGISInstall{
         if($Node.Role -icontains "LoadBalancer")
         {
             $NodeRoleArray += "LoadBalancer"
+        }
+        if($Node.Role -icontains "Desktop")
+        {
+            $NodeRoleArray += "Desktop"
+        }
+        if($Node.Role -icontains "Pro")
+        {
+            $NodeRoleArray += "Pro"
+        }
+        if($Node.Role -icontains "LicenseManager")
+        {
+            $NodeRoleArray += "LicenseManager"
         }
 
         for ( $i = 0; $i -lt $NodeRoleArray.Count; $i++ )
@@ -148,6 +161,22 @@ Configuration ArcGISInstall{
                         SevenZipMsiInstallerPath = $SevenZipInstallerPath
                         SevenZipInstallDir = $SevenZipInstallerDir
                         Ensure = "Present"
+                    }
+
+                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    $MajorVersion = $VersionArray[1]
+                    $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
+                    if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                        ArcGIS_Install "WebStylesInstall$($Node.NodeName)"
+                        { 
+                            Name = "WebStyles"
+                            Version = $ConfigurationData.ConfigData.Version
+                            Path = $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath
+                            Arguments = "/qb"
+                            SevenZipMsiInstallerPath = $SevenZipInstallerPath
+                            SevenZipInstallDir = $SevenZipInstallerDir
+                            Ensure = "Present"
+                        }
                     }
 
                     if ($ConfigurationData.ConfigData.Portal.Installer.PatchesDir) {
@@ -320,6 +349,93 @@ Configuration ArcGISInstall{
                                 $False
                             }
                         }
+                    }
+                }
+                'Desktop' {
+                    $Argumments =""
+                    if($ConfigurationData.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
+                        $Argumments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                    }else{
+                        $Argumments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                    }
+                    if($ConfigurationData.ConfigData.Desktop.EnableEUEI -and $ConfigurationData.ConfigData.Desktop.EnableEUEI -eq $False){
+                        $Arguments += " ENABLEEUEI=0"
+                    }  
+
+                    ArcGIS_Install DesktopInstall
+                    { 
+                        Name = "Desktop"
+                        Version = $ConfigurationData.ConfigData.DesktopVersion
+                        Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
+                        Arguments =   $Argumments
+                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
+                        SevenZipInstallDir = $SevenZipInstallerDir
+                        Ensure = "Present"
+                    }
+
+                    if ($ConfigurationData.ConfigData.Desktop.Installer.PatchesDir) {
+                        ArcGIS_InstallPatch DesktopInstallPatch
+                        {
+                            Name = "Desktop"
+                            Version = $ConfigurationData.ConfigData.DesktopVersion
+                            PatchesDir = $ConfigurationData.ConfigData.Desktop.Installer.PatchesDir
+                            Ensure = "Present"
+                        }
+                    }
+                }
+                'Pro'
+                {
+                    $Arguments = ""
+                    if( $ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER"){
+                        $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    }elseif($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "SINGLE_USE"){
+                        $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
+                        $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    }elseif($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE"){
+                        $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
+                        $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Pro.EsriLicenseHost)`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    }
+
+                    if($ConfigurationData.ConfigData.Pro.LockAuthSettings -and $ConfigurationData.ConfigData.Pro.LockAuthSettings -eq $False){
+                        $Arguments += " LOCK_AUTH_SETTINGS=False"
+                    }   
+                    if($ConfigurationData.ConfigData.Pro.EnableEUEI -and $ConfigurationData.ConfigData.Pro.EnableEUEI -eq $False){
+                        $Arguments += " ENABLEEUEI=0"
+                    } 
+                    if($ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup -and $ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup -eq $False){
+                        $Arguments += " CHECKFORUPDATESATSTARTUP=0"
+                    }   
+
+                    ArcGIS_Install ProInstall{
+                        Name = "Pro"
+                        Version = $ConfigurationData.ConfigData.ProVersion
+                        Path = $ConfigurationData.ConfigData.Pro.Installer.Path
+                        Arguments = $Arguments
+                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
+                        SevenZipInstallDir = $SevenZipInstallerDir
+                        Ensure = "Present"
+                    }
+
+                    if ($ConfigurationData.ConfigData.Pro.Installer.PatchesDir) {
+                        ArcGIS_InstallPatch ProInstallPatch
+                        {
+                            Name = "Pro"
+                            Version = $ConfigurationData.ConfigData.ProVersion
+                            PatchesDir = $ConfigurationData.ConfigData.Pro.Installer.PatchesDir
+                            Ensure = "Present"
+                        }
+                    }
+                }
+                'LicenseManager'
+                {
+                    ArcGIS_Install LicenseManagerInstall{
+                        Name = "LicenseManager"
+                        Version = $ConfigurationData.ConfigData.LicenseManagerVersion
+                        Path = $ConfigurationData.ConfigData.LicenseManager.Installer.Path
+                        Arguments = "/qb INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
+                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
+                        SevenZipInstallDir = $SevenZipInstallerDir
+                        Ensure = "Present"
                     }
                 }
             }

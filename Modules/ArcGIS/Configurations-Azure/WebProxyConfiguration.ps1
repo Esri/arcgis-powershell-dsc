@@ -92,12 +92,12 @@
     Import-DscResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
-    Import-DscResource -Name MSFT_xFirewall
+    Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_ReverseProxy_ARR
     Import-DscResource -Name ArcGIS_Federation
     Import-DscResource -Name ArcGIS_TLSCertificateFileImport
-    Import-DscResource -Name MSFT_xDisk
+    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_AzurePreFed
         
@@ -131,6 +131,13 @@
     
 	Node localhost
 	{
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         if($OSDiskSize -gt 0) 
         {
             ArcGIS_Disk OSDiskSize
@@ -142,7 +149,7 @@
         
         if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -166,7 +173,7 @@
                 $Depends += '[User]ArcGIS_RunAsAccount'
             }
 
-            xFirewall ReverseProxy_FirewallRules
+            ArcGIS_xFirewall ReverseProxy_FirewallRules
             {
                 Name                  = "IIS-ARR" 
                 DisplayName           = "IIS-ARR" 
@@ -301,6 +308,7 @@
                 SiteAdministrator = $SiteAdministratorCredential
                 ServerRole = 'HOSTING_SERVER'
                 ServerFunctions = 'GeneralPurposeServer'
+                IsMultiTierAzureBaseDeployment = $true
                 DependsOn = @("[ArcGIS_AzurePreFed]AzurePreFederation")
             }
         }

@@ -67,8 +67,8 @@
 	Import-DscResource -Name ArcGIS_DataStore
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
-    Import-DscResource -Name MSFT_xFirewall
-    Import-DscResource -Name MSFT_xDisk
+    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     
     $DataStoreHostNames = ($DataStoreMachineNames -split ',')
@@ -99,6 +99,13 @@
 
 	Node localhost
 	{
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         if($OSDiskSize -gt 0) 
         {
             ArcGIS_Disk OSDiskSize
@@ -110,7 +117,7 @@
         
         if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -166,7 +173,7 @@
 			    DependsOn                  = @('[ArcGIS_Service_Account]DataStore_Service_Account')
 		    } 
         
-            xFirewall DataStore_FirewallRules
+            ArcGIS_xFirewall DataStore_FirewallRules
 		    {
 				    Name                  = "ArcGISDataStore" 
 				    DisplayName           = "ArcGIS Data Store" 
@@ -181,7 +188,7 @@
 
             if($IsDataStoreWithStandby) 
             {
-                xFirewall DataStore_FirewallRules_OutBound
+                ArcGIS_xFirewall DataStore_FirewallRules_OutBound
 			    {
 				    Name                  = "ArcGISDataStore-Out" 
 				    DisplayName           = "ArcGIS Data Store Out" 

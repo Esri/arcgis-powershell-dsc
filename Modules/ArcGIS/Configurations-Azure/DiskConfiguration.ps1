@@ -1,6 +1,6 @@
 ﻿Configuration DiskConfiguration
 {   	
-    Import-DscResource -Name MSFT_xDisk     
+    Import-DscResource -Name ArcGIS_xDisk     
     Import-DscResource -Name ArcGIS_Disk
     
     Node localhost
@@ -20,14 +20,15 @@
 
 		$DataDiskDriveLetter = 'F'
         $Depends = @()
-        if((Get-Partition | Measure-Object).Count -ne (Get-Disk | Measure-Object).Count) 
+        $UnallocatedDataDisks = Get-Disk | Where partitionstyle -eq 'raw'
+        if(($UnallocatedDataDisks | Measure-Object).Count -gt 0)
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
 			{
 				DiskNumber = 2
 				DriveLetter = $DataDiskDriveLetter
 			}   
-            $Depends += '[xDisk]DataDisk'
+            $Depends += '[ArcGIS_xDisk]DataDisk'
         }
 		
         if(Get-Partition -DriveLetter $DataDiskDriveLetter -ErrorAction Ignore) 

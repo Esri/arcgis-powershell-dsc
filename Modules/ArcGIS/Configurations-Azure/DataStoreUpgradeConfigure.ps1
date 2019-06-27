@@ -14,6 +14,13 @@ Configuration DataStoreUpgradeConfigure{
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     
     Node localhost {
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         $ServerHostName = Get-FQDN $ServerMachineName
 
         $InstallDir = "$($env:SystemDrive)\\arcgis\\datastore"
