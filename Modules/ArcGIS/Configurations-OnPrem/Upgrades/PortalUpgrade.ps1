@@ -20,6 +20,10 @@ Configuration PortalUpgrade{
         [System.String]
         $InstallerPath,
 
+        [parameter(Mandatory = $false)]        
+        [System.String]
+        $WebStylesInstallerPath,
+
         [parameter(Mandatory = $false)]
         [System.String]
         $InstallDir,
@@ -109,6 +113,8 @@ Configuration PortalUpgrade{
         $StandbyMachine = [System.Net.DNS]::GetHostByName($StandbyMachineName).HostName
         $VersionArray = $Version.Split(".")
         $MajorVersion = $VersionArray[1]
+        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
+       
         $Depends = @()
 
         if(-not($IsSADomainAccount)){
@@ -151,6 +157,22 @@ Configuration PortalUpgrade{
             }
             
             $Depends += '[ArcGIS_Install]PortalUpgrade'
+
+            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $WebStylesInstallerPath){
+                ArcGIS_Install "WebStylesInstall"
+                { 
+                    Name = "WebStyles"
+                    Version = $Version
+                    Path = $WebStylesInstallerPath
+                    Arguments = "/qb"
+                    SevenZipMsiInstallerPath = $SevenZipInstallerPath
+                    SevenZipInstallDir = $SevenZipInstallerDir
+                    Ensure = "Present"
+                    DependsOn = $Depends
+                }
+
+                $Depends += '[ArcGIS_Install]WebStylesInstall'
+            }
             
             if($PrimaryLicensePath -and ($MajorVersion -lt 7)) 
             {
@@ -213,8 +235,8 @@ Configuration PortalUpgrade{
                     PortalAdministrator = $PrimarySiteAdmin 
                     DependsOn = $Depends
                     AdminEmail = $PrimarySiteAdminEmail
-                    AdminSecurityQuestionIndex = 1
-                    AdminSecurityAnswer = "vanilla"
+                    AdminSecurityQuestionIndex = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
+                    AdminSecurityAnswer = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
                     ContentDirectoryLocation = $ContentDirectoryLocation
                     Join = $false
                     IsHAPortal =  if($IsMultiMachinePortal){$True}else{$False}
@@ -279,13 +301,29 @@ Configuration PortalUpgrade{
                 Name = "Portal"
                 Version = $Version
                 Path = $InstallerPath
-                Arguments = "/qn INSTALLDIR=$($InstallDir) CONTENTDIR=$($ContentDir)";
+                Arguments = "/qn INSTALLDIR=$($InstallDir) CONTENTDIR=$($ContentDir)"
                 Ensure = "Present"
                 SevenZipMsiInstallerPath = $SevenZipInstallerPath
                 SevenZipInstallDir = $SevenZipInstallerDir
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]PortalInstall"
+
+            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $WebStylesInstallerPath){
+                ArcGIS_Install "WebStylesInstall"
+                { 
+                    Name = "WebStyles"
+                    Version = $Version
+                    Path = $WebStylesInstallerPath
+                    Arguments = "/qb"
+                    SevenZipMsiInstallerPath = $SevenZipInstallerPath
+                    SevenZipInstallDir = $SevenZipInstallerDir
+                    Ensure = "Present"
+                    DependsOn = $Depends
+                }
+
+                $Depends += '[ArcGIS_Install]WebStylesInstall'
+            }
             
             if($MajorVersion -lt 7){
                 ArcGIS_License PortalLicense

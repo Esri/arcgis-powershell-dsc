@@ -27,6 +27,8 @@
 -        Define the platform on which the Server is being installed - (Not Used)
     .PARAMETER DisableServiceDirectory
         Boolean to indicate whether to disable the service directory for ArcGIS Server
+    .PARAMETER DisableServiceDirectory
+        Boolean to indicate whether to enable the internal usage metering plugin
 #>
 function Get-TargetResource
 {
@@ -72,7 +74,10 @@ function Get-TargetResource
         $Platform,
 
         [System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $EnableUsageMetering
 	)
 	
 	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -123,7 +128,10 @@ function Set-TargetResource
 		$Platform,
 
         [System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $EnableUsageMetering
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -325,11 +333,12 @@ function Set-TargetResource
             $logSettings = Get-LogSettings -ServerURL $ServerUrl -Token $token.token -Referer $Referer
             Write-Verbose "Current Log Level:- $($logSettings.settings.logLevel)"
 
-            if($logSettings.settings.logLevel -ine $LogLevel) {
+            if($logSettings.settings.logLevel -ine $LogLevel -or ($logSettings.settings.usageMeteringEnabled -ne $EnableUsageMetering)) {
                 $logSettings.settings.logLevel = $LogLevel
-                Write-Verbose "Updating log level to $($logSettings.settings.logLevel)"
+                $logSettings.settings.usageMeteringEnabled = $EnableUsageMetering
+                Write-Verbose "Updating log level to $($logSettings.settings.logLevel) and usageMeteringEnabled to $($logSettings.settings.usageMeteringEnabled)"
                 Update-LogSettings -ServerURL "https://$($FQDN):6443" -Token $token.token -Referer $Referer -logSettings $logSettings.settings 
-                #Write-Verbose "Updated log level to $($logSettings.settings.logLevel)"
+                Write-Verbose "Updated log level to $($logSettings.settings.logLevel) and usageMeteringEnabled to $($logSettings.settings.usageMeteringEnabled)"
             }
         }
     }
@@ -389,7 +398,10 @@ function Test-TargetResource
 		$Platform,
 
         [System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $EnableUsageMetering
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -421,6 +433,10 @@ function Test-TargetResource
         Write-Verbose "Current Log Level $($logSettings.settings.logLevel)"
         if($logSettings.settings.logLevel -ine $LogLevel) {
             Write-Verbose "Current Log Level $($logSettings.settings.logLevel) not set to '$LogLevel'"
+            $result = $false
+        }
+        if($result -and $logSettings.settings.usageMeteringEnabled -ne $EnableUsageMetering) {
+            Write-Verbose "Current usageMeteringEnabled not set to $($logSettings.settings.usageMeteringEnabled)"
             $result = $false
         }
     }
@@ -648,7 +664,7 @@ function Get-LogSettings
 
     $res = Invoke-WebRequest -Uri $GetLogSettingsUrl -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing 
     $response = $res.Content | ConvertFrom-Json
-	Write-Verbose "Response from GetLogSettings:- $response"
+	Write-Verbose "Response from GetLogSettings:- $($res.Content)"
     Check-ResponseStatus $response 
     $response    
 }
@@ -669,10 +685,11 @@ function Update-LogSettings
 
         $logSettings
     )    
+    $usageMeteringEnabled = if($logSettings.usageMeteringEnabled) { 'on' } else { 'off' } # API uses a checkbox and hence need to provide on/off values
     $UpdateLogSettingsUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/logs/settings/edit"
     $props = @{ f= 'json'; token = $Token; logDir = $logSettings.logDir; logLevel = $logSettings.logLevel; 
                 maxLogFileAge = $logSettings.maxLogFileAge; maxErrorReportsCount = $logSettings.maxErrorReportsCount;
-                usageMeteringEnabled = $logSettings.usageMeteringEnabled }
+                usageMeteringEnabled = $usageMeteringEnabled }
     $cmdBody = To-HttpBody $props   
     $headers = @{'Content-type'='application/x-www-form-urlencoded'
                 'Content-Length' = $cmdBody.Length

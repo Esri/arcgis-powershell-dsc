@@ -23,7 +23,7 @@ class ArcGIS_Portal : OMI_BaseResource
     [Write] String ContentDirectoryCloudConnectionString;
     [Write] String ContentDirectoryCloudContainerName; 
 	[Write, EmbeddedInstance("MSFT_Credential")] String ADServiceUser;
-	[Write] Boolean EnableAutomaticAccountCreation;
+	[Write] Boolean EnableAutomaticAccountCreation;   
 	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory; 
 };
 

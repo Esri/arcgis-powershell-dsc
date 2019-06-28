@@ -177,7 +177,12 @@ Function Test-PatchInstalled {
         "HKLM:\SOFTWARE\ESRI\Server10.4\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.5\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.6\Updates\*" ,
-        "HKLM:\SOFTWARE\ESRI\Server10.7\Updates\*"
+        "HKLM:\SOFTWARE\ESRI\Server10.7\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.6\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.7\Updates\*"
     )
     
     ForEach ( $RegPath in $RegPaths ) {

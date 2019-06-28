@@ -29,7 +29,11 @@ function Get-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$Name,
+        $Name,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
 
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -75,7 +79,11 @@ function Set-TargetResource
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$Path,
+        $Path,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
 
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -112,7 +120,7 @@ function Set-TargetResource
         if((Get-Item $Path).length -gt 5mb)
         {
             Write-Verbose 'Self Extracting Installer'
-			$ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
+			$ProdId = if(-not($ProductId)){ Get-ComponentCode -ComponentName $Name -Version $Version }else{ $ProductId}
             $TempFolder = Join-Path ([System.IO.Path]::GetTempPath()) $ProdId
             if(Test-Path $TempFolder)
             {
@@ -166,7 +174,10 @@ function Set-TargetResource
                    }               
                }               
             }
-        
+            if($ExecPath -iMatch ".msi"){
+                $Arguments = "/i `"$ExecPath`" $Arguments"
+                $ExecPath = "msiexec"
+            }
             Write-Verbose "Executing $ExecPath with arguments $Arguments"
             Write-Verbose "$ExecPath $Arguments"
             if($LogPath) {
@@ -190,7 +201,7 @@ function Set-TargetResource
                     Write-Verbose $err
                 }
 
-                if($Name -ieq "Portal"){
+                if(($Name -ieq "Portal") -and ($Name -ieq "Portal for ArcGIS")){
                     if($Version -ieq "10.5"){
                         $ArgsArray = $Arguments.Split('=')
                         $Done = $False
@@ -241,8 +252,9 @@ function Set-TargetResource
                 }
             } 
         }
-		Write-Verbose "Validating the $Name Installation"
-		$result = Test-Install -Name $Name -Version $Version
+        Write-Verbose "Validating the $Name Installation"
+        $result = if(-not($ProductId)){  Test-Install -Name $Name -Version $Version }else{ Test-Install -Name $Name -ProductId $ProductId }
+		
 		if(-not($result)){
 			throw "Failed to Install $Name"
 		}else{
@@ -250,7 +262,8 @@ function Set-TargetResource
 		}
     }
     elseif($Ensure -eq 'Absent') {
-        $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
+        $ProdId = if(-not($ProductId)){ Get-ComponentCode -ComponentName $Name -Version $Version }else{ $ProductId }
+        
         if(-not($ProdId.StartsWith('{'))){
             $ProdId = '{' + $ProdId
         }
@@ -275,7 +288,11 @@ function Test-TargetResource
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$Path,
+        $Path,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
 		
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -305,12 +322,21 @@ function Test-TargetResource
 
 	$result = $false
     
-    $trueName = if ($Name -ieq 'DataStore') { 'Data Store' } else { $Name }
-	$ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
-	Write-Verbose "Installed Version $($ver.Version)"
-
-	$result = Test-Install -Name $Name -Version $Version
-
+    if(-not($ProductId)){
+        $trueName = $Name
+        if($Name -ieq 'LicenseManager'){
+            $trueName = 'License Manager'
+        }elseif($Name -ieq 'DataStore'){
+            $trueName = 'Data Store'
+        }
+        $ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
+        Write-Verbose "Installed Version $($ver.Version)"
+    
+        $result = Test-Install -Name $Name -Version $Version
+    }else{
+        $result = Test-Install -Name $Name -ProductId $ProductId
+    }
+    
     if($Ensure -ieq 'Present') {
 		$result   
     }

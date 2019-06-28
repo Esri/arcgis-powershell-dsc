@@ -58,8 +58,8 @@ Configuration PortalUpgradeStandbyJoin{
             UserLicenseType                       = if(($MajorVersion -ge 7) -and $UserLicenseType){ $UserLicenseType } else {$null}
             PortalAdministrator = $PrimarySiteAdmin 
             AdminEmail = $PrimarySiteAdminEmail
-            AdminSecurityQuestionIndex = 1
-            AdminSecurityAnswer = "vanilla"
+            AdminSecurityQuestionIndex = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
+            AdminSecurityAnswer = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
             ContentDirectoryLocation = $ContentDirectoryLocation
             Join = $true
             IsHAPortal = $true

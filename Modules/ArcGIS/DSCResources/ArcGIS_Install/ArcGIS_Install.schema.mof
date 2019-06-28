@@ -4,6 +4,7 @@ class ArcGIS_Install : OMI_BaseResource
 {
 	[Key] String Name;
 	[Write] String Path;
+	[Write] String ProductId;
 	[Key] String Version;
 	[Write] String Arguments;
 	[Write] String LogPath;

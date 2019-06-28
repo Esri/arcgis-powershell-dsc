@@ -9,19 +9,21 @@ Configuration ArcGISUninstall
     
     Node $AllNodes.NodeName
     {   
-        $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-        $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+        if($ConfigurationData.ConfigData.Credentials){
+            $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
+            $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
 
-        $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
-        $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
-     
-        if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
-            User ArcGIS_RunAsAccount
-            {
-                UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-                Password = $SACredential
-                FullName = 'ArcGIS Run As Account'
-                Ensure = "Present"
+            $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
+            $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
+        
+            if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+                User ArcGIS_RunAsAccount
+                {
+                    UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
+                    Password = $SACredential
+                    FullName = 'ArcGIS Run As Account'
+                    Ensure = "Present"
+                }
             }
         }
 
@@ -175,6 +177,35 @@ Configuration ArcGISUninstall
                                 $True
                             }
                         }
+                    }
+                }
+                'Desktop' {
+                    ArcGIS_Install DesktopUninstall
+                    { 
+                        Name = "Desktop"
+                        Version = $ConfigurationData.ConfigData.DesktopVersion
+                        Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
+                        Arguments = "/qb"
+                        Ensure = "Absent"
+                    }
+                }
+                'Pro' {
+                    ArcGIS_Install ProUninstall{
+                        Name = "Pro"
+                        Version = $ConfigurationData.ConfigData.ProVersion
+                        Path = $ConfigurationData.ConfigData.Pro.Installer.Path
+                        Arguments = "/qb"
+                        Ensure = "Absent"
+                    }
+                }
+                'LicenseManager'
+                {
+                    ArcGIS_Install LicenseManagerUninstall{
+                        Name = "LicenseManager"
+                        Version = $ConfigurationData.ConfigData.LicenseManagerVersion
+                        Path = $ConfigurationData.ConfigData.LicenseManager.Installer.Path
+                        Arguments = "/qb INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
+                        Ensure = "Absent"
                     }
                 }
             }

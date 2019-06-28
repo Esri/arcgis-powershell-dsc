@@ -119,9 +119,9 @@
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Federation
-    Import-DscResource -Name MSFT_xFirewall
-    Import-DscResource -Name MSFT_xSmbShare
-	Import-DscResource -Name MSFT_xDisk  
+    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_xSmbShare
+	Import-DscResource -Name ArcGIS_xDisk  
 	Import-DscResource -Name ArcGIS_Disk  
     Import-DscResource -Name ArcGIS_TLSCertificateImport
 	Import-DscResource -Name ArcGIS_IIS_TLS
@@ -182,7 +182,14 @@
     $ServerDirsLocation = Join-Path $env:SystemDrive "arcgisnotebookserver\server-dirs"
 
 	Node localhost
-	{        
+	{       
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+         
 		$DependsOn = @()
 		
 		if($OSDiskSize -gt 0) 
@@ -198,13 +205,13 @@
 		
 		if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
 				DriveLetter = 'F'
 				DependsOn 	= $DependsOn
 			}
-			$DependsOn += '[xDisk]DataDisk' 
+			$DependsOn += '[ArcGIS_xDisk]DataDisk' 
         }    
         
 		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -236,7 +243,7 @@
 			$Accounts = @('NT AUTHORITY\SYSTEM')
 			if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
 			if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-            xSmbShare FileShare 
+            ArcGIS_xSmbShare FileShare 
 		    { 
 			    Ensure						= 'Present' 
 			    Name						= $FileShareName
@@ -244,7 +251,7 @@
 			    FullAccess					= $Accounts
 				DependsOn					= $DependsOn
 			}
-			$DependsOn += '[xSmbShare]FileShare'
+			$DependsOn += '[ArcGIS_xSmbShare]FileShare'
     
             ArcGIS_WindowsService ArcGIS_for_NotebookServer_Service
             {
@@ -304,7 +311,7 @@
 				  $DependsOn += '[Script]PersistStorageCredentials'
             }        
 
-            xFirewall NotebookServer_FirewallRules
+            ArcGIS_xFirewall NotebookServer_FirewallRules
 		    {
 			    Name                  = "ArcGISNotebookServer"
 			    DisplayName           = "ArcGIS for Notebook Server"
@@ -317,7 +324,7 @@
 				Protocol              = "TCP"
 				DependsOn       	   = $DependsOn
 		    }
-			$DependsOn += '[xFirewall]NotebookServer_FirewallRules'
+			$DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
 
 			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store'))
 			{

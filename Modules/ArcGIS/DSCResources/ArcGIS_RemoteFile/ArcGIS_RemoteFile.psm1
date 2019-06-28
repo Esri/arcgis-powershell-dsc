@@ -69,7 +69,19 @@ function Set-TargetResource
 		$Url,
 
 		[System.String]
-		$DestinationPath,
+        $DestinationPath,
+        
+        [Parameter(Mandatory=$true)]
+        [System.Boolean]
+        $UseAzureFiles,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AFSCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $AFSEndpoint,
 
 		[System.Boolean]
 		$Force,
@@ -93,8 +105,17 @@ function Set-TargetResource
               Write-Verbose "Downloading file $url to $DestinationPath"
               Download-File -url $url -targetFile $DestinationPath
           }else {
-              Write-Verbose "Copying file $url to $DestinationPath"
-              Copy-Item -Path $url -Destination $DestinationPath -Force
+                if($UseAzureFiles){
+                    $AvailableDriveLetter = AvailableDriveLetter
+                    New-PSDrive -Name $AvailableDriveLetter -PSProvider FileSystem -Root $AFSEndpoint -Credential $AFSCredential -Persist
+                    $FileSharePath = "$($AvailableDriveLetter):\\$($url)"
+                    Write-Verbose "Copying file $FileSharePath to $DestinationPath"
+                    Copy-Item -Path $FileSharePath -Destination $DestinationPath -Force
+                    Remove-PSDrive -Name $AvailableDriveLetter
+                }else{
+                    Write-Verbose "Copying file $url to $DestinationPath"
+                    Copy-Item -Path $url -Destination $DestinationPath -Force
+                }
           }
     }
     elseif($Ensure -ieq 'Absent') {        
@@ -118,7 +139,19 @@ function Test-TargetResource
 		$Url,
 
 		[System.String]
-		$DestinationPath,
+        $DestinationPath,
+        
+        [Parameter(Mandatory=$true)]
+        [System.Boolean]
+        $UseAzureFiles,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AFSCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $AFSEndpoint,
 
 		[System.Boolean]
 		$Force,
@@ -158,9 +191,12 @@ function Test-TargetResource
                      $result = $false
                    }
                } else {
-
-                    if((Get-Item -Path $Url).LastWriteTime -gt (Get-Item -Path $DestinationPath).CreationTime) {
-                        # File has changed - needs to be copied again
+                    if(-not($UseAzureFiles)){
+                        if((Get-Item -Path $Url).LastWriteTime -gt (Get-Item -Path $DestinationPath).CreationTime) {
+                            # File has changed - needs to be copied again
+                            $result = $false
+                        }
+                    }else{
                         $result = $false
                     }
                }
@@ -170,6 +206,19 @@ function Test-TargetResource
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
     }	
+}
+
+Function AvailableDriveLetter ()
+{
+    param ([char]$ExcludedLetter)
+    $Letter = [int][char]'C'
+    $i = @()
+    #getting all the used Drive letters reported by the Operating System
+    $(Get-PSDrive -PSProvider filesystem) | %{$i += $_.name}
+    #Adding the excluded letter
+    $i+=$ExcludedLetter
+    while($i -contains $([char]$Letter)){$Letter++}
+    Return $([char]$Letter)
 }
 
 

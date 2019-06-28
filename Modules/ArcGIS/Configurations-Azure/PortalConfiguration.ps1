@@ -101,8 +101,8 @@
     Import-DscResource -Name ArcGIS_Portal_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
-    Import-DscResource -Name MSFT_xFirewall
-    Import-DscResource -Name MSFT_xDisk
+    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     
     ##
@@ -164,6 +164,13 @@
 
 	Node localhost
 	{
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         if($OSDiskSize -gt 0) 
         {
             ArcGIS_Disk OSDiskSize
@@ -175,7 +182,7 @@
         
         if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -255,7 +262,7 @@
                       }              
                       $PortalDependsOn += '[Script]PersistStorageCredentials'
 
-                      $RootPathOfFileShare = "\\$($AzureFilesEndpoint)\\$FileShareName"
+                      $RootPathOfFileShare = "\\$($AzureFilesEndpoint)\$FileShareName"
                       Script CreatePortalContentFolder
                       {
                           TestScript = { 
@@ -298,8 +305,8 @@
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
                 } 
 
-		        $PortalDependsOn += '[xFirewall]Portal_FirewallRules'
-                xFirewall Portal_FirewallRules
+		        $PortalDependsOn += '[ArcGIS_xFirewall]Portal_FirewallRules'
+                ArcGIS_xFirewall Portal_FirewallRules
 		        {
 				        Name                  = "PortalforArcGIS" 
 				        DisplayName           = "Portal for ArcGIS" 
@@ -314,7 +321,7 @@
 
                 if($IsHAPortal) 
                 {
-                    xFirewall Portal_Database_OutBound
+                    ArcGIS_xFirewall Portal_Database_OutBound
 		            {
 				            Name                  = "PortalforArcGIS-Outbound" 
 				            DisplayName           = "Portal for ArcGIS Outbound" 
@@ -328,7 +335,7 @@
 				            Protocol              = "TCP" 
 		            } 
 
-                    xFirewall Portal_Database_InBound
+                    ArcGIS_xFirewall Portal_Database_InBound
 			        {
 					        Name                  = "PortalforArcGIS-Inbound" 
 					        DisplayName           = "Portal for ArcGIS Inbound" 
@@ -341,7 +348,7 @@
 					        Protocol              = "TCP" 
 			        }  
 			
-			        $PortalDependsOn += @('[xFirewall]Portal_Database_OutBound','[xFirewall]Portal_Database_InBound')
+			        $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Database_OutBound','[ArcGIS_xFirewall]Portal_Database_InBound')
                 }     
 
 		        ArcGIS_Portal Portal

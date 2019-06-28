@@ -96,7 +96,7 @@ function Set-TargetResource
 			   if(<#$Name -ieq 'ArcGIS Server' -OR $Name -ieq 'Portal for ArcGIS' -or#> $Name -ieq 'ArcGIS Data Store'){
 					$ExecPath = $InstallDir
                     $Arguments = '/username ' + $($RunAsUserName) + ' /password "' + $($RunAsPassword) +'"'
-                    Write-Verbose "Just Checking : - $Arguments"
+                    Write-Verbose "Running configureserviceaccount.bat for user - $($RunAsUserName)"
                     if($Name -ieq 'ArcGIS Server'){
                         $ExecPath = Join-Path $ExecPath '\\bin\\ServerConfigurationUtility.exe'
                     }elseif($Name -ieq 'Portal for ArcGIS'){

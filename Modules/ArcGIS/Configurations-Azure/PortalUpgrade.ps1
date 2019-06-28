@@ -8,6 +8,10 @@ Configuration PortalUpgrade{
 		[parameter(Mandatory = $true)]
         [System.String]
         $PortalInstallerPath,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $WebStylesInstallerPath,
 		
 		[parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
@@ -70,10 +74,18 @@ Configuration PortalUpgrade{
     $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
     Node localhost {
-        
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+
         $MachineFQDN = Get-FQDN $env:ComputerName
         $VersionArray = $Version.Split(".")
         $MajorVersion = $VersionArray[1]
+        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
+       
         if(-Not($IsServiceCredentialDomainAccount)){
             User ArcGIS_RunAsAccount
             {
@@ -113,8 +125,8 @@ Configuration PortalUpgrade{
 			DestinationPath = $InstallerPathOnMachine    
 			Credential = $fCredential     
 			DependsOn = $Depends  
-		}
-
+        }
+        
         ArcGIS_Install PortalUpgradeInstall
         { 
             Name = "Portal"
@@ -138,6 +150,43 @@ Configuration PortalUpgrade{
 		}
             
         $Depends += '[Script]RemoveInstaller'
+
+        if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $WebStylesInstallerPath){
+            $WebStylesInstallerFileName = Split-Path $WebStylesInstallerPath -Leaf
+            $WebStylesInstallerPathOnMachine = "$env:TEMP\webstyles\$WebStylesInstallerFileName"
+            File DownloadWebStylesInstallerFromFileShare      
+            {            	
+                Ensure = "Present"              	
+                Type = "File"             	
+                SourcePath = $WebStylesInstallerPath 	
+                DestinationPath = $WebStylesInstallerPathOnMachine    
+                Credential = $fCredential     
+                DependsOn = $Depends  
+            }
+            
+            ArcGIS_Install "WebStylesInstall"
+            { 
+                Name = "WebStyles"
+                Version = $Version
+                Path = $WebStylesInstallerPathOnMachine
+                Arguments = "/qb"
+                Ensure = "Present"
+                DependsOn = $Depends
+            }
+
+            $Depends += '[ArcGIS_Install]WebStylesInstall'
+
+            Script RemoveWebStylesInstaller
+            {
+                SetScript = 
+                { 
+                    Remove-Item $using:WebStylesInstallerPathOnMachine -Force
+                }
+                TestScript = { -not(Test-Path $using:WebStylesInstallerPathOnMachine) }
+                GetScript = { $null }          
+            }
+            $Depends += '[Script]RemoveWebStylesInstaller'
+        }
         
         if($PortalLicenseFileUrl) {
 			$PortalLicenseFileName = Extract-FileNameFromUrl $PortalLicenseFileUrl

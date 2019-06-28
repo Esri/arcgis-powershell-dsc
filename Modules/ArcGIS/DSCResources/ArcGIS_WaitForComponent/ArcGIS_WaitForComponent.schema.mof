@@ -5,8 +5,8 @@ class ArcGIS_WaitForComponent : OMI_BaseResource
 	[Key, ValueMap{"Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade"}, Values{"Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade"}] String InvokingComponent;
 	[Key] String ComponentHostName;
 	[Key] String ComponentContext;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-	[Write, EmbeddedInstance("MSFT_Credential")] String Credential;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;    
+	[Write, EmbeddedInstance("MSFT_Credential")] String Credential;    
 	[Write,Description("Interval in seconds for retries.")] Uint32 RetryIntervalSec;
 	[Write,Description("Number of times to retry.")] Uint32 RetryCount;
 };

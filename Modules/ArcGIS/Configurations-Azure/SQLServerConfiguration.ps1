@@ -7,7 +7,7 @@
         $DatabaseAdminCredential
     )
 
-    Import-DscResource -Name MSFT_xFirewall
+    Import-DscResource -Name ArcGIS_xFirewall
 
     Node $AllNodes.NodeName
     {       
@@ -21,7 +21,7 @@
         $DatabaseAdminUserName = $DatabaseAdminCredential.UserName
         $DatabaseAdminPassword = $DatabaseAdminCredential.GetNetworkCredential().Password
 
-        xFirewall Server_FirewallRule_Database
+        ArcGIS_xFirewall Server_FirewallRule_Database
 		{
 				Name                  = "SQL Server Database IN" 
 				DisplayName           = "SQL Server Database 1433" 

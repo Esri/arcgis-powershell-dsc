@@ -1,0 +1,29 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name 1]",
+            "Role": [
+                "Pro"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "ProVersion": "[Version of ArcGIS Pro ]",
+        "Pro":{
+            "LicenseFilePath": "[License File Path - Pro ]",
+            "AuthorizationType": "SINGLE_USE",
+            "LockAuthSettings":"[ True(Default) | False ]",
+            "BlockAddIns":"",
+            "SoftwareClass":"[Viewer | Editor | Professional]",
+            "PortalList":"[List of Portals for Pro]",
+            "AllUsers":"",
+            "EnableEUEI":"[ True (Default enables participation of Esri User Experience Improvement Program) | False]",
+            "CheckForUpdatesAtStartup": "[ True (Default enables automatic update notifications of ArcGIS Pro) | False ]",
+            "Installer": {
+                "Path": "[Pro Installer Path]",
+                "InstallDir": "[Pro Install Dir - Ex. C:\\ArcGIS\\Pro]",
+                "PatchesDir":""
+            }
+        }
+    }
+}

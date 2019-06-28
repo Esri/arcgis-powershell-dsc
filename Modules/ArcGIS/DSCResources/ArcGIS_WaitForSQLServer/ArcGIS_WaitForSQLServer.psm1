@@ -70,7 +70,7 @@ function Set-TargetResource
         $connection.ConnectionString = $connectionString
         $connection.Open()
         if($connection.State -eq 1) {
-            Write-Verbose "Connection Successfull"
+            Write-Verbose "Connection Successful"
             $connection.Close()
             $Done = $True
         }else{
@@ -117,11 +117,11 @@ function Test-TargetResource
     $connection.ConnectionString = $connectionString
     $connection.Open()
     if ($connection.State -eq 1) {
-        Write-Verbose "Connection Successfull"
+        Write-Verbose "Connection Successful"
         $connection.Close()
        $result =  $True
     } else {
-        Write-Verbose "Connection Unsuccessfull"
+        Write-Verbose "Connection Unsuccessful"
        $result =  $False
     }
     

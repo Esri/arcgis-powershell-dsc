@@ -154,9 +154,9 @@
     Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Federation
     Import-DSCResource -Name ArcGIS_EGDB
-    Import-DscResource -Name MSFT_xFirewall
-    Import-DscResource -Name MSFT_xSmbShare
-    Import-DscResource -Name MSFT_xDisk
+    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_xSmbShare
+    Import-DscResource -Name ArcGIS_xDisk
 	Import-DscResource -Name ArcGIS_DataStoreItem
 	Import-DscResource -Name ArcGIS_TLSCertificateImport
 	Import-DscResource -Name ArcGIS_GeoEvent
@@ -215,6 +215,13 @@
 
 	Node localhost
 	{
+		LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+		}
+		
 		if($OSDiskSize -gt 0) 
         {
             ArcGIS_Disk OSDiskSize
@@ -226,7 +233,7 @@
 			
 		if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -268,7 +275,7 @@
 				DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')} 
 			}
         
-			$ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[xFirewall]Server_FirewallRules')  
+			$ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')  
 			if($ServerLicenseFileName) 
 			{
 				ArcGIS_License ServerLicense
@@ -306,7 +313,7 @@
 				  $ServerDependsOn += '[Script]PersistStorageCredentials'
 			}
 			
-			xFirewall Server_FirewallRules
+			ArcGIS_xFirewall Server_FirewallRules
 			{
 				Name                  = "ArcGISServer"
 				DisplayName           = "ArcGIS for Server"
@@ -318,11 +325,11 @@
 				LocalPort             = ("6080","6443")
 				Protocol              = "TCP"
 			}
-			$ServerDependsOn += '[xFirewall]Server_FirewallRules'
+			$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
 
 			if($ServerRole -ieq 'GeoAnalyticsServer') 
 			{  
-				xFirewall GeoAnalytics_InboundFirewallRules
+				ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
 				{
 						Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
 						DisplayName           = "ArcGIS GeoAnalytics" 
@@ -335,7 +342,7 @@
 						Protocol              = "TCP" 
 				}
 
-				xFirewall GeoAnalytics_OutboundFirewallRules
+				ArcGIS_xFirewall GeoAnalytics_OutboundFirewallRules
 				{
 						Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules" 
 						DisplayName           = "ArcGIS GeoAnalytics" 
@@ -349,7 +356,7 @@
 						Direction             = "Outbound"    
 				}
 
-				xFirewall GeoAnalyticsCompute_InboundFirewallRules
+				ArcGIS_xFirewall GeoAnalyticsCompute_InboundFirewallRules
 				{
 						Name                  = "ArcGISGeoAnalyticsComputeInboundFirewallRules" 
 						DisplayName           = "ArcGIS GeoAnalytics" 
@@ -362,7 +369,7 @@
 						Protocol              = "TCP" 
 				}
 
-				xFirewall GeoAnalyticsCompute_OutboundFirewallRules
+				ArcGIS_xFirewall GeoAnalyticsCompute_OutboundFirewallRules
 				{
 						Name                  = "ArcGISGeoAnalyticsComputeOutboundFirewallRules" 
 						DisplayName           = "ArcGIS GeoAnalytics" 
@@ -375,12 +382,12 @@
 						Protocol              = "TCP" 
 						Direction             = "Outbound"    
 				}
-				$ServerDependsOn += @('[xFirewall]GeoAnalyticsCompute_OutboundFirewallRules','[xFirewall]GeoAnalyticsCompute_InboundFirewallRules','[xFirewall]GeoAnalytics_InboundFirewallRules','[xFirewall]GeoAnalytics_OutboundFirewallRules')
+				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoAnalyticsCompute_OutboundFirewallRules','[ArcGIS_xFirewall]GeoAnalyticsCompute_InboundFirewallRules','[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules','[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules')
 			}
 
 			if($IsMultiMachineServer) 
 			{
-				xFirewall Server_FirewallRules_Internal
+				ArcGIS_xFirewall Server_FirewallRules_Internal
 				{
 					Name                  = "ArcGISServerInternal"
 					DisplayName           = "ArcGIS for Server Internal RMI"
@@ -392,7 +399,7 @@
 					LocalPort             = ("4000-4004")
 					Protocol              = "TCP"
 				}
-				$ServerDependsOn += '[xFirewall]Server_FirewallRules_Internal'				
+				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'				
 			}
 				
 			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store'))
@@ -417,7 +424,7 @@
 
 				if($IsMultiMachineServer) 
 				{
-					xFirewall GeoEventService_Firewall
+					ArcGIS_xFirewall GeoEventService_Firewall
 					{
 						Name                  = "ArcGISGeoEventGateway"
 						DisplayName           = "ArcGIS GeoEvent Gateway"
@@ -430,7 +437,7 @@
 						Protocol              = "TCP"
 					}
 
-					xFirewall GeoEvent_FirewallRules_MultiMachine
+					ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
 					{
 							Name                  = "ArcGISGeoEventFirewallRulesCluster" 
 							DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
@@ -443,7 +450,7 @@
 							Protocol              = "TCP" 
 					}
 
-					xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
+					ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
 					{
 							Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound" 
 							DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound" 
@@ -456,7 +463,7 @@
 							Protocol              = "TCP" 
 							Direction             = "Outbound"    
 					}
-					$ServerDependsOn += @('[xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound','[xFirewall]GeoEvent_FirewallRules_MultiMachine','[xFirewall]GeoEventService_Firewall')
+					$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine','[ArcGIS_xFirewall]GeoEventService_Firewall')
 				}
 				
 				$DependsOnGeoevent = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_Server]Server')}else{ @('[ArcGIS_Server]Server')} 
@@ -631,8 +638,8 @@
                         if($dataStoreItem.DataStoreEndpoint -and $dataStoreItem.DataStoreType -ieq 'BigDataFileShare')
                         {
                             $FileShareDSC = "Folder-$($dataStoreItem.Name)"
-                            $depends += "[xSmbShare]$FileShareDSC"
-                            xSmbShare $FileShareDSC 
+                            $depends += "[ArcGIS_xSmbShare]$FileShareDSC"
+                            ArcGIS_xSmbShare $FileShareDSC 
 					        { 
 						        Ensure		= 'Present' 
 						        Name		= $dataStoreItem.DataStoreEndpoint.Substring($dataStoreItem.DataStoreEndpoint.LastIndexOf('\')+1)
