@@ -29,6 +29,8 @@
         Boolean to indicate whether to disable the service directory for ArcGIS Server
     .PARAMETER DisableServiceDirectory
         Boolean to indicate whether to enable the internal usage metering plugin
+    .PARAMETER SharedKey
+        Secret to use as the Shared Key for token generatiion
 #>
 function Get-TargetResource
 {
@@ -77,7 +79,10 @@ function Get-TargetResource
         $DisableServiceDirectory,
 
         [System.Boolean]
-        $EnableUsageMetering
+        $EnableUsageMetering,
+
+        [System.String]
+        $SharedKey
 	)
 	
 	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -131,7 +136,10 @@ function Set-TargetResource
         $DisableServiceDirectory,
 
         [System.Boolean]
-        $EnableUsageMetering
+        $EnableUsageMetering,
+
+        [System.String]
+        $SharedKey
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -322,7 +330,17 @@ function Set-TargetResource
                 }
             }
 
-           
+            if($SharedKey){
+                Write-Verbose "Get Token Setting"
+                $TokenSettings = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/tokens" -Token $token.token
+                if($TokenSettings.properties.sharedKey -ine $SharedKey) {
+                    Write-Verbose "Updating shared key"
+                    $TokenSettings.properties.sharedKey = $SharedKey
+                    $TokenSettings = ConvertTo-Json $TokenSettings
+                    Set-TokenSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/tokens/update" -Token $token.token -Properties $TokenSettings
+                }
+            }
+
 		    Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
             Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' 
 
@@ -401,7 +419,10 @@ function Test-TargetResource
         $DisableServiceDirectory,
 
         [System.Boolean]
-        $EnableUsageMetering
+        $EnableUsageMetering,
+
+        [System.String]
+        $SharedKey
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -462,6 +483,14 @@ function Test-TargetResource
         }
         Write-Verbose "Current Service Directory Setting:- $dirStatus"
         if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
+            $result = $false
+        }
+    }
+
+    if($result -and $SharedKey) {
+        Write-Verbose "Get Token Setting"
+        $TokenSettings = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/tokens" -Token $token.token
+        if($TokenSettings.properties.sharedKey -ine $SharedKey) {
             $result = $false
         }
     }
@@ -873,7 +902,6 @@ function Delete-Site
     Write-Verbose ($response.messages -join ', ') 
 }
 
-
 function Set-SingleClusterModeOnServer
 {
     [CmdletBinding()]
@@ -1110,6 +1138,30 @@ function Set-AdminSettings
     $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
     Write-Verbose $Response
     Check-ResponseStatus $Response
+    $Response
+}
+
+function Set-TokenSettings {
+    [CmdletBinding()]
+    Param (
+        [System.String]
+        $ServerUrl,
+
+        [System.String]
+        $SettingUrl,
+        
+        [System.String]
+        $Token,
+        
+        [System.String]
+        $Properties
+    )
+
+    $RequestUrl = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
+    $RequestParams = @{ f = 'json'; token = $Token; tokenManagerConfig = $Properties }
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
+    Check-ResponseStatus $Response
+    Write-Verbose $Response
     $Response
 }
 
