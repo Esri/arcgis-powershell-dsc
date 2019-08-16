@@ -4,6 +4,9 @@ class ArcGIS_RemoteFile : OMI_BaseResource
 {
 	[Key] String Url;
 	[Write] String DestinationPath;
+	[Write] Boolean UseAzureFiles;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AFSCredential;
+	[Write] String AFSEndpoint;
 	[Write] Boolean Force;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };

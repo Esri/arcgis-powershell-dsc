@@ -156,11 +156,11 @@ function Set-TargetResource
         ###                
         if(-not(Does-DatabaseExist $TestDBConnString -DatabaseName $DatabaseName -IsPostgres:$IsPostgres)) {
             Write-Verbose "Creating Database '$DatabaseName' in Server '$DatabaseServer'"
-            Create-Database -ConnString $TestDBConnString -DatabaseName $DatabaseName -IsPostgres:$IsPostgres
-            if(-not($IsPostgres)){
-                Enable-DatabasePrivilegesForGeoDatabaseAdministrator -ConnString $ConnString -DatabaseName $DatabaseName
-            }
+            Create-Database -ConnString $TestDBConnString -DatabaseName $DatabaseName -IsPostgres:$IsPostgres   
         } 
+        if(-not($IsPostgres)){
+            Enable-DatabasePrivilegesForGeoDatabaseAdministrator -ConnString $ConnString -DatabaseName $DatabaseName
+        }
         ###
         ### Create SDE User (if not exist)
         ###
@@ -171,10 +171,12 @@ function Set-TargetResource
         ###
         ### Ensure Sde Exists in the database. If not create one and set its schema.
         ### 
-        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $SdeUserName -IsPostgres:$IsPostgres))
-        {                    
-            Write-Verbose "Creating User '$SdeUserName' in Database '$DatabaseName'"
-            Create-SqlUser -ConnString $DbConnString -Credential $SDECredential -DefaultSchema '' -IsPostgres:$IsPostgres # Create with no schema
+        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $SdeUserName -IsPostgres:$IsPostgres) -or -not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres))
+        {          
+            if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $SdeUserName -IsPostgres:$IsPostgres)){          
+                Write-Verbose "Creating User '$SdeUserName' in Database '$DatabaseName'"
+                Create-SqlUser -ConnString $DbConnString -Credential $SDECredential -DefaultSchema '' -IsPostgres:$IsPostgres # Create with no schema
+            }
 
             $schema = $SdeUserName
             if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
@@ -187,7 +189,7 @@ function Set-TargetResource
             }
 
             Write-Verbose "Assigning schema '$schema' to User '$SdeUserName' in Database '$DatabaseName'"
-            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $SdeUserName -Schema $schema -IsPostgres:$IsPostgres
+            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $SdeUserName -DatabaseName $DatabaseName -Schema $schema -IsPostgres:$IsPostgres -DbAdminUsername $DatabaseServerAdministrator.UserName
         }else {
 
 
@@ -234,11 +236,14 @@ function Set-TargetResource
         ###
         ### Ensure User Exists. If not create one and set its schema. 
         ### 
-        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $DatabaseUserName -IsPostgres:$IsPostgres))
+        $schema = $DatabaseUserName
+        if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $DatabaseUserName -IsPostgres:$IsPostgres) -or -not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres))
         {
-            Write-Verbose "Creating User '$DatabaseUserName' in Database '$DatabaseName'"
-            Create-SqlUser -ConnString $DbConnString -Credential $DatabaseUser -DefaultSchema '' -IsPostgres:$IsPostgres # create user without schema. This will be assigned in the next step
-                    
+            if(-not(Does-SqlUserExist -ConnString $DbConnString -UserName $DatabaseUserName -IsPostgres:$IsPostgres)){
+                Write-Verbose "Creating User '$DatabaseUserName' in Database '$DatabaseName'"
+                Create-SqlUser -ConnString $DbConnString -Credential $DatabaseUser -DefaultSchema '' -IsPostgres:$IsPostgres # create user without schema. This will be assigned in the next step
+            }
+
             $schema = $DatabaseUserName
             if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
                 Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
@@ -250,7 +255,7 @@ function Set-TargetResource
             }
 
             Write-Verbose "Assigning schema '$schema' to User '$DatabaseUserName' in Database '$DatabaseName'"
-            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $DatabaseUserName -Schema $schema -IsPostgres:$IsPostgres
+            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -DatabaseName $DatabaseName -UserName $DatabaseUserName -Schema $schema -IsPostgres:$IsPostgres -DbAdminUsername $DatabaseServerAdministrator.UserName
 
         }else {
             $TestConnString = Create-DatabaseConnectionString -Server $DatabaseServer -Database $DatabaseName -Credential $DatabaseUser
@@ -270,17 +275,14 @@ function Set-TargetResource
         ###
         $schema = $DatabaseUserName # Needed Schema for ArcSDE
         if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
-            if(-not(Does-SchemaExist -ConnString $DbConnString -SchemaName $schema -IsPostgres:$IsPostgres)){
-                Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
-                if($IsPostgres){
-                    Create-SchemaPostgres -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName -DbAdminUsername $DatabaseServerAdministrator.UserName
-                }else{
-                    Create-Schema -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName
-                }
+            Write-Verbose "Creating Schema '$schema' in Database '$DatabaseName'"
+            if($IsPostgres){
+                Create-SchemaPostgres -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName -DbAdminUsername $DatabaseServerAdministrator.UserName
+            }else{
+                Create-Schema -ConnString $DbConnString -SchemaName $schema -SchemaOwnerName $DatabaseUserName
             }
-
             Write-Verbose "Assigning schema '$schema' to User '$DatabaseUserName' in Database '$DatabaseName'"
-            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $DatabaseUserName -Schema $schema -IsPostgres:$IsPostgres
+            Assign-SchemaPrivilegesForSqlUser -ConnString $DbConnString -UserName $DatabaseUserName -DatabaseName $DatabaseName -Schema $schema -IsPostgres:$IsPostgres -DbAdminUsername $DatabaseServerAdministrator.UserName
         }
 
         Write-Verbose "Ensuring necessary privileges for '$DatabaseUserName' in Database '$DatabaseName'"
@@ -312,7 +314,7 @@ function Set-TargetResource
 
             if($EnableGeodatabase) 
             {
-                
+
                 $LicenseFilePath = "$env:SystemDrive\Program Files\ESRI\License$($Version)\sysgen\keycodes"
                 if(-not (Test-Path $LicenseFilePath)) {
                     throw "License file not found at expected location $LicenseFilePath" 
@@ -356,6 +358,11 @@ function Set-TargetResource
                 if($StdErr -icontains 'ERROR') { throw "Error Enabling Geodatabase. StdErr Error:- $StdErr"}
                 Remove-Item $StdOutLogFile -Force -ErrorAction Ignore
                 Remove-Item $StdErrLogFile -Force -ErrorAction Ignore  
+            }else{
+                if($IsPostgres){
+                    Write-Verbose "Enabling PostGIS Extension for Postgres Database - $DatabaseName"
+                    Enable-PostgresPostGISExtension -ConnString $DbConnString
+                }
             }
         
 
@@ -531,9 +538,8 @@ function Test-TargetResource
             Write-Verbose "Data Item exists and is the managed database"
             $result = $true # Item exists and is the managed database
         }elseif($managedDatabaseItem -and ($managedDatabaseItem.id -ine $dataItemForDatabase.id)) {
-            throw "A Managed Database with Server '$($managedDatabaseItem.SERVER)' and Database '$($managedDatabaseItem.DATABASE)' is already registered with id ''"
+            throw "A Managed Database with Server '$($managedDatabaseItem.SERVER)' and Database '$($managedDatabaseItem.DATABASE)' is already registered with id '$($managedDatabaseItem.id)'"
         }
-        
     }else {
         Write-Verbose "Server can have multiple unmanaged database. Check if this database is already registered as an item"
         if($dataItemForDatabase) {
@@ -929,7 +935,7 @@ function Execute-PostgresQuery{
     $Password = $ConnStringArray[4].split("=")[1]
     $InstallerPath = $ConnStringArray[5].split("=")[1]
     
-    $PsqlExePath  = Join-Path $InstallerPath "framework\runtime\pgsql\bin\psql.exe"
+    $PsqlExePath  = Join-Path $InstallerPath "framework\runtime\pgsql\bin\psql.exe" 
     $exeArgsHash = "-h $HostName -p $Port -U $UserName -c ""$($sql)"" -w $Database"
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $PsqlExePath
@@ -994,7 +1000,7 @@ function Create-PostgresDatabaseConnectionString
         $Credential
     )
 
-    $PortalInstallationDirectory = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "Portal" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+    $PortalInstallationDirectory = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "Portal" -and -not($_.Name -match "Web Styles") -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
     if($PortalInstallationDirectory){
         $InstallerPath = $PortalInstallationDirectory
     }else{
@@ -1186,7 +1192,7 @@ function Enable-DatabasePrivilegesForGeoDatabaseAdministrator
         $DatabaseName
     )
 
-    $sql = "ALTER DATABASE $DatabaseName SET READ_COMMITTED_SNAPSHOT ON"
+    $sql = "ALTER DATABASE $DatabaseName SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE"
     Execute-SqlNonQuery -ConnString $ConnString -sql $sql
 
     $sql = "ALTER DATABASE $DatabaseName SET ALLOW_SNAPSHOT_ISOLATION ON"
@@ -1305,6 +1311,12 @@ function Assign-SchemaPrivilegesForSqlUser
         $ConnString, 
 
         [System.String]
+        $DbAdminUsername, 
+
+        [System.String]
+        $DatabaseName, 
+
+        [System.String]
         $UserName, 
 
         [System.String]
@@ -1315,8 +1327,14 @@ function Assign-SchemaPrivilegesForSqlUser
     )
 
     if($IsPostgres){
-        $sql = "ALTER SCHEMA $Schema OWNER TO $UserName"
-        Execute-PostgresQuery -ConnString $ConnString -sql $sql
+        $sql = "GRANT $UserName TO $DbAdminUsername"
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+		$sql = "ALTER SCHEMA $Schema OWNER TO $UserName"
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+		$sql = "REVOKE $UserName FROM $DbAdminUsername" 
+		Execute-PostgresQuery -ConnString $ConnString -sql $sql
     }else{
         $sql = "ALTER USER [$UserName] WITH DEFAULT_SCHEMA = [$Schema]"   
         Execute-SqlNonQuery -ConnString $ConnString -sql $sql
@@ -1550,6 +1568,25 @@ function Grant-PrivilegesForSdeUser
     }
 }
 
+function Enable-PostgresPostGISExtension {
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ConnString
+    )
+
+    $sql = "CREATE EXTENSION postgis"
+    Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+    $sql = "CREATE EXTENSION fuzzystrmatch"
+    Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+    $sql = "CREATE EXTENSION postgis_tiger_geocoder"
+    Execute-PostgresQuery -ConnString $ConnString -sql $sql
+
+    $sql = "CREATE EXTENSION postgis_topology"
+    Execute-PostgresQuery -ConnString $ConnString -sql $sql
+}
 
 Export-ModuleMember -Function *-TargetResource
 

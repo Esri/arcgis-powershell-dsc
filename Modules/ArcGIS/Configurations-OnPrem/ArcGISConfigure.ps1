@@ -2,7 +2,7 @@ Configuration ArcGISConfigure
 {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName ArcGIS
-    Import-DscResource -Name MSFT_xFirewall
+    Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_WindowsService
@@ -162,9 +162,9 @@ Configuration ArcGISConfigure
                     
                     if($OpenFirewallPorts) # Server only deployment or behind an ILB or has DataStore nodes that need to register using admin			
                     {
-                        $Depends += '[xFirewall]Server_FirewallRules'
+                        $Depends += '[ArcGIS_xFirewall]Server_FirewallRules'
 
-                        xFirewall Server_FirewallRules
+                        ArcGIS_xFirewall Server_FirewallRules
                         {
                                 Name                  = "ArcGISServer" 
                                 DisplayName           = "ArcGIS for Server" 
@@ -180,8 +180,8 @@ Configuration ArcGISConfigure
 
                     if($IsMultiMachineServer) 
                     {
-                        $Depends += '[xFirewall]Server_FirewallRules_Internal' 
-                        xFirewall Server_FirewallRules_Internal
+                        $Depends += '[ArcGIS_xFirewall]Server_FirewallRules_Internal' 
+                        ArcGIS_xFirewall Server_FirewallRules_Internal
                         {
                                 Name                  = "ArcGISServerInternal" 
                                 DisplayName           = "ArcGIS for Server Internal RMI" 
@@ -196,10 +196,10 @@ Configuration ArcGISConfigure
 
                         if($ConfigurationData.ConfigData.ServerRole -ieq 'GeoAnalytics') 
                         {  
-                            $Depends += '[xFirewall]GeoAnalytics_InboundFirewallRules' 
-                            $Depends += '[xFirewall]GeoAnalytics_OutboundFirewallRules' 
+                            $Depends += '[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules' 
+                            $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules' 
 
-                            xFirewall GeoAnalytics_InboundFirewallRules
+                            ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
                             {
                                     Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
                                     DisplayName           = "ArcGIS GeoAnalytics" 
@@ -212,7 +212,7 @@ Configuration ArcGISConfigure
                                     Protocol              = "TCP" 
                             }
 
-                            xFirewall GeoAnalytics_OutboundFirewallRules
+                            ArcGIS_xFirewall GeoAnalytics_OutboundFirewallRules
                             {
                                     Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules" 
                                     DisplayName           = "ArcGIS GeoAnalytics" 
@@ -226,7 +226,7 @@ Configuration ArcGISConfigure
                                     Direction             = "Outbound"    
                             }
 
-                            xFirewall GeoAnalyticsCompute_InboundFirewallRules
+                            ArcGIS_xFirewall GeoAnalyticsCompute_InboundFirewallRules
                             {
                                     Name                  = "ArcGISGeoAnalyticsComputeInboundFirewallRules" 
                                     DisplayName           = "ArcGIS GeoAnalytics" 
@@ -239,7 +239,7 @@ Configuration ArcGISConfigure
                                     Protocol              = "TCP" 
                             }
 
-                            xFirewall GeoAnalyticsCompute_OutboundFirewallRules
+                            ArcGIS_xFirewall GeoAnalyticsCompute_OutboundFirewallRules
                             {
                                     Name                  = "ArcGISGeoAnalyticsComputeOutboundFirewallRules" 
                                     DisplayName           = "ArcGIS GeoAnalytics" 
@@ -405,7 +405,7 @@ Configuration ArcGISConfigure
                         }
                         $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service"
 
-                        xFirewall GeoEvent_FirewallRules
+                        ArcGIS_xFirewall GeoEvent_FirewallRules
                         {
                             Name                  = "ArcGISGeoEventFirewallRules" 
                             DisplayName           = "ArcGIS GeoEvent" 
@@ -418,7 +418,7 @@ Configuration ArcGISConfigure
                             Protocol              = "TCP" 
                             DependsOn             = $Depends
                         }
-                        $Depends += "[xFirewall]GeoEvent_FirewallRules"
+                        $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
 
                         ArcGIS_GeoEvent ArcGIS_GeoEvent
                         {
@@ -429,11 +429,11 @@ Configuration ArcGISConfigure
                             DependsOn                 = $Depends
                             #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }
                         }	
-                        $Depends += "[xFirewall]GeoEvent_FirewallRules"
+                        $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
                         
                         if($IsMultiMachineServer) 
                         {
-                            xFirewall GeoEvent_FirewallRules_MultiMachine
+                            ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
                             {
                                 Name                  = "ArcGISGeoEventFirewallRulesCluster" 
                                 DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
@@ -446,9 +446,9 @@ Configuration ArcGISConfigure
                                 Protocol              = "TCP" 
                                 DependsOn             = $Depends
                             }
-                            $Depends += "[xFirewall]GeoEvent_FirewallRules_MultiMachine"
+                            $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine"
 
-                            xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
+                            ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
                             {
                                 Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound" 
                                 DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound" 
@@ -462,8 +462,8 @@ Configuration ArcGISConfigure
                                 Direction             = "Outbound"    
                                 DependsOn             = $Depends
                             }
-                            $Depends += "[xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound"
-                            xFirewall GeoEventService_Firewall
+                            $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound"
+                            ArcGIS_xFirewall GeoEventService_Firewall
                             {
                                 Name                  = "ArcGISGeoEventGateway"
                                 DisplayName           = "ArcGIS GeoEvent Gateway"
@@ -476,7 +476,7 @@ Configuration ArcGISConfigure
                                 Protocol              = "TCP"
                                 DependsOn             = $Depends
                             }
-                            $Depends += "[xFirewall]GeoEventService_Firewall"
+                            $Depends += "[ArcGIS_xFirewall]GeoEventService_Firewall"
                         }
 
                         if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
@@ -535,7 +535,7 @@ Configuration ArcGISConfigure
                     $IsMultiMachinePortal = (($AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
                     <#if($IsMultiMachinePortal -or ($ConfigData.PortalEndPoint -as [ipaddress]))
                     {#>
-                        xFirewall Portal_FirewallRules
+                        ArcGIS_xFirewall Portal_FirewallRules
                         {
                                 Name                  = "PortalforArcGIS" 
                                 DisplayName           = "Portal for ArcGIS" 
@@ -547,11 +547,11 @@ Configuration ArcGISConfigure
                                 LocalPort             = ("7080","7443","7654")                         
                                 Protocol              = "TCP" 
                         }
-                        $Depends += @('[xFirewall]Portal_FirewallRules')
+                        $Depends += @('[ArcGIS_xFirewall]Portal_FirewallRules')
                     <#}
                     else 
                     {  # If single machine, need to open 7443 to allow federation over private portal URL and 6443 for changeServerRole
-                        xFirewall Portal_FirewallRules
+                        ArcGIS_xFirewall Portal_FirewallRules
                         {
                                 Name                  = "PortalforArcGIS" 
                                 DisplayName           = "Portal for ArcGIS" 
@@ -568,7 +568,7 @@ Configuration ArcGISConfigure
                     if($IsMultiMachinePortal) 
                     {
                                                                         
-                        xFirewall Portal_Database_OutBound
+                        ArcGIS_xFirewall Portal_Database_OutBound
                         {
                                 Name                  = "PortalforArcGIS-Outbound" 
                                 DisplayName           = "Portal for ArcGIS Outbound" 
@@ -581,9 +581,9 @@ Configuration ArcGISConfigure
                                 Direction             = "Outbound"                       
                                 Protocol              = "TCP" 
                         }  
-                        $Depends += @('[xFirewall]Portal_Database_OutBound')
+                        $Depends += @('[ArcGIS_xFirewall]Portal_Database_OutBound')
                         
-                        xFirewall Portal_Database_InBound
+                        ArcGIS_xFirewall Portal_Database_InBound
                         {
                                 Name                  = "PortalforArcGIS-Inbound" 
                                 DisplayName           = "Portal for ArcGIS Inbound" 
@@ -595,7 +595,7 @@ Configuration ArcGISConfigure
                                 LocalPort             = ("7120","7220","5701", "5702", "5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
                                 Protocol              = "TCP" 
                         }  
-                        $Depends += @('[xFirewall]Portal_Database_InBound')
+                        $Depends += @('[ArcGIS_xFirewall]Portal_Database_InBound')
                     }
 
                     Service Portal_for_ArcGIS_Service
@@ -742,8 +742,8 @@ Configuration ArcGISConfigure
                         PortalAdministrator = $PSACredential 
                         DependsOn =  $Depends
                         AdminEmail = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Email
-                        AdminSecurityQuestionIndex = 1
-                        AdminSecurityAnswer = "vanilla"
+                        AdminSecurityQuestionIndex = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
+                        AdminSecurityAnswer = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
                         ContentDirectoryLocation = $ContentDirectoryLocation
                         Join = if($Node.NodeName -ine $PrimaryPortalMachine) { $true } else { $false } 
                         IsHAPortal = if($IsMultiMachinePortal){$True}else{$False}
@@ -752,6 +752,7 @@ Configuration ArcGISConfigure
                         EnableDebugLogging = if($ConfigurationData.ConfigData.DebugMode) { $true } else { $false }
                         ADServiceUser = $ADServiceCredential
                         EnableAutomaticAccountCreation = if($ConfigurationData.ConfigData.Portal.EnableAutomaticAccountCreation) {$true} else {$false}
+                        DisableServiceDirectory = if($ConfigurationData.ConfigData.Portal.DisableServiceDirectory) {$true} else {$false}
                     }
 
                     if(($Node.SslCertificates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
@@ -819,7 +820,7 @@ Configuration ArcGISConfigure
                     }  
                     $Depends += '[Service]ArcGIS_DataStore_Service'
 
-                    xFirewall DataStore_FirewallRules
+                    ArcGIS_xFirewall DataStore_FirewallRules
                     {
                             Name                  = "ArcGISDataStore" 
                             DisplayName           = "ArcGIS Data Store" 
@@ -832,13 +833,13 @@ Configuration ArcGISConfigure
                             Protocol              = "TCP" 
                             DependsOn             = $Depends
                     } 
-                    $Depends += '[xFirewall]DataStore_FirewallRules'
+                    $Depends += '[ArcGIS_xFirewall]DataStore_FirewallRules'
 
                     $IsMultiMachineDataStore = ($AllNodes | Where-Object { $_.Role -icontains 'DataStore' }  | Measure-Object).Count -gt 0
                     if($IsMultiMachineDataStore) 
                     {
                         # Allow outbound traffic so that database replication can take place
-                        xFirewall DataStore_FirewallRules_OutBound
+                        ArcGIS_xFirewall DataStore_FirewallRules_OutBound
                         {
                             Name                  = "ArcGISDataStore-Out" 
                             DisplayName           = "ArcGIS Data Store Out" 
@@ -852,12 +853,12 @@ Configuration ArcGISConfigure
                             Protocol              = "TCP" 
                             DependsOn             = $Depends
                         }
-                        $Depends += '[xFirewall]DataStore_FirewallRules_OutBound'
+                        $Depends += '[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound'
                     }
 
                     if(($AllNodes | Where-Object { $_.Role -icontains 'DataStore' -and $_.DataStoreTypes -icontains 'SpatioTemporal' }  | Measure-Object).Count -gt 0)
                     {
-                        xFirewall SpatioTemporalDataStore_FirewallRules
+                        ArcGIS_xFirewall SpatioTemporalDataStore_FirewallRules
                         {
                                 Name                  = "ArcGISSpatioTemporalDataStore" 
                                 DisplayName           = "ArcGIS Data Store" 
@@ -870,7 +871,7 @@ Configuration ArcGISConfigure
                                 Protocol              = "TCP" 
                                 DependsOn             = $Depends
                         } 
-                        $Depends += '[xFirewall]SpatioTemporalDataStore_FirewallRules'
+                        $Depends += '[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules'
                     }
                         
                     ArcGIS_Service_Account ArcGIS_DataStore_RunAs_Account
@@ -1030,7 +1031,7 @@ Configuration ArcGISConfigure
 
                         if($ConfigurationData.ConfigData.ServerContext -or $ConfigurationData.ConfigData.PortalContext)
                         {
-                            xFirewall "WebAdaptorFirewallRules$($Node.NodeName)"
+                            ArcGIS_xFirewall "WebAdaptorFirewallRules$($Node.NodeName)"
                             {
                                 Name                  = "IIS-ARR" 
                                 DisplayName           = "IIS-ARR" 

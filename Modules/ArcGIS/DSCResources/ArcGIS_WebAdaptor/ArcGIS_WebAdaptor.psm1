@@ -108,7 +108,7 @@ function Set-TargetResource
             $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
             foreach($wa in $WAInstalls){
                 if($wa.InstallLocation -match "\\$($Context)\\" -and $wa.Version.StartsWith("10.7.")){
-                    $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe'
+                    $ConfigureToolPath = if($wa.Name -match "10.7.1"){ '\ArcGIS\WebAdaptor\IIS\10.7.1\Tools\ConfigureWebAdaptor.exe' }else{ '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe' }
                     break
                 }
             }

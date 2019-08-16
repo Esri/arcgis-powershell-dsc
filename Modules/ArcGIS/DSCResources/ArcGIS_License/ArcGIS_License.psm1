@@ -9,10 +9,14 @@
         Path to License File 
     .PARAMETER Password
         Optional Password for the corresponding License File 
+    .PARAMETER Version
+        Optional Version for the corresponding License File 
     .PARAMETER Component
         Product being Licensed (Server or Portal)
     .PARAMETER ServerRole
         (Optional - Required only for Server) Server Role for which the product is being Licensed
+    .PARAMETER IsSingleUse
+        Boolean to tell if Pro or Desktop is using Single Use License.
     .PARAMETER Force
         Boolean to Force the product to be licensed again, even if already done.
 
@@ -44,7 +48,11 @@ function Set-TargetResource
         
         [parameter(Mandatory = $false)]
 		[System.String]
-		$Password,
+        $Password,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$Version,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -57,6 +65,10 @@ function Set-TargetResource
 		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsSingleUse,
         
         [parameter(Mandatory = $false)]
         [System.Boolean]
@@ -71,38 +83,42 @@ function Set-TargetResource
 
     if($Ensure -ieq 'Present') {
         [string]$RealVersion = @()
-        try{
-            $ErrorActionPreference = "Stop"; #Make all errors terminating
-            <#$RegistryPath = 'HKLM:\SOFTWARE\ESRI\ArcGIS'
-            if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
-                $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
-            } 
-            $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-            $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
-            $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-        }catch{
-            throw "Couldn't Find The Product - $Component"            
-        }finally{
-            $ErrorActionPreference = "Continue"; #Reset the error action pref to default
+        if(-not($Version)){
+            try{
+                $ErrorActionPreference = "Stop"; #Make all errors terminating
+                <#$RegistryPath = 'HKLM:\SOFTWARE\ESRI\ArcGIS'
+                if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
+                    $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
+                } 
+                $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
+                $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+                $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+            }catch{
+                throw "Couldn't Find The Product - $Component"            
+            }finally{
+                $ErrorActionPreference = "Continue"; #Reset the error action pref to default
+            }
+        }else{
+            $RealVersion = $Version
         }
-        Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion" 
-        $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-        
+        Write-Verbose "RealVersion of ArcGIS Software:- $RealVersion" 
+        $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
+        $LicenseVersion = if($Component -ieq 'Pro'){ '10.6' }else{ $RealVersion }
+
         Write-Verbose "Licensing from $LicenseFilePath" 
-       
         if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
-            Write-Verbose "Version $Version Component $Component" 
-            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Version $Version -Password $Password
+            Write-Verbose "Version $LicenseVersion Component $Component" 
+            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -Password $Password -IsSingleUse $IsSingleUse
         }
         else {
-            Write-Verbose "Version $Version Component $Component Role $ServerRole" 
+            Write-Verbose "Version $LicenseVersion Component $Component Role $ServerRole" 
             $StdOutputLogFilePath = Join-Path $env:TEMP "$(Get-Date -format "dd-MM-yy-HH-mm")-stdlog.txt"
             $StdErrLogFilePath = Join-Path $env:TEMP "$(Get-Date -format "dd-MM-yy-HH-mm")-stderr.txt"
             Write-Verbose "StdOutputLogFilePath:- $StdOutputLogFilePath" 
             Write-Verbose "StdErrLogFilePath:- $StdErrLogFilePath" 
             License-Software -Product $Component -LicenseFilePath $LicenseFilePath `
-                         -Version $Version -Password $Password -StdOutputLogFilePath $StdOutputLogFilePath `
-                         -StdErrLogFilePath $StdErrLogFilePath
+                         -Version $LicenseVersion -Password $Password -IsSingleUse $IsSingleUse `
+                         -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath
         }
     }else {
         throw "Ensure = 'Absent' not implemented"
@@ -124,6 +140,10 @@ function Test-TargetResource
 		[System.String]
 		$Password,
 
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$Version,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure,
@@ -135,6 +155,10 @@ function Test-TargetResource
 		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsSingleUse,
         
         [parameter(Mandatory = $false)]
         [System.Boolean]
@@ -144,28 +168,34 @@ function Test-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [string]$RealVersion = @()
-
-	$result = $false
-    try{
-        $ErrorActionPreference = "Stop"; #Make all errors terminating
-        <#$RegistryPath = 'HKLM:\SOFTWARE\ESRI\ArcGIS'
-        if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
-            $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
-        } 
-        $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-        $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
-        $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-    }catch{
-        throw "Couldn't Find The Product - $Component"        
-    }finally{
-        $ErrorActionPreference = "Continue"; #Reset the error action pref to default
+    $result = $false
+    if(-not($Version)){
+        try{
+            $ErrorActionPreference = "Stop"; #Make all errors terminating
+            <#$RegistryPath = 'HKLM:\SOFTWARE\ESRI\ArcGIS'
+            if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
+                $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
+            } 
+            $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
+            $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+            $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+        }catch{
+            throw "Couldn't Find The Product - $Component"        
+        }finally{
+            $ErrorActionPreference = "Continue"; #Reset the error action pref to default
+        }
+    }else{
+        $RealVersion = $Version
     }
-    Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion" 
-    $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-    Write-Verbose "Version $Version" 
+
+    Write-Verbose "RealVersion of ArcGIS Software to be Licensed:- $RealVersion" 
+    $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
+    $LicenseVersion = if($Component -ieq 'Pro'){ '10.6' }else{ $RealVersion }
+
+    Write-Verbose "Version $LicenseVersion" 
     if($Component -ieq 'Desktop') {
-        
-        $RegPath = "HKLM:\SOFTWARE\Wow6432Node\esri\Python$($Version)"
+        Write-Verbose "TODO:- Check for Desktop license. For now forcing Software Authorization Tool to License Pro."
+        <#$RegPath = "HKLM:\SOFTWARE\Wow6432Node\esri\Python$($Version)"
         if(Test-Path $RegPath -ErrorAction Ignore) {            
             $PythonInstallDir = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Wow6432Node\esri\Python$($Version)").PythonDir
             $PythonPath = ((Get-ChildItem -Path $PythonInstallDir -Filter 'python.exe' -Recurse -File) | Select-Object -First 1 -ErrorAction Ignore)        
@@ -212,14 +242,14 @@ function Test-TargetResource
                     Remove-Item $TempPythonFile -ErrorAction Ignore
                 }
             }
-        }
+        }#>
     }
     elseif($Component -ieq 'Pro') {
-        Write-Verbose "TODO:- Check for Pro license"
+        Write-Verbose "TODO:- Check for Pro license. For now forcing Software Authorization Tool to License Pro."
     }
     else {
         Write-Verbose "License Check Component:- $Component ServerRole:- $ServerRole"
-        $file = "$env:SystemDrive\Program Files\ESRI\License$($Version)\sysgen\keycodes"
+        $file = "$env:SystemDrive\Program Files\ESRI\License$($LicenseVersion)\sysgen\keycodes"
         if(Test-Path $file) {        
             $searchtexts = @()
             $searchtext = if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }

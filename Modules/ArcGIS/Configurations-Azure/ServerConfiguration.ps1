@@ -94,9 +94,9 @@
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
-    Import-DscResource -Name MSFT_xFirewall
-    Import-DscResource -Name MSFT_xSmbShare
-    Import-DscResource -Name MSFT_xDisk
+    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_xSmbShare
+    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_LogHarvester
     
@@ -153,6 +153,13 @@
 
 	Node localhost
 	{
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         if($OSDiskSize -gt 0) 
         {
             ArcGIS_Disk OSDiskSize
@@ -164,7 +171,7 @@
         
         if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -186,7 +193,7 @@
                 }
             }
 
-		    $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[xFirewall]Server_FirewallRules')    
+		    $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')    
             if($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0)) 
             {
                 ArcGIS_License ServerLicense
@@ -242,7 +249,7 @@
                       $ServerDependsOn += '[Script]PersistStorageCredentials'
                 } 
 
-                xFirewall Server_FirewallRules
+                ArcGIS_xFirewall Server_FirewallRules
 		        {
 			        Name                  = "ArcGISServer"
 			        DisplayName           = "ArcGIS for Server"
@@ -254,11 +261,11 @@
 			        LocalPort             = ("6080","6443")
 			        Protocol              = "TCP"
 		        }
-		        $ServerDependsOn += '[xFirewall]Server_FirewallRules'
+		        $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
 
 		        if($IsMultiMachineServer) 
                 {
-                    xFirewall Server_FirewallRules_Internal
+                    ArcGIS_xFirewall Server_FirewallRules_Internal
 		            {
 			            Name                  = "ArcGISServerInternal"
 			            DisplayName           = "ArcGIS for Server Internal RMI"
@@ -270,7 +277,7 @@
 			            LocalPort             = ("4000-4004")
 			            Protocol              = "TCP"
 		            }
-			        $ServerDependsOn += '[xFirewall]Server_FirewallRules_Internal'
+			        $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'
                 }
                 
                 ArcGIS_LogHarvester ServerLogHarvester

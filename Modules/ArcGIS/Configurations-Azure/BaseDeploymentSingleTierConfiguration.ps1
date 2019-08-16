@@ -115,9 +115,9 @@
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_ReverseProxy_ARR
     Import-DscResource -Name ArcGIS_Federation
-    Import-DscResource -Name MSFT_xFirewall
-    Import-DscResource -Name MSFT_xSmbShare
-    Import-DscResource -Name MSFT_xDisk
+    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_xSmbShare
+    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_AzurePreFed
     Import-DscResource -Name ArcGIS_LogHarvester
@@ -189,6 +189,13 @@
 
 	Node localhost
 	{
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+        
         if($OSDiskSize -gt 0) 
         {
             ArcGIS_Disk OSDiskSize
@@ -200,7 +207,7 @@
         
         if($EnableDataDisk -ieq 'true')
         {
-            xDisk DataDisk
+            ArcGIS_xDisk DataDisk
             {
                 DiskNumber  =  2
                 DriveLetter = 'F'
@@ -250,7 +257,7 @@
 		    $Accounts = @('NT AUTHORITY\SYSTEM')
 		    if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
 		    if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-            xSmbShare FileShare 
+            ArcGIS_xSmbShare FileShare 
 		    { 
 			    Ensure						= 'Present' 
 			    Name						= $FileShareName
@@ -259,7 +266,7 @@
 			    DependsOn					= if(-Not($IsServiceCredentialDomainAccount)){ @('[File]FileShareLocationPath', '[User]ArcGIS_RunAsAccount')}else{ @('[File]FileShareLocationPath')}
             }
             
-            $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[xFirewall]Server_FirewallRules')  
+            $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')  
             if($ServerLicenseFileName) 
             {
                 ArcGIS_License ServerLicense
@@ -316,7 +323,7 @@
                   $ServerDependsOn += '[Script]PersistStorageCredentials'
                   $PortalDependsOn += '[Script]PersistStorageCredentials'
 
-                  $RootPathOfFileShare = "\\$($AzureFilesEndpoint)\\$FileShareName"
+                  $RootPathOfFileShare = "\\$($AzureFilesEndpoint)\$FileShareName"
                   Script CreatePortalContentFolder
                   {
                       TestScript = { 
@@ -338,7 +345,7 @@
                   $PortalDependsOn += '[Script]CreatePortalContentFolder'
             } 
 
-		    xFirewall Server_FirewallRules
+		    ArcGIS_xFirewall Server_FirewallRules
 		    {
 			    Name                  = "ArcGISServer"
 			    DisplayName           = "ArcGIS for Server"
@@ -350,9 +357,9 @@
 			    LocalPort             = ("6080","6443")
 			    Protocol              = "TCP"
 		    }
-		    $ServerDependsOn += '[xFirewall]Server_FirewallRules'
+		    $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
 
-            xFirewall Server_FirewallRules_Internal
+            ArcGIS_xFirewall Server_FirewallRules_Internal
 		    {
 			    Name                  = "ArcGISServerInternal"
 			    DisplayName           = "ArcGIS for Server Internal RMI"
@@ -364,7 +371,7 @@
 			    LocalPort             = ("4000-4004")
 			    Protocol              = "TCP"
 		    }
-		    $ServerDependsOn += '[xFirewall]Server_FirewallRules_Internal'
+		    $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'
             
             ArcGIS_LogHarvester ServerLogHarvester
             {
@@ -436,7 +443,7 @@
     
             if($IsDualMachineDeployment) 
             {
-                xFirewall Portal_FirewallRules
+                ArcGIS_xFirewall Portal_FirewallRules
 		        {
 				        Name                  = "PortalforArcGIS" 
 				        DisplayName           = "Portal for ArcGIS" 
@@ -449,7 +456,7 @@
 				        Protocol              = "TCP" 
 		        }
         
-                xFirewall Portal_Database_OutBound
+                ArcGIS_xFirewall Portal_Database_OutBound
 		        {
 				        Name                  = "PortalforArcGIS-Outbound" 
 				        DisplayName           = "Portal for ArcGIS Outbound" 
@@ -463,7 +470,7 @@
 				        Protocol              = "TCP" 
 		        } 
 
-                xFirewall Portal_Database_InBound
+                ArcGIS_xFirewall Portal_Database_InBound
 			    {
 					    Name                  = "PortalforArcGIS-Inbound" 
 					    DisplayName           = "Portal for ArcGIS Inbound" 
@@ -476,11 +483,11 @@
 					    Protocol              = "TCP" 
 			    }  
 
-			    $PortalDependsOn += @('[xFirewall]Portal_FirewallRules', '[xFirewall]Portal_Database_OutBound', '[xFirewall]Portal_Database_InBound')
+			    $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_FirewallRules', '[ArcGIS_xFirewall]Portal_Database_OutBound', '[ArcGIS_xFirewall]Portal_Database_InBound')
             }
             else # If single machine, need to open 7443 to allow federation over private portal URL and 6443 for changeServerRole
             {
-                xFirewall Portal_FirewallRules
+                ArcGIS_xFirewall Portal_FirewallRules
 			    {
 					    Name                  = "PortalforArcGIS" 
 					    DisplayName           = "Portal for ArcGIS" 
@@ -493,7 +500,7 @@
 					    Protocol              = "TCP" 
 			    }
     
-                xFirewall ServerFederation_FirewallRules
+                ArcGIS_xFirewall ServerFederation_FirewallRules
 			    {
 					    Name                  = "ArcGISforServer-Federation" 
 					    DisplayName           = "ArcGIS for Server" 
@@ -506,7 +513,7 @@
 					    Protocol              = "TCP" 
 			    }
 
-			    $PortalDependsOn += @('[xFirewall]Portal_FirewallRules', '[xFirewall]ServerFederation_FirewallRules')
+			    $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_FirewallRules', '[ArcGIS_xFirewall]ServerFederation_FirewallRules')
             }
         
 		    ArcGIS_Portal Portal
@@ -551,7 +558,7 @@
                 IsDomainAccount = $IsServiceCredentialDomainAccount
 		    } 
 
-		    xFirewall DataStore_FirewallRules
+		    ArcGIS_xFirewall DataStore_FirewallRules
 		    {
 				    Name                  = "ArcGISDataStore" 
 				    DisplayName           = "ArcGIS Data Store" 
@@ -567,7 +574,7 @@
 		    $DataStoreDependsOn = @('[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account')
             if($IsDualMachineDeployment) 
             {
-                xFirewall DataStore_FirewallRules_OutBound
+                ArcGIS_xFirewall DataStore_FirewallRules_OutBound
 			    {
 					    Name                  = "ArcGISDataStore-Out" 
 					    DisplayName           = "ArcGIS Data Store Out" 
@@ -581,7 +588,7 @@
 					    Protocol              = "TCP" 
 			    } 
 
-			    $DataStoreDependsOn += @('[xFirewall]DataStore_FirewallRules', '[xFirewall]DataStore_FirewallRules_OutBound')
+			    $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules', '[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
             }
 
             ArcGIS_DataStore DataStore
@@ -600,7 +607,7 @@
 		    } 
 
         
-            xFirewall ReverseProxy_FirewallRules
+            ArcGIS_xFirewall ReverseProxy_FirewallRules
             {
                 Name                  = "IIS-ARR" 
                 DisplayName           = "IIS-ARR" 

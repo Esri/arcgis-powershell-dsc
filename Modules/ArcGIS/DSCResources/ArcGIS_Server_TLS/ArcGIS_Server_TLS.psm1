@@ -100,8 +100,14 @@ function Set-TargetResource
     $ServerUrl = "https://$($FQDN):6443"
     Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" 
     $Referer = $ServerUrl
-                           
+                      
     $token = Get-ServerToken -ServerEndPoint $ServerURL -ServerSiteName $SiteName -Credential $SiteAdministrator -Referer $Referer
+    if(-not($token.token)){
+        throw "Unable to retrieve token for Site Administrator"
+    }
+
+    $Info = Invoke-ArcGISWebRequest -Url ($ServerUrl.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -LogResponse
+    $ServerMinorVersion = "$($Info.fullVersion)".Split('.')[1]
     
     if($EnableSSL) 
     {
@@ -146,18 +152,23 @@ function Set-TargetResource
 		$machine = Get-MachineDetails -ServerURL $ServerURL -SiteName $SiteName -Token $token.token -MachineName $MachineName -Referer $Referer
 
         $NewCertIssuer = $null
+        $NewCertThumbprint = $null
         if($CertificateFileLocation -and $CertificatePassword) {
             $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
             $cert.Import($CertificateFileLocation,$CertificatePassword,'DefaultKeySet')
             $NewCertIssuer = $cert.Issuer
+            $NewCertThumbprint = $cert.Thumbprint
             Write-Verbose "Issuer for the supplied certificate is $NewCertIssuer"
+            Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
         }
         
-        $CertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $CName
+        $CertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $CName -Version $ServerMinorVersion
         $ExistingCertIssuer = $CertForMachine.Issuer    
+        $ExistingCertThumprint = $CertForMachine.Thumprint
         Write-Verbose "Existing Cert Issuer $ExistingCertIssuer"  
-        if(($ExistingCertIssuer -eq $null) -or ($NewCertIssuer -and ($ExistingCertIssuer -ine $NewCertIssuer))) 
-        {            
+        
+        if((($ServerMinorVersion -ge 6) -and ( ($ExistingCertThumprint -eq $null) -or  ($NewCertThumbprint -and ($ExistingCertThumprint -ine $NewCertThumbprint)))) -or 
+                (($ServerMinorVersion -lt 6) -and (($ExistingCertIssuer -eq $null) -or ($NewCertIssuer -and ($ExistingCertIssuer -ine $NewCertIssuer))))){
             if($CertForMachine) 
             {
                 Write-Verbose "Certificate with CName $CName already exists for machine $MachineName. Deleting it"
@@ -378,7 +389,9 @@ function Test-TargetResource
         throw "Unable to retrieve token for Site Administrator"
     }
      
-     
+    $Info = Invoke-ArcGISWebRequest -Url ($ServerUrl.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -LogResponse
+    $ServerMinorVersion = "$($Info.fullVersion)".Split('.')[1]
+
     if($EnableSSL) {   
         $secConfig = Get-SecurityConfig -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer    
         $result = ($secConfig -and $secConfig.sslEnabled)
@@ -393,12 +406,15 @@ function Test-TargetResource
         # Check the CName and issues on the SSL Certificate
         Write-Verbose "Checking Issuer and CName on Certificate"        
         $NewCertIssuer = $null
+        $NewCertThumbprint = $null
         if($CertificateFileLocation -and $CertificatePassword) {
 			Write-Verbose "Examine certificate from $CertificateFileLocation"
             $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
             $cert.Import($CertificateFileLocation, $CertificatePassword, 'DefaultKeySet')
             $NewCertIssuer = $cert.Issuer
+            $NewCertThumbprint = $cert.Thumbprint
             Write-Verbose "Issuer for the supplied certificate is $NewCertIssuer"
+            Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
         }
         
         $certNames = Get-AllSSLCertificateCNamesForMachine -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN 
@@ -413,34 +429,46 @@ function Test-TargetResource
             }
         }
         else 
-        {
-            $CertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN -SSLCertName $CName
-            $ExistingCertIssuer = $CertForMachine.Issuer  
-            Write-Verbose "Existing Cert Issuer $ExistingCertIssuer"  
+        { 
+            $CertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN -SSLCertName $CName -Version $ServerMinorVersion
             if($CertForMachine -eq $null){
-                Write-Verbose "Cert on machine is null"
-            }
-            if($NewCertIssuer -and ($ExistingCertIssuer -ine $NewCertIssuer)){
-                Write-Verbose "New Cert does not match existing cert"
-                Write-Verbose "Existing:- $ExistingCertIssuer New:- $NewCertIssuer"            
-            }
-            if(($CertForMachine -eq $null) -or ($NewCertIssuer -and ($ExistingCertIssuer -ine $NewCertIssuer))) {
-                Write-Verbose "Certificate with CName $CName not found on machine '$FQDN' or the Issuer $($CertForMachine.Issuer) is different on the ArcGIS Server" 
-            }
-            else {
-                Write-Verbose "Certificate with CName $CName and required issuer $ExistingCertIssuer already exists on machine $FQDN on the ArcGIS Server"
-                if($CName){
-                    Write-Verbose "Desired CName:- $CName. Checking if machine is using this"
-                    $machineDetails = Get-MachineDetails -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN
-                    if($CName -ieq $machineDetails.webServerCertificateAlias) {
-                        Write-Verbose "WebServerCertificateAlias '$($machineDetails.webServerCertificateAlias)' matches Desired CName of '$CName'"
-                        $CertWithCNameExists = $true
-						$result = $true
-                    }else {
-                        Write-Verbose "WebServerCertificateAlias '$($machineDetails.webServerCertificateAlias)' does not match Desired CName of '$CName'"
+                    Write-Verbose "Certificate with CName $CName not found on machine '$FQDN'"
+                    $result = $false
+            }else{
+                if($ServerMinorVersion -ge 6){
+                    $ExistingCertThumprint = $CertForMachine.Thumbprint
+                    Write-Verbose "Existing Cert Thumprint $ExistingCertThumprint"  
+                    if($NewCertThumbprint -and ($ExistingCertThumprint -ine $NewCertThumbprint)){
+                        Write-Verbose "New Cert does not match existing cert"
+                        Write-Verbose "Existing:- $ExistingCertThumprint New:- $NewCertThumbprint"       
+                        $result = $false     
+                    }else{
+                        $CheckForCName = $True
                     }
-                }
+                }else{
+                    $ExistingCertIssuer = $CertForMachine.Issuer  
+                    Write-Verbose "Existing Cert Issuer $ExistingCertIssuer"  
+                    if($NewCertIssuer -and ($ExistingCertIssuer -ine $NewCertIssuer)){
+                        Write-Verbose "New Cert does not match existing cert"
+                        Write-Verbose "Existing:- $ExistingCertIssuer New:- $NewCertIssuer"       
+                        $result = $false     
+                    }else{
+                        $CheckForCName = $True
+                    }
+                }    
             }
+        }
+    }
+   
+    if($CheckForCName -and $CName){
+        Write-Verbose "Desired CName:- $CName. Checking if machine is using this"
+        $machineDetails = Get-MachineDetails -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN
+        if($CName -ieq $machineDetails.webServerCertificateAlias) {
+            Write-Verbose "WebServerCertificateAlias '$($machineDetails.webServerCertificateAlias)' matches Desired CName of '$CName'"
+            $CertWithCNameExists = $true
+            $result = $true
+        }else {
+            Write-Verbose "WebServerCertificateAlias '$($machineDetails.webServerCertificateAlias)' does not match Desired CName of '$CName'"
         }
     }
 
@@ -926,7 +954,8 @@ function Get-SSLCertificateForMachine
         [string]$Token, 
         [string]$Referer, 
         [string]$MachineName, 
-        [string]$SSLCertName
+        [string]$SSLCertName,
+        [System.Int32] $Version
     )
     $CertUrl  = $ServerURL.TrimEnd("/") + "/$SiteName/admin/machines/$MachineName/sslcertificates/$SSLCertName"
     $props = @{ f= 'json'; token = $Token; }
@@ -954,30 +983,42 @@ function Get-SSLCertificateForMachine
 				}
                 $null 
            }else {
-                $IssuerValue = $null
-                $Issuer = [regex]::matches($res.Content, '"[Ii]ssuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
-                $Issuer.Groups | %{ 
-                    if($_.Value -and $_.Value.Length -gt 0){
-                        $Pos = $_.Value.ToLower().IndexOf('"issuer"')
-                        if($Pos -gt -1) {
-                            $Str = $_.Value.Substring($Pos + '"Issuer"'.Length)
-                            $Pos = $Str.IndexOf('"')
+                if($Version -ge 6){
+                    $result = ($res.Content | ConvertFrom-Json)
+                    $issuer = $result.issuer
+                    $CN = if($issuer) { ($issuer.Split(',') | ConvertFrom-StringData).CN } else { $null }
+                    @{
+                         Issuer = $issuer
+                         CName = $CN
+                         Thumbprint = $result.sha1Fingerprint
+                     }
+                }else{
+                    $IssuerValue = $null
+                    $Issuer = [regex]::matches($res.Content, '"[Ii]ssuer":[ ]?\"([A-Za-z =,\.0-9\-]+)\"')
+                    $Issuer.Groups | %{ 
+                        if($_.Value -and $_.Value.Length -gt 0){
+                            $Pos = $_.Value.ToLower().IndexOf('"issuer"')
                             if($Pos -gt -1) {
-                                $Str = $Str.Substring($Pos + 1)
+                                $Str = $_.Value.Substring($Pos + '"Issuer"'.Length)
+                                $Pos = $Str.IndexOf('"')
+                                if($Pos -gt -1) {
+                                    $Str = $Str.Substring($Pos + 1)
+                                }
+                                $IssuerValue = $Str.TrimEnd('"')
                             }
-                            $IssuerValue = $Str.TrimEnd('"')
                         }
                     }
+                    Write-Verbose "Issuer Value:- $IssuerValue"
+                    $CN = if($IssuerValue) { ($IssuerValue.Split(',') | ConvertFrom-StringData).CN } else { $null }                 
+                    Write-Verbose "CN:- $CN"
+                    @{
+                        Issuer = $IssuerValue
+                        CName = $CN
+                        Thumbprint = $null
+                    }
                 }
-                Write-Verbose "Issuer Value:- $IssuerValue"
-                $CN = if($IssuerValue) { ($IssuerValue.Split(',') | ConvertFrom-StringData).CN } else { $null }                 
-                Write-Verbose "CN:- $CN"
-                @{
-                    Issuer = $IssuerValue
-                    CName = $CN
-                }
-           }
-       }
+            }
+        }
     }
     catch{
       # If no cert exists, an error is returned

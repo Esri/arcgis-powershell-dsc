@@ -51,11 +51,19 @@ Configuration ServerUpgrade{
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_WindowsService 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
+    Import-DscResource -Name ArcGIS_NotebookServerUpgrade 
 
     $IsDebugMode = $DebugMode -ieq 'true'
     $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
     Node $AllNodes.NodeName {
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+
 		$NodeName = $Node.NodeName
 
         $MachineFQDN = Get-FQDN $NodeName
@@ -113,9 +121,9 @@ Configuration ServerUpgrade{
             }
             $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
         }
-
+      
         ArcGIS_Install ServerUpgrade{
-            Name = "Server"
+            Name = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" } 
             Version = $Version
             Path = $InstallerPathOnMachine
             Arguments = "/qb USER_NAME=$($ServiceCredential.UserName) PASSWORD=$($ServiceCredential.GetNetworkCredential().Password)";
@@ -154,19 +162,29 @@ Configuration ServerUpgrade{
         {
             LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
             Ensure = 'Present'
-            Component = 'Server'
-            ServerRole = $ServerRole 
+            Component = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
+            ServerRole = $ServerRole
             Force = $True
             DependsOn = $Depends
         }
 
         $Depends += '[ArcGIS_License]ServerLicense'
-
-        ArcGIS_ServerUpgrade ServerConfigureUpgrade{
-            Ensure = "Present"
-            Version = $Version
-            ServerHostName = $MachineFQDN
-            DependsOn = $Depends
+        
+        if($ServerRole -ieq "NotebookServer"){
+            #For Notebook Server at the end of install use the Configure app to finish the upgrade process.
+            ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $MachineFQDN
+                DependsOn = $Depends
+            }
+        }else{
+            ArcGIS_ServerUpgrade ServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $MachineFQDN
+                DependsOn = $Depends
+            }
         }
 
         #Upgrade GeoEvents
@@ -198,7 +216,7 @@ Configuration ServerUpgrade{
                 DependsOn = $Depends
             }
 
-            # xFirewall GeoEventService_Firewall
+            # ArcGIS_xFirewall GeoEventService_Firewall
             # {
             #     Name                  = "ArcGISGeoEventGateway"
             #     DisplayName           = "ArcGIS GeoEvent Gateway"
@@ -211,7 +229,7 @@ Configuration ServerUpgrade{
             #     Protocol              = "TCP"
             #     DependsOn             = $Depends
             # }
-            # $Depends += "[xFirewall]GeoEventService_Firewall"
+            # $Depends += "[ArcGIS_xFirewall]GeoEventService_Firewall"
             
             ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Start
             {

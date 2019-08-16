@@ -40,7 +40,17 @@ Configuration DataStoreUpgradeInstall{
     Import-DscResource -Name ArcGIS_WindowsService
     
     Node localhost {
+        LocalConfigurationManager
+        {
+			ActionAfterReboot = 'ContinueConfiguration'            
+            ConfigurationMode = 'ApplyOnly'    
+            RebootNodeIfNeeded = $true
+        }
+
         $Depends = @()
+        $VersionArray = $Version.Split(".")
+        $MajorVersion = $VersionArray[1]
+        $MinorVersion = $VersionArray[2]
 
 		$InstallerFileName = Split-Path $InstallerPath -Leaf
 
@@ -87,38 +97,37 @@ Configuration DataStoreUpgradeInstall{
         
         # Fix for BDS Not Upgrading Bug - Setup needs to run as local account system
         # But in that case it cannot access (C:\Windows\System32\config\systemprofile\AppData\Local)
+        if(-not(($MajorVersion -eq 7) -and ($MinorVersion -eq 1))){
+            ArcGIS_WindowsService ArcGIS_DataStore_Service_Stop
+            {
+                Name = 'ArcGIS Data Store'
+                Credential = $ServiceCredential
+                StartupType = 'Manual'
+                State = 'Stopped'
+                DependsOn = $Depends
+            }
+            $Depends += '[ArcGIS_WindowsService]ArcGIS_DataStore_Service_Stop'
 
-        ArcGIS_WindowsService ArcGIS_DataStore_Service_Stop
-        {
-            Name = 'ArcGIS Data Store'
-            Credential = $ServiceCredential
-            StartupType = 'Manual'
-            State = 'Stopped'
-            DependsOn = $Depends
-        }
+            $InstallDir = "$($env:SystemDrive)\arcgis\datastore"
 
-		$Depends += '[ArcGIS_WindowsService]ArcGIS_DataStore_Service_Stop'
+            File CreateUpgradeFile
+            {
+                Ensure          = "Present"
+                DestinationPath = "$($InstallDir)\etc\upgrade.txt"
+                Contents        = ""
+                Type            = "File"
+                DependsOn = @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service_Stop')
+            }  
+            $Depends += '[File]CreateUpgradeFile'
 
-        $InstallDir = "$($env:SystemDrive)\arcgis\datastore"
-
-        File CreateUpgradeFile
-        {
-          Ensure          = "Present"
-          DestinationPath = "$($InstallDir)\etc\upgrade.txt"
-          Contents        = ""
-          Type            = "File"
-          DependsOn = @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service_Stop')
-        }  
-
-		$Depends += '[File]CreateUpgradeFile'
-
-        Service ArcGIS_DataStore_Service_Start
-        {
-            Name = 'ArcGIS Data Store'
-            Credential = $ServiceCredential
-            StartupType = 'Automatic'
-            State = 'Running'
-            DependsOn = $Depends
+            Service ArcGIS_DataStore_Service_Start
+            {
+                Name = 'ArcGIS Data Store'
+                Credential = $ServiceCredential
+                StartupType = 'Automatic'
+                State = 'Running'
+                DependsOn = $Depends
+            }
         }
     }
 }

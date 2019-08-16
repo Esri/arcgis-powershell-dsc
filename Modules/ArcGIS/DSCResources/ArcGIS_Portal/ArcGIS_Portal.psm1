@@ -53,6 +53,8 @@
         Service User to connect the Portal-UserStore to an Active Directory
     .PARAMETER EnableAutomaticAccountCreation
         Enables the automaticAccountCreation on Portal
+    .PARAMETER DisableServiceDirectory
+        Disable the Services Directory on Portal
 #>
 
 function Create-PortalSite {    
@@ -479,8 +481,11 @@ function Set-TargetResource {
         $ADServiceUser,
 
         [System.Boolean]
-        $EnableAutomaticAccountCreation
-	)
+        $EnableAutomaticAccountCreation,
+
+        [System.Boolean]
+        $DisableServiceDirectory
+    )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
@@ -596,7 +601,7 @@ function Set-TargetResource {
                     Write-Verbose "Reindexing Portal"
                     $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
                     if (-not($token.token)) {
-                        throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
+                        throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
                     }
                     Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
                     Upgrade-Reindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
@@ -675,9 +680,9 @@ function Set-TargetResource {
 			Write-Verbose "Getting Portal Token for user '$($PortalAdministrator.UserName)' from 'https://$($FQDN):7443'"
 			$token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
 			if (-not($token.token)) {
-				throw "Unable to retrieve Portal Token for '$PortalAdminUserName'"
+				throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
 			}
-			Write-Verbose "Connected to Portal successfully and retrieved token for '$PortalAdminUserName'"
+			Write-Verbose "Connected to Portal successfully and retrieved token for $($PortalAdministrator.UserName)"
             
 
             Set-WCPPWAPortalProperties -PortalHostName $FQDN -ExternalDNSName $ExternalDNSName -PortalEndPoint $PortalEndPoint -PortalContext $PortalContext `
@@ -717,7 +722,7 @@ function Set-TargetResource {
                     Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
                 }
             }
-            if ($EnableAutomaticAccountCreation)
+            if ($null -ine $EnableAutomaticAccountCreation)
             {
                 Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
                 if (-not ($token))
@@ -728,11 +733,34 @@ function Set-TargetResource {
                 {
                     $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
                 }
-                if ($securityConfig.enableAutomaticAccountCreation -ne "true")
-                {
-                    Write-Verbose "EnableAutomaticAccountCreation is set to false, enable it"
-                    $securityConfig.enableAutomaticAccountCreation = "true"
+                $EnableAutoAccountCreationStatus = if ($securityConfig.enableAutomaticAccountCreation -ne "true") { "disabled" } else { 'enabled' }
+                Write-Verbose "Current Automatic Account Creation Setting:- $EnableAutoAccountCreationStatus" 
+
+                if ($securityConfig.enableAutomaticAccountCreation -ne $EnableAutomaticAccountCreation) {
+                    $securityConfig.enableAutomaticAccountCreation = $EnableAutomaticAccountCreation
                     Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
+                }else{
+                    Write-Verbose "Automatic Account Creation already $EnableAutoAccountCreationStatus"
+                }
+            }
+            if ($null -ine $DisableServiceDirectory) {
+                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+                if (-not ($token)) {
+                    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
+                }
+                
+                if (-not ($securityConfig)) {
+                    $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
+                }
+                
+                $dirStatus = if ($securityConfig.disableServicesDirectory -ne "true") { 'enabled' } else { 'disabled' }
+                Write-Verbose "Current Service Directory Setting:- $dirStatus"
+                
+                if ($securityConfig.disableServicesDirectory -ne $DisableServiceDirectory) {
+                    $securityConfig.disableServicesDirectory = $DisableServiceDirectory
+                    Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig)
+                } else {
+                    Write-Verbose "Service directory already $dirStatus"
                 }
             }
         }
@@ -817,7 +845,10 @@ function Test-TargetResource {
         $ADServiceUser,
 
         [System.Boolean]
-        $EnableAutomaticAccountCreation
+        $EnableAutomaticAccountCreation,
+
+        [System.Boolean]
+        $DisableServiceDirectory
 	)
 
 
@@ -892,7 +923,7 @@ function Test-TargetResource {
         }        
     }
 
-    $Referer = 'http://localhost'
+    $Referer = 'http://localhost'   
     if ($result -and -not($Join)) {
         try {
 			Wait-ForUrl "https://$($FQDN):7443/arcgis/sharing/rest/generateToken"
@@ -933,40 +964,46 @@ function Test-TargetResource {
         }
     }
 
-    if ($result -and ($ADServiceUser.UserName)) 
-    {
+    if($result){
         $Referer = 'http://localhost'
-        
         Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
-
-        $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
-        if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') 
-        {
-            Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type)"
-            $result = $false
-        } else {
-            Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
-        }
-    }
-
-    if ($result -and ($EnableAutomaticAccountCreation))
-    {
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-        if (-not ($token))
-        {
+        if (-not ($token)){
             $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
         }
-        if (-not ($securityConfig))
-        {
+        if (-not ($securityConfig)){
             $securityConfig = Get-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token
         }
-        if ($securityConfig.enableAutomaticAccountCreation -ne "true")
+    
+        if ($ADServiceUser.UserName) 
         {
-            Write-Verbose "EnableAutomaticAccountCreation is set to false, it should be enabled"
-            $result = $false
-        } else {
-            Write-Verbose "EnableAutomaticAccountCreation is already set to true"
+            if ($($securityConfig.userStoreConfig.type) -ne 'WINDOWS') {
+                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type)"
+                $result = $false
+            } else {
+                Write-Verbose "UserStore Config Type is set to :-$($securityConfig.userStoreConfig.type). No Action required"
+            }
+        }
+
+        if ($result -and ($null -ine $EnableAutomaticAccountCreation))
+        {
+            $EnableAutoAccountCreationStatus = if ($securityConfig.enableAutomaticAccountCreation -ne "true") { "disabled" } else { 'enabled' }
+            Write-Verbose "Current Automatic Account Creation Setting:- $EnableAutoAccountCreationStatus" 
+
+            if ($securityConfig.enableAutomaticAccountCreation -ne $EnableAutomaticAccountCreation) {
+                Write-Verbose "EnableAutomaticAccountCreation setting doesn't match, Updating it."
+                $result = $false
+            }
+        }
+
+        if ($result -and ($null -ine $DisableServiceDirectory)) {
+            
+            $dirStatus = if ($securityConfig.disableServicesDirectory -ne "true") { 'enabled' } else { 'disabled' }
+            Write-Verbose "Current Service Directory Setting:- $dirStatus"  
+            
+            if ($securityConfig.disableServicesDirectory -ne $DisableServiceDirectory) {
+                Write-Verbose "Service directory setting does not match. Updating it."
+                $result = $false
+            }  
         }
     }
 

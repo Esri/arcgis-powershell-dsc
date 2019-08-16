@@ -39,6 +39,7 @@ Configuration ServerUpgrade{
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_ServerUpgrade 
+    Import-DscResource -Name ArcGIS_xFirewall
     
     Node $AllNodes.NodeName {
         $NodeName = $Node.NodeName
@@ -122,7 +123,7 @@ Configuration ServerUpgrade{
                 DependsOn = $Depends
             }
 
-            xFirewall GeoEventService_Firewall
+            ArcGIS_xFirewall GeoEventService_Firewall
             {
                 Name                  = "ArcGISGeoEventGateway"
                 DisplayName           = "ArcGIS GeoEvent Gateway"
@@ -135,7 +136,7 @@ Configuration ServerUpgrade{
                 Protocol              = "TCP"
                 DependsOn             = $Depends
             }
-            $Depends += "[xFirewall]GeoEventService_Firewall"
+            $Depends += "[ArcGIS_xFirewall]GeoEventService_Firewall"
             
             ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Start
             {

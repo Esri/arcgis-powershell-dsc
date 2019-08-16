@@ -546,6 +546,103 @@ function Publish-WebApp
 
 }
 
+function Invoke-BuildArcGISAzureImage
+{
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory=$True)]
+        [System.Array]
+        $InstallConfigFilePath,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $BaseDirectory = "$env:SystemDrive\ArcGIS\Deployment",
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $SkipFilesDownload = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseAzureFiles,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AFSCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $AFSEndpoint,
+        
+        [switch]
+        $DebugSwitch  
+    )
+    
+    $DebugMode = $False
+
+    if($DebugSwitch){
+        $DebugMode = $true
+    }
+
+    if(-not(Test-Path $BaseDirectory)) {
+        New-Item -Path $BaseDirectory -ItemType 'directory' -Force -ErrorAction Ignore | Out-Null
+    }
+
+    $InstallersConfig = ConvertFrom-Json (Get-Content $InstallConfigFilePath -Raw)
+    $JobFlag = $False
+    if(-not($SkipFilesDownload)){
+        $DownloadLocation = Join-Path $BaseDirectory 'Downloads'
+        if(-not(Test-Path $DownloadLocation)) {
+            New-Item -Path $DownloadLocation -ItemType 'directory' -Force | Out-Null
+        }
+        Write-Host "Dot Sourcing the Configuration:- ArcGISDownloadInstallers"
+        . "$PSScriptRoot\Configurations-AzureImageBuild\ArcGISDownloadInstallers.ps1" -Verbose:$false
+        Write-Host "Compiling the Configuration:- ArcGISDownloadInstallers"
+        if($UseAzureFiles){
+            $cd = @{
+                AllNodes = @(
+                    @{
+                        NodeName = "localhost"
+                        PSDscAllowPlainTextPassword = $true
+                    }
+                )
+            }
+            ArcGISDownloadInstallers -Installers $InstallersConfig.Installers -UseAzureFiles $true -AFSCredential $AFSCredential -AFSEndpoint $AFSEndpoint -ConfigurationData $cd
+        }else{
+            ArcGISDownloadInstallers -Installers $InstallersConfig.Installers
+        }
+        
+        if($Credential){
+            $JobFlag = Start-DSCJob -ConfigurationName ArcGISDownloadInstallers -Credential $Credential -DebugMode $DebugMode
+        }else{
+            $JobFlag = Start-DSCJob -ConfigurationName ArcGISDownloadInstallers -DebugMode $DebugMode
+        }
+    }else{
+        $JobFlag = $True
+    }
+    
+    if($JobFlag -eq $True){
+        if(-not($SkipFilesDownload)){
+            Write-Host "Downloaded Installer Setups Successfully. Removing Download Installer Configuration File."
+            if(Test-Path ".\ArcGISDownloadInstallers") {
+                Remove-Item ".\ArcGISDownloadInstallers" -Force -ErrorAction Ignore -Recurse
+            }
+        }
+
+        Write-Host "Dot Sourcing the Configuration:- ArcGISSetupConfiguration"
+        . "$PSScriptRoot\Configurations-AzureImageBuild\ArcGISSetupConfiguration.ps1" -Verbose:$false
+
+        $JobFlag = $False
+        Write-Host "Compiling the Configuration:- ArcGISSetupConfiguration"
+        ArcGISSetupConfiguration -Installers $InstallersConfig.Installers -WindowsFeatures $InstallersConfig.WindowsFeatures
+        $JobFlag = Start-DSCJob -ConfigurationName ArcGISSetupConfiguration -DebugMode $DebugMode
+        if($JobFlag -eq $True -and (Test-Path ".\ArcGISSetupConfiguration")) {
+            Write-Host "Installed ArcGIS Setups Successfully. Removing Setup Configuration File."
+            Remove-Item ".\ArcGISSetupConfiguration" -Force -ErrorAction Ignore -Recurse
+        }
+    }
+}
+
 function Configure-ArcGIS
 {
     [CmdletBinding()]
@@ -675,26 +772,64 @@ function Configure-ArcGIS
                 }
 
                 if($JobFlag -eq $True -and ($Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure")){
-                    
                     $JobFlag = $False
-
-                    Write-Host "Dot Sourcing the Configuration:- ArcGISLicense"
-                    . "$PSScriptRoot\Configurations-OnPrem\ArcGISLicense.ps1" -Verbose:$false
-
-                    Write-Host "Compiling the Configuration:- ArcGISLicense"
-                    ArcGISLicense -ConfigurationData $ConfigurationParamsHashtable
                     
-                    if($Credential){
-                        $JobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -Credential $Credential -DebugMode $DebugMode
+                    $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' } | Measure-Object).Count -gt 0)
+                    $PortalCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' } | Measure-Object).Count -gt 0)
+                    $DesktopCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Desktop' }  | Measure-Object).Count -gt 0)
+                    $ProCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Pro' }  | Measure-Object).Count -gt 0)
+                    $LicenseManagerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'LicenseManager' } | Measure-Object).Count -gt 0)
+
+                    $EnterpriseSkipLicenseStep = $false
+                    if($ConfigurationParamsHashtable.ConfigData.Version){
+                        $EnterpriseVersionArray = $ConfigurationParamsHashtable.ConfigData.Version.Split(".")
+                        $EnterpriseMajorVersion = $EnterpriseVersionArray[1]
+                        if(($EnterpriseMajorVersion -ge 7) -and -not($ServerCheck) -and $PortalCheck){
+                            $EnterpriseSkipLicenseStep = $true
+                        }
+                    }
+
+                    $DesktopSkipLicenseStep = $false
+                    if($ConfigurationParamsHashtable.ConfigData.DesktopVersion){
+                        if($DesktopCheck -and ($ConfigurationParamsHashtable.ConfigData.Desktop.AuthorizationType -ieq "Float" -and -not($LicenseManagerCheck))){
+                            $DesktopSkipLicenseStep = $true
+                        }
+                    }
+
+                    $ProSkipLicenseStep = $false
+                    if($ConfigurationParamsHashtable.ConfigData.ProVersion){
+                        if($ProCheck -and (($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER") -or 
+                        ($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE" -and -not($LicenseManagerCheck)))){
+                            $ProSkipLicenseStep = $true
+                        }
+                    }
+                    
+                    if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep)){
+                        Write-Host "Dot Sourcing the Configuration:- ArcGISLicense"
+                        . "$PSScriptRoot\Configurations-OnPrem\ArcGISLicense.ps1" -Verbose:$false
+
+                        Write-Host "Compiling the Configuration:- ArcGISLicense"
+                        ArcGISLicense -ConfigurationData $ConfigurationParamsHashtable
+                        
+                        if($Credential){
+                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -Credential $Credential -DebugMode $DebugMode
+                        }else{
+                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -DebugMode $DebugMode
+                        }
+
+                        if(Test-Path ".\ArcGISLicense") {
+                            Remove-Item ".\ArcGISLicense" -Force -ErrorAction Ignore -Recurse
+                        }
                     }else{
-                        $JobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -DebugMode $DebugMode
+                        $JobFlag = $True
                     }
 
-                    if(Test-Path ".\ArcGISLicense") {
-                        Remove-Item ".\ArcGISLicense" -Force -ErrorAction Ignore -Recurse
+                    $SkipConfigureStep = $False                    
+                    if(($DesktopCheck -or $ProCheck) -and -not($ServerCheck -or $PortalCheck)){
+                        $SkipConfigureStep = $True
                     }
-                    
-                    if($JobFlag -eq $True -and ($Mode -ieq "InstallLicenseConfigure")){
+
+                    if($JobFlag -eq $True -and ($Mode -ieq "InstallLicenseConfigure") -and -not($SkipConfigureStep)){
                         
                         $JobFlag = $False
                     
@@ -921,6 +1056,10 @@ function Configure-ArcGIS
                                 }
                             }
                         }
+
+                        $VersionArray = $PortalConfig.ConfigData.Version.Split(".")
+                        $MajorVersion = $VersionArray[1]
+                        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
                         
                         $LicenseFilePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
                         $LicensePassword = $null
@@ -1014,6 +1153,10 @@ function Configure-ArcGIS
                                 SevenZipInstallerDir = $SevenZipInstallerDir
                             }
                         }
+                        if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
+                            $PortalUpgradeArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
+                        }
+
                         if(Test-Path ".\PortalUpgrade") {
                             Remove-Item ".\PortalUpgrade" -Force -ErrorAction Ignore -Recurse
                         }
@@ -1052,6 +1195,10 @@ function Configure-ArcGIS
                                 ExternalDNSName = $ExternalDNSName
                                 LicenseFilePath = $StandbyLicenseFilePath
                                 UserLicenseType = if($PortalConfig.ConfigData.Portal.PortalLicenseUserType){ $PortalConfig.ConfigData.Portal.PortalLicenseUserType }else{ $null }
+                            }
+
+                            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
+                                $PortalUpgradeStandbyArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
                             }
 
                             PortalUpgradeStandbyJoin @PortalUpgradeStandbyArgs -Verbose
@@ -1354,4 +1501,4 @@ function Configure-ArcGIS
     }
 }
    
-Export-ModuleMember -Function Get-FQDN, Configure-ArcGIS, Publish-WebApp
+Export-ModuleMember -Function Get-FQDN, Configure-ArcGIS, Publish-WebApp, Invoke-BuildArcGISAzureImage

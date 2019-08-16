@@ -1,6 +1,6 @@
-# Automation for ArcGIS using Windows PowerShell DSC
+# arcgis-powershell-dsc  
 
-## Overview
+## Overview Automation for ArcGIS using Windows PowerShell DSC
 This repository contains scripts, code and samples for automating the install and configuration of ArcGIS (Enterprise and Desktop) using Microsoft Windows [PowerShell DSC](https://docs.microsoft.com/en-us/powershell/dsc/overview) (Desired State Configuration).
 
 Sample JSON Configuration files for different ArcGIS deployment patterns are available in the [SampleConfigs](SampleConfigs) folder.
@@ -20,7 +20,7 @@ Licensing
 
 Copyright 2018 Esri
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the "[License](LICENSE)");
 You may not use this file except in compliance with the License.
 You may obtain a copy of the License at
    http://www.apache.org/licenses/LICENSE-2.0
@@ -31,7 +31,4 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-A copy of the license is available in the repository's [License.txt](https://github.com/Esri/arcgis-powershell-dsc/blob/master/License.txt?raw=true) file.
-
-[](Esri Tags: ArcGIS PowerShell Desired State Configuration)
-[](Esri Language: PowerShell)
+A copy of the license is available in the repository's [LICENSE](https://raw.githubusercontent.com/Esri/arcgis-powershell-dsc/master/LICENSE) file.

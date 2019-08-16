@@ -31,6 +31,8 @@
         Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more 
     .PARAMETER ServerRole
         Role of the Federate server - (HOSTING_SERVER, FEDERATED_SERVER)
+    .PARAMETER IsMultiTierAzureBaseDeployment
+        Optional Parameter only valid when deploying a Multi Tier Base Deployment. Provides a fix for inability to run spatial services when using Azure Internal Load Balancers.
 #>
 
 function Get-TargetResource
@@ -113,7 +115,11 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String] 
-        $ServerRole
+        $ServerRole,
+
+        [parameter(Mandatory = $false)]
+		[System.Boolean] 
+        $IsMultiTierAzureBaseDeployment
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -323,7 +329,11 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String] 
-        $ServerRole
+        $ServerRole,
+
+        [parameter(Mandatory = $false)]
+		[System.Boolean] 
+        $IsMultiTierAzureBaseDeployment
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -526,9 +536,16 @@ function Set-TargetResource
                         throw $_
                     }
                 }
-                
             }
-           
+
+            # Hacky fix for Running Spatial Services.
+            if($IsMultiTierAzureBaseDeployment){
+                $servers = Get-RegisteredServersForPortal -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer 
+                $server = $servers.servers | Where-Object { $_.isHosted -eq $true }
+                if($server -and ($server.url -ieq $ServiceUrl)){
+                    Update-ServerAdminUrlForPortal -PortalHostName $PortalHostName -SiteName $PortalContext -PortalPort $PortalPort -Token $token.token -Referer $Referer -ServerAdminUrl "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext" -FederatedServer $server
+                }
+            }
         }
     }elseif($Ensure -eq 'Absent') {
         $ServerHttpsUrl = "https://$($ServerHostName):$($ServerSiteAdminUrlPort)/"
@@ -679,6 +696,33 @@ function Get-RegisteredServersForPortal
     $GetServersUrl = "https://$($PortalHostName):$Port/$SiteName/sharing/rest/portals/self/servers/" 
 	Invoke-ArcGISWebRequest -Url $GetServersUrl -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer       
 }
+
+function Update-ServerAdminUrlForPortal
+{
+    param(
+        [System.String]
+        $PortalHostName,
+        
+        [System.String]
+        $SiteName,
+
+        [System.Int32]
+        $PortalPort,
+
+        [System.String]
+		$Token, 
+
+        [System.String]
+        $Referer,
+        
+        [System.String]
+        $ServerAdminUrl,
+
+        $FederatedServer
+    )
+
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$PortalPort/$($SiteName)" + "/sharing/rest/portals/0123456789ABCDEF/servers/$($FederatedServer.id)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; name =  $ServerAdminUrl; url = $FederatedServer.url; adminUrl = $ServerAdminUrl; isHosted = $FederatedServer.isHosted; serverType = $FederatedServer.serverType; } -Referer $Referer -LogResponse
+} 
 
 function Get-OAuthApplication
 {

@@ -142,27 +142,85 @@ function Test-TargetResource
     }
 }
 
-Function Test-PatchInstalled{
+Function Test-PatchInstalled {
+        
     [OutputType([System.Boolean])]
-	param
-    (
+    Param(
+        # The path to the patch file
         [System.String]
-        $mspPath
+        $MSPPath
     )
 
-    $Patch_qfe_id = Get-MSPqfeID -patchnamepath $mspPath # extract qfe-id from *.msp
-    $test_qfe_id = "$Patch_qfe_id"
-    $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
-    $Reg_qfe_ids = Get-ItemProperty $RegPath | sort -Property QFE_ID | select-object QFE_ID # search uninstall-path for all 'QFE_ID' Objects
+    $Test = $False
 
-    $test = $false
-    Foreach ($Reg_qfe_id in $Reg_qfe_ids) {
-        if ($($Reg_qfe_id.QFE_ID) -ieq $test_qfe_id) {
-            $test = $true # patch is installed
-        }
+    # Confirm the Patch file exists, let upstream handle the error
+    If ( -Not (Test-Path -PathType Leaf -Path $MSPPath) ) {
+        Write-Warning -Message "The Patch File $MSPPath is not accessible"
+        Return $Test
+    }
+    
+    # Extract the QFE-ID from the *.msp
+    $Patch_QFE_ID = Get-MSPQFEID -PatchNamePath $MSPPath
+    $Test_QFE_ID = "$Patch_QFE_ID"
+
+    If ( [String]::IsNullOrEmpty($Test_QFE_ID) ) {
+        Write-Warning -Message "Unable to extract the QFE-ID from the Patch file $MSPPath"
+        Return $Test
     }
 
-    $test
+    # A list of Registry Paths to check
+    $RegPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" ,
+        "HKLM:\SOFTWARE\ESRI\Portal for ArcGIS\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Data Store\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.3\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.4\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.5\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.6\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.7\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.6\Updates\*" ,
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.7\Updates\*"
+    )
+    
+    ForEach ( $RegPath in $RegPaths ) {
+           
+        If ( Test-Path -PathType Container -Path $RegPath ) {
+        
+            #  Search the Registry path for all 'QFE_ID' Objects
+            $Reg_QFE_IDs = Get-ItemProperty $RegPath | Sort-Object -Property QFE_ID | Select-Object QFE_ID
+
+            ForEach ( $Reg_QFE_ID in $Reg_QFE_IDs ) {
+
+                If ( [String]::IsNullOrEmpty($Reg_QFE_ID.QFE_ID) ) {
+                    Continue
+                }
+            
+                Write-Verbose -Message "Comparing QFE ID $Test_QFE_ID against ID $($Reg_QFE_ID.QFE_ID)"
+                
+                If ( $( $Reg_QFE_ID.QFE_ID ) -ieq $Test_QFE_ID ) {
+                
+                    # The patch is installed, skip further processing
+                    Write-Verbose -Message "Patch already installed: $MSPPath - $Test_QFE_ID"
+                    $Test = $True
+                    Return $Test
+
+                }
+
+            }
+
+        } Else {
+
+            Continue
+
+        }
+
+    }
+
+    Return $Test
+
 }
 
 Function Install-Patch{
