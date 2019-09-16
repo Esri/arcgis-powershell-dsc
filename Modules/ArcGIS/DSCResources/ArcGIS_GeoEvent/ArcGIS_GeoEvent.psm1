@@ -63,8 +63,8 @@ function Set-TargetResource
     $WmiComponentObject = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
     $VersionArray = $WmiComponentObject.Version.Split('.')
     $MinorVersion = [int]$VersionArray[1]
-    $IsBuild1071 = $WmiComponentObject.Name -match "10.7.1"
-
+    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")
+    
     $ServiceName = 'ArcGISGeoEvent'
     $GatewayServiceName = 'ArcGISGeoEventGateway'
     if($Ensure -ieq 'Present') {   
@@ -139,7 +139,7 @@ function Set-TargetResource
         }
 
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis'  -Referer $Referer -Token $token.token        
-        if(($MinorVersion -le 7) -and -not($IsBuild1071)){
+        if(($MinorVersion -le 7) -and -not($IsBuild1071orAbove)){
             $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
             if(-not($messageBus)){ 
                 throw "No Message Bus found in platform service" 
@@ -253,7 +253,7 @@ function Test-TargetResource
     $WmiComponentObject = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
     $VersionArray = $WmiComponentObject.Version.Split('.')
     $MinorVersion = [int]$VersionArray[1]
-    $IsBuild1071 = $WmiComponentObject.Name -match "10.7.1"
+    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")
 
     if($result) {
         $FQDN = Get-FQDN $env:ComputerName
@@ -278,7 +278,7 @@ function Test-TargetResource
         }
     }
 
-    if($result -and (($MinorVersion -le 7) -and -not($IsBuild1071))){
+    if($result -and (($MinorVersion -le 7) -and -not($IsBuild1071orAbove))){
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
         $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
         if(-not($messageBus)){ 

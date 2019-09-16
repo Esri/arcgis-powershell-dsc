@@ -178,8 +178,7 @@ function Set-TargetResource
                 $Arguments = "/i `"$ExecPath`" $Arguments"
                 $ExecPath = "msiexec"
             }
-            Write-Verbose "Executing $ExecPath with arguments $Arguments"
-            Write-Verbose "$ExecPath $Arguments"
+            Write-Verbose "Executing $ExecPath"
             if($LogPath) {
                 Start-Process -FilePath $ExecPath -ArgumentList $Arguments -Wait -RedirectStandardOutput $LogPath
             }else {
@@ -229,7 +228,7 @@ function Set-TargetResource
             }
         }
         else {
-			Write-Verbose "Installing Software using installer at $Path and arguments $Arguments"            
+			Write-Verbose "Installing Software using installer at $Path "            
             if($LogPath) {
                 Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -RedirectStandardOutput $LogPath
             }else {

@@ -48,7 +48,8 @@ function Test-TargetResource
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+    
 	$result = $false
 
 	$result = Test-Install -Name "Portal" -Version $Version
@@ -96,6 +97,7 @@ function Set-TargetResource
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $Referer = 'http://localhost'
     $token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PrimarySiteAdmin -Referer $Referer

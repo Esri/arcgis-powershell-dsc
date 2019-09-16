@@ -6,7 +6,9 @@
         - "Present" ensures that DataStore is Upgraded to the version specified.
         - "Absent" ensures that DataStore is not upgraded or downgraded from a give version (Not Implemented).
     .PARAMETER ServerHostName
-         HostName of the GIS Server for which the datastore was created and registered.
+        HostName of the GIS Server for which the datastore was created and registered.
+    .PARAMETER Version
+        Version to which the Datastore will be upgraded to.
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Administrator to access the GIS Server. 
     .PARAMETER ContentDirectory
@@ -23,7 +25,11 @@ function Get-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$ServerHostName,
+        $ServerHostName,
+        
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$Version,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -52,7 +58,11 @@ function Set-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$ServerHostName,
+        $ServerHostName,
+        
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$Version,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -130,7 +140,7 @@ function Set-TargetResource
             $ExecPath = Join-Path $InstallDir 'tools\configuredatastore.bat'
             $Arguments = "$($ServerAdminUrl) $($SiteAdministrator.GetNetworkCredential().UserName) $($SiteAdministrator.GetNetworkCredential().Password) $($ContentDirectory) --stores $dstypes"
             
-            write-verbose "$ExecPath $Arguments"
+            write-verbose "Executing $ExecPath"
 
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $ExecPath
@@ -174,7 +184,11 @@ function Test-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$ServerHostName,
+        $ServerHostName,
+        
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$Version,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -196,12 +210,25 @@ function Test-TargetResource
 
     $ServerUrl = "https://$($ServerHostName):6443"   
     $Referer = $ServerUrl
-    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
-    $result = $true
-    $info = Invoke-ArcGISWebRequest -Url "https://localhost:2443/arcgis/datastoreadmin/configure" -HttpFormParameters @{ f = 'json'}  -Referer $Referer -HttpMethod 'GET' -LogResponse 
+    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -Verbose
+    $result = $false
+    $Done = $false
+    $NumAttempts = 0
+    while(-not($Done) -and ($NumAttempts -lt 5)) {
+        try {
+            $info = Invoke-ArcGISWebRequest -Url "https://localhost:2443/arcgis/datastoreadmin/configure" -HttpFormParameters @{ f = 'json'}  -Referer $Referer -HttpMethod 'GET' -LogResponse -Verbose
     
-    if($info.upgrading -and (($info.upgrading -ieq 'outplace') -or ($info.upgrading -ieq 'inplace'))){
-        $result = $false
+            if($info.upgrading -and (($info.upgrading -ieq 'outplace') -or ($info.upgrading -ieq 'inplace'))){
+                Write-Verbose "Upgrade in progress - $($info.upgrading)"
+            }elseif($info.currentVersion -ieq $Version){
+                Write-Verbose "Already upgraded to $Version"
+                $result = $true
+            }
+            $Done = $true
+        }
+        catch {
+            Write-Verbose "[WARNING]:- $_ on attempt $($NumAttempts + 1). Retry after 15 seconds"
+        }
     }
 
     if($Ensure -ieq 'Present') {

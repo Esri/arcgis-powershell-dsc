@@ -193,6 +193,9 @@ function Set-TargetResource
             icacls $p /grant 'IIS_IUSRS:(OI)(CI)F' /T
         }
         icacls "$($env:SystemDrive)\Windows\TEMP\" /grant 'IIS_IUSRS:(OI)(CI)F' /T
+
+        Write-Verbose "Increasing Web Request Timeout to 1 hour"
+        Set-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/Default Web Site/$($Context)"  -filter "system.web/httpRuntime" -name "executionTimeout" -value "01:00:00"
     }
     elseif($Ensure -eq 'Absent') {
         $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})

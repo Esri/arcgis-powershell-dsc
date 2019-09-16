@@ -1,5 +1,8 @@
 Configuration DataStoreUpgradeConfigure{
     param(
+        [System.String]
+        $Version,
+
         [System.Management.Automation.PSCredential]
         $PrimarySiteAdmin,
 
@@ -27,6 +30,7 @@ Configuration DataStoreUpgradeConfigure{
             SiteAdministrator = $PrimarySiteAdmin
             ContentDirectory = $ContentDirectoryLocation
             InstallDir = $InstallDir
+            Version = $Version 
         }
     }
 }
