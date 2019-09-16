@@ -166,7 +166,7 @@ function Create-PortalSite {
     if($LicenseFilePath){
         if($UserLicenseType){
             $LicenseObject = Get-Content -Raw -Path $LicenseFilePath | ConvertFrom-Json
-            $UserLicenseTypeId = ($LicenseObject.MyEsri.definitions.userTypes | Where-Object { ($_.name -eq 'Creator')} | Select-Object -First 1).id
+            $UserLicenseTypeId = ($LicenseObject.MyEsri.definitions.userTypes | Where-Object { ($_.name -ieq $UserLicenseType)} | Select-Object -First 1).id
             $WebParams.userLicenseTypeId = $UserLicenseTypeId
         }
         $Response = Upload-File -url $CreateNewSiteUrl -filePath $LicenseFilePath -fileContentType 'application/json' -fileParameterName 'file' `

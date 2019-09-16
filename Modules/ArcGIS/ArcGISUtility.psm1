@@ -1540,7 +1540,7 @@ function Get-ComponentCode
             '2.1' = '0368352A-8996-4E80-B9A1-B1BA43FAE6E6'
             '2.2' = 'A23CF244-D194-4471-97B4-37D448D2DE76'
             '2.3' = '9CB8A8C5-202D-4580-AF55-E09803BA1959'
-            '2.4' = '78D498E7-1791-4796-9A4F-6BFAD51C09B5'
+            '2.4' = 'E3B1CE52-A1E6-4386-95C4-5AB450EF57BD'
         }
     }
     $ProductCodes[$ComponentName][$Version]    

@@ -1174,16 +1174,16 @@ Configuration ArcGISConfigure
                     }
                 }
                 'RasterDataStoreItem'{
-                    ArcGIS_FileShare RasterAnalysisFileShare
-                    {
-                        FileShareName = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName
-                        FileShareLocalPath = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath
-                        Ensure = 'Present'
-                        Credential = $SACredential
-                        IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+                    if(-not($ConfigurationData.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath)){
+                        ArcGIS_FileShare RasterAnalysisFileShare
+                        {
+                            FileShareName = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName
+                            FileShareLocalPath = $ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath
+                            Ensure = 'Present'
+                            Credential = $SACredential
+                            IsDomainAccount = $ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+                        }
                     }
-                    
-                    $DataStorePath = "\\$($env:ComputerName)\$($ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName)"
                     
                     ArcGIS_DataStoreItem RasterDataStoreItem
                     {
@@ -1192,8 +1192,8 @@ Configuration ArcGISConfigure
                         Ensure = "Present"
                         SiteAdministrator = $PSACredential
                         DataStoreType = "RasterStore"
-                        DataStorePath = $DataStorePath
-                        DependsOn = @('[ArcGIS_FileShare]RasterAnalysisFileShare')
+                        DataStorePath = if($ConfigurationData.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){ $ConfigurationData.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath }else{ "\\$($env:ComputerName)\$($ConfigurationData.ConfigData.DataStoreItems.RasterStore.FileShareName)" }
+                        DependsOn = if(-not($ConfigurationData.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath)){ @('[ArcGIS_FileShare]RasterAnalysisFileShare') }else{ @() }
                     }
                 }
                 'FileShare'{

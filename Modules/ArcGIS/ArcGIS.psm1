@@ -177,7 +177,8 @@ Function Trace-DSCJob{
                 $i = 0  
                 foreach($item in $j.Error) {
                     if($i -ge $PosError) {
-                        Write-Host "[]$item" -foregroundcolor red
+                        Write-Error $item
+                        #Write-Host "[]$item" -foregroundcolor red
                     }
                     $i++
                 }  
@@ -780,8 +781,9 @@ function Configure-ArcGIS
                     $ProCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Pro' }  | Measure-Object).Count -gt 0)
                     $LicenseManagerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'LicenseManager' } | Measure-Object).Count -gt 0)
 
-                    $EnterpriseSkipLicenseStep = $false
-                    if($ConfigurationParamsHashtable.ConfigData.Version){
+                    $EnterpriseSkipLicenseStep = $true
+                    if($ConfigurationParamsHashtable.ConfigData.Version -and ($ServerCheck -or $PortalCheck)){
+                        $EnterpriseSkipLicenseStep = $false
                         $EnterpriseVersionArray = $ConfigurationParamsHashtable.ConfigData.Version.Split(".")
                         $EnterpriseMajorVersion = $EnterpriseVersionArray[1]
                         if(($EnterpriseMajorVersion -ge 7) -and -not($ServerCheck) -and $PortalCheck){
@@ -789,17 +791,19 @@ function Configure-ArcGIS
                         }
                     }
 
-                    $DesktopSkipLicenseStep = $false
-                    if($ConfigurationParamsHashtable.ConfigData.DesktopVersion){
-                        if($DesktopCheck -and ($ConfigurationParamsHashtable.ConfigData.Desktop.AuthorizationType -ieq "Float" -and -not($LicenseManagerCheck))){
+                    $DesktopSkipLicenseStep = $true
+                    if($ConfigurationParamsHashtable.ConfigData.DesktopVersion -and $DesktopCheck){
+                        $DesktopSkipLicenseStep = $false
+                        if($ConfigurationParamsHashtable.ConfigData.Desktop.AuthorizationType -ieq "Float" -and -not($LicenseManagerCheck)){
                             $DesktopSkipLicenseStep = $true
                         }
                     }
 
-                    $ProSkipLicenseStep = $false
-                    if($ConfigurationParamsHashtable.ConfigData.ProVersion){
-                        if($ProCheck -and (($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER") -or 
-                        ($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE" -and -not($LicenseManagerCheck)))){
+                    $ProSkipLicenseStep = $true
+                    if($ConfigurationParamsHashtable.ConfigData.ProVersion -and $ProCheck){
+                        $ProSkipLicenseStep = $false
+                        if(($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER") -or 
+                        ($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE" -and -not($LicenseManagerCheck))){
                             $ProSkipLicenseStep = $true
                         }
                     }
@@ -979,7 +983,7 @@ function Configure-ArcGIS
                 $StandByPortalMachineNode = $null
                 $IsMultiMachinePortal = $False
                 
-                for ( $i = 0; $i -lt $HostingConfig.AllNodes.count; $i++ ){
+                for ( $i = 0; $i -lt $PortalConfig.AllNodes.count; $i++ ){
                     $Role = $PortalConfig.AllNodes[$i].Role
                     if($Role -icontains 'Portal'){
                         if(-not($PrimaryPortalMachine)){
@@ -1349,7 +1353,7 @@ function Configure-ArcGIS
                                     }
                                     if($DsTypes -icontains "SpatioTemporal" -and -not($PrimaryBigDataStore))
                                     {
-                                        $PrimaryBigDataStore =$DSConfig.AllNodes[$i].NodeName
+                                        $PrimaryBigDataStore = $DSConfig.AllNodes[$i].NodeName
                                     }
                                     if($DsTypes -icontains "TileCache" -and -not($PrimaryTileCache))
                                     {
@@ -1371,7 +1375,7 @@ function Configure-ArcGIS
                                     Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
                                 }
                                 DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Verbose
+                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
                                 if($Credential){
                                     $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
                                 }else{
@@ -1392,7 +1396,7 @@ function Configure-ArcGIS
                                     Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
                                 }
                                 DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Verbose
+                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
                                 if($Credential){
                                     $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
                                 }else{
@@ -1413,7 +1417,7 @@ function Configure-ArcGIS
                                     Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
                                 }
                                 DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Verbose
+                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
                                 if($Credential){
                                     $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
                                 }else{
@@ -1453,7 +1457,7 @@ function Configure-ArcGIS
                                     }
                                     if($JobFlag -eq $True){
                                         DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                            -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Verbose
+                                            -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
                                         if($Credential){
                                             $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
                                         }else{

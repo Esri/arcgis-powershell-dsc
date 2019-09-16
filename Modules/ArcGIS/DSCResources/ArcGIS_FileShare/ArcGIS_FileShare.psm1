@@ -90,12 +90,24 @@ function Set-TargetResource
 			$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $SAPassword )
 		}
 
-		if($fs -ieq $NULL){
-			New-Item $FileShareLocalPath -type directory;
-			New-SMBShare -Name $FileShareName -Path $FileShareLocalPath -FullAccess $UserName
+		if(-not($fs)){
+			Write-Verbose "FileShare Not Found"
+			if(Test-Path $FileShareLocalPath){
+				Write-Verbose "FileShareLocalPath already exist!"
+			}else{
+				New-Item $FileShareLocalPath -type directory
+			}
+			
+			$fsPath = $FileShareLocalPath -replace "\\","\\"
+			$fs = Get-WmiObject Win32_Share -Filter "path='$fsPath'"
+			if(($fs | Where-Object { $_.Name -ieq $FileShareName }).Name -ine $FileShareName ){
+				Write-Verbose "File Share Local Path already has a FileShare defined for it and none match $FileShareName. Creating another share on $FileShareLocalPath"
+				New-SMBShare -Name $FileShareName -Path $FileShareLocalPath -FullAccess $UserName
+			}
 		}
+		
 		$fs = Get-WmiObject -Class Win32_Share -Filter "Name='$FileShareName'"
-		if($fs -and -not(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $Credential.UserName).FileSystemRights -imatch "FullControl")){
+		if(-not(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $Credential.UserName).FileSystemRights -imatch "FullControl")){
 			$acl = Get-Acl $FileShareLocalPath
 			$permission = "$($UserName)","FullControl","ContainerInherit,ObjectInherit","None","Allow"
 			$accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
@@ -168,11 +180,12 @@ function Test-TargetResource
 	}else{
 		Write-Verbose "FileShare Not Found"
 		if(Test-Path $FileShareLocalPath){
-			Throw "FileShareLocalPath already exist. Please Choose Another One!"
+			Write-Verbose "File Share Local Path $FileShareLocalPath already exist!"
 		}
 		$fsPath = $FileShareLocalPath -replace "\\","\\"
-		if(Get-WmiObject Win32_Share -Filter "path='$fsPath'"){
-			Throw "File Share Local Path already has a FileShare defined for it. Please Choose Another One!"
+		$fs = Get-WmiObject Win32_Share -Filter "path='$fsPath'"
+		if(-not(($fs | Where-Object { $_.Name -ieq $FileShareName }).Name)){
+			$result = $False	
 		}
 	}
 	if($result -and (($null -ne $FilePaths) -and ($FilePaths -ne ""))){
@@ -183,15 +196,16 @@ function Test-TargetResource
 				$result = $True
 			} else {
 				$result = $False
+				break;
 			}
 		}
 	}
 	
     if($Ensure -ieq 'Present') {
-	       $result   
+	    $result
     }
     elseif($Ensure -ieq 'Absent') {        
-        (-not($result))
+    	(-not($result))
     }
 }
 

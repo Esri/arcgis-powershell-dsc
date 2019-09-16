@@ -107,10 +107,12 @@ function Set-TargetResource
             $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
             $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
             foreach($wa in $WAInstalls){
-                if($wa.InstallLocation -match "\\$($Context)\\" -and $wa.Version.StartsWith("10.7.")){
-                    $ConfigureToolPath = if($wa.Name -match "10.7.1"){ '\ArcGIS\WebAdaptor\IIS\10.7.1\Tools\ConfigureWebAdaptor.exe' }else{ '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe' }
-                    break
-                }
+                if($wa.InstallLocation -match "\\$($Context)\\"){
+                    if($wa.Version.StartsWith("10.7")){
+                        $ConfigureToolPath = if($wa.Name -match "10.7.1"){ '\ArcGIS\WebAdaptor\IIS\10.7.1\Tools\ConfigureWebAdaptor.exe' }else{ '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe' }
+                        break
+                    }
+                }        
             }
 
             $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath

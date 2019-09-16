@@ -64,8 +64,8 @@ Configuration ArcGISLicense
 
                         if($Node.PortalLicenseFilePath -and $Node.PortalLicensePassword)
                         {
-                            $LicenseFilePath=$Node.ServerLicenseFilePath
-                            $LicensePassword=$Node.ServerLicensePassword
+                            $LicenseFilePath=$Node.PortalLicenseFilePath
+                            $LicensePassword=$Node.PortalLicensePassword
                         }
 
                         ArcGIS_License "PortalLicense$($Node.NodeName)"

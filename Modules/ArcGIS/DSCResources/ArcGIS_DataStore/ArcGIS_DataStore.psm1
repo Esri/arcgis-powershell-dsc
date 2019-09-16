@@ -199,7 +199,7 @@ function Set-TargetResource
         $DatastoresToRegisterString = ($DatastoresToRegister -join ',')
         Write-Verbose "Registering datastores $DatastoresToRegisterString"
         Register-DataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
-                            -ServerSiteUrl "https://$($FQDN):6443/arcgis" -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
+                            -ServerUrl $ServerUrl -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
                             -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes
     }
 
@@ -453,12 +453,9 @@ function Get-DataStoreInfo
                     getConfigureInfo = 'true'
                   }       
 
-   $HttpBody = To-HttpBody $WebParams
-   #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
    $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'  
    Wait-ForUrl -Url  $DataStoreConfigureUrl -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 20 
    Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -LogResponse 
-
 }
 
 function Register-DataStore
@@ -472,7 +469,7 @@ function Register-DataStore
         $ServerSiteAdminCredential, 
 
         [System.String]
-        $ServerSiteUrl, 
+        $ServerUrl, 
 
         [System.String]
         $DataStoreContentDirectory, 
@@ -495,6 +492,8 @@ function Register-DataStore
         [System.Array]
         $DataStoreTypes
     )
+
+    $ServerSiteUrl = $ServerURL.TrimEnd('/') + '/arcgis'
 
     if(!$DataStoreContentDirectory) { throw "Must Specify DataStoreContentDirectory" }
 
@@ -550,7 +549,7 @@ function Register-DataStore
                 Write-Verbose "Checking if datastore is registered"
                 $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $Token -Referer $Referer `
                                             -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
-                                            -ServerSiteAdminCredential $ServerSiteAdminCredential
+                                            -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential
 
                 $alreadyRegistered = ($DatastoresToRegister.Count -gt 0)
             }            
