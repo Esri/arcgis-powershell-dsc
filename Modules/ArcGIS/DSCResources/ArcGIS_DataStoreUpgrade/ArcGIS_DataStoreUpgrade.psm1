@@ -140,7 +140,7 @@ function Set-TargetResource
             $ExecPath = Join-Path $InstallDir 'tools\configuredatastore.bat'
             $Arguments = "$($ServerAdminUrl) $($SiteAdministrator.GetNetworkCredential().UserName) $($SiteAdministrator.GetNetworkCredential().Password) $($ContentDirectory) --stores $dstypes"
             
-            write-verbose "Executeing $ExecPath"
+            write-verbose "Executing $ExecPath"
 
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $ExecPath

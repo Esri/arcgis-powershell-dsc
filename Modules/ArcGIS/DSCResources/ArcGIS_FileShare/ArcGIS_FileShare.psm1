@@ -93,7 +93,7 @@ function Set-TargetResource
 		if(-not($fs)){
 			Write-Verbose "FileShare Not Found"
 			if(Test-Path $FileShareLocalPath){
-				Write-Verbose "FileShareLocalPath already exist!"
+				Write-Verbose "FileShareLocalPath already exist."
 			}else{
 				New-Item $FileShareLocalPath -type directory
 			}
@@ -180,7 +180,7 @@ function Test-TargetResource
 	}else{
 		Write-Verbose "FileShare Not Found"
 		if(Test-Path $FileShareLocalPath){
-			Write-Verbose "File Share Local Path $FileShareLocalPath already exist!"
+			Write-Verbose "File Share Local Path $FileShareLocalPath already exists."
 		}
 		$fsPath = $FileShareLocalPath -replace "\\","\\"
 		$fs = Get-WmiObject Win32_Share -Filter "path='$fsPath'"
