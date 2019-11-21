@@ -1533,7 +1533,7 @@ function Get-ComponentCode
         LicenseManager = @{
             '2018.0' = '1914B5D6-02C2-4CA3-9CAB-EE76358228CF'
             '2018.1' = 'E1C26E47-C6AB-4120-A3DE-2FA0F723C876'
-            '2019.0' = '23696ED6-78BA-44A8-B4C7-1BC979131533'
+            '2019.0' = 'CB1E78B5-9914-45C6-8227-D55F4CD5EA6F'
         }
         Pro = @{
             '2.0' = '28A4967F-DE0D-4076-B62D-A1A9EA62FF0A'
