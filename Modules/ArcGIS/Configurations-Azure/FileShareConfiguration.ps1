@@ -64,6 +64,8 @@
         $DebugMode
     )
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_xSmbShare
     Import-DscResource -Name ArcGIS_Disk
@@ -78,13 +80,13 @@
     $IsDebugMode = $DebugMode -ieq 'true'
     $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
-    function Create-SelfSignedCertificateWithSANs
+    function Invoke-CreateSelfSignedCertificateWithSAN
     {
         param(
             [string]
             $CertificateFilePath,
 
-            [string]
+            [System.Management.Automation.PSCredential]
             $CertificatePassword,
 
             [string]
@@ -103,7 +105,7 @@
             $Cert = New-SelfSignedCertificate -DnsName @($DnsNames) -CertStoreLocation Cert:\LocalMachine\My
         }
         Write-Verbose "Saving (exporting) file to $CertificateFilePath"
-        Export-PfxCertificate -Force -Password (ConvertTo-SecureString -AsPlainText $CertificatePassword -Force) -FilePath $CertificateFilePath -Cert "Cert:\LocalMachine\My\$($Cert.Thumbprint)"
+        Export-PfxCertificate -Force -Password $CertificatePassword.Password -FilePath $CertificateFilePath -Cert "Cert:\LocalMachine\My\$($Cert.Thumbprint)"
         Remove-Item "Cert:\LocalMachine\My\$($Cert.Thumbprint)" -Force -ErrorAction Ignore
         Write-Verbose "Saved cert with thumbprint $($Cert.Thumbprint) file to $CertificateFilePath"
     }
@@ -116,7 +118,7 @@
             [string]
             $CertificateName,
 
-            [string]
+            [System.Management.Automation.PSCredential]
             $CertificatePassword,
 
             [string]
@@ -164,9 +166,9 @@ subjectAltName     = @alt_names
 
         $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $False
         [System.IO.File]::WriteAllLines($ConfigFilePath, $NewCertConfigString, $Utf8NoBomEncoding)
-        Start-Process $openssl -ArgumentList "pkcs12 -in $OutputCertFilePath -out $OutputCertPemFilePath -nodes -password pass:$CertificatePassword" -NoNewWindow -Wait -Verbose
+        Start-Process $openssl -ArgumentList "pkcs12 -in $OutputCertFilePath -out $OutputCertPemFilePath -nodes -password pass:$($CertificatePassword.GetNetworkCredential().Password)" -NoNewWindow -Wait -Verbose
         Start-Process $openssl -ArgumentList "req -x509 -nodes -days 3650 -newkey rsa:4096 -keyout $OutputCertPemFilePath -out $OutputCertPemFilePath -config $ConfigFilePath" -NoNewWindow -Wait -Verbose 
-        Start-Process $openssl -ArgumentList "pkcs12 -export -in $OutputCertPemFilePath -out $OutputCertFilePath -name $CertificateName -passout pass:$CertificatePassword" -NoNewWindow -Wait -Verbose
+        Start-Process $openssl -ArgumentList "pkcs12 -export -in $OutputCertPemFilePath -out $OutputCertFilePath -name $CertificateName -passout pass:$($CertificatePassword.GetNetworkCredential().Password)" -NoNewWindow -Wait -Verbose
         Remove-Item $ConfigFilePath
     }
 
@@ -187,15 +189,15 @@ subjectAltName     = @alt_names
     if($PortalEndpoint -and $SelfSignedSSLCertificatePassword -and $PortalMachineNames -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) {
         $PortalOutputCertFilePath = Join-Path $CertsFolder 'SSLCertificateForPortal.pfx'
         if(-not(Test-Path $PortalOutputCertFilePath)) {
-            Create-SelfSignedCertificateWithSANs -CertificateFilePath $PortalOutputCertFilePath -CertificatePassword $SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -Endpoint $PortalEndpoint -Nodes ($PortalMachineNames -split ',')
-            Add-IPAddressSANToSelfSignedCertificate -CertificateName 'SSLCertificateForPortal' -CertificateFolder $CertsFolder -CertificatePassword $SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -Endpoint $PortalEndpoint -Nodes ($PortalMachineNames -split ',')
+            Invoke-CreateSelfSignedCertificateWithSAN -CertificateFilePath $PortalOutputCertFilePath -CertificatePassword $SelfSignedSSLCertificatePassword -Endpoint $PortalEndpoint -Nodes ($PortalMachineNames -split ',')
+            Add-IPAddressSANToSelfSignedCertificate -CertificateName 'SSLCertificateForPortal' -CertificateFolder $CertsFolder -CertificatePassword $SelfSignedSSLCertificatePassword -Endpoint $PortalEndpoint -Nodes ($PortalMachineNames -split ',')
         }
     }
     if($ServerEndpoint -and $SelfSignedSSLCertificatePassword -and $ServerMachineNames -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) {
         $ServerOutputCertFilePath = Join-Path $CertsFolder 'SSLCertificateForServer.pfx'
         if(-not(Test-Path $ServerOutputCertFilePath)) {
-            Create-SelfSignedCertificateWithSANs -CertificateFilePath $ServerOutputCertFilePath -CertificatePassword $SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -Endpoint $ServerEndpoint -Nodes ($ServerMachineNames -split ',')
-            Add-IPAddressSANToSelfSignedCertificate -CertificateName 'SSLCertificateForServer' -CertificateFolder $CertsFolder -CertificatePassword $SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -Endpoint $ServerEndpoint -Nodes ($ServerMachineNames -split ',')
+            Invoke-CreateSelfSignedCertificateWithSAN -CertificateFilePath $ServerOutputCertFilePath -CertificatePassword $SelfSignedSSLCertificatePassword -Endpoint $ServerEndpoint -Nodes ($ServerMachineNames -split ',')
+            Add-IPAddressSANToSelfSignedCertificate -CertificateName 'SSLCertificateForServer' -CertificateFolder $CertsFolder -CertificatePassword $SelfSignedSSLCertificatePassword -Endpoint $ServerEndpoint -Nodes ($ServerMachineNames -split ',')
         }
     }
 

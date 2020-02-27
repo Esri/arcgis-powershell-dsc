@@ -270,7 +270,7 @@ function Set-TargetResource
                 $CreateServiceUrl = if($Folder) { "$($ServerEndPoint)/$ServerContext/admin/services/$Folder/createService" } else { "$($ServerEndPoint)/$ServerContext/admin/services/createService" }
                 $service = (Get-Content $PathToSourceFile -Raw)
                 Write-Verbose "Creating service '$ServiceName' of type '$ServiceType' using URL:- '$CreateServiceUrl'"
-                $resp = Invoke-ArcGISWebRequest -Url $CreateServiceUrl -HttpFormParameters @{ f='json'; service = $service; token = $token.token } -Referer $Referer -HttpMethod 'POST' -LogResponse -TimeOutSec 240
+                $resp = Invoke-ArcGISWebRequest -Url $CreateServiceUrl -HttpFormParameters @{ f='json'; service = $service; token = $token.token } -Referer $Referer -HttpMethod 'POST' -Verbose -TimeOutSec 240
                 Write-Verbose "Response from create service:- $(ConvertTo-Json $resp -Compress -Depth 5)"
             }
         } 
@@ -287,7 +287,8 @@ function Set-TargetResource
             }else {                
                 $itemInfoUploadUrl = "$itemInfoUrl/upload"
                 Write-Verbose "Service does not have an item info. Uploading from $PathToItemInfoFile using $itemInfoUploadUrl"
-                $uploadResponse = UploadFile -url $itemInfoUploadUrl -requestUri $itemInfoUploadUrl -filePath $PathToItemInfoFile -fileContentType 'application/text' -formParams @{ f='json'; token = $token.token; folder = [System.IO.Path]::GetFileNameWithoutExtension($PathToItemInfoFile) } -Referer $Referer -fileParameterName 'file'                           
+                $uploadResponse = ((Invoke-UploadFile -url $itemInfoUploadUrl -filePath $PathToItemInfoFile -fileContentType 'application/text' -fileParameterName 'file' `
+                -Referer $Referer -formParams @{ f='json'; token = $token.token; folder = [System.IO.Path]::GetFileNameWithoutExtension($PathToItemInfoFile) } -Verbose)  | ConvertFrom-Json)
                 Write-Verbose "Upload response:-  $(ConvertTo-Json $uploadResponse -Depth 3 -Compress)"
             }
         }
@@ -325,7 +326,7 @@ function Set-TargetResource
         }else {
             $DeleteServiceUrl = if($Folder) { "$($ServerEndPoint)/$ServerContext/admin/services/$Folder/$($ServiceName).$($ServiceType)/delete" } else { "$($ServerEndPoint)/$ServerContext/admin/services/$($ServiceName).$($ServiceType)/delete" }
             Write-Verbose "Deleting service '$ServiceName' of type '$ServiceType' in folder '$Folder' using URL:- '$DeleteServiceUrl'"
-            Invoke-ArcGISWebRequest -Url $DeleteServiceUrl -HttpFormParameters @{ f='json'; service = $service; token = $token.token } -Referer $Referer -HttpMethod 'POST' -LogResponse
+            Invoke-ArcGISWebRequest -Url $DeleteServiceUrl -HttpFormParameters @{ f='json'; service = $service; token = $token.token } -Referer $Referer -HttpMethod 'POST' -Verbose
         }
     }
 }
@@ -365,6 +366,7 @@ function Get-ArcGISPublishJobStatus
 function Wait-ArcGISServicePublishJob
 {
     [CmdletBinding()]
+    [OutputType([System.Boolean])]
     param(    
         [System.String]
         [Parameter(Mandatory=$true)]
@@ -425,6 +427,7 @@ function Wait-ArcGISServicePublishJob
 function Publish-ArcGISService
 {
     [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
     param(    
         [System.String]
         [Parameter(Mandatory=$true)]
@@ -479,7 +482,8 @@ function Publish-ArcGISService
     if(-not($item))
     {
         Write-Verbose "Item does not exist - uploading file $SDFilePath"
-        $item = UploadFile -requestUri $UploadItemUrl -url $UploadItemUrl -filePath $SDFilePath -fileContentType 'application/octet-stream' -formParams @{ token = $Token;  f = 'json' } -Referer $Referer -fileParameterName 'itemFile'
+        $item = ((Invoke-UploadFile -url $UploadItemUrl -filePath $SDFilePath -fileContentType 'application/octet-stream' -fileParameterName 'itemFile' `
+                -Referer $Referer -formParams @{ token = $Token;  f = 'json' } -Verbose) | ConvertFrom-Json)
         if($item.status -ieq 'error'){
             throw "Failed to upload item before publishing ServicePath. " + ($item.messages -join " ")
         }else{
@@ -515,7 +519,7 @@ function Publish-ArcGISService
                 }
             }
             finally {
-                $deleteResult = Delete-ArcGISUploadedItem -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port
+                $deleteResult = Invoke-DeleteArcGISUploadedItem -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port
                 #if($deleteResult.status -ieq 'error') {
                 #    Write-Verbose "Deleting the uploaded item $($item.itemID) did not succeeed. Error:- $($deleteResult.messages -join ' ')"
                 #}
@@ -529,7 +533,7 @@ function Publish-ArcGISService
     }
 }
 
-function Delete-ArcGISUploadedItem
+function Invoke-DeleteArcGISUploadedItem
 {
     [CmdletBinding()]
     param(
@@ -620,71 +624,6 @@ function Submit-ArcGISPublishJob
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/rest/services/System/PublishingTools/GPServer/Publish%20Service%20Definition/submitJob') `
                             -HttpFormParameters @{ f = 'json'; token = $Token; in_sdp_id = $ItemId } -Referer $Referer
-}
-
-function UploadFile([Uri]$url, [string]$requestUri, [string]$filePath, [string]$fileParameterName, [string]$fileContentType, $formParams, $Referer) 
-{    
-    $endPoint = $url.AbsoluteUri 
-    
-    [System.Net.WebRequest]$webRequest = [System.Net.WebRequest]::Create($endPoint)
-    $webRequest.ServicePoint.Expect100Continue = $false
-    $webRequest.Method = "POST"    
-    if($Referer) {
-        $webRequest.Referer = $Referer
-    }
-
-    $boundary = [System.Guid]::NewGuid().ToString()
-    $header = "--{0}" -f $boundary
-    $footer = "--{0}--" -f $boundary
-    $webRequest.ContentType = "multipart/form-data; boundary={0}" -f $boundary
-
-    [System.IO.Stream]$reqStream = $webRequest.GetRequestStream()    
-
-    $enc = [System.Text.Encoding]::GetEncoding("UTF-8")
-    $headerPlusNewLine = $header + [System.Environment]::NewLine
-    [byte[]]$headerBytes = $enc.GetBytes($headerPlusNewLine)
-    [void]$reqStream.Write($headerBytes,0, $headerBytes.Length)
-
-    [System.IO.FileInfo]$fileInfo = New-Object "System.IO.FileInfo" -ArgumentList $filePath   
-
-    #### File Header ####
-    $fileHeader = "Content-Disposition: form-data; name=""{0}""; filename=""{1}""" -f $fileParameterName, $fileInfo.Name
-    $fileHeader = $fileHeader + [System.Environment]::NewLine
-    [byte[]]$fileHeaderBytes = $enc.GetBytes($fileHeader)
-    [void]$reqStream.Write($fileHeaderBytes,0, $fileHeaderBytes.Length)
-    
-    #### File Content Type ####
-    [string]$fileContentTypeStr = "Content-Type: {0}" -f $fileContentType;
-    $fileContentTypeStr = $fileContentTypeStr + [System.Environment]::NewLine + [System.Environment]::NewLine
-    [byte[]]$fileContentTypeBytes = $enc.GetBytes($fileContentTypeStr)
-    [void]$reqStream.Write($fileContentTypeBytes,0, $fileContentTypeBytes.Length)    
-    
-    #### File #####
-    [System.IO.FileStream]$fileStream = New-Object 'System.IO.FileStream' -ArgumentList @($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
-    $fileStream.CopyTo($reqStream)
-    $fileStream.Flush()
-    $fileStream.Close()
-
-    #### Use StreamWrite to write remaining form parameters ####
-    [System.IO.StreamWriter]$streamWriter = New-Object 'System.IO.StreamWriter' -ArgumentList $reqStream
-        
-    [void]$streamWriter.WriteLine("")
-    
-    foreach($formParam in $formParams.GetEnumerator()) {
-        [void]$streamWriter.WriteLine($header)
-        [void]$streamWriter.WriteLine(("Content-Disposition: form-data; name=""{0}""" -f $formParam.Name))
-        [void]$streamWriter.WriteLine("")
-        [void]$streamWriter.WriteLine($formParam.Value)
-    }     
-    [void]$streamWriter.WriteLine($footer)
-    $streamWriter.Flush()  
-     
-    $resp = $webRequest.GetResponse()
-    $rs = $resp.GetResponseStream()
-    [System.IO.StreamReader]$sr = New-Object System.IO.StreamReader -argumentList $rs
-    $res = $sr.ReadToEnd()
-    $response = $res | ConvertFrom-Json
-    $response
 }
 
 Export-ModuleMember -Function *-TargetResource

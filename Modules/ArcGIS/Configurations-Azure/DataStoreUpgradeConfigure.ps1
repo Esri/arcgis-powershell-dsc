@@ -11,6 +11,8 @@ Configuration DataStoreUpgradeConfigure{
         $DebugMode
     )
     
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     
     Node localhost {

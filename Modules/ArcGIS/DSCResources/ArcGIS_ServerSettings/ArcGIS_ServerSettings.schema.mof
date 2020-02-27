@@ -1,0 +1,13 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_ServerSettings")]
+class ArcGIS_ServerSettings : OMI_BaseResource
+{
+	[Key] String ServerHostName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+	[Write] String ExternalDNSName;
+	[Write] String ServerContext;
+	[Write] String ServerEndPoint;
+	[Write] String ServerEndPointPort;
+	[Write] String ServerEndPointContext;
+};
+

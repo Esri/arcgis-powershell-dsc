@@ -97,7 +97,7 @@
     )
 
     
-    function Extract-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -113,9 +113,11 @@
         $FileName
     }
     
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_License
     Import-DscResource -Name ArcGIS_NotebookServer
-    Import-DscResource -Name ArcGIS_Server_TLS
+    Import-DscResource -Name ArcGIS_NotebookServerSettings
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Federation
@@ -132,11 +134,11 @@
     ## Download license files
     ##    
     if($ServerLicenseFileUrl) {
-        $ServerLicenseFileName = Extract-FileNameFromUrl $ServerLicenseFileUrl
+        $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }    
     if($SSLCertificateFileUrl) {
-        $SSLCertificateFileName = Extract-FileNameFromUrl $SSLCertificateFileUrl
+        $SSLCertificateFileName = Get-FileNameFromUrl $SSLCertificateFileUrl
         Invoke-WebRequest -OutFile $SSLCertificateFileName -Uri $SSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
     }
         
@@ -173,7 +175,8 @@
             $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\server\server-dirs" 
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($EndpointSuffix);DefaultEndpointsProtocol=https;"
+            $ConfigStoreCloudStorageAccountName = "AccountName=$AccountName"
             $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
         }
     }
@@ -279,7 +282,8 @@
                 {
                     LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
                     Ensure          = 'Present'
-					Component       = 'NotebookServer'
+					Component       = 'Server'
+                    ServerRole      = 'NotebookServer'
 					DependsOn       = $DependsOn
 				} 
 				$DependsOn += '[ArcGIS_License]ServerLicense'
@@ -294,7 +298,7 @@
                   {
                       TestScript = { 
                                         $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                        $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                        $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                                         if($result -like '*none*')
                                         {
                                             return $false
@@ -302,7 +306,7 @@
                                         return $true
                                     }
                       SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						            $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+						            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
 					              }
                       GetScript            = { return @{} }                  
                       DependsOn       	   = $DependsOn
@@ -326,7 +330,7 @@
 		    }
 			$DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
 
-			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store'))
+            foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway'))
 			{
 				Service "$($ServiceToStop.Replace(' ','_'))_Service"
 				{
@@ -346,11 +350,20 @@
 			    DependsOn                               = $DependsOn
 			    ServerDirectoriesRootLocation           = $ServerDirsLocation
 			    LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-			    ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
+                ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
+                ConfigStoreCloudStorageAccountName      = $ConfigStoreCloudStorageAccountName
                 ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
-                WebContextURL                           = "https://$ExternalDNSHostName/notebookserver"
+                Join                                    = $False
+                PeerServerHostName                      = Get-FQDN $env:ComputerName
 		    }
-			$DependsOn += '[ArcGIS_NotebookServer]NotebookServer'
+            $DependsOn += '[ArcGIS_NotebookServer]NotebookServer'
+            
+            ArcGIS_NotebookServerSettings NotebookServerSettings
+            {
+                WebContextURL                           = "https://$ExternalDNSHostName/$($Context)"
+                SiteAdministrator                       = $SiteAdministratorCredential
+            }
+            $DependsOn += '[ArcGIS_NotebookServerSettings]NotebookServerSettings'
         }
 		
 		if($SSLCertificateFileName -and $SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -368,7 +381,7 @@
 				Ensure                  = 'Present'
 				ExternalDNSName         = $ExternalDNSHostName                        
 				CertificateFileLocation = (Join-Path $(Get-Location).Path $SSLCertificateFileName)
-				CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword.GetNetworkCredential().Password } else { $null }
+				CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword } else { $null }
 				DependsOn 				= $DependsOn
 			}
 			$DependsOn += '[ArcGIS_IIS_TLS]IISHTTPS'

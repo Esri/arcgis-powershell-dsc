@@ -18,10 +18,10 @@ function Get-TargetResource
     $readAccess = @()
     $fullAccess = @()
     $noAccess = @()
-    if ($smbShare -ne $null)
+    if ($null -ne $smbShare)
     {
         $smbShareAccess = Get-SmbShareAccess -Name $Name
-        $smbShareAccess | %  {
+        $smbShareAccess | ForEach-Object  {
             $access = $_;
             if ($access.AccessRight -eq 'Change' -and $access.AccessControlType -eq 'Allow')
             {
@@ -168,7 +168,7 @@ function Set-TargetResource
 
     $shareExists = $false
     $smbShare = Get-SmbShare -Name $Name -ErrorAction SilentlyContinue
-    if($smbShare -ne $null)
+    if($null -ne $smbShare)
     {
         Write-Verbose -Message "Share with name $Name exists"
         $shareExists = $true
@@ -212,53 +212,53 @@ function Set-TargetResource
             
             # Use *SmbShareAccess cmdlets to change access
             $smbshareAccessValues = Get-SmbShareAccess -Name $Name
-            if ($ChangeAccess -ne $null)
+            if ($null -ne $ChangeAccess)
             {
                 # Blow off whatever is in there and replace it with this list
-                $smbshareAccessValues | ? {$_.AccessControlType  -eq 'Allow' -and $_.AccessRight -eq 'Change'} `
-                                      | % {
+                $smbshareAccessValues | Where-Object {$_.AccessControlType  -eq 'Allow' -and $_.AccessRight -eq 'Change'} `
+                                      | ForEach-Object {
                                             Remove-AccessPermission -ShareName $Name -UserName $_.AccountName -AccessPermission Change
                                           }
                                   
-                $changeAccessValue | % {
+                $changeAccessValue | ForEach-Object {
                                         Set-AccessPermission -ShareName $Name -AccessPermission "Change" -Username $_
                                        }
             }
             $smbshareAccessValues = Get-SmbShareAccess -Name $Name
-            if ($ReadAccess -ne $null)
+            if ($null -ne $ReadAccess)
             {
                 # Blow off whatever is in there and replace it with this list
-                $smbshareAccessValues | ? {$_.AccessControlType  -eq 'Allow' -and $_.AccessRight -eq 'Read'} `
-                                      | % {
+                $smbshareAccessValues | Where-Object {$_.AccessControlType  -eq 'Allow' -and $_.AccessRight -eq 'Read'} `
+                                      | ForEach-Object {
                                             Remove-AccessPermission -ShareName $Name -UserName $_.AccountName -AccessPermission Read
                                           }
 
-                $readAccessValue | % {
+                $readAccessValue | ForEach-Object {
                                        Set-AccessPermission -ShareName $Name -AccessPermission "Read" -Username $_                        
                                      }
             }
             $smbshareAccessValues = Get-SmbShareAccess -Name $Name
-            if ($FullAccess -ne $null)
+            if ($null -ne $FullAccess)
             {
                 # Blow off whatever is in there and replace it with this list
-                $smbshareAccessValues | ? {$_.AccessControlType  -eq 'Allow' -and $_.AccessRight -eq 'Full'} `
-                                      | % {
+                $smbshareAccessValues | Where-Object {$_.AccessControlType  -eq 'Allow' -and $_.AccessRight -eq 'Full'} `
+                                      | ForEach-Object {
                                             Remove-AccessPermission -ShareName $Name -UserName $_.AccountName -AccessPermission Full
                                           }
 
-                $fullAccessValue | % {
+                $fullAccessValue | ForEach-Object {
                                         Set-AccessPermission -ShareName $Name -AccessPermission "Full" -Username $_                        
                                      }
             }
             $smbshareAccessValues = Get-SmbShareAccess -Name $Name
-            if ($NoAccess -ne $null)
+            if ($null -ne $NoAccess)
             {
                 # Blow off whatever is in there and replace it with this list
-                $smbshareAccessValues | ? {$_.AccessControlType  -eq 'Deny'} `
-                                      | % {
+                $smbshareAccessValues | Where-Object {$_.AccessControlType  -eq 'Deny'} `
+                                      | ForEach-Object {
                                             Remove-AccessPermission -ShareName $Name -UserName $_.AccountName -AccessPermission No
                                           }
-                $noAccessValue | % {
+                $noAccessValue | ForEach-Object {
                                       Set-AccessPermission -ShareName $Name -AccessPermission "No" -Username $_
                                    }
             }

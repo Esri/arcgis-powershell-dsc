@@ -1,0 +1,8 @@
+
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_NotebookPostInstall")]
+class ArcGIS_NotebookPostInstall : OMI_BaseResource
+{
+	[Key] String SiteName;
+	[Write] String ContainerImagePaths[];
+};

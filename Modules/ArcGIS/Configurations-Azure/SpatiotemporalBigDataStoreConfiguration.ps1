@@ -47,7 +47,9 @@
         [System.String]
         $DebugMode
     )
-    	
+        
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_DataStore
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
@@ -147,7 +149,7 @@
 			    DependsOn			= @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules', '[ArcGIS_Service_Account]DataStore_Service_Account') 
 		    }
 
-		    foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGISGeoEvent'))
+            foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

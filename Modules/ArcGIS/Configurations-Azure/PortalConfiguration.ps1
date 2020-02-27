@@ -45,7 +45,7 @@
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $PortalLicenseUserType
+        $PortalLicenseUserTypeId
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
@@ -80,7 +80,7 @@
         $DebugMode
     )
 
-    function Extract-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -96,6 +96,8 @@
         $FileName
     }
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_License
 	Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Portal_TLS
@@ -109,14 +111,15 @@
     ## Download license file
     ##
     if($PortalLicenseFileUrl -and ($PortalLicenseFileUrl.Trim().Length -gt 0)) {
-        $PortalLicenseFileName = Extract-FileNameFromUrl $PortalLicenseFileUrl
+        $PortalLicenseFileName = Get-FileNameFromUrl $PortalLicenseFileUrl
         Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }    
 
 	$ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1
     $PortalHostNames = ($PortalMachineNames -split ',')
-    $PortalHostName = $PortalHostNames | Select-Object -First 1    
+    $PortalHostName = $PortalHostNames | Select-Object -First 1 
+    $LastPortalHostName = $PortalHostNames | Select-Object -Last 1    
     $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
     if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
     $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
@@ -207,7 +210,7 @@
             $PortalDependsOn = @('[ArcGIS_Service_Account]Portal_Service_Account')   
             if($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) ) 
             {
-                if([string]::IsNullOrEmpty($PortalLicenseUserType)){
+                if([string]::IsNullOrEmpty($PortalLicenseUserTypeId)){
                     ArcGIS_License PortalLicense
                     {
                         LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName)
@@ -246,7 +249,7 @@
                       {
                           TestScript = { 
                                             $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                            $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                                             if($result -like '*none*')
                                             {
                                                 return $false
@@ -254,7 +257,7 @@
                                             return $true
                                         }
                           SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						                $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+						                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
 					                  }
                           GetScript            = { return @{} }                  
                           DependsOn            = @('[ArcGIS_Service_Account]Portal_Service_Account')
@@ -353,12 +356,10 @@
 
 		        ArcGIS_Portal Portal
 		        {
-                    PortalEndPoint                        = $PortalEndpoint
-                    PortalContext                         = 'portal'
+                    PortalHostName                        = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
                     Ensure                                = 'Present'
                     LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
-                    UserLicenseType                       = if($PortalLicenseUserType){$PortalLicenseUserType}else{$null}
-                    ExternalDNSName                       = $ExternalDNSHostName
+                    UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
                     PortalAdministrator                   = $SiteAdministratorCredential 
 			        DependsOn                             = $PortalDependsOn
 			        AdminEmail                            = 'portaladmin@admin.com'
@@ -383,12 +384,12 @@
 			        #PortalEndPoint         = $PortalEndPoint
 			        ServerEndPoint          = $ServerEndPoint
                     CertificateFileLocation = $CertificateLocalFilePath 
-                    CertificatePassword     = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword.GetNetworkCredential().Password } else { $null }
+                    CertificatePassword     = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
                     DependsOn               = @('[ArcGIS_Portal]Portal')
                 }
             }
 
-		    foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent'))
+            foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

@@ -51,7 +51,11 @@ function Get-TargetResource
 
         [parameter(Mandatory = $true)]
 		[uint32]
-		$HttpsPort
+		$HttpsPort,
+        
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $ServerType
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -92,7 +96,11 @@ function Test-TargetResource
 
         [parameter(Mandatory = $true)]
 		[uint32]
-		$HttpsPort
+		$HttpsPort,
+        
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $ServerType
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -102,7 +110,7 @@ function Test-TargetResource
     $AppPath = $ApplicationPath.TrimStart('/')
     $Url =  "https://$($FQDN):$($HttpsPort)/$AppPath"
     Write-Verbose "Test Certificate existence from '$Url' in $StoreLocation and $StoreName"
-    $result = Is-CertificateInTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName
+    $result = Test-CertificateInTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName
     if($Ensure -ieq 'Present') {
 	    $result   
     }
@@ -142,7 +150,11 @@ function Set-TargetResource
 
         [parameter(Mandatory = $true)]
 		[uint32]
-		$HttpsPort
+        $HttpsPort,
+        
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $ServerType
     )
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -154,19 +166,19 @@ function Set-TargetResource
         $AppPath = $ApplicationPath.TrimStart('/')
         $Url =  "https://$($FQDN):$($HttpsPort)/$AppPath"
         Write-Verbose "Certificate import from '$Url' into $StoreLocation and $StoreName"     
-        if(-not(Is-CertificateInTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName)) {
+        if(-not(Test-CertificateInTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName)) {
             Write-Verbose "Import certificate from $Url"
-            Import-CertFromServerIntoTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName -SiteAdministrator $SiteAdministrator
+            Import-CertFromServerIntoTrustedCertificateStore -Url $Url -StoreLocation $StoreLocation -StoreName $StoreName -SiteAdministrator $SiteAdministrator -ServerType $ServerType
         }
-
     }else {
         Write-Verbose "Ensure ='Absent' not implemented"
     }
 }
 
-function Is-CertificateInTrustedCertificateStore
+function Test-CertificateInTrustedCertificateStore
 {
-	[CmdletBinding()]
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
 	param(
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -225,13 +237,12 @@ function Get-AllSSLCertificateCNamesForMachine
         [string]$SiteName = 'arcgis', 
         [string]$Token, 
         [string]$Referer, 
-        [string]$MachineName
+        [string]$MachineName,
+        [string]$ServerType
     )
-
-    Invoke-ArcGISWebRequest -Url "https://$($ServerHostName):6443/$SiteName/admin/machines/$MachineName/sslcertificates/" -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' 
+    $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }else{ 6443 }
+    Invoke-ArcGISWebRequest -Url "https://$($ServerHostName):$($SitePort)/$SiteName/admin/machines/$MachineName/sslCertificates/" -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' 
 }
-
-
 
 function Import-CertFromServerIntoTrustedCertificateStore
 {
@@ -251,7 +262,10 @@ function Import-CertFromServerIntoTrustedCertificateStore
 
         [parameter(Mandatory = $false)]
         [System.Management.Automation.PSCredential]
-		$SiteAdministrator
+        $SiteAdministrator,
+        
+        [System.String]
+        $ServerType
 	)
     
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {
@@ -261,7 +275,8 @@ function Import-CertFromServerIntoTrustedCertificateStore
         # Import Certificate into ArcGIS Server (establish trust between JVM)
         if($SiteAdministrator) {
             $FQDN = Get-FQDN $env:COMPUTERNAME
-            $ServerUrl = "https://$($FQDN):6443"    
+            $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }else{ 6443 }
+            $ServerUrl = "https://$($FQDN):$($SitePort)"
             $SiteName = 'arcgis'
        
             #Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
@@ -290,16 +305,15 @@ function Import-CertFromServerIntoTrustedCertificateStore
 
             Write-Verbose "Thumbprint of certificate is $($cert.Thumbprint). Issue is $($Issuer). Alias being used is $($Alias)."
             if($Alias) {
-                            
-                $certNames = Get-AllSSLCertificateCNamesForMachine -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN 
+                $certNames = Get-AllSSLCertificateCNamesForMachine -ServerHostName $FQDN -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN -ServerType $ServerType
                 if($certNames.certificates -icontains $Alias) {
                     Write-Verbose "Certificate with alias $Alias already exists for Machine $FQDN"
                 }else{
                     Write-Verbose "Certificate with alias $Alias not found for Machine $FQDN"
-                    $ImportCACertUrl  = $ServerURL.TrimEnd("/") + "/$SiteName/admin/machines/$FQDN/sslcertificates/importRootOrIntermediate"
+                    $ImportCACertUrl  = $ServerURL.TrimEnd("/") + "/$SiteName/admin/machines/$FQDN/sslCertificates/importRootOrIntermediate"
                     $props = @{ f= 'json'; token = $token.token; alias = $Alias  }    
                     Write-Verbose "Import Certificate URL:- $ImportCACertUrl"
-                    Upload-File -url $ImportCACertUrl -filePath $CertOnDiskPath `
+                    Invoke-UploadFile -url $ImportCACertUrl -filePath $CertOnDiskPath `
                                 -fileContentType 'application/pkix-cert' -fileParameterName 'rootCACertificate' `
                                 -fileName "$($cert.Thumbprint).cer" -Referer $Referer -formParams $props
                 }

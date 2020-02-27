@@ -82,12 +82,11 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -eq 'Present') {
-		$fs = Get-WmiObject -Class Win32_Share -Filter "Name='$FileShareName'"
+		$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
 		
 		$UserName = $Credential.UserName
 		if(-not($IsDomainAccount)){
-			$SAPassword = ConvertTo-SecureString $Credential.GetNetworkCredential().Password -AsPlainText -Force
-			$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $SAPassword )
+			$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $Credential.Password )
 		}
 
 		if(-not($fs)){
@@ -99,14 +98,14 @@ function Set-TargetResource
 			}
 			
 			$fsPath = $FileShareLocalPath -replace "\\","\\"
-			$fs = Get-WmiObject Win32_Share -Filter "path='$fsPath'"
+			$fs = Get-CimInstance Win32_Share -Filter "path='$fsPath'"
 			if(($fs | Where-Object { $_.Name -ieq $FileShareName }).Name -ine $FileShareName ){
 				Write-Verbose "File Share Local Path already has a FileShare defined for it and none match $FileShareName. Creating another share on $FileShareLocalPath"
 				New-SMBShare -Name $FileShareName -Path $FileShareLocalPath -FullAccess $UserName
 			}
 		}
 		
-		$fs = Get-WmiObject -Class Win32_Share -Filter "Name='$FileShareName'"
+		$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
 		if(-not(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $Credential.UserName).FileSystemRights -imatch "FullControl")){
 			$acl = Get-Acl $FileShareLocalPath
 			$permission = "$($UserName)","FullControl","ContainerInherit,ObjectInherit","None","Allow"
@@ -118,14 +117,18 @@ function Set-TargetResource
 			$FilePathArray = $FilePaths -Split ","
 			ForEach($path in $FilePathArray){
 				if(-not(Test-FileSharePath -FilePath $path -Credential $Credential)){
-					Create-FileShareFolder -FilePath $path -Credential $Credential
+					New-FileShareFolder -FilePath $path -Credential $Credential
 				} 
 			}
 		}
     }
     elseif($Ensure -eq 'Absent') {
-		if ($share = Get-WmiObject -Class Win32_Share -Filter "Name='$FileShareName'"){ 
-			$share.delete() 
+		if ($share = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"){ 
+			try{
+				Remove-CimInstance -CimInstance $share
+			} catch [Exception] {
+				Write-Verbose $_ | out-string
+			}
 		}
     }
     Write-Verbose "In Set-Resource for ArcGIS FileShare"
@@ -166,11 +169,10 @@ function Test-TargetResource
     $result = $false
 	
 	if(-not($IsDomainAccount)){
-		$SAPassword = ConvertTo-SecureString $Credential.GetNetworkCredential().Password -AsPlainText -Force
-		$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $SAPassword )
+		$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $Credential.Password )
 	}
 	
-	$fs = Get-WmiObject -Class Win32_Share -Filter "Name='$FileShareName'"
+	$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
 	if($fs){
 		if(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $Credential.UserName).FileSystemRights -imatch "FullControl"){
 			$result = $True
@@ -183,7 +185,7 @@ function Test-TargetResource
 			Write-Verbose "File Share Local Path $FileShareLocalPath already exists."
 		}
 		$fsPath = $FileShareLocalPath -replace "\\","\\"
-		$fs = Get-WmiObject Win32_Share -Filter "path='$fsPath'"
+		$fs = Get-CimInstance Win32_Share -Filter "path='$fsPath'"
 		if(-not(($fs | Where-Object { $_.Name -ieq $FileShareName }).Name)){
 			$result = $False	
 		}
@@ -209,7 +211,7 @@ function Test-TargetResource
     }
 }
 
-Function Create-FileShareFolder
+Function New-FileShareFolder
 {
 	[CmdletBinding()]
 	[OutputType([System.Boolean])]
@@ -240,7 +242,7 @@ Function Create-FileShareFolder
 		New-Item -ItemType directory -Path $MappedFilePath
 		Remove-PSDrive $drive
 	}catch{
-		Throw "Unable to create Folder $($FilePath) - $($_)"
+		Throw "Unable to create new Folder $($FilePath) - $($_)"
 	}
 }
 
@@ -284,9 +286,9 @@ Function Test-FileSharePath
 }
 
 function Get-FreeDriveLetter {
-    $drives = [io.driveinfo]::getdrives() | % {$_.name[0]}
-    $alpha = 65..90 | % { [char]$_ }
-    $avail = diff $drives $alpha | select -ExpandProperty inputobject
+    $drives = [io.driveinfo]::getdrives() | ForEach-Object {$_.name[0]}
+    $alpha = 65..90 |ForEach-Object { [char]$_ }
+    $avail = Compare-Object $drives $alpha | Select-Object -ExpandProperty inputobject
     $avail[0]
 }
 

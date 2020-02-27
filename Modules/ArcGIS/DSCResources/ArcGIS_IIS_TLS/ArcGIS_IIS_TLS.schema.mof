@@ -6,6 +6,6 @@ class ArcGIS_IIS_TLS : OMI_BaseResource
 	[Key] String ExternalDNSName;	
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;	
 	[Write, Description("Location of the .pfx certificate file")] String CertificateFileLocation;
-	[Write, Description("Password or Private Key for the Certificate")] String CertificatePassword;
+	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
 };
 

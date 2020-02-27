@@ -1,4 +1,4 @@
-function To-HttpBody($props)
+function ConvertTo-HttpBody($props)
 {
     [string]$str = ''
     foreach($prop in $props.Keys){                
@@ -99,13 +99,17 @@ function Get-PortalToken
 	$NumAttempts = 0
 	while(-not($Done) -and ($NumAttempts -lt $MaxAttempts)) {
 		try {
-			$token = Invoke-ArcGISWebRequest -Url $url -HttpFormParameters @{ username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password; referer = $Referer; f = 'json' } -Referer $Referer -LogResponse  
-		}
-		catch {
+            $token = Invoke-ArcGISWebRequest -Url $url -HttpFormParameters @{ username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password; referer = $Referer; f = 'json' } -Referer $Referer
+            if($token.error){
+                Write-Verbose "Error Response - $($token.error)"
+                throw [string]::Format("ERROR: Unable to get Portal Token - {0}" , $token.error.message)
+            }
+		} catch {
+            $token = $null
 			Write-Verbose "[WARNING]:- Portal at $url did not return a token on attempt $($NumAttempts + 1). Retry after 15 seconds"
 		}
 		if($token) {
-			Write-Verbose "Retrieved server token successfully"
+			Write-Verbose "Retrieved portal token successfully"
 			$Done = $true
 		}else {
 			Start-Sleep -Seconds 15
@@ -115,7 +119,7 @@ function Get-PortalToken
     $token
 }
 
-function Check-ResponseStatus($Response, $Url)
+function Confirm-ResponseStatus($Response, $Url)
 {
   $parentFunc = (Get-Variable MyInvocation -Scope 1).Value.MyCommand.Name
 
@@ -125,11 +129,15 @@ function Check-ResponseStatus($Response, $Url)
   if ($Response.status -and ($Response.status -ieq "error")) { 
     throw [string]::Format("ERROR: {0} failed. {1}" , $parentFunc,($Response.messages -join " "))
   }
+  if ($Response.error) { 
+    throw [string]::Format("ERROR: {0} failed. {1}" , $parentFunc,$Response.error.messages)
+  }
 }  
 
 function Get-LastModifiedDateForRemoteFile
 {
-	[CmdletBinding()]
+    [CmdletBinding()]
+    [OutputType([System.DateTime])]
 	param(
 		[System.String]$Url
 	)
@@ -198,7 +206,7 @@ function Wait-ForServiceToReachDesiredState
     }
 
     Write-Verbose "Waiting $SleepTimeInSeconds seconds."
-    Sleep -Seconds $SleepTimeInSeconds
+    Start-Sleep -Seconds $SleepTimeInSeconds
   }
 }
 
@@ -218,7 +226,7 @@ function Wait-ForUrl
 		$SleepTimeInSeconds = 5,
 
         [switch]
-		$LogFailures,
+		$ThrowErrors,
 
         [System.String]
 		$HttpMethod = 'GET',
@@ -227,11 +235,15 @@ function Wait-ForUrl
 	    $MaximumRedirection=5,
 
 		[System.Int32]
-	    $RequestTimeoutInSeconds=15
+	    $RequestTimeoutInSeconds=15,
+        
+        [switch]
+        $IsWebAdaptor
     )
 
     [bool]$Done = $false
     [int]$TotalElapsedTimeInSeconds = 0
+    $WaitForError = $null
     Write-Verbose "Waiting for Url $Url"
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
     [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
@@ -242,6 +254,9 @@ function Wait-ForUrl
 				$webRequest.Timeout  = ($RequestTimeoutInSeconds * 1000)
                 $webRequest.AllowAutoRedirect = $MaximumRedirection -gt -1
                 $webRequest.MaximumAutomaticRedirections = [System.Math]::Max(1, $MaximumRedirection)
+                if($IsWebAdaptor){
+                    $webRequest.Headers.Add('accept-language','en-US') 
+                }
 				$resp = $webRequest.GetResponse()
 				Write-Verbose "Url is $($resp.StatusCode)"
                 $Done = $true
@@ -253,25 +268,60 @@ function Wait-ForUrl
 						$Done = $true
 						Write-Verbose "Url is ready : $Url"
 					}else{
-						Write-Verbose "[Warning]:- Response:- $($resp.Content)"
+                        $WaitForError = "[Warning]:- Response:- $($resp.Content)"
+						Write-Verbose $WaitForError
 					}
 				}else {
-					Write-Verbose "[Warning]:- Response from $Url was NULL"
+                    $WaitForError = "[Warning]:- Response from $Url was NULL"
+					Write-Verbose $WaitForError
 				}
 			}
         }
         catch {
-            Write-Verbose "[Warning]:- $($_)"
+            $WaitForError = "[Warning]:- $($_)"
+            Write-Verbose $WaitForError
         }
         if(-not($Done)) {
-            Sleep -Seconds $SleepTimeInSeconds
+            Start-Sleep -Seconds $SleepTimeInSeconds
             $TotalElapsedTimeInSeconds += $SleepTimeInSeconds
         }
     }
+    if($ThrowErrors -and -not($Done)){
+        throw $WaitForError
+    }
 }
 
-function Upload-File([string]$url, [string]$filePath, [string]$fileContentType, $formParams, $httpHeaders, $Referer, [string]$fileParameterName = 'file', [string]$fileName) 
+function Invoke-UploadFile
 {   
+    [CmdletBinding()]
+    param
+    (
+		[System.String]
+        $url, 
+        
+        [System.String]
+        $filePath, 
+
+        [System.String]
+        $fileContentType, 
+        
+        $formParams,
+
+        $httpHeaders,
+
+        [System.String]
+        $Referer,
+
+        [System.String]
+        $fileParameterName = 'file',
+
+        [System.String]
+        $fileName
+    )
+
+
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
+    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
     [System.Net.WebRequest]$webRequest = [System.Net.WebRequest]::Create($url)
     $webRequest.ServicePoint.Expect100Continue = $false
     $webRequest.Method = "POST"
@@ -342,8 +392,8 @@ function Upload-File([string]$url, [string]$filePath, [string]$fileContentType, 
     $resp = $null
 	try {
 		$resp =  $webRequest.GetResponse()    
-	}catch {
-		Write-Verbose "[WARNING] $url returned an error $_"
+    }catch {
+        Write-Verbose "[WARNING] $url returned an error $_"
 	}
     if($resp) {
 		$rs = $resp.GetResponseStream()
@@ -354,19 +404,22 @@ function Upload-File([string]$url, [string]$filePath, [string]$fileContentType, 
     }
 }
 
-function License-Software
+function Invoke-LicenseSoftware
 {
     [CmdletBinding()]
     param
     (
 		[string]
         $Product, 
+
+        [string]
+        $ServerRole, 
         
         [string]
 		$LicenseFilePath, 
         
-        [string]
-        $Password, 
+        [System.Management.Automation.PSCredential]
+        $LicensePassword, 
         
 		[string]
 		$Version, 
@@ -388,21 +441,26 @@ function License-Software
             if($Product -ieq 'Desktop'){
                 $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\softwareauthorization.exe"
             }elseif($Product -ieq 'Pro'){
-                $InstallLocation = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "Pro" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+                $InstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "Pro" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
                 $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorizationPro.exe"
             }
         }else{
-            $LMInstallLocation = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "License Manager" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+            $LMInstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "License Manager" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
             if($LMInstallLocation){
                 $SoftwareAuthExePath = "$($LMInstallLocation)bin\SoftwareAuthorizationLS.exe"
             }
+        }
+    }else{
+        if($Product -ieq "Server" -and $ServerRole -ieq "NotebookServer" -and ($Version.Split('.')[1] -ge 8)){
+            $InstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+            $SoftwareAuthExePath = "$($InstallLocation)framework\bin\SoftwareAuthorization.exe"
         }
     }
     Write-Verbose "Licensing Product [$Product] using Software Authorization Utility at $SoftwareAuthExePath" -Verbose
     
     $Params = '-s -ver {0} -lif "{1}"' -f $Version,$licenseFilePath
-    if($Password){
-        $Params = '-s -ver {0} -lif "{1}" -password {2}' -f $Version,$licenseFilePath,$Password
+    if($null -ne $LicensePassword){
+        $Params = '-s -ver {0} -lif "{1}" -password {2}' -f $Version,$licenseFilePath,$LicensePassword.GetNetworkCredential().Password
     }
     Write-Verbose "[Running Command] $SoftwareAuthExePath $Params" -Verbose
     
@@ -423,7 +481,7 @@ function License-Software
             }
             $AttemptNumber += 1
         }
-        if($err -ne $null){
+        if($null -ne $err){
             throw $err
         }
 	}
@@ -468,17 +526,13 @@ function Invoke-ArcGISWebRequest
 
         [Parameter(Mandatory=$false)]
         [System.String]
-		$HttpMethod = 'Post',
-
-		[Parameter(Mandatory=$false)]
-		[switch]
-		$LogResponse
+		$HttpMethod = 'Post'
     )
 
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
 	[System.Net.ServicePointManager]::DefaultConnectionLimit = 1024
 	[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
-    $HttpBody = To-HttpBody $HttpFormParameters
+    $HttpBody = ConvertTo-HttpBody $HttpFormParameters
     $Headers = @{'Content-type'='application/x-www-form-urlencoded'
                     'Content-Length' = $HttpBody.Length
                     'Accept' = 'text/plain'     
@@ -497,9 +551,7 @@ function Invoke-ArcGISWebRequest
             $wc.Headers.Add('Referer', $Referer)
         }
         $res = $wc.DownloadString($UrlWithQueryString)
-		if($LogResponse) { 
-			Write-Verbose "Response:- $res"
-		}
+		Write-Verbose "Response:- $res"
 		if($res) {
 			$response = $res | ConvertFrom-Json
 			$response
@@ -514,10 +566,8 @@ function Invoke-ArcGISWebRequest
             }        
         $res = Invoke-WebRequest -Method $HttpMethod -Uri $Url -Body $HttpBody -Headers $Headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing -TimeoutSec $TimeOutSec   
         if($res -and $res.Content) {          
-			if($LogResponse) { 
-				Write-Verbose "Response:- $($res.Content)"
-			}
-            $response = $res.Content | ConvertFrom-Json
+			Write-Verbose "Response:- $($res.Content)"
+			$response = $res.Content | ConvertFrom-Json
             $response  
         }else { 
             throw "Request to $Url failed. Response returned NULL"
@@ -553,6 +603,7 @@ function Get-PropertyFromPropertiesFile
 function Set-PropertyFromPropertiesFile
 {
     [CmdletBinding()]
+    [OutputType([System.Boolean])]
     param(
         [System.String]
         $PropertiesFilePath,
@@ -607,9 +658,10 @@ function Set-PropertyFromPropertiesFile
     $Changed
 }
 
-function Ensure-PropertyInPropertiesFile
+function Confirm-PropertyInPropertiesFile
 {
     [CmdletBinding()]
+    [OutputType([System.Boolean])]
     param(
         [System.String]
         $PropertiesFilePath,
@@ -635,6 +687,7 @@ function Ensure-PropertyInPropertiesFile
 function Add-HostMapping
 {
     [CmdletBinding()]
+    [OutputType([System.Boolean])]
     param(
         $hostname, 
         $ipaddress
@@ -831,628 +884,6 @@ function Set-ConfiguredHostIdentifier
     $Changed
 }
 
-
-function Get-WebAdaptorsForPortal {
-    [CmdletBinding()]
-    param(
-		[System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost'
-    )
-    $GetWebAdaptorsUrl = "https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors"
-    try{
-		Invoke-ArcGISWebRequest -Url $GetWebAdaptorsUrl -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer -TimeoutSec 240 -HttpMethod 'GET'    
-	}catch{
-		Write-Verbose "[WARNING] Get-WebAdaptorsForPortal request to $($GetWebAdaptorsUrl) did not succeed. Error:- $_"
-		$null
-	}   
-}
-
-function Register-WebAdaptorForPortal {
-    [CmdletBinding()]
-    param(
-        [System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost', 
-
-        [System.String]
-		$WebAdaptorUrl, 
-
-        [System.String]
-		$MachineName, 
-
-        [System.Int32]
-		$HttpPort = 80, 
-
-		[System.Int32]
-		$HttpsPort = 443
-    )
-    [System.String]$RegisterWebAdaptorsUrl = ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors/register")
-	Write-Verbose "Register Web Adaptor URL:- $RegisterWebAdaptorsUrl"
-    $WebParams = @{ token = $Token
-                    f = 'json'
-                    webAdaptorURL = $WebAdaptorUrl
-                    machineName = $MachineName
-                    httpPort = $HttpPort.ToString()
-                    httpsPort = $HttpsPort.ToString()
-                  }
-	try {
-		Invoke-ArcGISWebRequest -Url $RegisterWebAdaptorsUrl -HttpFormParameters $WebParams -Referer $Referer -TimeoutSec 240 -ErrorAction Ignore
-	}
-	catch {
-		Write-Verbose "[WARNING] Register-WebAdaptorForPortal returned an error. Error:- $_"
-	}
-}
-
-function UnRegister-WebAdaptorForPortal {
-    [CmdletBinding()]
-    param(
-        [System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost',
-		 
-        [System.String]
-		$WebAdaptorId
-    )
-    
-    $UnRegisterWebAdaptorsUrl = "https://$($PortalHostName):$($Port)/$($SiteName)/portaladmin/system/webadaptors/$WebAdaptorId/unregister"
-    try {
-        Invoke-ArcGISWebRequest -Url $UnRegisterWebAdaptorsUrl -HttpFormParameters  @{ f = 'json'; token = $Token } -Referer $Referer -TimeoutSec 300  
-    }catch{
-        Write-Verbose "[WARNING] UnRegister-WebAdaptorForPortal on $UnRegisterWebAdaptorsUrl failed with error $($_)"
-    }    
-}
-
-function Get-PortalSystemProperties {
-    [CmdletBinding()]
-    param(        
-        [System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost'
-    )
-    
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$($SiteName)" + '/portaladmin/system/properties/') -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
-}
-
-function Set-PortalSystemProperties {
-    [CmdletBinding()]
-    param(
-        
-        [System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost',
-
-        $Properties
-    )
-    
-    try {
-        Invoke-ArcGISWebRequest -Url("https://$($PortalHostName):$($Port)/$($SiteName)" + '/portaladmin/system/properties/update/') -HttpFormParameters @{ f = 'json'; token = $Token; properties = (ConvertTo-Json $Properties -Depth 4) } -Referer $Referer -TimeOutSec 360
-    }
-    catch {
-        Write-Verbose "[WARNING] Request to Set-PortalSystemProperties returned error:- $_"
-    }
-}
-
-
-function Test-WCPPWAPortalProperties
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-	param(
-		[System.String]
-		$PortalHostName,
-		
-		[System.String]		
-		$ExternalDNSName,
-		
-		[System.String]
-		$PortalEndPoint,
-
-		[System.String]
-		$PortalContext,
-
-		[System.String]
-        $Token,
-
-        [System.String]
-		$Referer,
-
-        [switch]
-        $IsCallingResourcePortal 
-    )
-
-    $result = $false
-    Write-Verbose "Get System Properties"
-    # Check if web context URL is set correctly							
-    $sysProps = Get-PortalSystemProperties -PortalHostName $PortalHostName -SiteName 'arcgis' -Token $Token -Referer $Referer
-    if($sysProps) {
-		Write-Verbose "System Properties:- $(ConvertTo-Json $sysProps -Depth 3 -Compress)"
-        if($ExternalDNSName){
-            $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"	
-            if ($sysProps.WebContextURL -ieq $ExpectedWebContextUrl) {
-                $result = $true
-                Write-Verbose "Portal System Properties > WebContextUrl is correctly set to '$($ExpectedWebContextUrl)'"
-            }
-            else {
-                Write-Verbose "Portal System Properties > WebContextUrl is NOT correctly set to '$($ExpectedWebContextUrl)'"
-            }
-        }
-
-        if ($result -and $PortalEndPoint) {
-            if (-not($PortalEndPoint -as [ipaddress])) {
-                $PortalEndPoint = Get-FQDN $PortalEndPoint
-            }
-            # Check if private portal URL is set correctly
-            $ExpectedPrivatePortalUrl = "https://$($PortalEndPoint):7443/arcgis"
-            if(-not($IsCallingResourcePortal) -and -not($PortalEndPoint -as [ipaddress]))
-            { 
-                $ExpectedPrivatePortalUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-            }
-
-            if ($sysProps.privatePortalURL -ieq $ExpectedPrivatePortalUrl) {						
-                Write-Verbose "Portal System Properties > privatePortalURL is correctly set to '$($ExpectedPrivatePortalUrl)'"
-            }
-            else {
-                $result = $false
-                Write-Verbose "Portal System Properties > privatePortalURL is NOT correctly set to '$($ExpectedPrivatePortalUrl)'"
-            }
-        }
-        
-        if ($result -and $ExternalDNSName) {
-            $ExpectedUrl = "https://$ExternalDNSName/$PortalContext"
-            $webadaptorConfigs = Get-WebAdaptorsForPortal -PortalHostName $PortalHostName -SiteName 'arcgis' -Token $Token -Referer $Referer
-            $result = $false
-            $webadaptorConfigs.webAdaptors | Where-Object { $_.httpPort -eq 80 -and $_.httpsPort -eq 443 } | ForEach-Object {
-                if ($_.webAdaptorURL -ieq $ExpectedUrl) {
-                    Write-Verbose "WebAdaptor URL $($_.webAdaptorURL) matches $ExpectedUrl"
-                    $result = $True
-                }
-            }
-        }
-    }else {
-        Write-Verbose "System Properties is NULL"
-    }
-    $result
-}
-
-function Set-WCPPWAPortalProperties
-{
-	[CmdletBinding()]
-	param(
-		[System.String]
-		$PortalHostName,
-		
-		[System.String]		
-		$ExternalDNSName,
-		
-		[System.String]
-		$PortalEndPoint,
-
-		[System.String]
-		$PortalContext,
-
-		[System.String]
-		$Token,
-
-        [System.String]
-        $Referer,
-        
-        [switch]
-        $IsCallingResourcePortal
-	)
-	
-	$FQDN = Get-FQDN $PortalHostName
-	
-	$sysProps = Get-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer
-	if (-not($sysProps)) {
-		$sysProps = @{ }
-	}
-	
-    if($ExternalDNSName){
-        $ExpectedWebContextUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-        if ($sysProps.WebContextURL -ine $ExpectedWebContextUrl) {
-            Write-Verbose "Portal System Properties > WebContextUrl is NOT correctly set to '$($ExpectedWebContextUrl)'"
-            if (-not($sysProps.WebContextURL)) {
-                Add-Member -InputObject $sysProps -MemberType NoteProperty -Name 'WebContextURL' -Value $ExpectedWebContextUrl
-            }
-            else {
-                $sysProps.WebContextURL = $ExpectedWebContextUrl
-            }			
-        }
-        else {
-            Write-Verbose "Portal System Properties > WebContextUrl is correctly set to '$($sysProps.WebContextURL)'"
-        }
-    }
-
-    if (-not($PortalEndPoint -as [ipaddress])) {
-        $PortalEndPoint = Get-FQDN $PortalEndPoint
-    }
-    # Check if private portal URL is set correctly
-    $ExpectedPrivatePortalUrl = "https://$($PortalEndPoint):7443/arcgis"
-    if(-not($IsCallingResourcePortal) -and -not($PortalEndPoint -as [ipaddress]))
-    { 
-        $ExpectedPrivatePortalUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-    }
-    
-    if ($sysProps.privatePortalURL -ine $ExpectedPrivatePortalUrl) {
-        Write-Verbose "Portal System Properties > privatePortalURL is NOT correctly set to '$($ExpectedPrivatePortalUrl)'"
-        if (-not($sysProps.privatePortalURL)) {
-            Add-Member -InputObject $sysProps -MemberType NoteProperty -Name 'privatePortalURL' -Value $ExpectedPrivatePortalUrl
-        }
-        else {
-            $sysProps.privatePortalURL = $ExpectedPrivatePortalUrl
-        }			
-    }
-    else {
-        Write-Verbose "Portal System Properties > privatePortalURL is correctly set to '$($sysProps.privatePortalURL)'"
-    }
-    
-    Write-Verbose "Updating Portal System Properties"
-    try {
-        Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-        Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer -Properties $sysProps
-    } catch {
-        Write-Verbose "Error setting Portal System Properties :- $_"
-        Write-Verbose "Request: Set-PortalSystemProperties -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer -Properties $sysProps"
-    }
-    Write-Verbose "Waiting 5 minutes for web server to apply changes before polling for endpoint being available" 
-    Start-Sleep -Seconds 300 # Add a 5 minute wait to allow the web server to go down
-    Write-Verbose "Updated Portal System Properties. Waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
-    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 300 -HttpMethod 'GET' -LogFailures
-    Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($FQDN):7443/arcgis/portaladmin/' to come back up"
-    
-    if ($ExternalDNSName){
-        $WebAdaptorUrl = "https://$($ExternalDNSName)/$($PortalContext)"
-        $WebAdaptorsForPortal = Get-WebAdaptorsForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer
-        Write-Verbose "Current number of WebAdaptors on Portal:- $($WebAdaptorsForPortal.webAdaptors.Length)"
-        $AlreadyExists = $false
-        $WebAdaptorsForPortal.webAdaptors | Where-Object { $_.httpPort -eq 80 -and $_.httpsPort -eq 443 } | ForEach-Object {
-            if ($_.webAdaptorURL -ine $WebAdaptorUrl) {
-                Write-Verbose "Unregister Web Adaptor with Url $WebAdaptorUrl"
-                UnRegister-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer -WebAdaptorId $_.id             
-            } 
-            else {
-                Write-Verbose "Webadaptor with require properties URL $($_.webAdaptorURL) and Name $($_.machineName) already exists"
-                $AlreadyExists = $true
-            }
-        }
-
-        if(-not($AlreadyExists)) {
-            
-            #Register the PortalEndPoint as a (dummy) web adaptor for Portal
-            Write-Verbose "Registering the ExternalDNSName Endpoint with Url $WebAdaptorUrl and MachineName $PortalEndPoint as a Web Adaptor for Portal"
-            try{
-                Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-                $registerResponse = Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl `
-                                                                -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443
-            } catch {
-                Write-Verbose "Error registering Webadaptor for Portal :- $_"    
-                Write-Verbose "Request: Register-WebAdaptorForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $ExternalDNSName -HttpPort 80 -HttpsPort 443"
-            }
-
-            if($registerResponse) {												
-                Write-Verbose "Register WebAdaptor Response:- $(ConvertTo-Json -Depth 5 $registerResponse -Compress)"
-            }else { 
-                Write-Verbose "Register WebAdaptor Response is null indicating a stopped web server" 
-                Start-Sleep -Seconds 180 # Wait for Portal admin to stop/start asynchronously
-                Write-Verbose "Waiting for portaladmin endpoint to come back up"
-                Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 300 -HttpMethod 'GET' 
-            }
-
-            $WebAdaptorsForPortal = Get-WebAdaptorsForPortal -PortalHostName $FQDN -SiteName 'arcgis' -Token $Token -Referer $Referer
-            if($WebAdaptorsForPortal) {												
-                Write-Verbose "WebAdaptors Response:- $(ConvertTo-Json -Depth 5 $WebAdaptorsForPortal -Compress)"
-            }else { 
-                Write-Verbose "WebAdaptors Response is null indicating a stopped web server" 
-                Start-Sleep -Seconds 180 # Wait for Portal to stop/start asynchronously
-                Write-Verbose "Waiting for portaladmin endpoint to come back up"
-                Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET' 
-            }
-            Write-Verbose "Number of Registered Web Adaptors: $($WebAdaptorsForPortal.webAdaptors.Length)"
-            $VerifyWebAdaptor = $WebAdaptorsForPortal.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $WebAdaptorUrl -and $_.httpPort -eq 80 -and $_.httpsPort -eq 443 }
-            if(-not($VerifyWebAdaptor)) {
-                Write-Verbose "[WARNING] Unable to verify the web adaptor that was just registered for $($WebAdaptorUrl)"
-            }   
-        }
-    }
-}
-
-function Get-ServerSystemProperties
-{
-    [CmdletBinding()]
-    param(        
-        [System.String]
-		$ServerHostName, 
-
-        [System.String]
-		$ContextName = 'arcgis', 
-
-		[System.Int32]
-		$AdminEndpointHttpsPort = 6443,
-
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer
-    )
-    
-    Invoke-ArcGISWebRequest -Url ("https://$($ServerHostName):$($AdminEndpointHttpsPort)/$($ContextName)" + '/admin/system/properties/') -HttpMethod 'Get' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
-}
-
-function Set-ServerSystemProperties
-{
-    [CmdletBinding()]
-    param(
-        
-        [System.String]
-		$ServerHostName, 
-
-        [System.String]
-		$ContextName = 'arcgis', 
-
-		[System.Int32]
-		$AdminEndpointHttpsPort = 6443,
-
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer,
-
-        $Properties
-    )
-    
-    try {
-        Invoke-ArcGISWebRequest -Url("https://$($ServerHostName):$($AdminEndpointHttpsPort)/$($ContextName)" + '/admin/system/properties/update/') -HttpFormParameters @{ f = 'json'; token = $Token; properties = (ConvertTo-Json $Properties -Depth 4) } -Referer $Referer -TimeOutSec 180
-    }catch {
-        Write-Verbose "[WARNING] Request to Set-ServerSystemProperties returned error:- $_"
-    }
-}
-
-function Get-WebAdaptorsConfigForServer
-{
-    [CmdletBinding()]
-    param(
-      [System.String]
-	  $ServerUrl,
-
-      [System.String]
-	  $SiteName, 
-      
-	  [System.String]
-	  $Token, 
-
-      [System.String]
-	  $Referer
-    )
-
-    $GetWebAdaptorsUrl = $ServerUrl.TrimEnd('/') + "/$SiteName/admin/system/webadaptors"  
-    Invoke-ArcGISWebRequest -Url $GetWebAdaptorsUrl -HttpFormParameters  @{ f= 'json'; token = $Token } -Referer $Referer -TimeoutSec 30    
-}
-
-function Register-WebAdaptorForServer 
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-		$ServerUrl, 
-
-        [System.String]
-		$SiteName, 
-
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer, 
-
-        [System.String]
-		$WebAdaptorUrl, 
-
-        [System.String]
-		$MachineName, 
-
-        [System.Int32]
-		$HttpPort = 80, 
-
-        [System.Int32]
-		$HttpsPort = 443
-    )
-
-    [System.String]$RegisterWebAdaptorsUrl = $ServerUrl.TrimEnd('/') + "/$SiteName/admin/system/webadaptors/register"  
-    $WebParams = @{ token = $Token
-                    f = 'json'
-                    webAdaptorURL = $WebAdaptorUrl
-                    machineName = $MachineName
-                    httpPort = $HttpPort.ToString()
-                    httpsPort = $HttpsPort.ToString()
-                    isAdminEnabled = 'true'
-                  }
-    Invoke-ArcGISWebRequest -Url $RegisterWebAdaptorsUrl -HttpFormParameters $WebParams -Referer $Referer       
-}
-
-function Test-WAWCServerProperties{
-    [CmdletBinding()]
-	param(
-		[System.String]
-        $ServerHostName,
-        
-        [System.String]
-        $ServerContext,
-    	
-		[System.String]		
-		$ExternalDNSName,
-		
-		[System.String]
-		$ServerEndPoint,
-
-		[System.String]
-		$Token, 
-
-        [System.String]
-		$Referer
-	)
-
-    $FQDN = Get-FQDN $ServerHostName
-	
-	$result = $true
-    if($result){
-		$serverSysProps = Get-ServerSystemProperties -ServerHostName $FQDN -Token $Token -Referer $Referer	
-		if($serverSysProps) {
-			Write-Verbose "System Properties:- $(ConvertTo-Json $serverSysProps -Depth 3 -Compress)"
-		}else {
-			Write-Verbose "System Properties is NULL"
-		}
-		$ExpectedServerWebContextUrl = "https://$($ExternalDNSName)/$($ServerContext)"	
-		if($serverSysProps.WebContextURL -ieq $ExpectedServerWebContextUrl) {
-			Write-Verbose "Server System Properties > WebContextUrl is correctly set to '$($ExpectedServerWebContextUrl)'"
-		}else{
-			$result = $false
-			Write-Verbose "Server System Properties > WebContextUrl is NOT correctly set to '$($ExpectedServerWebContextUrl)'"
-		}
-	}
-
-	if($result) {
-		$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($FQDN):6443" -SiteName 'arcgis' `
-																-Token $Token -Referer $Referer
-		$WebAdaptorUrl = "https://$($ServerEndPoint):6443/arcgis" # "https://$($ServerEndPoint)/$ServerSiteName"
-		$ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $WebAdaptorUrl }
-
-		if(-not($ExistingWebAdaptor)) {
-			$result = $false
-			Write-Verbose "Web Adaptor for url '$WebAdaptorUrl' is not set"
-		}
-	}
-    $result
-}
-
-function Set-WAWCServerProperties{
-    [CmdletBinding()]
-	param(
-		[System.String]
-		$ServerHostName,
-        
-        [System.String]
-        $ServerContext,
-		
-		[System.String]		
-		$ExternalDNSName,
-		
-		[System.String]
-		$ServerEndPoint,
-
-		[System.String]
-		$Token, 
-
-        [System.String]
-		$Referer
-	)
-
-    $ServerFQDN = Get-FQDN $ServerHostName
-   
-    $WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443" -SiteName 'arcgis' `
-                                                            -Token $Token -Referer $Referer
-    $WebAdaptorUrl = "https://$($ServerEndPoint):6443/arcgis" # "https://$($ServerEndPoint)/$ServerSiteName"
-    $ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $WebAdaptorUrl }
-
-    if(-not($ExistingWebAdaptor)) {
-        #Register the ServerEndpoint as a (dummy) web adaptor for server				
-        Write-Verbose 'Registering the Server Endpoint as a Web Adaptor for Server'
-        Write-Verbose "Register https://$($ServerEndPoint):6443/arcgis as web adaptor" # "Register https://$($ServerEndPoint)/$ServerSiteName as web adaptor" 
-        Register-WebAdaptorForServer -ServerUrl "https://$($ServerFQDN):6443" -Token $Token -Referer $Referer -SiteName 'arcgis' `
-                                        -WebAdaptorUrl $WebAdaptorUrl -MachineName $ServerEndPoint -HttpPort 80 -HttpsPort 443
-        Write-Verbose 'Finished Registering the ServerEndPoint as a Web Adaptor for Server'
-
-        $WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443" -SiteName 'arcgis' `
-                                                            -Token $Token -Referer $Referer
-        $VerifyWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $WebAdaptorUrl }
-        if(-not($VerifyWebAdaptor)) {
-            Write-Verbose "[WARNING] Unable to verify the web adaptor that was just registered for $ServerEndPoint with URL $WebAdaptorUrl"
-        }
-    }
-    else{
-        Write-Verbose "Web Adaptor for $ServerEndPoint with URL $WebAdaptorUrl already exists on the Server"
-    }
-    
-	$serverSysProps = Get-ServerSystemProperties -ServerHostName $ServerFQDN -Token $Token -Referer $Referer	
-	if($serverSysProps) {
-		Write-Verbose "System Properties:- $(ConvertTo-Json $serverSysProps -Depth 3 -Compress)"
-	}else {
-		Write-Verbose "System Properties is NULL"
-	}
-	$ExpectedServerWebContextUrl = "https://$($ExternalDNSName)/$($ServerContext)"	
-	if($serverSysProps.WebContextURL -ieq $ExpectedServerWebContextUrl) {
-		Write-Verbose "Server System Properties > WebContextUrl is correctly set to '$($ExpectedServerWebContextUrl)'"
-	}else{
-		$result = $false
-		Write-Verbose "Server System Properties > WebContextUrl is NOT correctly set to '$($ExpectedServerWebContextUrl)'"
-		if(-not($serverSysProps.WebContextURL)) {
-			Add-Member -InputObject $serverSysProps -MemberType NoteProperty -Name 'WebContextURL' -Value $ExpectedServerWebContextUrl
-		}else{
-			$serverSysProps.WebContextURL = $ExpectedServerWebContextUrl
-		}	
-		Write-Verbose "Updating Server System Properties to set WebContextUrl to $ExpectedServerWebContextUrl"
-		Set-ServerSystemProperties -ServerHostName $ServerFQDN -Token $Token -Referer $Referer -Properties $serverSysProps
-		Write-Verbose "Updated Server System Properties to set WebContextUrl to $ExpectedServerWebContextUrl"
-	}
-}
-
 function Get-ComponentCode
 {
        [CmdletBinding()]
@@ -1463,7 +894,7 @@ function Get-ComponentCode
         [System.String]
         $ComponentName,
 
-        [ValidateSet("2.0","2.1","2.2","2.3","2.4","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","2018.0","2018.1","2019.0")]
+        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","2018.0","2018.1","2019.0","2019.1","2019.2")]
         [parameter(Mandatory = $true)]
         [System.String]
         $Version
@@ -1479,6 +910,7 @@ function Get-ComponentCode
             '10.6.1' = 'F62B418D-E9E4-41CE-9E02-167BE4276105'
             '10.7' = '98D5572E-C435-4841-A747-B4C72A8F76BB'
             '10.7.1' = '08E03E6F-95D3-4D33-A171-E0DC996E08E3'
+            '10.8' = '458BF5FF-2DF8-426B-AEBC-BE4C47DB6B54'
         }
         Portal = @{      
             '10.4' = 'FA6FCD2D-114C-4C04-A8DF-C2E43979560E'
@@ -1489,9 +921,11 @@ function Get-ComponentCode
             '10.6.1' = 'ECC6B3B9-A875-4AE3-9C03-8664EB38EED9'
             '10.7' = '6A640642-4D74-4A2F-8350-92B6371378C5'
             '10.7.1' = '7FDEEE00-6641-4E27-A54E-82ACCCE14D00'
+            '10.8' = '7D432555-69F9-4945-8EE7-FC4503A94D6A'
         }
         WebStyles = @{ 
             '10.7.1' = 'B2E42A8D-1EE9-4610-9932-D0FCFD06D2AF'
+            '10.8' = 'EF31CB36-2EB4-4FD3-A451-AC12FD22A582'
         }
         DataStore = @{             
             '10.4' = 'C351BC6D-BF25-487D-99AB-C963D590A8E8'
@@ -1502,6 +936,7 @@ function Get-ComponentCode
             '10.6.1' = '53160721-93D8-48F8-9EDD-038794AE756E'
             '10.7' = '2B19AB45-1A17-45CD-8001-0608E8D72447'
             '10.7.1' = '112E5FD0-9DD2-45DA-ACD5-A21AA45F67E2'
+            '10.8' = '2018A7D8-CBE8-4BCF-AF0E-C9AAFB4C9B6D'
         }        
         GeoEvent = @{             
             '10.4' = '188191AE-5A83-49E8-88CB-1F1DB05F030D'
@@ -1512,13 +947,17 @@ function Get-ComponentCode
             '10.6.1' = 'D0586C08-E589-4942-BC9B-E83B2E8B95C2'
             '10.7' = '7430C9C3-7D96-429E-9F47-04938A1DC37E'
             '10.7.1' = '3AE4EE62-B5ED-45CB-8917-F761B9335F33'
+            '10.8' = '10F38ED5-B9A1-4F0C-B8E2-06AD1365814C'
         }
         NotebookServer = @{
             '10.7' = '3721E3C6-6302-4C74-ACA4-5F50B1E1FE3A'
             '10.7.1' = 'F6DF77B9-F35E-4877-A7B1-63E1918B4E19'
+            '10.8' = 'B1DB581E-E66C-4E58-B9E3-50A4D6CB5982'
         }
         Monitor = @{
             '10.7' = '0497042F-0CBB-40C0-8F62-F1922B90E12E'
+            '10.7.1' = 'FF811F17-42F9-4539-A879-FC8EDB9D6C46'
+            '10.8' = '98AA3E79-18C5-4D51-9477-C844C6EBC6F3'
         }
         Desktop = @{
             '10.4' = '72E7DF0D-FFEE-43CE-A5FA-43DFC25DC087'
@@ -1529,11 +968,14 @@ function Get-ComponentCode
             '10.6.1' = 'FA2E2CBC-0697-4C71-913E-8C65B5A611E8'
             '10.7' = 'BFB4F32E-38DF-4E8F-8180-C99FC9A14BBE'
             '10.7.1' = '69262D87-3697-492B-ABED-765DDC15118B'
+            '10.8' = '3DB5C522-636F-4FC2-9C38-298DBEBFD0BC'
         }
         LicenseManager = @{
             '2018.0' = '1914B5D6-02C2-4CA3-9CAB-EE76358228CF'
             '2018.1' = 'E1C26E47-C6AB-4120-A3DE-2FA0F723C876'
-            '2019.0' = 'CB1E78B5-9914-45C6-8227-D55F4CD5EA6F'
+            '2019.0' = '23696ED6-78BA-44A8-B4C7-1BC979131533'
+            '2019.1' = 'BA3C546E-6FAC-405C-B2C9-30BC6E26A7A9'
+            '2019.2' = '77F1D4EB-0225-4626-BB9E-7FCB4B0309E5'
         }
         Pro = @{
             '2.0' = '28A4967F-DE0D-4076-B62D-A1A9EA62FF0A'
@@ -1541,6 +983,7 @@ function Get-ComponentCode
             '2.2' = 'A23CF244-D194-4471-97B4-37D448D2DE76'
             '2.3' = '9CB8A8C5-202D-4580-AF55-E09803BA1959'
             '2.4' = 'E3B1CE52-A1E6-4386-95C4-5AB450EF57BD'
+            '2.5' = '0D695F82-EB12-4430-A241-20226042FD40'	
         }
     }
     $ProductCodes[$ComponentName][$Version]    
@@ -1627,7 +1070,7 @@ function Get-MSPqfeID {
         return $qfeID
     }
     catch {
-        Write-Output $_.Exception.Message
+        Write-Output -InputObject $_.Exception.Message
         return $NULL
     }
 }
@@ -1649,7 +1092,7 @@ function Convert-PSObjectToHashtable
                 foreach ($object in $InputObject) { Convert-PSObjectToHashtable $object }
             )
 
-            Write-Output -NoEnumerate $collection
+            Write-Output -InputObject $collection -NoEnumerate
         }
         elseif ($InputObject -is [psobject])
         {
@@ -1669,9 +1112,112 @@ function Convert-PSObjectToHashtable
     }
 }
 
-Export-ModuleMember -Function Invoke-ArcGISWebRequest,License-Software,To-HttpBody,Upload-File,Wait-ForUrl,Get-LastModifiedDateForRemoteFile,Check-ResponseStatus `
-                                ,Get-ServerToken,Get-PortalToken,Wait-ForServiceToReachDesiredState,Get-EsriRegistryKeyForService,Ensure-PropertyInPropertiesFile `
+function Register-WebAdaptorForPortal {
+    [CmdletBinding()]
+    param(
+        [System.String]
+		$PortalHostName = 'localhost', 
+
+        [System.String]
+		$SiteName = 'arcgis', 
+
+        [System.Int32]
+		$Port = 7443,
+		
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer = 'http://localhost', 
+
+        [System.String]
+		$WebAdaptorUrl, 
+
+        [System.String]
+		$MachineName, 
+
+        [System.Int32]
+		$HttpPort = 80, 
+
+		[System.Int32]
+		$HttpsPort = 443
+    )
+    [System.String]$RegisterWebAdaptorsUrl = ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors/register")
+	Write-Verbose "Register Web Adaptor URL:- $RegisterWebAdaptorsUrl"
+    $WebParams = @{ token = $Token
+                    f = 'json'
+                    webAdaptorURL = $WebAdaptorUrl
+                    machineName = $MachineName
+                    httpPort = $HttpPort.ToString()
+                    httpsPort = $HttpsPort.ToString()
+                  }
+	try {
+		Invoke-ArcGISWebRequest -Url $RegisterWebAdaptorsUrl -HttpFormParameters $WebParams -Referer $Referer -TimeoutSec 3000 -ErrorAction Ignore
+	}
+	catch {
+		Write-Verbose "[WARNING] Register-WebAdaptorForPortal returned an error. Error:- $_"
+	}
+}
+
+function Get-WebAdaptorsForPortal {
+    [CmdletBinding()]
+    param(
+		[System.String]
+		$PortalHostName = 'localhost', 
+
+        [System.String]
+		$SiteName = 'arcgis', 
+
+        [System.Int32]
+		$Port = 7443,
+		
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer = 'http://localhost'
+    )
+    $GetWebAdaptorsUrl = "https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors"
+    try{
+		Invoke-ArcGISWebRequest -Url $GetWebAdaptorsUrl -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer -TimeoutSec 240 -HttpMethod 'GET'    
+	}catch{
+		Write-Verbose "[WARNING] Get-WebAdaptorsForPortal request to $($GetWebAdaptorsUrl) did not succeed. Error:- $_"
+		$null
+	}   
+}
+
+function UnRegister-WebAdaptorForPortal {
+    [CmdletBinding()]
+    param(
+        [System.String]
+		$PortalHostName = 'localhost', 
+
+        [System.String]
+		$SiteName = 'arcgis', 
+
+        [System.Int32]
+		$Port = 7443,
+		
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer = 'http://localhost',
+		 
+        [System.String]
+		$WebAdaptorId
+    )
+    
+    $UnRegisterWebAdaptorsUrl = "https://$($PortalHostName):$($Port)/$($SiteName)/portaladmin/system/webadaptors/$WebAdaptorId/unregister"
+    try {
+        Invoke-ArcGISWebRequest -Url $UnRegisterWebAdaptorsUrl -HttpFormParameters  @{ f = 'json'; token = $Token } -Referer $Referer -TimeoutSec 300  
+    }catch{
+        Write-Verbose "[WARNING] UnRegister-WebAdaptorForPortal on $UnRegisterWebAdaptorsUrl failed with error $($_)"
+    }    
+}
+
+Export-ModuleMember -Function Invoke-ArcGISWebRequest,Invoke-LicenseSoftware,ConvertTo-HttpBody,Invoke-UploadFile,Wait-ForUrl,Get-LastModifiedDateForRemoteFile,Confirm-ResponseStatus `
+                                ,Get-ServerToken,Get-PortalToken,Wait-ForServiceToReachDesiredState,Get-EsriRegistryKeyForService,Confirm-PropertyInPropertiesFile `
                                 ,Get-PropertyFromPropertiesFile,Set-PropertyFromPropertiesFile,Add-HostMapping,Get-ConfiguredHostIdentifier,Set-ConfiguredHostIdentifier `
                                 ,Get-ConfiguredHostName,Set-ConfiguredHostName,Get-ConfiguredHostIdentifierType,Get-ComponentCode,Test-Install,Get-MSPqfeID `
-                                ,Convert-PSObjectToHashtable,Set-PortalSystemProperties,Get-PortalSystemProperties,UnRegister-WebAdaptorForPortal,Register-WebAdaptorForPortal `
-                                ,Get-WebAdaptorsForPortal,Set-WCPPWAPortalProperties,Test-WCPPWAPortalProperties,Test-WAWCServerProperties, Set-WAWCServerProperties
+                                ,Convert-PSObjectToHashtable,Get-WebAdaptorsForPortal,Register-WebAdaptorForPortal,UnRegister-WebAdaptorForPortal

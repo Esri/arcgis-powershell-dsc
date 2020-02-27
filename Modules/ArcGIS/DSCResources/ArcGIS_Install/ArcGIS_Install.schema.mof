@@ -3,13 +3,11 @@
 class ArcGIS_Install : OMI_BaseResource
 {
 	[Key] String Name;
-	[Write] String Path;
-	[Write] String ProductId;
 	[Key] String Version;
+	[Write] String ProductId;
+	[Write] String Path;
 	[Write] String Arguments;
 	[Write] String LogPath;
-	[Write] String SevenZipMsiInstallerPath;
-	[Write] String SevenZipInstallDir;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };
 

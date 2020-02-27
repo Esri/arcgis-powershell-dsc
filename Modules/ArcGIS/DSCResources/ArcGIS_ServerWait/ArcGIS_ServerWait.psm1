@@ -53,7 +53,7 @@ function Set-TargetResource
         try {
             Write-Verbose "Checking for site on '$ServerUrl'"
             $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
-            $Done = ($token.token -ne $null)
+            $Done = ($null -ne $token.token)
         }catch {
             Write-Verbose "[WARNING] Check returned error:- $_"
         }
@@ -103,7 +103,7 @@ function Test-TargetResource
         Write-Verbose "Checking for site on '$ServerUrl'"
         [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
         $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
-        $result = ($token.token -ne $null)
+        $result = ($null -ne $token.token)
         if($result){
             Write-Verbose "Site Exists. Was able to retrieve token for PSA"
         }else{

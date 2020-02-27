@@ -4,7 +4,7 @@
     .PARAMETER Component
         Name of the Component for which the present node needs to wait for. Values accepted - Server, Portal, ServerWA, PortalWA, DataStore, SpatioTemporal, TileCache, SQLServer
     .PARAMETER InvokingComponent
-        Name of component which will be waiting for component. Values accepted - Server, Portal, WebAdaptor, DataStore, LoadBalancer, PortalUpgrade
+        Name of component which will be waiting for component. Values accepted - Server, Portal, WebAdaptor, DataStore, PortalUpgrade
     .PARAMETER ComponentHostName
         HostName of the Component for which the present node needs to wait for.
     .PARAMETER ComponentContext
@@ -34,7 +34,7 @@ function Get-TargetResource
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade")]
+        [ValidateSet("Server","Portal","WebAdaptor","DataStore","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
                
@@ -63,7 +63,7 @@ function Set-TargetResource
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade")]
+        [ValidateSet("Server","Portal","WebAdaptor","DataStore","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
         
@@ -104,14 +104,14 @@ function Set-TargetResource
             if($Component -ieq "Server"){
                 $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking for site on '$ComponentHostName'"
-                $Done = ($token.token -ne $null)
+                $Done = ($null -ne $token.token)
                 if($Done){
                     Start-Sleep -Seconds 180
                 }
             }elseif($Component -ieq "Portal"){
                 Write-Verbose "Checking for Portal site on '$ComponentHostName'"
                 $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
-                $Done = ($token.token -ne $null)
+                $Done = ($null -ne $token.token)
             }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache"){
                 $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking if all datastore types passed as Params are registered"
@@ -125,11 +125,11 @@ function Set-TargetResource
                 $Done = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostName):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
             }elseif($Component -ieq "PortalWA"){
                 $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
-                $Done = ($token.token -ne $null)
+                $Done = ($null -ne $token.token)
                 
             }elseif($Component -ieq "ServerWA"){
                 $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer                      
-                $Done = ($token.token -ne $null)   
+                $Done = ($null -ne $token.token)   
             }elseif($Component -ieq "UnregisterPortal"){
                 $Referer = 'http://localhost'
     
@@ -173,7 +173,7 @@ function Test-TargetResource
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade")]
+        [ValidateSet("Server","Portal","WebAdaptor","DataStore","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
                 
@@ -212,7 +212,7 @@ function Test-TargetResource
         if($Component -ieq "Server"){
             Write-Verbose "Checking for Server site"
             $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
-            $result = ($token.token -ne $null)
+            $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Server Site Exists. Was able to retrieve token for PSA"
             }else{
@@ -221,10 +221,10 @@ function Test-TargetResource
         }elseif($Component -ieq "Portal"){
             Write-Verbose "Checking for Portal site on '$ComponentHostName'"
             $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
-            $result = ($token.token -ne $null)
+            $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Portal Site Exists. Was able to retrieve token for PSA. Making a secondary check"
-                $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($ComponentHostName):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -LogResponse -HttpMethod 'GET'
+                $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($ComponentHostName):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
                 if($PortalHealthCheck.status -ieq "success"){
                     $result = $true
                 }else{
@@ -256,7 +256,7 @@ function Test-TargetResource
             Write-Verbose "Checking for Portal WebAdaptor"
             
             $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
-            $result = ($token.token -ne $null)
+            $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Portal WebAdaptor Works. Was able to retrieve token for PSA"
             }else{
@@ -266,7 +266,7 @@ function Test-TargetResource
             Write-Verbose "Checking for Server WebAdaptor"
             
             $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
-            $result = ($token.token -ne $null)
+            $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Server WebAdaptor Works. Was able to retrieve token for PSA"
             }else{

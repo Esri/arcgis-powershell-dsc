@@ -3,8 +3,11 @@
 class ArcGIS_Server : OMI_BaseResource
 {
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-    [Key] String ConfigurationStoreLocation;
-	[Write] String ServerDirectoriesRootLocation;
+    [Write] String ConfigurationStoreLocation;
+	[Key] String ServerDirectoriesRootLocation;
+	[Write] String ServerDirectories;
+	[Write] String ServerLogsLocation;
+	[Write] String LocalRepositoryPath;
 	[Write] String ConfigStoreCloudStorageConnectionString;
 	[Write] String ConfigStoreCloudStorageConnectionSecret;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;

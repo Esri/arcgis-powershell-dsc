@@ -1,4 +1,4 @@
-Configuration PortalUpgrade{
+Configuration PortalUpgradeV1{
     param(
         [parameter(Mandatory = $true)]
         [System.String]
@@ -20,10 +20,6 @@ Configuration PortalUpgrade{
         [System.String]
         $InstallerPath,
 
-        [parameter(Mandatory = $false)]        
-        [System.String]
-        $WebStylesInstallerPath,
-
         [parameter(Mandatory = $false)]
         [System.String]
         $InstallDir,
@@ -31,22 +27,6 @@ Configuration PortalUpgrade{
         [parameter(Mandatory = $false)]
         [System.String]
         $ContentDir,
-
-        [parameter(Mandatory = $true)]
-        [System.String]
-        $PrimaryLicensePath,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $PrimaryLicensePassword,
-        
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $StandbyLicensePath,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $StandbyLicensePassword,
         
         [parameter(Mandatory = $true)]
         [System.String]
@@ -58,15 +38,15 @@ Configuration PortalUpgrade{
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsSADomainAccount = $False,
+        $IsServiceAccountDomainAccount = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsServiceAccountMSA = $False,
 
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $PrimarySiteAdmin,
-
-        [parameter(Mandatory = $true)]
-        [System.String]
-        $PrimarySiteAdminEmail,
+        $SiteAdministratorCredential,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -78,14 +58,12 @@ Configuration PortalUpgrade{
         $ExternalDNSName,
 
         [parameter(Mandatory = $false)]
+        [System.String]
+        $InternalLoadBalancer,
+
+        [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsMultiMachinePortal = $False,
-
-        [System.String]
-        $SevenZipInstallerPath = $null,
-
-        [System.String]
-        $SevenZipInstallerDir = $null<#,
+        $IsMultiMachinePortal = $False<#,
 
         [parameter(Mandatory = $false)]
         [System.String]
@@ -97,7 +75,7 @@ Configuration PortalUpgrade{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_Service_Account
@@ -105,19 +83,27 @@ Configuration PortalUpgrade{
     Import-DscResource -Name ArcGIS_PortalUnregister 
     Import-DscResource -Name ArcGIS_PortalUpgrade 
     Import-DscResource -Name ArcGIS_WaitForComponent
+    Import-DscResource -Name ArcGIS_PortalSettings
 
     Node $AllNodes.NodeName {
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+
         $NodeName = $Node.NodeName
-        $MachineFQDN = [System.Net.DNS]::GetHostByName($NodeName).HostName
-        $PrimaryPortalHostName = [System.Net.DNS]::GetHostByName($PrimaryPortalMachine).HostName
-        $StandbyMachine = [System.Net.DNS]::GetHostByName($StandbyMachineName).HostName
+        $MachineFQDN = (Get-FQDN $NodeName)
+        $PrimaryPortalHostName = (Get-FQDN $PrimaryPortalMachine)
+        $StandbyMachine = if($StandbyMachineName){(Get-FQDN $StandbyMachineName)}else{$null}
         $VersionArray = $Version.Split(".")
         $MajorVersion = $VersionArray[1]
         $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
        
         $Depends = @()
 
-        if(-not($IsSADomainAccount)){
+        if(-not($IsServiceAccountDomainAccount)){
             User ArcGIS_RunAsAccount
             {
                 UserName = $ServiceAccount.UserName
@@ -128,19 +114,16 @@ Configuration PortalUpgrade{
             $Depends += '[User]ArcGIS_RunAsAccount'
         }
 
-
         if($MachineFQDN -ieq $PrimaryPortalHostName){
         
             if($IsMultiMachinePortal){
-    
                 ArcGIS_PortalUnregister UnregisterStandyPortal
                 {
                     PortalEndPoint = $MachineFQDN
-                    PrimarySiteAdmin = $PrimarySiteAdmin
+                    PrimarySiteAdmin = $SiteAdministratorCredential
                     StandbyMachine = $StandbyMachine
                     Version = $Version
                 }
-    
                 $Depends += '[ArcGIS_PortalUnregister]UnregisterStandyPortal'
             }
             
@@ -151,35 +134,16 @@ Configuration PortalUpgrade{
                 Path = $InstallerPath
                 Arguments = "/qb USER_NAME=$($ServiceAccount.UserName) PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
                 Ensure = "Present"
-                SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                SevenZipInstallDir = $SevenZipInstallerDir
                 DependsOn = $Depends
             }
-            
             $Depends += '[ArcGIS_Install]PortalUpgrade'
 
-            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $WebStylesInstallerPath){
-                ArcGIS_Install "WebStylesInstall"
-                { 
-                    Name = "WebStyles"
-                    Version = $Version
-                    Path = $WebStylesInstallerPath
-                    Arguments = "/qb"
-                    SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                    SevenZipInstallDir = $SevenZipInstallerDir
-                    Ensure = "Present"
-                    DependsOn = $Depends
-                }
-
-                $Depends += '[ArcGIS_Install]WebStylesInstall'
-            }
-            
-            if($PrimaryLicensePath -and ($MajorVersion -lt 7)) 
+            if($PortalLicenseFilePath) 
             {
                 ArcGIS_License PortalLicense
                 {
-                    LicenseFilePath = $PrimaryLicensePath
-                    Password = $PrimaryLicensePassword
+                    LicenseFilePath = $Node.PortalLicenseFilePath
+                    LicensePassword = $Node.PortalLicensePassword
                     Ensure = "Present"
                     Component = 'Portal'
                     DependsOn = $Depends
@@ -213,16 +177,16 @@ Configuration PortalUpgrade{
                 Ensure = "Present"
                 DataDir = $DataDirsForPortal
                 DependsOn =  $Depends
-                IsDomainAccount = $IsSADomainAccount
+                IsDomainAccount = $IsServiceAccountDomainAccount
             }
             $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'
     
             if($MajorVersion -gt 5){
                 ArcGIS_PortalUpgrade PortalUpgrade
                 {
-                    PortalAdministrator = $PrimarySiteAdmin 
+                    PortalAdministrator = $SiteAdministratorCredential 
                     PortalHostName = $MachineFQDN
-                    LicenseFilePath = if($MajorVersion -ge 7){ $PrimaryLicensePath }else{ $null }
+                    LicenseFilePath = $null
                     DependsOn = $Depends
                 }
                 $Depends += '[ArcGIS_PortalUpgrade]PortalUpgrade'
@@ -230,32 +194,43 @@ Configuration PortalUpgrade{
                 ArcGIS_Portal PortalUpgrade
                 {
                     Ensure = 'Present'
-                    PortalEndPoint = $MachineFQDN
-                    PortalContext = $Context
-                    PortalAdministrator = $PrimarySiteAdmin 
-                    DependsOn = $Depends
-                    AdminEmail = $PrimarySiteAdminEmail
+                    PortalHostName = $MachineFQDN
+                    PortalAdministrator = $SiteAdministratorCredential 
+                    DependsOn =  $Depends
+                    AdminEmail = $SiteAdministratorCredential
                     AdminSecurityQuestionIndex = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
                     AdminSecurityAnswer = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
                     ContentDirectoryLocation = $ContentDirectoryLocation
-                    Join = $false
+                    Join = $False
                     IsHAPortal =  if($IsMultiMachinePortal){$True}else{$False}
-                    ExternalDNSName = $ExternalDNSName
                     PeerMachineHostName = ""
                     EnableDebugLogging = $True
-                    UpgradeReindex = $True
-                } 
-                $Depends += '[ArcGIS_Portal]PortalUpgrade'
+                }
+                $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"
+
+                if($Node.NodeName -ieq $PrimaryPortalMachine){
+                    ArcGIS_PortalSettings PortalSettings
+                    {
+                        PortalHostName          = $MachineFQDN
+                        ExternalDNSName         = $ExternalDNSName
+                        PortalContext           = $Context
+                        PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $MachineFQDN }}
+                        PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $Context }
+                        PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
+                        PortalAdministrator     = $SiteAdministratorCredential
+                        DependsOn               = $Depends
+                    }
+                    $Depends += "[ArcGIS_PortalSettings]PortalSettings"
+                }
             }   
         }elseif($MachineFQDN -ieq $StandbyMachine){
-            
             ArcGIS_WaitForComponent "WaitForUnregisterStandbyPortal"{
                 Component = "UnregisterPortal"
                 InvokingComponent = "PortalUpgrade"
                 ComponentHostName = $PrimaryPortalHostName
                 ComponentContext =  "arcgis"
                 Ensure = "Present"
-                Credential =  $PrimarySiteAdmin
+                Credential =  $SiteAdministratorCredential
                 RetryIntervalSec = 60
                 RetryCount = 60
             }
@@ -271,7 +246,7 @@ Configuration PortalUpgrade{
             }
             $Depends += '[ArcGIS_Install]PortalUninstallStandby'
             
-            $PortalName = (get-wmiobject Win32_Product| Where-Object {$_.Name -match "Portal" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Name
+            $PortalName = (get-CimInstance Win32_Product| Where-Object {$_.Name -match "Portal" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Name
             # This will likely fail if querying a remote machine, need to find a better solution for this.
             if(-not($PortalName -imatch $Version)){
                 File DirectoryRemove
@@ -284,18 +259,6 @@ Configuration PortalUpgrade{
                 }
             }
 
-            if($MajorVersion -ge 7){
-                File CreatestandbydbBackupFileRemove
-                {
-                    Ensure = "Absent"  
-                    Type = "File" 
-                    Force = $true
-                    DestinationPath =  "$InstallDir/tools/portalha/createstandbydb.bat.bak"
-                    DependsOn = $Depends
-                }
-                $Depends += '[File]CreatestandbydbBackupFileRemove'
-            }
-
             ArcGIS_Install PortalInstall
             { 
                 Name = "Portal"
@@ -303,39 +266,19 @@ Configuration PortalUpgrade{
                 Path = $InstallerPath
                 Arguments = "/qn INSTALLDIR=$($InstallDir) CONTENTDIR=$($ContentDir)"
                 Ensure = "Present"
-                SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                SevenZipInstallDir = $SevenZipInstallerDir
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]PortalInstall"
 
-            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $WebStylesInstallerPath){
-                ArcGIS_Install "WebStylesInstall"
-                { 
-                    Name = "WebStyles"
-                    Version = $Version
-                    Path = $WebStylesInstallerPath
-                    Arguments = "/qb"
-                    SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                    SevenZipInstallDir = $SevenZipInstallerDir
-                    Ensure = "Present"
-                    DependsOn = $Depends
-                }
-
-                $Depends += '[ArcGIS_Install]WebStylesInstall'
+            ArcGIS_License PortalLicense
+            {
+                LicenseFilePath = $Node.PortalLicenseFilePath
+                LicensePassword = $Node.PortalLicensePassword
+                Ensure = "Present"
+                Component = 'Portal'
+                DependsOn = $Depends
             }
-            
-            if($MajorVersion -lt 7){
-                ArcGIS_License PortalLicense
-                {
-                    LicenseFilePath = $StandbyLicensePath
-                    Password = $StandbyLicensePassword
-                    Ensure = "Present"
-                    Component = 'Portal'
-                    DependsOn = $Depends
-                }
-                $Depends += '[ArcGIS_License]PortalLicense'
-            }
+            $Depends += '[ArcGIS_License]PortalLicense'
             
             Service Portal_for_ArcGIS_Service
             {
@@ -356,7 +299,7 @@ Configuration PortalUpgrade{
                 Ensure = "Present"
                 DataDir = $DataDirsForPortal
                 DependsOn = $Depends
-                IsDomainAccount = $IsSADomainAccount
+                IsDomainAccount = $IsServiceAccountDomainAccount
             }
             $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'           
         }        

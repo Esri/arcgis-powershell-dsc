@@ -63,7 +63,7 @@ function Set-TargetResource
         $Referer = "http://localhost"
         $ServerSiteURL = "https://$($ServerHostName):6443"
         [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
-        $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json';runAsync='true'} -Referer $Referer -LogResponse
+        $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json';runAsync='true'} -Referer $Referer -Verbose
                     
         Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
         if($Response.upgradeStatus -ieq 'IN_PROGRESS') {
@@ -72,10 +72,10 @@ function Set-TargetResource
 			$Attempts = 0
 
             while(-not($ServerReady) -and ($Attempts -lt 60)){
-                $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -LogResponse -HttpMethod 'GET'
+                $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
                 if(($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error')){
                     Write-Verbose "Server Upgrade is likely done!"
-                    $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -LogResponse
+                    $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -Verbose
                     $currentversion = "$($Info.currentVersion)"
 					Write-Verbose "Current Version Installed - $currentversion"
                     if($currentversion -ieq "10.51"){
@@ -103,13 +103,16 @@ function Set-TargetResource
                 }elseif(($ResponseStatus.status -ieq "error") -and ($ResponseStatus.code -ieq '500')){
 					throw $ResponseStatus.messages
 					break
-				}
-				Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress $ResponseStatus)"  
+				}elseif($ResponseStatus.upgradeStatus -ieq "LAST_ATTEMPT_FAILED"){
+                    throw $ResponseStatus.messages
+					break
+                }
+				Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $ResponseStatus)"  
 				Start-Sleep -Seconds 30
 				$Attempts = $Attempts + 1
             }
         }else{
-			throw "Error:- $(ConvertTo-Json -Depth 5 -Compress $Response)"  
+			throw "Error:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $Response)"  
 		}
     }
     elseif($Ensure -ieq 'Absent') {
@@ -141,11 +144,11 @@ function Test-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
-    $result = Check-ServerVersion -Version $Version
+    $result = Confirm-ServerVersion -Version $Version
     
     $Referer = "http://localhost"
     $ServerUpgradeUrl = "https://$($ServerHostName):6443/arcgis/admin/upgrade"
-    $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -LogResponse -HttpMethod 'GET'
+    $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
     
     if($result) {
         if($ResponseStatus.upgradeStatus -ieq "UPGRADE_REQUIRED" -or $ResponseStatus.upgradeStatus -ieq "LAST_ATTEMPT_FAILED" -or $ResponseStatus.upgradeStatus -ieq "IN_PROGRESS"){
@@ -166,7 +169,7 @@ function Test-TargetResource
     }
 }
 
-function Check-ServerVersion(){
+function Confirm-ServerVersion{
     [CmdletBinding()]
     [OutputType([System.Boolean])]
 	param(

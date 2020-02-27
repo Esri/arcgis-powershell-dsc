@@ -6,9 +6,7 @@
         - "Present" ensures that DataStore is Upgraded to the version specified.
         - "Absent" ensures that DataStore is not upgraded or downgraded from a give version (Not Implemented).
     .PARAMETER ServerHostName
-        HostName of the GIS Server for which the datastore was created and registered.
-    .PARAMETER Version
-        Version to which the Datastore will be upgraded to.
+         HostName of the GIS Server for which the datastore was created and registered.
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Administrator to access the GIS Server. 
     .PARAMETER ContentDirectory
@@ -25,11 +23,7 @@ function Get-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-        $ServerHostName,
-        
-        [parameter(Mandatory = $true)]
-		[System.String]
-		$Version,
+		$ServerHostName,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -58,11 +52,7 @@ function Set-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-        $ServerHostName,
-        
-        [parameter(Mandatory = $true)]
-		[System.String]
-		$Version,
+		$ServerHostName,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -184,11 +174,7 @@ function Test-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-        $ServerHostName,
-        
-        [parameter(Mandatory = $true)]
-		[System.String]
-		$Version,
+		$ServerHostName,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -210,25 +196,13 @@ function Test-TargetResource
 
     $ServerUrl = "https://$($ServerHostName):6443"   
     $Referer = $ServerUrl
-    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -Verbose
-    $result = $false
-    $Done = $false
-    $NumAttempts = 0
-    while(-not($Done) -and ($NumAttempts -lt 5)) {
-        try {
-            $info = Invoke-ArcGISWebRequest -Url "https://localhost:2443/arcgis/datastoreadmin/configure" -HttpFormParameters @{ f = 'json'}  -Referer $Referer -HttpMethod 'GET' -LogResponse -Verbose
+    Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
+    $result = $true
+    $info = Invoke-ArcGISWebRequest -Url "https://localhost:2443/arcgis/datastoreadmin/configure" -HttpFormParameters @{ f = 'json'}  -Referer $Referer -HttpMethod 'GET' -Verbose 
     
-            if($info.upgrading -and (($info.upgrading -ieq 'outplace') -or ($info.upgrading -ieq 'inplace'))){
-                Write-Verbose "Upgrade in progress - $($info.upgrading)"
-            }elseif($info.currentVersion -ieq $Version){
-                Write-Verbose "Already upgraded to $Version"
-                $result = $true
-            }
-            $Done = $true
-        }
-        catch {
-            Write-Verbose "[WARNING]:- $_ on attempt $($NumAttempts + 1). Retry after 15 seconds"
-        }
+    if($info.upgrading -and (($info.upgrading -ieq 'outplace') -or ($info.upgrading -ieq 'inplace'))){
+        Write-Verbose "Upgrade in progress - $($info.upgrading)"
+        $result = $false
     }
 
     if($Ensure -ieq 'Present') {
@@ -270,7 +244,7 @@ function Get-DataStoreInfo
         
    $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'   
    Wait-ForUrl -Url  $DataStoreConfigureUrl -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 20
-   Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -LogResponse 
+   Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -Verbose 
    
 }
 

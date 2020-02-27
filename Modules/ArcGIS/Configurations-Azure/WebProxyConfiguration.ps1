@@ -72,7 +72,7 @@
         $DebugMode
     )
 
-    function Extract-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -89,7 +89,7 @@
     }
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_xFirewall
@@ -99,7 +99,8 @@
     Import-DscResource -Name ArcGIS_TLSCertificateFileImport
     Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
-    Import-DscResource -Name ArcGIS_AzurePreFed
+    Import-DscResource -Name ArcGIS_ServerSettings
+    Import-DscResource -Name ArcGIS_PortalSettings
         
     $Pos = $PortalMachineNames.IndexOf(',')
     if($Pos -gt -1) {
@@ -113,7 +114,7 @@
     $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
     if($SSLCertificateFileUrl) {
-        $SSLCertificateFileName = Extract-FileNameFromUrl $SSLCertificateFileUrl
+        $SSLCertificateFileName = Get-FileNameFromUrl $SSLCertificateFileUrl
         Invoke-WebRequest -OutFile $SSLCertificateFileName -Uri $SSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
     }
 
@@ -255,7 +256,7 @@
             Ensure                  = 'Present'
             ExternalDNSName         = $ExternalDNSHostName                        
             CertificateFileLocation = (Join-Path $(Get-Location).Path $SSLCertificateFileName)
-            CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword.GetNetworkCredential().Password } else { $null }
+            CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword } else { $null }
         }
 
         ArcGIS_ReverseProxy_ARR WebProxy
@@ -277,20 +278,29 @@
 
         if($IsLastWebProxyMachine) 
         {
-            ArcGIS_AzurePreFed AzurePreFederation
-		    {
-                Ensure              = 'Present'
+            ArcGIS_ServerSettings ServerSettings
+            {
                 ServerContext       = 'server'
-			    PortalContext       = 'portal'
-			    ServerHostName      = $ServerMachineName
-			    PortalHostName      = $PortalMachineName
-			    ExternalDNSName     = $ExternalDNSHostName
-			    PortalAdministrator = $SiteAdministratorCredential
-			    SiteAdministrator   = $SiteAdministratorCredential
-			    ServerEndPoint      = $ServerEndpoint
-			    PortalEndPoint      = $PortalEndpoint
-			    DependsOn           = @('[ArcGIS_ReverseProxy_ARR]WebProxy')
-            }    
+                ServerHostName      = $ServerMachineName
+                ServerEndPoint      = $ServerEndpoint #ExternalDNSHostName
+                ServerEndPointPort  = 6443 #443
+                ServerEndPointContext = 'arcgis' #server
+                ExternalDNSName     = $ExternalDNSHostName
+                SiteAdministrator   = $SiteAdministratorCredential
+                DependsOn = @('[ArcGIS_Server]Server','[ArcGIS_ReverseProxy_ARR]WebProxy')
+            }
+
+            ArcGIS_PortalSettings PortalSettings
+            {
+                ExternalDNSName     = $ExternalDNSHostName
+                PortalContext       = 'portal'
+                PortalHostName      = $PortalMachineName
+                PortalEndPoint      = $PortalEndpoint
+                PortalEndPointPort    = 7443
+                PortalEndPointContext = 'arcgis'
+                PortalAdministrator = $SiteAdministratorCredential
+                DependsOn = @('[ArcGIS_Portal]Portal','[ArcGIS_ReverseProxy_ARR]WebProxy')
+            }
             
             ArcGIS_Federation Federation
             {
@@ -309,11 +319,11 @@
                 ServerRole = 'HOSTING_SERVER'
                 ServerFunctions = 'GeneralPurposeServer'
                 IsMultiTierAzureBaseDeployment = $true
-                DependsOn = @("[ArcGIS_AzurePreFed]AzurePreFederation")
+                DependsOn = @('[ArcGIS_PortalSettings]PortalSettings','[ArcGIS_ServerSettings]ServerSettings')
             }
         }
 
-		foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent'))
+        foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
 		{
 			if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			{

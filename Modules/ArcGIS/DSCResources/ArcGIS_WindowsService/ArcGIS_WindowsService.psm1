@@ -83,7 +83,7 @@ function Get-TargetResource
         Path=$svcWmi.PathName
         DisplayName=$svc.DisplayName
         Description=$svcWmi.Description
-        Dependencies=[string[]](@() + ($svc.ServicesDependedOn | %{$_.Name}))
+        Dependencies=[string[]](@() + ($svc.ServicesDependedOn | ForEach-Object{$_.Name}))
     }
 }
 
@@ -134,7 +134,7 @@ function Test-TargetResource
         if($PSBoundParameters.ContainsKey("Credential")) {$null=$getUserNameAndPasswordArgs.Add("Credential",$Credential)}
 
         $userName,$password=GetUserNameAndPassword @getUserNameAndPasswordArgs
-        if($userName -ne $null -and !(TestUserName $SvcWmi $userName))
+        if($null -ne $userName -and !(TestUserName $SvcWmi $userName))
         {
             write-verbose ($LocalizedData.TestUserNameMismatch -f $svcWmi.Name,$svcWmi.StartName,$userName)
             return $false
@@ -234,7 +234,7 @@ function ValidateStartupType
         $State="Running"
     )
 
-    if($StartupType -eq $null) {return}
+    if($null -eq $StartupType) {return}
 
     if($State -eq "Stopped")
     {
@@ -392,7 +392,7 @@ function WriteCredentialProperties
 
     $userName,$password=GetUserNameAndPassword @getUserNameAndPasswordArgs
 
-    if($userName -ne $null -and !(TestUserName $SvcWmi $userName) -and $PSCmdlet.ShouldProcess($SvcWmi.Name,$LocalizedData.SetCredentialWhatIf))
+    if($null -ne $userName -and !(TestUserName $SvcWmi $userName) -and $PSCmdlet.ShouldProcess($SvcWmi.Name,$LocalizedData.SetCredentialWhatIf))
     {
         if($PSBoundParameters.ContainsKey("Credential"))
         {
@@ -493,7 +493,7 @@ function StopService
 
     # Exceptions will be thrown, caught and logged by the infrastructure
     $err=Stop-Service $svc.Name -force -ErrorAction Ignore 2>&1 #
-	if($err -eq $null)
+	if($null -eq $err)
     {
         Write-Log ($LocalizedData.ServiceStopped -f $svc.Name)
     }
@@ -604,7 +604,7 @@ function GetServiceResource
 
     $svc=Get-Service $name -ErrorAction Ignore
 
-    if($svc -eq $null)
+    if($null -eq $svc)
     {
         ThrowInvalidArgumentError "ServiceNotFound" ($LocalizedData.ServiceNotFound -f $Name)
     }

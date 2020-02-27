@@ -2,20 +2,16 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Portal")]
 class ArcGIS_Portal : OMI_BaseResource
 {
-	[Key] String PortalEndPoint;
-	[Write] String PortalHostName;
-	[Write] String PortalContext;
-	[Write] String ExternalDNSName;
+	[Key] String PortalHostName;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write] String LicenseFilePath;
-	[Write] String UserLicenseType;
+	[Write] String UserLicenseTypeId;
 	[Write, EmbeddedInstance("MSFT_Credential")] String PortalAdministrator;
 	[Write] String AdminEmail;
 	[Write] Uint8 AdminSecurityQuestionIndex;
 	[Write] String AdminSecurityAnswer;
 	[Write, Description("Is Joining Existing site")] Boolean Join;
 	[Write, Description("Is HA Portal")] Boolean IsHAPortal;
-	[Write, Description("Is ReIndexing Existing site After Upgrade")] Boolean UpgradeReindex;
 	[Write, Description("Set logging to debug")] Boolean EnableDebugLogging;
 	[Write, Description("LogLevel")] String LogLevel;
 	[Write] String PeerMachineHostName;
@@ -24,6 +20,8 @@ class ArcGIS_Portal : OMI_BaseResource
     [Write] String ContentDirectoryCloudContainerName; 
 	[Write, EmbeddedInstance("MSFT_Credential")] String ADServiceUser;
 	[Write] Boolean EnableAutomaticAccountCreation;   
-	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory; 
+	[Write] String DefaultUserLicenseTypeIdForUser;
+	[Write] String DefaultRoleForUser;
+	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;  
 };
 

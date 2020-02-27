@@ -66,7 +66,7 @@ function Set-TargetResource
         try {  
             Write-Verbose "Getting the Token for site '$ServerUrl'"
             $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
-            if($token.token -ne $null -and $DirectoriesJSON) { #setting registered directories
+            if($null -ne $token.token -and $DirectoriesJSON) { #setting registered directories
                 $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
                 ForEach ($dir in ($DirectoriesJSON | ConvertFrom-Json)) 
                 {
@@ -123,7 +123,7 @@ function Test-TargetResource
     Write-Verbose "Getting the Token for site '$ServerUrl'"
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
     try {  
-        if($token.token -ne $null -and $DirectoriesJSON) { #setting registered directories
+        if($null -ne $token.token -and $DirectoriesJSON) { #setting registered directories
             $responseDirectories = Get-RegisteredDirectories -ServerURL $ServerUrl -Token $token.token -Referer $Referer
             ForEach ($dir in ($DirectoriesJSON | ConvertFrom-Json)) 
             {
@@ -168,21 +168,11 @@ function Get-RegisteredDirectories
         $Referer
 	)
 
-    $Url  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/directories"   
-    $props = @{ f= 'pjson'; token = $Token;  }
-    $cmdBody = To-HttpBody $props    
-    $headers = @{'Content-type'='application/x-www-form-urlencoded'
-                'Content-Length' = $cmdBody.Length
-                'Accept' = 'text/plain'
-                'Referer' = $Referer
-                }
-
-    $res = Invoke-WebRequest -Uri $Url -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing -TimeoutSec 150 -ErrorAction Ignore
-    if($res -and $res.Content) {
-        $response = $res.Content | ConvertFrom-Json
-        $response    
-    }else{
-        Write-Verbose "[WARNING] Response from $Url (Get-RegisteredDirectories) is NULL"
+    $Url  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/directories"
+    try{
+        Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters  @{ f= 'pjson'; token = $Token; } -Referer $Referer -TimeOutSec 150
+    }catch{
+        Write-Verbose "[WARNING] Response from $Url (Get-RegisteredDirectories) is - $_"
     }
 }
 
@@ -212,19 +202,10 @@ function Set-RegisteredDirectory
 
     $Url  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/directories/register"   
     $props = @{ f= 'pjson'; token = $Token; name = $Name; physicalPath = $PhysicalPath; directoryType = $DirectoryType; }
-    $cmdBody = To-HttpBody $props    
-    $headers = @{'Content-type'='application/x-www-form-urlencoded'
-                'Content-Length' = $cmdBody.Length
-                'Accept' = 'text/plain'
-                'Referer' = $Referer
-                }
-
-    $res = Invoke-WebRequest -Uri $Url -Body $cmdBody -Method POST -Headers $headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing -TimeoutSec 150 -ErrorAction Ignore
-    if($res -and $res.Content) {
-        $response = $res.Content | ConvertFrom-Json
-        $response    
-    }else{
-        Write-Verbose "[WARNING] Response from $Url (RegisterDirectory) is NULL"
+    try{
+        Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters $props -Referer $Referer -TimeOutSec 150
+    }catch{
+        Write-Verbose "[WARNING] Response from $Url (Get-RegisteredDirectories) is - $_"
     }
 }
 

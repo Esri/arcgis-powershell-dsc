@@ -6,12 +6,12 @@ class ArcGIS_Server_TLS : OMI_BaseResource
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write, Description("Location of the .pfx certificate file")] String CertificateFileLocation;
-	[Write, Description("Password or Private Key for the Certificate")] String CertificatePassword;
+	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
     [Write, Description("Common Name for the SSL Certificate")] String CName;
 	[Write, Description("Endpoint for the Portal in a WebGIS Deployment")] String PortalEndPoint;
-    [Write, Description("Register CName for Web Adaptor")] Boolean RegisterWebAdaptorForCName;
     [Write, Description("EnableSSL")] Boolean EnableSSL;
 	[Write, Description("Whether the Certificate should only be imported and not set as the Web Server Certificate Alias")] Boolean ImportOnly;
 	[Write, Description("List of RootOrIntermediate Certificates")] String SslRootOrIntermediate;
+	[Write, Description("ServerType")] String ServerType;
 };
 

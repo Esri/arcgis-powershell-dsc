@@ -55,7 +55,7 @@ function Set-TargetResource
         [System.String]
         $CertificateFileLocation,
 
-        [System.String]
+        [System.Management.Automation.PSCredential]
         $CertificatePassword
 	)
 
@@ -66,10 +66,10 @@ function Set-TargetResource
 	Import-Module WebAdministration | Out-Null
 	$VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
 
-    Ensure-WebBindingForHTTPS -WebSiteName $WebSiteName
+    Invoke-EnsureWebBindingForHTTPS -WebSiteName $WebSiteName
 
     $CertToInstall = $null
-    if($CertificateFileLocation -and $CertificatePassword -and (Test-Path $CertificateFileLocation)){
+    if($CertificateFileLocation -and ($null -ne $CertificatePassword) -and (Test-Path $CertificateFileLocation)){
         Write-Verbose "Importing Certificate from $CertificateFileLocation"
         $CertToInstall = Import-PfxCertificateFromFile -CertificatePath $CertificateFileLocation -pfxPassword $CertificatePassword
         Write-Verbose "Installing CA Issued Certificate $($CertToInstall) for DnsName $ExternalDNSName"       
@@ -83,7 +83,7 @@ function Set-TargetResource
 	<#
 	Write-Verbose 'Hardening SSL on web server'
     $reboot = $false
-    $reboot = Harden-SSLOnMachine
+    $reboot = Invoke-HardenSSLOnMachine
     Write-Verbose 'Hardened SSL on web server'
     If ($reboot) 
     {
@@ -115,7 +115,7 @@ function Test-TargetResource
         [System.String]
         $CertificateFileLocation,
 
-        [System.String]
+        [System.Management.Automation.PSCredential]
         $CertificatePassword
 	)
  
@@ -124,10 +124,10 @@ function Test-TargetResource
 	$result = $false
     $Port = 443
     
-    if($CertificateFileLocation -and $CertificatePassword -and (Test-Path $CertificateFileLocation)){
+    if($CertificateFileLocation -and ($null -ne $CertificatePassword) -and (Test-Path $CertificateFileLocation)){
         $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 
-        if($CertificatePassword -and $CertificatePassword.Length -gt 0) {
-            $pfx.Import($CertificateFileLocation,$CertificatePassword,'DefaultKeySet') 
+        if($null -ne $CertificatePassword) {
+            $pfx.Import($CertificateFileLocation,$CertificatePassword.GetNetworkCredential().Password,'DefaultKeySet') 
         }
         else {
             $pfx.Import($CertificateFileLocation)
@@ -203,7 +203,7 @@ function Set-CryptoSetting {
 	# Get data of registry value, or null if it does not exist
 	$val = (Get-ItemProperty -Path $regkeys[$keyindex] -Name $value -ErrorAction SilentlyContinue).$value
  
-	if ($val -eq $null) {
+	if ($null -eq $val) {
 		# Value does not exist - create and set to desired value
 		Write-Verbose "Value $regKey\$value does not exist, creating...$nl"
 		New-ItemProperty -Path $regkeys[$keyindex] -Name $value -Value $valuedata -PropertyType $valuetype | Out-Null
@@ -237,7 +237,7 @@ function Set-CryptoKey {
  
 	$child = $parent.OpenSubKey($childkey, $true);
  
-	if ($child -eq $null) {
+	if ($null -eq $child) {
 		# Need to create child key
 		$child = $parent.CreateSubKey($childkey);
 	}
@@ -245,7 +245,7 @@ function Set-CryptoKey {
 	# Get data of registry value, or null if it does not exist
 	$val = $child.GetValue($value);
  
-	if ($val -eq $null) {
+	if ($null -eq $val) {
 		# Value does not exist - create and set to desired value
 		Write-Verbose "Value $child\$value does not exist, creating...$nl"
 		$child.SetValue($value, $valuedata, $valuetype);
@@ -266,7 +266,7 @@ function Set-CryptoKey {
 	return $restart
 }
 
-function Harden-SSLOnMachine()
+function Invoke-HardenSSLOnMachine()
 {
     #$nl = [Environment]::NewLine
     $regkeys = @(
@@ -344,12 +344,12 @@ function Harden-SSLOnMachine()
     #
     # Just create these parent level keys first
     $cipherskey = (get-item HKLM:\).OpenSubKey("SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers",$true)
-    If ($cipherskey -eq $null) {
+    If ($null -eq $cipherskey) {
 	    $cipherskey = (get-item HKLM:\).CreateSubKey("SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers")
     }
  
     $hasheskey = (get-item HKLM:\).OpenSubKey("SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes",$true)
-    If ($hasheskey -eq $null) {
+    If ($null -eq $hasheskey) {
 	    $hasheskey = (get-item HKLM:\).CreateSubKey("SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes")
     }
  
@@ -402,7 +402,7 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
     ###
     Write-Verbose "Install-SSLCertificateIntoIIS"     
     $binding = Get-WebBinding -Protocol https -Port $Port    
-    if($binding -eq $null) 
+    if($null -eq $binding) 
     {        
         Write-Verbose 'Setting up SSL Binding with self signed certificate'
         Write-Verbose "Creating Binding on Port $Port for https"
@@ -414,17 +414,17 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
     ###
     ### Ensure certificate (if not create one)
     ###
-    if($CertificateToInstall -eq $null) {
+    if($null -eq $CertificateToInstall) {
         Write-Verbose "Creating New-SelfSignedCertificate for DNS:- $DnsName"
-        if((Get-Command -Name 'New-SelfSignedCertificate' -ErrorAction Ignore) -ne $null) {
+        if($null -ne (Get-Command -Name 'New-SelfSignedCertificate' -ErrorAction Ignore)) {
             Write-Verbose 'Creating using New-SelfSignedCertificate'
             $Cert = New-SelfSignedCertificate -DnsName $DnsName -CertStoreLocation cert:\LocalMachine\My 
             Write-Verbose 'Finished Creating using New-SelfSignedCertificate'
         }
         else {
-            Write-Verbose 'Creating using Create-SelfSignedCertificate'
-            $Cert = Create-SelfSignedCertificate -subject $DnsName
-            Write-Verbose 'Finished Creating using Create-SelfSignedCertificate'
+            Write-Verbose 'Creating using Invoke-CreateSelfSignedCertificate'
+            $Cert = Invoke-CreateSelfSignedCertificate -subject $DnsName
+            Write-Verbose 'Finished Creating using Invoke-CreateSelfSignedCertificate'
         }
     }
     else {
@@ -448,7 +448,7 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
         {
             Write-Verbose "Installing existing certificate with SubjectName $($SubjectName)"
             $SubjectNameSplits = Get-CommonNameSplits $SubjectName
-            if($SubjectNameSplits -eq $null) { throw "Unable to split $SubjectName" }        
+            if($null -eq $SubjectNameSplits) { throw "Unable to split $SubjectName" }        
             $AllCerts = Get-ChildItem cert:\LocalMachine\My 
             foreach($ACert in $AllCerts){
                 $SubjectForCert = $ACert.Subject
@@ -475,7 +475,7 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
         if(-not($Cert)) 
         {
             $Cert = Get-ChildItem cert:\LocalMachine\My | Where-Object { $_.Thumbprint -ieq $CertificateToInstall.Thumbprint } | Select-Object -First 1 
-            if($Cert -eq $null){
+            if($null -eq $Cert){
                 throw "Unable to find certificate with SubjectName = $SubjectName and Thumbprint $($CertificateToInstall.Thumbprint) in 'cert:\LocalMachine\My'"
             }               
         }              
@@ -491,7 +491,7 @@ function Install-SSLCertificateIntoIIS([string]$DnsName, [int]$Port = 443, [Syst
     Write-Verbose 'Finished Installing Certificate'
 }
  
-function Create-SelfSignedCertificate([string]$subject)
+function Invoke-CreateSelfSignedCertificate([string]$subject)
 {
 
 $lifeTimeDays = 365*5
@@ -703,11 +703,11 @@ $enrollment.InstallResponse($InstallResponseRestrictionFlags.AllowUntrustedCerti
   Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Subject -ieq "CN=$subject" } | Select-Object -First 1
 }
 
-function Import-PfxCertificateFromFile([string]$CertificatePath,[string]$CertRootStore = "LocalMachine",[string]$CertStore = "My", [string]$pfxPassword = $null)
+function Import-PfxCertificateFromFile([string]$CertificatePath,[string]$CertRootStore = "LocalMachine",[string]$CertStore = "My", [System.Management.Automation.PSCredential]$pfxPassword = $null)
 {
     $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 
-    if($pfxPassword -and $pfxPassword.Length -gt 0) {
-        $pfx.Import($CertificatePath,$pfxPassword,"Exportable,PersistKeySet") 
+    if($null -ne $pfxPassword) {
+        $pfx.Import($CertificatePath,$pfxPassword.GetNetworkCredential().Password,"Exportable,PersistKeySet") 
     }
     else {
         $pfx.Import($CertificatePath)
@@ -723,7 +723,7 @@ function Import-PfxCertificateFromFile([string]$CertificatePath,[string]$CertRoo
     $pfx
 }
 
-function Ensure-WebBindingForHTTPS
+function Invoke-EnsureWebBindingForHTTPS
 {
     [CmdletBinding()]	
 	param
@@ -740,7 +740,7 @@ function Ensure-WebBindingForHTTPS
     ### Ensure binding exists
     ###      
     $binding = Get-WebBinding -Protocol https -Port $Port    
-    if($binding -eq $null) 
+    if($null -eq $binding) 
     {        
         Write-Verbose 'Setting up SSL Binding with self signed certificate'
         Write-Verbose "Creating Binding on Port $Port for https"

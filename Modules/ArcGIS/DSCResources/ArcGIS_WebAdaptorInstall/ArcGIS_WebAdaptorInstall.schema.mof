@@ -7,8 +7,6 @@ class ArcGIS_WebAdaptorInstall: OMI_BaseResource
 	[Write] String Path;
 	[Write] String Arguments;
 	[Write] String LogPath;
-	[Write] String SevenZipMsiInstallerPath;
-	[Write] String SevenZipInstallDir;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };
 

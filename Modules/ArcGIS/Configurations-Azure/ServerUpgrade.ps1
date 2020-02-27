@@ -31,7 +31,7 @@ Configuration ServerUpgrade{
         $DebugMode
     )
 
-	function Extract-FileNameFromUrl
+	function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -47,6 +47,8 @@ Configuration ServerUpgrade{
         $FileName
     }
     
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_WindowsService 
@@ -81,11 +83,7 @@ Configuration ServerUpgrade{
         }
 
 		$InstallerFileName = Split-Path $ServerInstallerPath -Leaf
-
-		$fPassword = ConvertTo-SecureString $FileshareMachineCredential.GetNetworkCredential().Password -AsPlainText -Force
-        $fCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SiteUpgradeVM\$($FileshareMachineCredential.UserName)", $fPassword )
-
-        $InstallerPathOnMachine = "$env:TEMP\Server\$InstallerFileName"
+		$InstallerPathOnMachine = "$env:TEMP\Server\$InstallerFileName"
 
 		File DownloadInstallerFromFileShare      
 		{            	
@@ -93,7 +91,7 @@ Configuration ServerUpgrade{
 			Type = "File"             	
 			SourcePath = $ServerInstallerPath 	
 			DestinationPath = $InstallerPathOnMachine     
-			Credential = $fCredential     
+			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
 		}
 
@@ -154,7 +152,7 @@ Configuration ServerUpgrade{
         
 		## Download license file
 		if($ServerLicenseFileUrl) {
-			$ServerLicenseFileName = Extract-FileNameFromUrl $ServerLicenseFileUrl
+			$ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
 			Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
 		}   
 
@@ -162,7 +160,7 @@ Configuration ServerUpgrade{
         {
             LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
             Ensure = 'Present'
-            Component = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
+            Component = "Server"
             ServerRole = $ServerRole
             Force = $True
             DependsOn = $Depends
@@ -195,7 +193,7 @@ Configuration ServerUpgrade{
             {
                 TestScript  = {  return $false }
                 SetScript   = { 
-                    @('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | %{
+                    @('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | ForEach-Object{
                         $ServiceName = $_
                         Write-Verbose "Stopping the service '$ServiceName'"    
                         Stop-Service -Name $ServiceName -ErrorAction Ignore    

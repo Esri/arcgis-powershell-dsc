@@ -66,8 +66,8 @@ function Set-TargetResource
             $ServerObserverFolderPath = Join-Path $InstallDir 'framework\lib\server\observers'
             $Log4jxmlFilePath = Join-Path $ServerObserverFolderPath 'log4j.xml'
             #Update Output File Paths
-            (($xml.configuration.appender | where { $_.name -eq "file-services-logs" }).param | where { $_.name -eq "file" }).value = ( $LogOutputFolder.trimend('\') + "\\services.log" )
-            (($xml.configuration.appender | where { $_.name -eq "file-server-logs" }).param | where { $_.name -eq "file" }).value = ( $LogOutputFolder.trimend('\') + "\\server.log" )
+            (($xml.configuration.appender | Where-Object { $_.name -eq "file-services-logs" }).param | Where-Object { $_.name -eq "file" }).value = ( $LogOutputFolder.trimend('\') + "\\services.log" )
+            (($xml.configuration.appender | Where-Object { $_.name -eq "file-server-logs" }).param | Where-Object { $_.name -eq "file" }).value = ( $LogOutputFolder.trimend('\') + "\\server.log" )
             
             $xml.Save($Log4jxmlFilePath)
             $Log4jXMLZipPath = (Join-Path $ServerObserverFolderPath 'log4j-xml.zip')
@@ -81,7 +81,7 @@ function Set-TargetResource
                 # $destpath = (Join-Path $InstallDir "framework\etc\log-handlers.json")
                 # $temp = Get-Content $destpath -raw | ConvertFrom-Json
                 # $tempArray = @()
-                # $temp.logHandlers = $temp.logHandlers | where { $_.enabled -eq $True } | % { $tempArray += $_ }
+                # $temp.logHandlers = $temp.logHandlers | Where-Object { $_.enabled -eq $True } | ForEach-Object { $tempArray += $_ }
                 # $temp.logHandlers = $tempArray
                 # $temp | ConvertTo-Json  | set-content $destpath
             }
@@ -110,7 +110,7 @@ function Set-TargetResource
             if(Test-Path $NodeAgentFilePath){
                 $NodeAgentFile = New-Object System.Xml.XmlDocument
                 $NodeAgentFile.Load($NodeAgentFilePath)
-                $NodeToDelete = $NodeAgentFile.NodeAgent.Plugins.Plugin | where { $_.class -eq "com.esri.arcgis.discovery.logharvester.LogHarvesterPlugin" }
+                $NodeToDelete = $NodeAgentFile.NodeAgent.Plugins.Plugin | Where-Object { $_.class -eq "com.esri.arcgis.discovery.logharvester.LogHarvesterPlugin" }
                 $NodeAgentFile.NodeAgent.Plugins.RemoveChild($NodeToDelete)
                 $NodeAgentFile.Save($NodeAgentFilePath)
             }

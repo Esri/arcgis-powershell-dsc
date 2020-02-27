@@ -301,7 +301,7 @@ function Register-BigDataFileShareDataStoreItem
     $item = @{ type = 'bigDataFileShare'; info = @{ connectionString = @{ path = $Path}; connectionType = "fileShare" }; path = "/bigDataFileShares/$ItemName" }
     $ItemJson = (ConvertTo-Json -InputObject $item -Depth 5 -Compress)    
     #$ItemJson = '{"type":"bigDataFileShare","info":{"connectionString":"{\"path\":\"' + $Path.Replace('\','\\\\') + '\"}","connectionType":"fileShare"},"path":"/bigDataFileShares/' +$ItemName +  '"}'    
-    $response = Invoke-ArcGISWebRequest -Url $RegisterDataItemUrl -HttpFormParameters  @{ f = 'json'; token = $Token; item = $ItemJson } -Referer $Referer -LogResponse
+    $response = Invoke-ArcGISWebRequest -Url $RegisterDataItemUrl -HttpFormParameters  @{ f = 'json'; token = $Token; item = $ItemJson } -Referer $Referer -Verbose
     Write-Verbose "Response $($response.messages -join ',')"
 }
 

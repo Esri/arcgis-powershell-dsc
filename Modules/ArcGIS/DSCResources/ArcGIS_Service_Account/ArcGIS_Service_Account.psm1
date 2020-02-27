@@ -202,7 +202,7 @@ function Set-TargetResource
 			### GeoEvent Clean up - the karaf data folder and ProgramData (after stopping the service)
 			### GeoEventGateway Clean up  - the Gatewaylog and ProgramData (after stopping the service)
 			###
-			@('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | %{
+			@('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | ForEach-Object{
 				try {			    
 					$ServiceName = $_
 					Write-Verbose "Restarting Service $ServiceName"
@@ -230,12 +230,12 @@ function Set-TargetResource
 				$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'		
 				$GeoEventGatewayProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent-Gateway'		
 
-				@($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventProgramData, $GeoEventGatewayProgramData) | %{ 
+				@($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventProgramData, $GeoEventGatewayProgramData) | ForEach-Object{ 
 					$FolderToDelete = $_
 					Write-Verbose "Clean up Folder:- $FolderToDelete"
 					if(Test-Path $FolderToDelete) {
 						Write-Verbose "Recursively delete Folder:- $FolderToDelete"
-						Get-ChildItem -Path $FolderToDelete | %{ Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Ignore }
+						Get-ChildItem -Path $FolderToDelete | ForEach-Object { Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Ignore }
 					}
 				}
 			}
@@ -260,7 +260,7 @@ function Set-TargetResource
             $DataDir = $DataDir.TrimEnd('\')
             if(Test-Path $DataDir) 
             {
-                $acl = Get-Acl $DataDir | Select-Object -ExpandProperty Access | Where {$_.IdentityReference -ieq "$env:ComputerName\$RunAsUserName"}
+                $acl = Get-Acl $DataDir | Select-Object -ExpandProperty Access | Where-Object {$_.IdentityReference -ieq "$env:ComputerName\$RunAsUserName"}
                 if((-not($acl)) -or ($acl.FileSystemRights -ine 'FullControl') -or ($acl.AccessControlType -ine 'Allow')) {
                     Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissiones to $DataDir"
                     Write-Verbose "icacls.exe $DataDir /grant $($RunAsUserName):(OI)(CI)F"
@@ -286,7 +286,7 @@ function Set-TargetResource
 			$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'			
 			if(Test-Path $GeoEventProgramData) {
 				Write-Verbose "Program Data Dir for $Name is $GeoEventProgramData"
-				$acl = Get-Acl $GeoEventProgramData | Select-Object -ExpandProperty Access | Where {$_.IdentityReference -ieq "$env:ComputerName\$RunAsUserName"}
+				$acl = Get-Acl $GeoEventProgramData | Select-Object -ExpandProperty Access | Where-Object {$_.IdentityReference -ieq "$env:ComputerName\$RunAsUserName"}
 				if((-not($acl)) -or ($acl.FileSystemRights -ine 'FullControl') -or ($acl.AccessControlType -ine 'Allow')) {
                     Write-Verbose "Providing Required Permissions to Program Data Folder for RunAs Account"
                     Write-Verbose "icacls.exe $GeoEventProgramData /grant $($RunAsUserName):(OI)(CI)F"
@@ -437,7 +437,7 @@ function Test-Acl {
         $RunAsUserName = "$env:ComputerName\$RunAsUsername"
     }
     Write-Verbose "Testing Permission for User $RunAsUserName on Directory $Directory"
-    $acl = Get-Acl $Directory | Select-Object -ExpandProperty Access | Where {$_.IdentityReference -ieq "$RunAsUserName"} | Where {$_.FileSystemRights -ieq "FullControl"}
+    $acl = Get-Acl $Directory | Select-Object -ExpandProperty Access | Where-Object {$_.IdentityReference -ieq "$RunAsUserName"} | Where-Object {$_.FileSystemRights -ieq "FullControl"}
     if((-not($acl)) -or ($acl.AccessControlType -ine 'Allow')) {
         $result = $false
     }

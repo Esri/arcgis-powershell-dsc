@@ -1,132 +1,96 @@
 Configuration ArcGISLicense 
 {
+    param(
+        [System.Boolean]
+        $ForceLicenseUpdate
+    )
+
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
     Import-DscResource -Name ArcGIS_License
 
     Node $AllNodes.NodeName 
     {
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+        
         Foreach($NodeRole in $Node.Role)
         {
             Switch($NodeRole)
             {
                 'Server'
                 {
-                    $ServerRole = $ConfigurationData.ConfigData.ServerRole
-                    $LicenseFilePath = $ConfigurationData.ConfigData.Server.LicenseFilePath
-                    $LicensePassword = $null
-                    if($ConfigurationData.ConfigData.Server.LicensePassword)
-                    {
-                        $LicensePassword = $ConfigurationData.ConfigData.Server.LicensePassword
-                    }
-
-                    if(-not($ServerRole))
-                    {
-                        $ServerRole = "GeneralPurposeServer"
-                    }
-                    elseif($ServerRole -ieq "GeoEvent")
-                    {
-                        $LicenseFilePath =  $ConfigurationData.ConfigData.GeoEventServer.LicenseFilePath
-                        if($ConfigurationData.ConfigData.GeoEventServer.LicensePassword)
-                        {
-                            $LicensePassword = $ConfigurationData.ConfigData.GeoEventServer.LicensePassword
-                        }
-                    }
-                    elseif($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "ImageHosting")
-                    {
-                        $ServerRole = "ImageServer"
-                    }
-
-                    if($Node.ServerLicenseFilePath -and $Node.ServerLicensePassword)
-                    {
-                        $LicenseFilePath=$Node.ServerLicenseFilePath
-                        $LicensePassword=$Node.ServerLicensePassword
-                    }
-                    
                     ArcGIS_License "ServerLicense$($Node.NodeName)"
                     {
-                        LicenseFilePath =  $LicenseFilePath
-                        Password = $LicensePassword
+                        LicenseFilePath =  $Node.ServerLicenseFilePath
+                        LicensePassword = $Node.ServerLicensePassword
                         Ensure = "Present"
                         Component = 'Server'
-                        ServerRole = $ServerRole 
+                        ServerRole = $Node.ServerRole 
+                        Force = $ForceLicenseUpdate
                     }
                 }
                 'Portal'
                 {
-                    if($ConfigurationData.ConfigData.Version.Split('.')[1] -lt 7){
-                        $LicenseFilePath = $ConfigurationData.ConfigData.Portal.LicenseFilePath
-                        $LicensePassword = $null
-                        if($ConfigurationData.ConfigData.Portal.LicensePassword)
-                        {
-                            $LicensePassword = $ConfigurationData.ConfigData.Portal.LicensePassword
-                        }
-
-                        if($Node.PortalLicenseFilePath -and $Node.PortalLicensePassword)
-                        {
-                            $LicenseFilePath=$Node.PortalLicenseFilePath
-                            $LicensePassword=$Node.PortalLicensePassword
-                        }
-
-                        ArcGIS_License "PortalLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath = $LicenseFilePath
-                            Password = $LicensePassword
-                            Ensure = "Present"
-                            Component = 'Portal'
-                        }
-                    }
+                    ArcGIS_License "PortalLicense$($Node.NodeName)"
+                    {
+                        LicenseFilePath = $Node.PortalLicenseFilePath
+                        LicensePassword = $Node.PortalLicensePassword
+                        Ensure = "Present"
+                        Component = 'Portal'
+                        Force = $ForceLicenseUpdate
+                    }                    
                 }
                 'Desktop'
                 {
-                    $LicenseFilePath = $ConfigurationData.ConfigData.Desktop.LicenseFilePath
-                    if($ConfigurationData.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
-                        ArcGIS_License "DesktopLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath =  $LicenseFilePath
-                            Password = $LicensePassword
-                            IsSingleUse = $True
-                            Ensure = "Present"
-                            Component = 'Desktop'
-                        }
+                    ArcGIS_License "DesktopLicense$($Node.NodeName)"
+                    {
+                        LicenseFilePath =  $Node.DesktopLicenseFilePath
+                        LicensePassword = $null
+                        IsSingleUse = $True
+                        Ensure = "Present"
+                        Component = 'Desktop'
+                        Force = $ForceLicenseUpdate
                     }
                 }
                 'Pro' 
                 {
-                    $LicenseFilePath = $ConfigurationData.ConfigData.Pro.LicenseFilePath
-                    if($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "SINGLE_USE"){
-                        ArcGIS_License "ProLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath =  $LicenseFilePath
-                            Password = $LicensePassword
-                            IsSingleUse = $True
-                            Ensure = "Present"
-                            Component = 'Pro'
-                        }
-                    }
+                    ArcGIS_License "ProLicense$($Node.NodeName)"
+                    {
+                        LicenseFilePath =  $Node.ProLicenseFilePath
+                        LicensePassword = $null
+                        IsSingleUse = $True
+                        Ensure = "Present"
+                        Component = 'Pro'
+                        Force = $ForceLicenseUpdate
+                    }                
                 }
                 'LicenseManager'
                 {   
-                    if($ConfigurationData.ConfigData.Pro){
-                        $LicenseFilePath = $ConfigurationData.ConfigData.Pro.LicenseFilePath
+                    if($Node.ProVersion -and $Node.ProLicenseFilePath){
                         ArcGIS_License "ProLicense$($Node.NodeName)"
                         {
-                            LicenseFilePath =  $LicenseFilePath
-                            Password = $LicensePassword
+                            LicenseFilePath = $Node.ProLicenseFilePath
+                            LicensePassword = $null
                             Ensure = "Present"
                             Component = 'Pro'
-                            Version = $ConfigurationData.ConfigData.ProVersion 
+                            Version = $Node.ProVersion 
+                            Force = $ForceLicenseUpdate
                         }
                     }
-                    if($ConfigurationData.ConfigData.Desktop){
-                        $LicenseFilePath = $ConfigurationData.ConfigData.Desktop.LicenseFilePath
+                    if($Node.DesktopVersion -and $Node.DesktopLicenseFilePath){
                         ArcGIS_License "DesktopLicense$($Node.NodeName)"
                         {
-                            LicenseFilePath =  $LicenseFilePath
-                            Password = $LicensePassword
+                            LicenseFilePath = $Node.DesktopLicenseFilePath
+                            LicensePassword = $null
                             Ensure = "Present"
                             Component = 'Desktop'
-                            Version = $ConfigurationData.ConfigData.DesktopVersion
+                            Version = $Node.DesktopVersion
+                            Force = $ForceLicenseUpdate
                         }
                     }
                 }

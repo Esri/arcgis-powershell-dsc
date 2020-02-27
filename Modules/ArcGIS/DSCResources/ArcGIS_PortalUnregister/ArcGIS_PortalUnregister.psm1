@@ -127,7 +127,7 @@ function Set-TargetResource
         }    
     }
 
-    if($Response -ne $null){
+    if($null -ne $Response){
         Write-Verbose (ConvertTo-Json -Depth 5 $Response)
     }
     

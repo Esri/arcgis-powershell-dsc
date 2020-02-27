@@ -31,6 +31,10 @@ function Get-TargetResource
 		[System.String]
         $Version,
 
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -57,6 +61,10 @@ function Set-TargetResource
 		[parameter(Mandatory = $true)]
 		[System.String]
         $Version,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -105,6 +113,10 @@ function Test-TargetResource
 		[System.String]
         $Version,
 
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -114,11 +126,54 @@ function Test-TargetResource
 
     $result = $false
     
-    $trueName = if ($Name -ieq 'DataStore') { 'Data Store' } else { $Name }
-    $ver = get-wmiobject Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
-	Write-Verbose "Installed Version $($ver.Version)"
+    $ComponentName = $Name
+    if($Name -ieq "ArcGIS Pro"){
+        $ComponentName = 'Pro'
+    }
+    if($Name -ieq "ArcGIS Desktop"){
+        $ComponentName = 'Desktop'
+    }
+    if($Name -ieq "ArcGIS License Manager"){
+        $ComponentName = 'LicenseManager'
+    }
 
-    $result = Test-Install -Name $Name -Version $Version
+    if($Name -ieq "ArcGIS for Server"){
+        $ComponentName = 'Server'
+    }
+    if($Name -ieq "Portal for ArcGIS"){
+        $ComponentName = 'Portal'
+    }
+    if($Name -ieq "Web Styles"){
+        $ComponentName = 'WebStyles'
+    }
+    if($Name -ieq "DataStore"){
+        $ComponentName = 'DataStore'
+    }
+    if($Name -ieq "GeoEvent"){
+        $ComponentName = 'GeoEvent'
+    }
+    if($Name -ieq "Notebook Server"){
+        $ComponentName = 'NotebookServer'
+    }
+
+    if(-not($ProductId)){
+        $trueName = $Name
+        if($Name -ieq 'LicenseManager'){
+            $trueName = 'License Manager'
+        }elseif($Name -ieq 'DataStore'){
+            $trueName = 'Data Store'
+        }
+        $trueName = if ($Name -ieq 'DataStore') { 'Data Store' } else { $Name }
+
+        $ver = Get-CimInstance Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
+        Write-Verbose "Installed Version $($ver.Version)"
+
+        $result = Test-Install -Name $ComponentName -Version $Version
+
+    }else{
+        $result = Test-Install -Name $ComponentName -ProductId $ProductId
+    }
+   
 
     #test for installed patches
     if($result -and $PatchesDir) {
@@ -178,11 +233,13 @@ Function Test-PatchInstalled {
         "HKLM:\SOFTWARE\ESRI\Server10.5\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.6\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.7\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.8\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.6\Updates\*" ,
-        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.7\Updates\*"
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.7\Updates\*",
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.8\Updates\*"
     )
     
     ForEach ( $RegPath in $RegPaths ) {

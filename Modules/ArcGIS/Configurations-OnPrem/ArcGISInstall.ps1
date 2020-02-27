@@ -1,23 +1,40 @@
 Configuration ArcGISInstall{
+    param(
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServiceCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $false
+    )
+
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_InstallMsiPackage
+    Import-DscResource -Name ArcGIS_InstallPatch
 
     Node $AllNodes.NodeName {
 
-        $SevenZipInstallerDir = if($ConfigurationData.ConfigData.SevenZipInstallerDir){$ConfigurationData.ConfigData.SevenZipInstallerDir}else{$null}
-        $SevenZipInstallerPath = if($ConfigurationData.ConfigData.SevenZipInstallerPath){$ConfigurationData.ConfigData.SevenZipInstallerPath}else{$null}
-        if($ConfigurationData.ConfigData.Credentials){
-            $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-            $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
-     
-            if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+
+        if($null -ne $ServiceCredential){
+            if(-not($ServiceCredentialIsDomainAccount)){
                 User ArcGIS_RunAsAccount
                 {
-                    UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-                    Password = $SACredential
+                    UserName = $ServiceCredential.UserName
+                    Password = $ServiceCredential
                     FullName = 'ArcGIS Run As Account'
                     Ensure = "Present"
                     PasswordChangeRequired = $false
@@ -27,14 +44,6 @@ Configuration ArcGISInstall{
         }
 
         $NodeRoleArray = @()
-        if($Node.Role -icontains "FileShare")
-        {
-            $NodeRoleArray += "FileShare"
-        }
-        if($Node.Role -icontains "RasterDataStoreItem")
-        {
-            $NodeRoleArray += "RasterDataStoreItem"
-        }
         if($Node.Role -icontains "Server")
         {
             $NodeRoleArray += "Server"
@@ -55,10 +64,6 @@ Configuration ArcGISInstall{
         {
             $NodeRoleArray += "PortalWebAdaptor"
         }
-        if($Node.Role -icontains "LoadBalancer")
-        {
-            $NodeRoleArray += "LoadBalancer"
-        }
         if($Node.Role -icontains "Desktop")
         {
             $NodeRoleArray += "Desktop"
@@ -71,6 +76,12 @@ Configuration ArcGISInstall{
         {
             $NodeRoleArray += "LicenseManager"
         }
+        if($Node.Role -icontains "SQLServer"){
+            $NodeRoleArray += "SQLServer"
+        }
+        if($Node.Role -icontains "SQLServerClient"){
+            $NodeRoleArray += "SQLServerClient"
+        }
 
         for ( $i = 0; $i -lt $NodeRoleArray.Count; $i++ )
         {
@@ -79,62 +90,25 @@ Configuration ArcGISInstall{
             {
                 'Server'
                 {
-                    $HasSQLServer = (($AllNodes | Where-Object { $_.Role -icontains 'SQLServer' }  | Measure-Object).Count -gt 0)
-
                     ArcGIS_Install ServerInstall
                     {
-                        Name = "Server"
+                        Name = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
-                        Arguments = "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`""
-                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                        SevenZipInstallDir = $SevenZipInstallerDir
+                        Arguments = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`"" }else{ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`"" } 
                         Ensure = "Present"
                     }
 
                     if ($ConfigurationData.ConfigData.Server.Installer.PatchesDir) {
                         ArcGIS_InstallPatch ServerInstallPatch
                         {
-                            Name = "Server"
+                            Name = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
                             Version = $ConfigurationData.ConfigData.Version
                             PatchesDir = $ConfigurationData.ConfigData.Server.Installer.PatchesDir
                             Ensure = "Present"
                         }
                     }
-
-                    if($HasSQLServer)
-                    {
-                        $SNACInstallerPath = $ConfigurationData.ConfigData.SQLServer.ServerNativeClient11InstallerPath
-                        Script SQLNativeClientInstall
-                        {
-                            GetScript = {
-                                $null
-                            }
-                            TestScript = 
-                            {                    
-                                $checkClient = Get-ChildItem 'HKLM:\Software\Microsoft\*' -ea SilentlyContinue | Where-object {$_.name -like '*Client*'}
-                                if ($checkClient.name.Split('\') -eq 'Microsoft SQL Server Native Client 11.0')
-                                {
-                                    Write-Verbose 'SQL Native Client 11.0 has been already installed'
-                                    $True
-                                } else {
-                                    Write-Verbose 'Version 11 not present'
-                                    $False
-                                }
-                            }
-                            SetScript =
-                            {
-                                try {
-                                    $InstallerPath = $using:SNACInstallerPath
-                                    Write-Verbose "Installing Native Client 11 - $InstallerPath"
-                                    Start-Process msiexec.exe -Wait -ArgumentList "/qn /i $InstallerPath IACCEPTSQLNCLILICENSETERMS=YES"
-                                } Catch {
-                                    Write-Verbose 'SQL Native Client 11 was not installed. Manual action required'
-                                }
-                            }
-                        }
-                    }
-
+                    
                     if($ConfigurationData.ConfigData.GeoEventServer) 
                     { 
                         ArcGIS_Install GeoEventServerInstall
@@ -142,9 +116,7 @@ Configuration ArcGISInstall{
                             Name = "GeoEvent"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.GeoEventServer.Installer.Path
-                            Arguments = "/qn PASSWORD=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Password)";
-                            SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                            SevenZipInstallDir = $SevenZipInstallerDir
+                            Arguments = if($ConfigurationData.ConfigData.GeoEventServer.EnableGeoeventSDK){ "/qn ADDLOCAL=GeoEvent,SDK"}else{ "/qn" };
                             Ensure = "Present"
                         }
                     }
@@ -158,8 +130,6 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Portal.Installer.Path
                         Arguments = "/qn INSTALLDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.InstallDir)`" CONTENTDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)`""
-                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                        SevenZipInstallDir = $SevenZipInstallerDir
                         Ensure = "Present"
                     }
 
@@ -173,8 +143,6 @@ Configuration ArcGISInstall{
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath
                             Arguments = "/qb"
-                            SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                            SevenZipInstallDir = $SevenZipInstallerDir
                             Ensure = "Present"
                         }
                     }
@@ -197,8 +165,6 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
                         Arguments = "/qn InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
-                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                        SevenZipInstallDir = $SevenZipInstallerDir
                         Ensure = "Present"
                     }
 
@@ -233,77 +199,56 @@ Configuration ArcGISInstall{
                                 Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
                                 Arguments = "/qn VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=1";
                                 Ensure = "Present"
-                                SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                                SevenZipInstallDir = $SevenZipInstallerDir
                                 Version = $ConfigurationData.ConfigData.Version
                             } 
                         }
 
-                        if(($Node.Role -icontains 'ServerWebAdaptor') -and $ConfigurationData.ConfigData.ServerContext)
+                        if(($Node.Role -icontains 'ServerWebAdaptor') -and $Node.ServerContext)
                         {
                             ArcGIS_WebAdaptorInstall WebAdaptorInstallServer
                             { 
-                                Context = $ConfigurationData.ConfigData.ServerContext 
+                                Context = $Node.ServerContext 
                                 Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
                                 Arguments = "/qn VDIRNAME=$($ConfigurationData.ConfigData.ServerContext) WEBSITE_ID=1";
                                 Ensure = "Present"
-                                SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                                SevenZipInstallDir = $SevenZipInstallerDir
                                 Version = $ConfigurationData.ConfigData.Version
                             } 
                         }
                     }
-
                 }
-                'LoadBalancer'
+                'SQLServerClient'
                 {
-                    WindowsFeature ARRWebServer 
-                    {
-                        Ensure = "Present"
-                        Name =  "Web-Server"
-                    }
-                    
-                    $TempFolder = "$($env:SystemDrive)\Temp"
+                    if($ConfigurationData.ConfigData.SQLServerClient){
+                        $TempFolder = "$($env:SystemDrive)\Temp"
+                        if(Test-Path $TempFolder){ Remove-Item -Path $TempFolder -Recurse }
+                        if(-not(Test-Path $TempFolder)){ New-Item $TempFolder -ItemType directory }
 
-                    if(Test-Path $TempFolder)
-                    {
-                        Remove-Item -Path $TempFolder -Recurse 
-                    }
-                    if(-not(Test-Path $TempFolder))
-                    {
-                        New-Item $TempFolder -ItemType directory            
-                    }  
+                        foreach($Client in $ConfigurationData.ConfigData.SQLServerClient){
+                            $ODBCDriverName = $Client.Name
+                            $FileName = Split-Path $Client.InstallerPath -leaf
 
-                    Write-Verbose ($ConfigurationData.ConfigData.LoadBalancer.InstallerPath).count
-
-                    foreach ($h in $ConfigurationData.ConfigData.LoadBalancer.InstallerPath)
-                    {
-                        $FileName = Split-Path $h.FilePath -leaf
-
-                        File "SetupCopy$($h.Name)"
-                        {
-                            Ensure = "Present"
-                            Type = "File"
-                            SourcePath = $h.FilePath
-                            DestinationPath = "$TempFolder\$FileName"  
+                            File "SetupCopy$($ODBCDriverName.Replace(' ', '_'))"
+                            {
+                                Ensure = "Present"
+                                Type = "File"
+                                SourcePath = $Client.InstallerPath
+                                DestinationPath = "$TempFolder\$FileName"  
+                            }
+                        
+                            ArcGIS_InstallMsiPackage "AIMP_$($ODBCDriverName.Replace(' ', '_'))"
+                            {
+                                Name = $ODBCDriverName
+                                Path = $ExecutionContext.InvokeCommand.ExpandString("$TempFolder\$FileName")
+                                Ensure = "Present"
+                                ProductId = $Client.ProductId
+                                Arguments = $Client.Arguments
+                            } 
                         }
 
-                        ArcGIS_InstallMsiPackage "AIMP_$($h.Name.Replace(' ', '_'))"
-                        {
-                            Name = $h.Name
-                            Path = $ExecutionContext.InvokeCommand.ExpandString("$TempFolder\$FileName")
-                            Ensure = "Present"
-                            ProductId = $h.ProductId
-                            Arguments = " /quiet"
-                        }
-                    }
-
-                    if(Test-Path $TempFolder)
-                    {
-                        Remove-Item -Path $TempFolder -Recurse 
+                        if(Test-Path $TempFolder){ Remove-Item -Path $TempFolder -Recurse }
                     }
                 }
-                'SQLExpress'
+                'SQLServer'
                 {
                     WindowsFeature "NET"
                     {
@@ -311,7 +256,7 @@ Configuration ArcGISInstall{
                         Name = "NET-Framework-Core"
                     }
                     
-                    $InstallerPath = $ConfigurationData.ConfigData.SQLServer.SQLServerInstallerPath
+                    $InstallerPath = $Node.SQLServerInstallerPath
 
                     Script SQLServerInstall
                     {
@@ -368,8 +313,6 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.DesktopVersion
                         Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
                         Arguments =   $Argumments
-                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                        SevenZipInstallDir = $SevenZipInstallerDir
                         Ensure = "Present"
                     }
 
@@ -385,15 +328,10 @@ Configuration ArcGISInstall{
                 }
                 'Pro'
                 {
-                    $Arguments = ""
-                    if( $ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER"){
-                        $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
-                    }elseif($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "SINGLE_USE"){
-                        $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
-                        $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
-                    }elseif($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE"){
-                        $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
-                        $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Pro.EsriLicenseHost)`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
+                    $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    if($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE"){
+                        $Arguments += " ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Pro.EsriLicenseHost)`"" 
                     }
 
                     if($ConfigurationData.ConfigData.Pro.LockAuthSettings -and $ConfigurationData.ConfigData.Pro.LockAuthSettings -eq $False){
@@ -411,8 +349,6 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.ProVersion
                         Path = $ConfigurationData.ConfigData.Pro.Installer.Path
                         Arguments = $Arguments
-                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                        SevenZipInstallDir = $SevenZipInstallerDir
                         Ensure = "Present"
                     }
 
@@ -433,8 +369,6 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.LicenseManagerVersion
                         Path = $ConfigurationData.ConfigData.LicenseManager.Installer.Path
                         Arguments = "/qb INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
-                        SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                        SevenZipInstallDir = $SevenZipInstallerDir
                         Ensure = "Present"
                     }
                 }

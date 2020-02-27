@@ -4,7 +4,7 @@ Configuration DataStoreUpgradeConfigure{
         $Version,
 
         [System.Management.Automation.PSCredential]
-        $PrimarySiteAdmin,
+        $SiteAdministratorCredential,
 
         [System.String]
         $ServerMachineName,
@@ -17,20 +17,26 @@ Configuration DataStoreUpgradeConfigure{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     
     Node $AllNodes.NodeName {
-        $ServerHostName = [System.Net.DNS]::GetHostByName($ServerMachineName).HostName
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+        
+        $ServerHostName = (Get-FQDN $ServerMachineName)
 
         ArcGIS_DataStoreUpgrade DataStoreConfigUpgrade
         {
             ServerHostName = $ServerHostName
             Ensure = 'Present'
-            SiteAdministrator = $PrimarySiteAdmin
+            SiteAdministrator = $SiteAdministratorCredential
             ContentDirectory = $ContentDirectoryLocation
             InstallDir = $InstallDir
-            Version = $Version 
         }
     }
 }

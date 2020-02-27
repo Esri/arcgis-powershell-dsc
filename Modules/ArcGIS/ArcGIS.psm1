@@ -17,14 +17,14 @@ function Get-FQDN
             $DnsRecord = $null
             Try {
                 if(Get-Command 'Resolve-DnsName' -ErrorAction Ignore) {
-                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1                     
-                    if($DnsRecord -eq $null) {
-                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore                
+                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1
+                    if($null -eq $DnsRecord) {
+                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore
                     }
                 }
-                if($DnsRecord -eq $null) {
-                    $machine = (Get-WmiObject -Class Win32_ComputerSystem).Name
-                    $domain = (Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter IPEnabled=TRUE -ComputerName $MachineName).DNSDomain
+                if($null -eq $DnsRecord) {
+                    $machine = (Get-CimInstance -Class Win32_ComputerSystem).Name
+                    $domain = (Get-CimInstance -Class Win32_NetworkAdapterConfiguration -Filter IPEnabled=TRUE -ComputerName $MachineName).DNSDomain
                     $Dns = "$($machine).$($domain)"
                     $ResolvedDns = $true
                 }
@@ -32,16 +32,16 @@ function Get-FQDN
             Catch {
                 Write-Verbose "Error Resolving DNS $($_)"            
             }
-            if($DnsRecord -ne $null) {
+            if($null -ne $DnsRecord) {
                 [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.WindowsAzure.ServiceRuntime')
                 $UseIP = $false
-                if (('Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment' -as [type]) -and ([Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment]::DeploymentId -ne $null))
+                if (('Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment' -as [type]) -and ($null -ne [Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment]::DeploymentId))
                 {
                     $UseIP = $true
                     Write-Verbose "Running on Microsoft Azure Cloud Service VM (Web/Worker) Role. Using IP Address instead of hostnames"
                 }
                 $Dns = if($UseIP) { $DnsRecord.IPAddress } else { $DnsRecord.Name }
-                if($Dns -ne $null -and $Dns.Length -gt 0)
+                if($null -ne $Dns -and $Dns.Length -gt 0)
                 {
                     $ResolvedDns = $true
                 }
@@ -77,7 +77,7 @@ function Convert-PSObjectToHashtable
                 foreach ($object in $InputObject) { Convert-PSObjectToHashtable $object }
             )
 
-            Write-Output -NoEnumerate $collection
+            Write-Output $collection -NoEnumerate
         }
         elseif ($InputObject -is [psobject])
         {
@@ -190,15 +190,22 @@ Function Trace-DSCJob{
         }
     }
 
-    Write-Host "Logs Directory: $LogsPath"
+    Write-Information -InformationAction Continue "Logs Directory: $LogsPath"
 }
 
-function Start-DSCJob {
+function Invoke-DSCJob {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     Param(
         [Parameter(Mandatory=$True)]
+        [System.String]
         $ConfigurationName,
+
+        [System.String]
+        $ConfigurationFolderPath,
+
+        [System.Object]
+        $Arguments,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -207,157 +214,35 @@ function Start-DSCJob {
         [System.Boolean]
         $DebugMode = $False
     )
+    
+    if(Test-Path ".\$($ConfigurationName)") { Remove-Item ".\$($ConfigurationName)" -Force -ErrorAction Ignore -Recurse }
 
-    Write-Host "Starting DSC Job:- $ConfigurationName"
+    Write-Information -InformationAction Continue "Dot Sourcing the Configuration:- $ConfigurationName"
+    . "$PSScriptRoot\$($ConfigurationFolderPath)\$($ConfigurationName).ps1" -Verbose:$false
+
+    &$ConfigurationName @Arguments -Verbose
+
+    if(($Arguments.ConfigurationData.AllNodes | Where-Object { $_.Thumbprint -and $_.CertificateFile } | Measure-Object).Count -gt 0){
+        Write-Information -InformationAction Continue "Configuring Local Configuration Manager:- $ConfigurationName"
+        Set-DscLocalConfigurationManager ".\$($ConfigurationName)" -Verbose
+    }    
+
+    Write-Information -InformationAction Continue "Starting DSC Job:- $ConfigurationName"
     $JobTimer = [System.Diagnostics.Stopwatch]::StartNew()
-    if($Credential)
-    {
-        $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential
-    }
-    else
-    {
-        $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose
-    }
+    $Job = if($Credential){ Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential }else{ Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose }
+    
+    if(Test-Path ".\$($ConfigurationName)") { Remove-Item ".\$($ConfigurationName)" -Force -ErrorAction Ignore -Recurse }
+
     Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
-    Write-Host "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
-    Write-Host "$($ConfigurationName) - $($Job.state)"
-    $result = $False
-    if($Job.state -ieq "Completed"){
-        $result = $True
-    }  
-    $result  
+    Write-Information -InformationAction Continue "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
+    Write-Information -InformationAction Continue "$($ConfigurationName) - $($Job.state)"
+    $result = if($Job.state -ieq "Completed"){ $True } else{ $False }
+    $result 
 }
 
-function Get-ArcGISURL
-{
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory=$True)]
-        $ConfigurationData
-    )
-    
-    $AllNodes = $ConfigurationData.AllNodes
-    
-    $PrimaryServerMachineNode = ""
-    $PrimaryPortalMachineNode = ""
-    $PortalContext = $ConfigurationData.ConfigData.PortalContext 
-    $ServerContext = $ConfigurationData.ConfigData.ServerContext 
 
-    for ( $i = 0; $i -lt $AllNodes.count; $i++ )
-    {
-        $Role = $AllNodes[$i].Role
-        if($Role -icontains 'Server' -and -not($PrimaryServerMachine))
-        {
-            $PrimaryServerMachineNode  = $AllNodes[$i]
-        }
 
-        if($Role -icontains 'Portal' -and -not($PrimaryPortalMachine))
-        {
-            $PrimaryPortalMachineNode= $AllNodes[$i]
-        }
-    }
-
-    if($PrimaryPortalMachineNode)
-    {
-        $PortalExternalDNSName = Get-FQDN $PrimaryPortalMachineNode.NodeName
-        
-        if(($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
-        {
-            $PortalExternalDNSName = ($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
-        }
-
-        $PortalAdminURL = "https://$($PortalExternalDNSName):7443/arcgis/portaladmin"
-        $PortalURL = "https://$($PortalExternalDNSName):7443/arcgis/home"
-    }
-
-    if($PrimaryServerMachineNode)
-    {
-        $ServerExternalDNSName = Get-FQDN $PrimaryServerMachineNode.NodeName
-        
-        if(($PrimaryServerMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Server'}  | Measure-Object).Count -gt 0)
-        {
-            $PortalExternalDNSName = ($PrimaryServerMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Server' }  | Select-Object -First 1).Alias
-        }
-        
-        $ServerAdminURL = "https://$($ServerExternalDNSName):6443/arcgis/admin"
-        $ServerURL = "https://$($ServerExternalDNSName):6443/arcgis/manager"
-        $RestURL = "https://$($ServerExternalDNSName):6443/arcgis/rest"
-    }
-
-    $HasLoadBalancer = (($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }  | Measure-Object).Count -gt 0)
-    if($HasLoadBalancer)
-    {
-        $LBMachine = ($AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' }| Sort-Object | Select-Object -First 1)
-        $LBExternalDNSName = Get-FQDN $LBMachine.NodeName
-        if(($LBMachine.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
-        {
-            $SSLCertificate = $LBMachine.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1
-            $LBExternalDNSName = $SSLCertificate.Alias
-        }
-    }
-    
-    if($ConfigurationData.ConfigData.ExternalLoadBalancer){
-        $HasLoadBalancer = $true
-        $LBExternalDNSName = $ConfigurationData.ConfigData.ExternalLoadBalancer
-    }
-
-    if((($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0))
-    {
-        $PortalWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
-        $PortalExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
-        if(($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
-        {
-            $PortalExternalDNSName = ($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
-        }
-
-        if($HasLoadBalancer)
-        {
-            $PortalExternalDNSName = $LBExternalDNSName
-        }
-    }
-    if((($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor')}  | Measure-Object).Count -gt 0))
-    {
-        $ServerWAMachineNode = ($AllNodes | Where-Object { ($_.Role -icontains 'ServerWebAdaptor')} | Select-Object -First 1)
-        $ServerWAMachineName = $ServerWAMachineNode.NodeName
-        $ServerExternalDNSName = Get-FQDN $ServerWAMachineName
-        if(($ServerWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
-        {
-            $SSLCertificate = $ServerWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1
-            $ServerExternalDNSName = $SSLCertificate.Alias
-        }
-
-        if($HasLoadBalancer){
-            $ServerExternalDNSName = $LBExternalDNSName
-        }
-    }
-    
-    if($PortalContext)
-    {
-        $PortalAdminURL = "https://$PortalExternalDNSName/$PortalContext/portaladmin"
-        $PortalURL = "https://$PortalExternalDNSName/$PortalContext/home"
-    }
-    if($ServerContext)
-    {
-        $ServerAdminURL = "https://$ServerExternalDNSName/$ServerContext/admin"
-        $ServerURL = "https://$ServerExternalDNSName/$ServerContext/manager"
-        $RestURL = "https://$ServerExternalDNSName/$ServerContext/rest"
-    }
-    
-    if($PrimaryPortalMachineNode)
-    {
-        Write-Host "Portal Admin URL - $PortalAdminURL"
-        Write-Host "Portal URL - $PortalURL"    
-    }
-    if($PrimaryServerMachineNode)
-    {
-        Write-Host "Server Admin URL - $ServerAdminURL"
-        Write-Host "Server Manager URL - $ServerURL"
-        Write-Host "Server Rest URL - $RestURL"
-    }
-}
-
-function ServerUpgradeScript {
-    
+function Invoke-ServerUpgradeScript {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     param(
@@ -372,38 +257,38 @@ function ServerUpgradeScript {
         $DebugMode = $False
     )
 
-    $SevenZipInstallerPath = if($cf.ConfigData.SevenZipInstallerPath){$cf.ConfigData.SevenZipInstallerPath}else{$null}
-    $SevenZipInstallerDir = if($cf.ConfigData.SevenZipInstallerDir){$cf.ConfigData.SevenZipInstallerDir}else{$null}
-
-    $cfSAPassword = ConvertTo-SecureString $cf.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-    $cfSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($cf.ConfigData.Credentials.ServiceAccount.UserName, $cfSAPassword )
-
-    $cfPSAPassword = ConvertTo-SecureString $cf.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
-    $cfPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($cf.ConfigData.Credentials.PrimarySiteAdmin.UserName, $cfPSAPassword )
+    $cfServiceAccountIsDomainAccount = $cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+    $cfServiceAccountIsMSA = if($cf.ConfigData.Credentials.ServiceAccount.IsMSA){$cf.ConfigData.Credentials.ServiceAccount.IsMSA}else{ $false }
+    $cfServiceAccountPassword = if( $cf.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $cf.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+    $cfServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Credentials.ServiceAccount.UserName, $cfServiceAccountPassword )
+    
+    $cfSiteAdministratorPassword = if($cf.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $cf.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
+    $cfSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Credentials.PrimarySiteAdmin.UserName, $cfSiteAdministratorPassword )
     
     $JobFlag = $True
 
     #ServerWebAdaptorUninstall
-    Write-Host "WA Server Uninstall"
-    ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'}).NodeName){
-        $cd = @{
-            AllNodes = @(
-                @{
-                    NodeName = $WANode
-                    PSDscAllowPlainTextPassword = $true
-                }
-            )
-        }    
-        if(Test-Path ".\WebAdaptorUninstall") {
-            Remove-Item ".\WebAdaptorUninstall" -Force -ErrorAction Ignore -Recurse
+    Write-Information -InformationAction Continue "WA Server Uninstall"
+    ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'})){
+        $NodeToAdd = @{ 
+            NodeName = $WANode.NodeName; 
         }
-        WebAdaptorUninstall -ConfigurationData $cd -Version $cf.ConfigData.Version -InstallerPath $cf.ConfigData.WebAdaptor.Installer.Path -Context $cf.ConfigData.ServerContext  -Verbose
-        #Start-DscConfiguration .\WebAdaptorUninstall -Verbose -Wait -Force
-        if($Credential){
-            $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorUninstall -Credential $Credential -DebugMode $DebugMode
+        if($WANode.TargetNodeEncyrptionCertificateFilePath -and $WANode.TargetNodeEncyrptionCertificateThumbprint){
+            $NodeToAdd["CertificateFile"] = $WANode.TargetNodeEncyrptionCertificateFilePath
+            $NodeToAdd["Thumbprint"] = $WANode.TargetNodeEncyrptionCertificateThumbprint
         }else{
-            $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorUninstall -DebugMode $DebugMode
+            $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
         }
+       
+        $WebAdaptorUninstallArgs = @{
+            ConfigurationData = @{ AllNodes = @( $NodeToAdd ) }
+            Version = $cf.ConfigData.Version 
+            InstallerPath = $cf.ConfigData.WebAdaptor.Installer.Path 
+            Context = $cf.ConfigData.ServerContext
+        }
+
+        $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUninstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUninstallArgs -Credential $Credential -DebugMode $DebugMode
+        
         if(-not($JobFlag)){
             break
         }
@@ -412,60 +297,84 @@ function ServerUpgradeScript {
 
     #UpgradeServers
     if($JobFlag){
-        Write-Host "Server Upgrade"
+        Write-Information -InformationAction Continue "Server Upgrade"
         $cfPrimaryServerMachine = ""
+
+        $ServerLicenseFilePath = $cf.ConfigData.Server.LicenseFilePath
+        $ServerLicensePassword = $null
+        $ServerRole = $null
+        if($cf.ConfigData.ServerRole){   
+            $ServerRole = $cf.ConfigData.ServerRole 
+            if($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "ImageHosting"){
+                $ServerRole = "ImageServer"
+            }
+        }else{
+            $ServerRole = "GeneralPurposeServer"
+        }
+
+        if($cf.ConfigData.Server.LicensePasswordFilePath){
+            $ServerLicensePassword = (Get-Content $cf.ConfigData.Credentials.Server.LicensePasswordFilePath | ConvertTo-SecureString )
+        }elseif($cf.ConfigData.Server.LicensePassword){
+            $ServerLicensePassword = (ConvertTo-SecureString $cf.ConfigData.Credentials.Server.LicensePassword -AsPlainText -Force)
+        }
+
+        if($ServerRole -ieq "GeoEvent"){
+            $ServerLicenseFilePath =  $cf.ConfigData.GeoEventServer.LicenseFilePath
+            $ServerLicensePassword = $null
+            if($cf.ConfigData.GeoEventServer.LicensePasswordFilePath){
+                $ServerLicensePassword = (Get-Content $cf.ConfigData.Credentials.GeoEventServer.LicensePasswordFilePath | ConvertTo-SecureString )
+            }elseif($cf.ConfigData.GeoEventServer.LicensePassword){
+                $ServerLicensePassword = (ConvertTo-SecureString $cf.ConfigData.Credentials.GeoEventServer.LicensePassword -AsPlainText -Force)
+            }
+        }
+
         for ( $i = 0; $i -lt $cf.AllNodes.count; $i++ ){
-            if($cf.AllNodes[$i].Role -icontains 'Server'){
-                $ServerMachine = $cf.AllNodes[$i].NodeName
+            $Node = $cf.AllNodes[$i]
+            if($Node.Role -icontains 'Server'){
+                $ServerMachine = $Node.NodeName
                 if(-not($cfPrimaryServerMachine)){
                     $cfPrimaryServerMachine = $ServerMachine
                 }
-                $cd = @{
-                    AllNodes = @(
-                        @{
-                            NodeName = $ServerMachine
-                            PSDscAllowPlainTextPassword = $true
-                        }
-                    )
-                }
-                if(Test-Path ".\ServerUpgrade") {
-                    Remove-Item ".\ServerUpgrade" -Force -ErrorAction Ignore -Recurse
+
+                $NodeToAdd = @{
+                    NodeName = $ServerMachine
                 }
 
-                $IsSADomainAccount = if($cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$True}else{$False}
-                $LicenseFilePath = $cf.ConfigData.Server.LicenseFilePath
-                $LicensePassword = $null
-                if($cf.ConfigData.Server.LicensePassword){
-                    $LicensePassword = $cf.ConfigData.Server.LicensePassword
+                if($Node.TargetNodeEncyrptionCertificateFilePath -and $Node.TargetNodeEncyrptionCertificateThumbprint){
+                    $NodeToAdd["CertificateFile"] = $Node.TargetNodeEncyrptionCertificateFilePath
+                    $NodeToAdd["Thumbprint"] = $Node.TargetNodeEncyrptionCertificateThumbprint
+                }else{
+                    $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
                 }
                 
-                if($cf.ConfigData.GeoEventServer.LicenseFilePath){
-                    $LicenseFilePath = $cf.ConfigData.GeoEventServer.LicenseFilePath
-                    if($cf.ConfigData.GeoEventServer.LicensePassword){
-                        $LicensePassword = $cf.ConfigData.GeoEventServer.LicensePassword
+                $NodeToAdd["ServerLicenseFilePath"] = if($Node.ServerLicenseFilePath){ $Node.ServerLicenseFilePath }else{ $ServerLicenseFilePath }
+                if($Node.ServerLicenseFilePath){
+                    if($Node.ServerLicensePasswordFilePath){
+                        $NodeToAdd["ServerLicensePassword"] =(Get-Content $Node.ServerLicensePasswordFilePath | ConvertTo-SecureString )
+                    }elseif($Node.ServerLicensePassword){
+                        $NodeToAdd["ServerLicensePassword"] = (ConvertTo-SecureString $Node.ServerLicensePassword -AsPlainText -Force)
+                    }
+                }else{
+                    if($null -ne $ServerLicensePassword){
+                        $NodeToAdd["ServerLicensePassword"] = $ServerLicensePassword
                     }
                 }
-                
-                if($cf.AllNodes[$i].ServerLicensePath -and $cf.AllNodes[$i].ServerLicensePassword){
-                    $LicenseFilePath = $cf.AllNodes[$i].ServerLicenseFilePath
-                    $LicensePassword = $cf.AllNodes[$i].ServerLicensePassword
+                $NodeToAdd["ServerRole"] = $ServerRole
+
+                $ServerUpgradeArgs = @{
+                    ConfigurationData = @{ AllNodes = @( $NodeToAdd ) }
+                    Version = $cf.ConfigData.Version
+                    ServiceAccount = $cfServiceAccountCredential
+                    IsServiceAccountDomainAccount = $cfServiceAccountIsDomainAccount
+                    IsServiceAccountMSA = $cfServiceAccountIsMSA
+                    InstallerPath = $cf.ConfigData.Server.Installer.Path
+                    GeoEventServerInstaller = if($cf.ConfigData.ServerRole -ieq "GeoEvent"){ $cf.ConfigData.GeoEventServer.Installer.Path }else{ $null }
+                    ContainerImagePaths = if($cf.ConfigData.ServerRole -ieq "NotebookServer"){ $cf.ConfigData.Server.ContainerImagePaths }else{ $null }
+                    InstallDir = $cf.ConfigData.Server.Installer.InstallDir
                 }
 
-                if($cf.ConfigData.ServerRole -ieq "GeoEvent"){
-                    ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
-                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole -GeoEventServerInstaller $cf.ConfigData.GeoEventServer.Installer.Path `
-                                -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
-                }else{
-                    ServerUpgrade -ConfigurationData $cd -Version $cf.ConfigData.Version -ServiceAccount $cfSACredential -IsSADomainAccount $IsSADomainAccount -InstallerPath $cf.ConfigData.Server.Installer.Path `
-                                -LicensePath $LicenseFilePath -LicensePassword $LicensePassword -ServerRole $cf.ConfigData.ServerRole `
-                                -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose    
-                }
-                
-                if($Credential){
-                    $JobFlag = Start-DSCJob -ConfigurationName ServerUpgrade -Credential $Credential -DebugMode $DebugMode
-                }else{
-                    $JobFlag = Start-DSCJob -ConfigurationName ServerUpgrade -DebugMode $DebugMode
-                }
+                $JobFlag = Invoke-DSCJob -ConfigurationName "ServerUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $ServerUpgradeArgs -Credential $Credential -DebugMode $DebugMode
+
                 if(-not($JobFlag)){
                     break
                 }
@@ -473,30 +382,31 @@ function ServerUpgradeScript {
         }
         if($JobFlag){
             #UpgradeServerWebAdaptor
-            Write-Host "WA Server Install"
+            Write-Information -InformationAction Continue "WA Server Install"
             ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'})){
-                $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
-                $cd = @{
-                    AllNodes = @(
-                        @{
-                            NodeName = $WANode.NodeName
-                            ExternalHostName = $WAExternalHostName
-                            PSDscAllowPlainTextPassword = $true
-                        }
-                    )
+                $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).CNameFQDN }else{ Get-FQDN $WANode.NodeName }                
+                $NodeToAdd = @{ 
+                    NodeName = $WANode.NodeName; 
+                    ExternalHostName = $WAExternalHostName
                 }
-                if(Test-Path ".\WebAdaptorInstall") {
-                    Remove-Item ".\WebAdaptorInstall" -Force -ErrorAction Ignore -Recurse
-                }
-                WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "ServerWebAdaptor" -Version $cf.ConfigData.Version `
-                                    -InstallerPath $cf.ConfigData.WebAdaptor.Installer.Path -Context $cf.ConfigData.ServerContext `
-                                    -ComponentHostName $cfPrimaryServerMachine -PSACredential $cfPSACredential `
-                                    -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
-                if($Credential){
-                    $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -Credential $Credential -DebugMode $DebugMode
+                if($WANode.TargetNodeEncyrptionCertificateFilePath -and $WANode.TargetNodeEncyrptionCertificateThumbprint){
+                    $NodeToAdd["CertificateFile"] = $WANode.TargetNodeEncyrptionCertificateFilePath
+                    $NodeToAdd["Thumbprint"] = $WANode.TargetNodeEncyrptionCertificateThumbprint
                 }else{
-                    $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -DebugMode $DebugMode
+                    $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
                 }
+                
+                $WebAdaptorInstallArgs = @{
+                    ConfigurationData = @{ AllNodes = @( $NodeToAdd ) }
+                    WebAdaptorRole = "ServerWebAdaptor"
+                    Version = $cf.ConfigData.Version
+                    InstallerPath = $cf.ConfigData.WebAdaptor.Installer.Path
+                    Context = $cf.ConfigData.ServerContext
+                    ComponentHostName = $cfPrimaryServerMachine
+                    SiteAdministratorCredential = $cfSiteAdministratorCredential
+                }
+                $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorInstallArgs -Credential $Credential -DebugMode $DebugMode
+
                 if(-not($JobFlag)){
                     break
                 }
@@ -504,47 +414,6 @@ function ServerUpgradeScript {
         }
     }
     $JobFlag
-}
-
-function Publish-WebApp
-{
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory=$True)]
-        [System.String]
-        $NodeName,
-
-        [Parameter(Mandatory=$True)]
-        [System.String]
-        $WebAppName,
-
-        [Parameter(Mandatory=$True)]
-        [System.String]
-        $SourceDir,
-        
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.PSCredential]
-        $Credential
-    )
-    
-    $ConfigurationName = "DeployWebApp"
-
-    if(Test-Path ".\$ConfigurationName") {
-        Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
-    }
-
-    Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
-    . "$PSScriptRoot\Configurations-OnPrem\$($ConfigurationName).ps1"
-    
-    Write-Host "Compiling the Configuration:- $ConfigurationName"
-    & $ConfigurationName -NodeName $NodeName -WebAppName $WebAppName -SourceDir $SourceDir
-
-    if($Credential){
-        Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
-    }else{
-        Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
-    }
-
 }
 
 function Invoke-BuildArcGISAzureImage
@@ -578,12 +447,8 @@ function Invoke-BuildArcGISAzureImage
         [switch]
         $DebugSwitch  
     )
-    
-    $DebugMode = $False
-
-    if($DebugSwitch){
-        $DebugMode = $true
-    }
+ 
+    $DebugMode = if($DebugSwitch){ $true }else{ $False}
 
     if(-not(Test-Path $BaseDirectory)) {
         New-Item -Path $BaseDirectory -ItemType 'directory' -Force -ErrorAction Ignore | Out-Null
@@ -596,55 +461,101 @@ function Invoke-BuildArcGISAzureImage
         if(-not(Test-Path $DownloadLocation)) {
             New-Item -Path $DownloadLocation -ItemType 'directory' -Force | Out-Null
         }
-        Write-Host "Dot Sourcing the Configuration:- ArcGISDownloadInstallers"
-        . "$PSScriptRoot\Configurations-AzureImageBuild\ArcGISDownloadInstallers.ps1" -Verbose:$false
-        Write-Host "Compiling the Configuration:- ArcGISDownloadInstallers"
-        if($UseAzureFiles){
-            $cd = @{
-                AllNodes = @(
-                    @{
-                        NodeName = "localhost"
-                        PSDscAllowPlainTextPassword = $true
-                    }
-                )
-            }
-            ArcGISDownloadInstallers -Installers $InstallersConfig.Installers -UseAzureFiles $true -AFSCredential $AFSCredential -AFSEndpoint $AFSEndpoint -ConfigurationData $cd
-        }else{
-            ArcGISDownloadInstallers -Installers $InstallersConfig.Installers
+        $cd = @{
+            AllNodes = @(
+                @{
+                    NodeName = "localhost"
+                    PSDscAllowPlainTextPassword = $true
+                }
+            )
         }
-        
-        if($Credential){
-            $JobFlag = Start-DSCJob -ConfigurationName ArcGISDownloadInstallers -Credential $Credential -DebugMode $DebugMode
-        }else{
-            $JobFlag = Start-DSCJob -ConfigurationName ArcGISDownloadInstallers -DebugMode $DebugMode
+        $DownloadInstallersArgs = @{ ConfigurationData = $cd } 
+        if($UseAzureFiles){
+            $DownloadInstallersArgs.Installers = $InstallersConfig.Installers 
+            $DownloadInstallersArgs.UseAzureFiles = $true 
+            $DownloadInstallersArgs.AFSCredential = $AFSCredential 
+            $DownloadInstallersArgs.AFSEndpoint = $AFSEndpoint 
+        }
+
+        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDownloadInstallers" -ConfigurationFolderPath "Configurations-AzureImageBuild" -Arguments $DownloadInstallersArgs -Credential $Credential -DebugMode $DebugMode
+        if($JobFlag){
+            Write-Information -InformationAction Continue "Downloaded Installer Setups Successfully."
         }
     }else{
         $JobFlag = $True
     }
     
     if($JobFlag -eq $True){
-        if(-not($SkipFilesDownload)){
-            Write-Host "Downloaded Installer Setups Successfully. Removing Download Installer Configuration File."
-            if(Test-Path ".\ArcGISDownloadInstallers") {
-                Remove-Item ".\ArcGISDownloadInstallers" -Force -ErrorAction Ignore -Recurse
-            }
-        }
-
-        Write-Host "Dot Sourcing the Configuration:- ArcGISSetupConfiguration"
-        . "$PSScriptRoot\Configurations-AzureImageBuild\ArcGISSetupConfiguration.ps1" -Verbose:$false
-
         $JobFlag = $False
-        Write-Host "Compiling the Configuration:- ArcGISSetupConfiguration"
-        ArcGISSetupConfiguration -Installers $InstallersConfig.Installers -WindowsFeatures $InstallersConfig.WindowsFeatures
-        $JobFlag = Start-DSCJob -ConfigurationName ArcGISSetupConfiguration -DebugMode $DebugMode
-        if($JobFlag -eq $True -and (Test-Path ".\ArcGISSetupConfiguration")) {
-            Write-Host "Installed ArcGIS Setups Successfully. Removing Setup Configuration File."
-            Remove-Item ".\ArcGISSetupConfiguration" -Force -ErrorAction Ignore -Recurse
+        $SetupConfigArgs = @{
+            Installers = $InstallersConfig.Installers
+            WindowsFeatures = $InstallersConfig.WindowsFeatures
+        }
+        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISSetupConfiguration" -ConfigurationFolderPath "Configurations-AzureImageBuild" -Arguments $SetupConfigArgs -Credential $Credential -DebugMode $DebugMode
+        if($JobFlag -eq $True) {
+            Write-Information -InformationAction Continue "Installed ArcGIS Setups Successfully. Removing Setup Configuration File."
         }
     }
 }
 
-function Configure-ArcGIS
+function Invoke-CreateNodeToAdd
+{
+    [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
+    Param(
+        $Node,
+
+        [System.String]
+        $TargetComponent,
+
+        [System.String]
+        $ServerContext,
+
+        [System.String]
+        $PortalContext,
+
+        [System.Boolean]
+        $WebAdaptorAdminAccessEnabled
+    )
+
+    $NodeToAdd = @{ NodeName = $Node.NodeName }
+                                
+    if($Node.TargetNodeEncyrptionCertificateFilePath -and $Node.TargetNodeEncyrptionCertificateThumbprint){
+        $NodeToAdd["CertificateFile"] = $Node.TargetNodeEncyrptionCertificateFilePath
+        $NodeToAdd["Thumbprint"] = $Node.TargetNodeEncyrptionCertificateThumbprint
+    }else{
+        $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+    }
+
+    if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -icontains  $TargetComponent }  | Measure-Object).Count -gt 0) ){
+        $SSLCertificate = ($Node.SslCertificates | Where-Object { $_.Target -icontains $TargetComponent }  | Select-Object -First 1)
+        $SSLPassword = if($SSLCertificate.PasswordFilePath){ Get-Content $SSLCertificate.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $SSLCertificate.Password -AsPlainText -Force }
+
+        $NodeToAdd["SSLCertificate"] =  @{
+            Path = $SSLCertificate.Path
+            CName = $SSLCertificate.CNameFQDN
+            Password = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SSLCertPlaceholder",$SSLPassword)
+        }
+    }    
+
+    if($TargetComponent -ieq "DataStore"){ Add-Member -InputObject $NodeToAdd -MemberType NoteProperty -Name "DataStoreTypes" -Value  $Node.DataStoreTypes }
+
+    if($TargetComponent -ieq "WebAdaptor"){
+        if($Node.Role -icontains 'ServerWebAdaptor'){
+            $NodeToAdd["IsServerWebAdaptorEnabled"] = $True
+            $NodeToAdd["ServerContext"] = if($Node.ServerContext){ $Node.ServerContext }else{ $ServerContext }
+            $NodeToAdd["AdminAccessEnabled"] = if($Node.AdminAccessEnabled){ $Node.AdminAccessEnabled }else{ $WebAdaptorAdminAccessEnabled }
+        }
+        if($Node.Role -icontains 'PortalWebAdaptor'){
+            $NodeToAdd["IsPortalWebAdaptorEnabled"] = $True
+            $NodeToAdd["PortalContext"] = $PortalContext
+        }
+    }
+
+    $NodeToAdd
+}
+
+function Invoke-ArcGISConfiguration
 {
     [CmdletBinding()]
     Param(
@@ -652,7 +563,7 @@ function Configure-ArcGIS
         [System.Array]
         $ConfigurationParametersFile,    
 
-        [ValidateSet("Install","InstallLicense","InstallLicenseConfigure","Uninstall","Upgrade","PublishGISService")]
+        [ValidateSet("Install","InstallLicense","InstallLicenseConfigure","Uninstall","Upgrade")]
         [Parameter(Position = 1)]
         [System.String]
         $Mode = 'InstallLicenseConfigure',
@@ -669,282 +580,814 @@ function Configure-ArcGIS
         $DebugSwitch
     )
     
-    $DebugMode = $False
+    $DebugMode = if($DebugSwitch){ $True }else{ $False } 
 
-    if($DebugSwitch){
-        $DebugMode = $true
-    }
-
-    if($Mode -ieq "Install" -or $Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure" -or $Mode -ieq "Uninstall" -or $Mode -ieq "PublishGISService"){
-
+    if(@("Install","InstallLicense","InstallLicenseConfigure","Uninstall") -icontains $Mode){
+        $ConfigurationParamsJSON = $null
         Foreach($cf in $ConfigurationParametersFile){
             if(-not($ConfigurationParamsJSON)){
                 $ConfigurationParamsJSON = (ConvertFrom-Json (Get-Content $cf -Raw))
             }
         }
         $ConfigurationParamsHashtable = Convert-PSObjectToHashtable $ConfigurationParamsJSON
-        for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
-            if ($Credential)
-            {
-                $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major } -Credential $Credential 
-            } else {
-                $WMFVersion = Invoke-Command -ComputerName $ConfigurationParamsHashtable.AllNodes[$i].NodeName -ScriptBlock { $PSVersionTable.PSVersion.Major }
-            }
-            $ConfigurationParamsHashtable.AllNodes[$i].WMFVersion = [int]$WMFVersion.ToString()
-        }
-        
-        $CommonNodeToAddForPlainText = @{
-            NodeName = "*"
-            PSDscAllowPlainTextPassword = $true
-        }
-       
-        $ConfigurationParamsHashtable.AllNodes += $CommonNodeToAddForPlainText 
 
-        if($Mode -ieq "Install" -or $Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure"){ 
-            $ValidatePortalFileShare = $false
-            if($ConfigurationParamsHashtable.ConfigData.Portal){
-                $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
-                if($IsHAPortal)
-                {
-                    if($MappedDriveOverrideFlag)
-                    {
+        $ServiceCredential = $null
+        $ServiceCredentialIsDomainAccount = $False
+        $ServiceCredentialIsMSA = $False
+        if($ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount){
+            $SAPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+            $ServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+            $ServiceCredentialIsDomainAccount = $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+            $ServiceCredentialIsMSA = $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+        }
+
+        $ValidatePortalFileShare = $false
+        if($ConfigurationParamsHashtable.ConfigData.Portal){
+            $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
+            if($IsHAPortal) {
+                if($MappedDriveOverrideFlag) {
+                    $ValidatePortalFileShare = $True
+                } else {
+                    if($ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\')) { 
                         $ValidatePortalFileShare = $True
-                    }
-                    else
-                    {
-                        if($ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\'))
-                        {
-                            $ValidatePortalFileShare = $True
-                        }
-                        else
-                        {
-                            throw "Config Directory Location path is not a fileshare path"
-                        }
-                    }
-                }else{
-                    $ValidatePortalFileShare = $True 
-                }
-            }else{
-                $ValidatePortalFileShare = $True   
-            }
-
-            $ValidateServerFileShare = $false
-            $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
-            if($IsHAServer)
-            {
-                if($MappedDriveOverrideFlag)
-                {
-                    $ValidateServerFileShare = $True
-                }
-                else
-                {
-                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\') -and $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\'))
-                    {
-                        $ValidateServerFileShare = $True
-                    }
-                    else
-                    {
-                        throw "One or both of Config Store Location and Server Directories Root Location is not a fileshare path"
+                    } else {
+                        throw "Config Directory Location path is not a fileshare path"
                     }
                 }
+            } else {
+                $ValidatePortalFileShare = $True 
             }
-            else
-            {
-                $ValidateServerFileShare = $True 
-            }
-
-            if($ValidateServerFileShare -and $ValidatePortalFileShare){
-                $JobFlag = $False
-
-                Write-Host "Dot Sourcing the Configuration:- ArcGISInstall"
-                . "$PSScriptRoot\Configurations-OnPrem\ArcGISInstall.ps1" -Verbose:$false
-
-                Write-Host "Compiling the Configuration:- ArcGISInstall"
-                ArcGISInstall -ConfigurationData $ConfigurationParamsHashtable
-
-                if($Credential){
-                    $JobFlag = Start-DSCJob -ConfigurationName ArcGISInstall -Credential $Credential -DebugMode $DebugMode
-                }else{
-                    $JobFlag = Start-DSCJob -ConfigurationName ArcGISInstall -DebugMode $DebugMode
-                }
-
-                if(Test-Path ".\ArcGISInstall") {
-                    Remove-Item ".\ArcGISInstall" -Force -ErrorAction Ignore -Recurse
-                }
-
-                if($JobFlag -eq $True -and ($Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure")){
-                    $JobFlag = $False
-                    
-                    $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' } | Measure-Object).Count -gt 0)
-                    $PortalCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' } | Measure-Object).Count -gt 0)
-                    $DesktopCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Desktop' }  | Measure-Object).Count -gt 0)
-                    $ProCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Pro' }  | Measure-Object).Count -gt 0)
-                    $LicenseManagerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'LicenseManager' } | Measure-Object).Count -gt 0)
-
-                    $EnterpriseSkipLicenseStep = $true
-                    if($ConfigurationParamsHashtable.ConfigData.Version -and ($ServerCheck -or $PortalCheck)){
-                        $EnterpriseSkipLicenseStep = $false
-                        $EnterpriseVersionArray = $ConfigurationParamsHashtable.ConfigData.Version.Split(".")
-                        $EnterpriseMajorVersion = $EnterpriseVersionArray[1]
-                        if(($EnterpriseMajorVersion -ge 7) -and -not($ServerCheck) -and $PortalCheck){
-                            $EnterpriseSkipLicenseStep = $true
-                        }
-                    }
-
-                    $DesktopSkipLicenseStep = $true
-                    if($ConfigurationParamsHashtable.ConfigData.DesktopVersion -and $DesktopCheck){
-                        $DesktopSkipLicenseStep = $false
-                        if($ConfigurationParamsHashtable.ConfigData.Desktop.AuthorizationType -ieq "Float" -and -not($LicenseManagerCheck)){
-                            $DesktopSkipLicenseStep = $true
-                        }
-                    }
-
-                    $ProSkipLicenseStep = $true
-                    if($ConfigurationParamsHashtable.ConfigData.ProVersion -and $ProCheck){
-                        $ProSkipLicenseStep = $false
-                        if(($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER") -or 
-                        ($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE" -and -not($LicenseManagerCheck))){
-                            $ProSkipLicenseStep = $true
-                        }
-                    }
-                    
-                    if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep)){
-                        Write-Host "Dot Sourcing the Configuration:- ArcGISLicense"
-                        . "$PSScriptRoot\Configurations-OnPrem\ArcGISLicense.ps1" -Verbose:$false
-
-                        Write-Host "Compiling the Configuration:- ArcGISLicense"
-                        ArcGISLicense -ConfigurationData $ConfigurationParamsHashtable
-                        
-                        if($Credential){
-                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -Credential $Credential -DebugMode $DebugMode
-                        }else{
-                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISLicense -DebugMode $DebugMode
-                        }
-
-                        if(Test-Path ".\ArcGISLicense") {
-                            Remove-Item ".\ArcGISLicense" -Force -ErrorAction Ignore -Recurse
-                        }
-                    }else{
-                        $JobFlag = $True
-                    }
-
-                    $SkipConfigureStep = $False                    
-                    if(($DesktopCheck -or $ProCheck) -and -not($ServerCheck -or $PortalCheck)){
-                        $SkipConfigureStep = $True
-                    }
-
-                    if($JobFlag -eq $True -and ($Mode -ieq "InstallLicenseConfigure") -and -not($SkipConfigureStep)){
-                        
-                        $JobFlag = $False
-                    
-                        Write-Host "Dot Sourcing the Configuration:- ArcGISConfigure"
-                        . "$PSScriptRoot\Configurations-OnPrem\ArcGISConfigure.ps1" -Verbose:$false
-
-                        Write-Host "Compiling the Configuration:- ArcGISConfigure"
-                        ArcGISConfigure -ConfigurationData $ConfigurationParamsHashtable
-                        
-                        if($Credential){
-                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigure -Credential $Credential -DebugMode $DebugMode
-                        }else{
-                            $JobFlag = Start-DSCJob -ConfigurationName ArcGISConfigure -DebugMode $DebugMode
-                        }
-
-                        if(Test-Path ".\ArcGISConfigure") {
-                            Remove-Item ".\ArcGISConfigure" -Force -ErrorAction Ignore -Recurse
-                        }
-
-                        if($JobFlag -eq $True){
-                            $RemoteFederation = if($ConfigurationParamsHashtable.ConfigData.Federation){$true}else{$false}
-                            $PortalServerFederation = $False
-                            if(-not($RemoteFederation))
-                            {
-                                $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 0)
-                                $PortalCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 0)
-                                if($ServerCheck -and $PortalCheck)
-                                {
-                                    $PortalServerFederation = $True
-                                }
-                            }
-
-                            if($RemoteFederation -or $PortalServerFederation){
-                                Write-Host "Dot Sourcing the Configuration:- ArcGISFederation"
-                                . "$PSScriptRoot\Configurations-OnPrem\ArcGISFederation.ps1" -Verbose:$false
-                                
-                                Write-Host "Compiling the Configuration:- ArcGISFederation"
-                                ArcGISFederation -ConfigurationData $ConfigurationParamsHashtable 
-                                
-                                if($Credential){
-                                    $JobFlag = Start-DSCJob -ConfigurationName ArcGISFederation -Credential $Credential -DebugMode $DebugMode
-                                }else{
-                                    
-                                    $JobFlag = Start-DSCJob -ConfigurationName ArcGISFederation -DebugMode $DebugMode
-                                }
-
-                                if(Test-Path ".\ArcGISFederation") {
-                                    Remove-Item ".\ArcGISFederation" -Force -ErrorAction Ignore -Recurse
-                                }
-                            }
-                        }
-                    
-                        if($JobFlag -eq $True){ 
-                            Get-ArcGISURL $ConfigurationParamsHashtable
-                        }
-                    }
-                }
-            }else{
-                throw "File directory validations failed for server or portal. Please check and run again."  
-            }
-        }elseif(($Mode -ieq "Uninstall") -or ($Mode -ieq "PublishGISService")){
-            if($Mode -ieq "Uninstall"){
-                $ConfigurationName = "ArcGISUninstall"
-            }elseif($Mode -ieq "PublishGISService"){
-                $ConfigurationName = "PublishGISService"
-            }
-            if(Test-Path ".\$ConfigurationName") {
-                Remove-Item ".\$ConfigurationName" -Force -ErrorAction Ignore -Recurse
-            }    
-
-            Write-Host "Dot Sourcing the Configuration:- $ConfigurationName"
-            . "$PSScriptRoot\Configurations-OnPrem\$ConfigurationName.ps1" -Verbose:$false
-
-            Write-Host "Compiling the Configuration:- $ConfigurationName"
-            & $ConfigurationName -ConfigurationData $ConfigurationParamsHashtable
-            
-            if($Credential){
-                Start-DSCJob -ConfigurationName $ConfigurationName -Credential $Credential -DebugMode $DebugMode
-            }else{
-                Start-DSCJob -ConfigurationName $ConfigurationName -DebugMode $DebugMode
-            }
+        } else {
+            $ValidatePortalFileShare = $True   
         }
+
+        $ValidateServerFileShare = $false
+        $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
+        if($IsHAServer) {
+            if($MappedDriveOverrideFlag){
+                $ValidateServerFileShare = $True
+            }else{
+                if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\') -and $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\')){
+                    if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){
+                        foreach($dir in $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){
+                            if(-not($dir.physicalPath.StartsWith('\'))){
+                                throw "One or more of Server Directories Location is not a fileshare path"
+                            }
+                        }
+                    }
+                    $ValidateServerFileShare = $True
+                } else {
+                    throw "One or both of Config Store Location and Server Directories Root Location is not a fileshare path"
+                }
+            }
+        } else {
+            $ValidateServerFileShare = $True 
+        }
+
+        if($ValidateServerFileShare -and $ValidatePortalFileShare){
+            $InstallConfigurationParamsHashtable = Convert-PSObjectToHashtable $ConfigurationParamsJSON
+
+            $InstallCD = @{
+                AllNodes = @() 
+                ConfigData = $InstallConfigurationParamsHashtable.ConfigData
+            }
+
+            for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.Count; $i++ ){
+                $Node = $ConfigurationParamsHashtable.AllNodes[$i]
+                $NodeToAdd = @{ NodeName = $Node.NodeName; Role = $Node.Role }
+                if($Node.TargetNodeEncyrptionCertificateFilePath -and $Node.TargetNodeEncyrptionCertificateThumbprint){
+                    $NodeToAdd["CertificateFile"] = $Node.TargetNodeEncyrptionCertificateFilePath
+                    $NodeToAdd["Thumbprint"] = $Node.TargetNodeEncyrptionCertificateThumbprint
+                }else{
+                    $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+                }
+                if($Node.Role -icontains 'ServerWebAdaptor'){
+                    $NodeToAdd["ServerContext"] = if($Node.ServerContext){ $Node.ServerContext }else{ $ConfigurationParamsHashtable.ConfigData.ServerContext }
+                }
+
+                $InstallCD.AllNodes += $NodeToAdd
+            }
+
+            if($InstallCD.ConfigData.Credentials){
+                $InstallCD.ConfigData.Remove("Credentials")
+            }
+            if($InstallCD.ConfigData.SslRootOrIntermediate){
+                $InstallCD.ConfigData.Remove("SslRootOrIntermediate")
+            }
+            if($InstallCD.ConfigData.FileShareLocalPath -and ($Mode -ne "Uninstall")){
+                $InstallCD.ConfigData.Remove("FileShareLocalPath")
+            }
+            if($InstallCD.ConfigData.FileShareName -and ($Mode -ne "Uninstall")){
+                $InstallCD.ConfigData.Remove("FileShareName")                
+            }
+            if($InstallCD.ConfigData.Server){
+                if($InstallCD.ConfigData.Server.LicenseFilePath){
+                    $InstallCD.ConfigData.Server.Remove("LicenseFilePath")
+                }
+                if($InstallCD.ConfigData.Server.LicensePassword){
+                    $InstallCD.ConfigData.Server.Remove("LicensePassword")
+                }
+                if($InstallCD.ConfigData.Server.ServerDirectoriesRootLocation){
+                    $InstallCD.ConfigData.Server.Remove("ServerDirectoriesRootLocation")
+                }
+                if($InstallCD.ConfigData.Server.ServerLogsLocation){
+                    $InstallCD.ConfigData.Server.Remove("ServerLogLocations")
+                }
+                if($InstallCD.ConfigData.Server.LocalRepositoryPath){
+                    $InstallCD.ConfigData.Server.Remove("LocalRepositoryPath")
+                }
+                if($InstallCD.ConfigData.Server.ServerDirectories){
+                    $InstallCD.ConfigData.Server.Remove("ServerDirectories")
+                }
+                if($InstallCD.ConfigData.Server.ConfigStoreLocation){
+                    $InstallCD.ConfigData.Server.Remove("ConfigStoreLocation")
+                }
+            }
+            if($InstallCD.ConfigData.Portal){
+                if($InstallCD.ConfigData.Portal.LicenseFilePath){
+                    $InstallCD.ConfigData.Portal.Remove("LicenseFilePath")
+                }
+                if($InstallCD.ConfigData.Portal.LicensePassword){
+                    $InstallCD.ConfigData.Portal.Remove("LicensePassword")
+                }
+                if($InstallCD.ConfigData.Portal.PortalLicenseUserTypeId){
+                    $InstallCD.ConfigData.Portal.Remove("PortalLicenseUserTypeId")
+                }
+                if($InstallCD.ConfigData.Portal.ContentDirectoryLocation){
+                    $InstallCD.ConfigData.Portal.Remove("ContentDirectoryLocation")
+                }
+            }
+            if($InstallCD.ConfigData.DataStore -and $InstallCD.ConfigData.DataStore.ContentDirectoryLocation){
+                $InstallCD.ConfigData.DataStore.Remove("ContentDirectoryLocation")
+            }
+            if($InstallCD.ConfigData.WebAdaptor -and $InstallCD.ConfigData.WebAdaptor.AdminAccessEnabled){
+                $InstallCD.ConfigData.WebAdaptor.Remove("AdminAccessEnabled")
+            }
+            if($InstallCD.ConfigData.Pro -and $InstallCD.ConfigData.Pro.LicenseFilePath){
+                $InstallCD.ConfigData.Pro.Remove("LicenseFilePath")
+            }
+            if($InstallCD.ConfigData.Desktop -and $InstallCD.ConfigData.Desktop.LicenseFilePath){
+                $InstallCD.ConfigData.Desktop.Remove("LicenseFilePath")
+            }
+
+            $InstallArgs = @{
+                ConfigurationData = $InstallCD
+                ServiceCredential = $ServiceCredential
+                ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
+                ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+            }
+            
+            $ConfigurationName = if($Mode -ieq "Uninstall"){ "ArcGISUninstall" }else{ "ArcGISInstall" }
+            
+            $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $InstallArgs -Credential $Credential -DebugMode $DebugMode
+
+            if($JobFlag -eq $True -and ($Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure")){
+                $JobFlag = $False
+                
+                $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' } | Measure-Object).Count -gt 0)
+                $PortalCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' } | Measure-Object).Count -gt 0)
+                $DesktopCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Desktop' }  | Measure-Object).Count -gt 0)
+                $ProCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Pro' }  | Measure-Object).Count -gt 0)
+                $LicenseManagerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'LicenseManager' } | Measure-Object).Count -gt 0)
+                $EnterpriseMajorVersion = $null
+
+                $EnterpriseSkipLicenseStep = $true
+                if($ConfigurationParamsHashtable.ConfigData.Version -and ($ServerCheck -or $PortalCheck)){
+                    $EnterpriseSkipLicenseStep = $false
+                    $EnterpriseVersionArray = $ConfigurationParamsHashtable.ConfigData.Version.Split(".")
+                    $EnterpriseMajorVersion = $EnterpriseVersionArray[1]
+                    if(($EnterpriseMajorVersion -ge 7) -and -not($ServerCheck) -and $PortalCheck){
+                        $EnterpriseSkipLicenseStep = $true
+                    }
+                }
+
+                $DesktopSkipLicenseStep = $true
+                if($ConfigurationParamsHashtable.ConfigData.DesktopVersion -and $DesktopCheck){
+                    $DesktopSkipLicenseStep = $false
+                    if($ConfigurationParamsHashtable.ConfigData.Desktop.AuthorizationType -ieq "Float" -and -not($LicenseManagerCheck)){
+                        $DesktopSkipLicenseStep = $true
+                    }
+                }
+
+                $ProSkipLicenseStep = $true
+                if($ConfigurationParamsHashtable.ConfigData.ProVersion -and $ProCheck){
+                    $ProSkipLicenseStep = $false
+                    if(($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "NAMED_USER") -or 
+                    ($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE" -and -not($LicenseManagerCheck))){
+                        $ProSkipLicenseStep = $true
+                    }
+                }
+                
+                if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep)){
+
+                    $LicenseCD = @{
+                        AllNodes = @() 
+                    }
+                    
+                    for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
+                        $Node = $ConfigurationParamsHashtable.AllNodes[$i]
+                        $NodeToAdd = @{ 
+                            NodeName = $Node.NodeName; 
+                            Role = @()
+                        }
+                        
+                        if($Node.TargetNodeEncyrptionCertificateFilePath -and $Node.TargetNodeEncyrptionCertificateThumbprint){
+                            $NodeToAdd["CertificateFile"] = $Node.TargetNodeEncyrptionCertificateFilePath
+                            $NodeToAdd["Thumbprint"] = $Node.TargetNodeEncyrptionCertificateThumbprint
+                        }else{
+                            $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+                        }
+                        
+                        $Role = @()
+                        if($Node.Role -icontains "Server"){
+                            $ServerRole = $null
+                            $ServerLicenseFilePath = $ConfigurationParamsHashtable.ConfigData.Server.LicenseFilePath
+                            $ServerLicensePassword = $null
+                            
+                            if($ConfigurationParamsHashtable.ConfigData.ServerRole)
+                            {   
+                                $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole 
+                                if($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "ImageHosting"){
+                                    $ServerRole = "ImageServer"
+                                }
+                            }else{
+                                $ServerRole = "GeneralPurposeServer"
+                            }
+                            
+                            if($ConfigurationData.ConfigData.Server.LicensePasswordFilePath){
+                                $ServerLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.Server.LicensePasswordFilePath | ConvertTo-SecureString )
+                            }elseif($ConfigurationData.ConfigData.Server.LicensePassword){
+                                $ServerLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.Server.LicensePassword -AsPlainText -Force)
+                            }
+
+                            if($ServerRole -ieq "GeoEvent"){
+                                $ServerLicenseFilePath =  $ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicenseFilePath
+                                $ServerLicensePassword = $null
+                                if($ConfigurationData.ConfigData.GeoEventServer.LicensePasswordFilePath){
+                                    $ServerLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.GeoEventServer.LicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($ConfigurationData.ConfigData.GeoEventServer.LicensePassword){
+                                    $ServerLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.GeoEventServer.LicensePassword -AsPlainText -Force)
+                                }
+                            }
+                            
+                            if($Node.ServerLicenseFilePath -and $Node.ServerLicensePassword)
+                            {
+                                $ServerLicenseFilePath=$Node.ServerLicenseFilePath
+                                $ServerLicensePassword = $null
+                                if($Node.ServerLicensePasswordFilePath){
+                                    $ServerLicensePassword = (Get-Content $Node.ServerLicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($Node.ServerLicensePassword){
+                                    $ServerLicensePassword = (ConvertTo-SecureString $Node.ServerLicensePassword -AsPlainText -Force)
+                                }
+                            }
+
+                            $NodeToAdd.Role += "Server"
+                            $NodeToAdd["ServerRole"] = $ServerRole
+                            $NodeToAdd["ServerLicenseFilePath"] = $ServerLicenseFilePath
+                            if($null -ne $ServerLicensePassword){
+                                $NodeToAdd["ServerLicensePassword"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("PlaceHolder", $ServerLicensePassword)
+                            }
+                        }
+                        if($Node.Role -icontains "Portal"){
+                            if($EnterpriseMajorVersion -lt 7){
+                                $PortalLicenseFilePath = $ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath
+                                $PortalLicensePassword = $null
+
+                                if($ConfigurationParamsHashtable.ConfigData.Portal.LicensePasswordFilePath){
+                                    $PortalLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.Portal.LicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($ConfigurationParamsHashtable.ConfigData.Portal.LicensePassword){
+                                    $PortalLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.Portal.LicensePassword -AsPlainText -Force)
+                                }
+
+                                if($Node.PortalLicenseFilePath -and $Node.PortalLicenseFilePath)
+                                {
+                                    $PortalLicenseFilePath=$Node.PortalLicenseFilePath
+                                    $PortalLicensePassword = $null
+                                    if($Node.PortalLicensePasswordFilePath){
+                                        $PortalLicensePassword = (Get-Content $Node.PortalLicensePasswordFilePath | ConvertTo-SecureString )
+                                    }elseif($Node.PortalLicensePassword){
+                                        $PortalLicensePassword = (ConvertTo-SecureString $Node.PortalLicensePassword -AsPlainText -Force)
+                                    }
+                                }
+
+                                $NodeToAdd.Role += "Portal"
+                                $NodeToAdd["PortalLicenseFilePath"] = $PortalLicenseFilePath
+                                if($null -ne $PortalLicensePassword){
+                                    $NodeToAdd["PortalLicensePassword"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("PlaceHolder", $PortalLicensePassword )
+                                }
+                            }
+                        }
+                        if($Node.Role -icontains "Desktop"){
+                            if($ConfigurationParamsHashtable.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
+                                $NodeToAdd.Role += "Desktop"
+                                $NodeToAdd["DesktopLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Desktop.LicenseFilePath
+                            }
+                        }
+                        if($Node.Role -icontains "Pro"){
+                            if($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "SINGLE_USE"){
+                                $NodeToAdd.Role += "Pro"
+                                $NodeToAdd["ProLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Pro.LicenseFilePath
+                            }
+                        }
+                        if($Node.Role -icontains "LicenseManager"){
+                            $NodeToAdd.Role += "LicenseManager"
+                            if($ConfigurationParamsHashtable.ConfigData.Desktop){
+                                $NodeToAdd["DesktopLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Desktop.LicenseFilePath
+                                $NodeToAdd["DesktopVersion"] = $ConfigurationParamsHashtable.ConfigData.DesktopVersion
+                            }
+                            if($ConfigurationParamsHashtable.ConfigData.Pro){
+                                $NodeToAdd["ProLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Pro.LicenseFilePath
+                                $NodeToAdd["ProVersion"] = $ConfigurationParamsHashtable.ConfigData.ProVersion
+                            }
+                        }
+                        if($NodeToAdd.Role.Count -gt 0){
+                            $LicenseCD.AllNodes += $NodeToAdd
+                        }
+                    }
+                    $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISLicense" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments @{ ConfigurationData = $LicenseCD; ForceLicenseUpdate = if($ConfigurationParamsHashtable.ConfigData.ForceLicenseUpdate){$ConfigurationParamsHashtable.ConfigData.ForceLicenseUpdate }else{ $False } } -Credential $Credential -DebugMode $DebugMode
+                }else{
+                    $JobFlag = $True
+                }
+
+                $SkipConfigureStep = $False                    
+                if(($DesktopCheck -or $ProCheck) -and -not($ServerCheck -or $PortalCheck)){
+                    $SkipConfigureStep = $True
+                }
+
+                if($JobFlag -eq $True -and ($Mode -ieq "InstallLicenseConfigure") -and -not($SkipConfigureStep)){
+                    $FileShareCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'FileShare'} | Measure-Object).Count -gt 0)
+                    $DataStoreCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore' } | Measure-Object).Count -gt 0)
+                    $RasterDataStoreItemCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'RasterDataStoreItem' } | Measure-Object).Count -gt 0)
+                    $WebAdaptorCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'ServerWebAdaptor' -or $_.Role -icontains 'PortalWebAdaptor' } | Measure-Object).Count -gt 0)
+                    
+                    $SiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
+                    $SiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.UserName, $SiteAdministratorPassword )
+                    
+                    $CloudStorageCredentials = $null
+                    if($ConfigurationParamsHashtable.ConfigData.Credentials.CloudStorageAccount){
+                        $CloudStorageAccountPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.CloudStorageAccount.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.CloudStorageAccount.Password -AsPlainText -Force }
+                        $CloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.CloudStorageAccount.UserName, $CloudStorageAccountPassword )
+                    }
+
+                    $ADServiceCredential = $null
+                    if($ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser){
+                        $ADServicePassword = if($ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.Password -AsPlainText -Force }
+                        $ADServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.UserName, $ADServicePassword )
+                    }
+                    
+                    $PrimaryServerMachine = $null
+                    $PrimaryPortalMachine = $null
+                    $PrimaryDataStore = $null
+                    $PrimaryBigDataStore = $null
+                    $PrimaryTileCache = $null
+                    $FileShareMachine = $null
+
+                    $PortalWAExternalHostName = $null
+                    $ServerWAExternalHostName = $null
+
+                    $IsServerWAOnSeparateMachine = $False
+
+                    $FileShareCD = @{ AllNodes = @() }
+                    $ServerCD =@{ AllNodes = @() }
+                    $PortalCD = @{ AllNodes = @() }
+                    $WebAdaptorCD = @{ AllNodes = @() }
+                    $DataStoreCD = @{ AllNodes = @() }
+                    
+                    $RasterDataStoreItemCD = @{ AllNodes = @() }
+                    $SQLServerCD = @{ AllNodes = @() }
+
+                    $PortalWAMachines = @()
+                    $ServerWAMachines = @()
+
+                    for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
+                        $Node = $ConfigurationParamsHashtable.AllNodes[$i]
+                        $NodeName = $Node.NodeName
+                        
+                        if($Node.Role -icontains 'FileShare'){
+                            if($null -eq $FileShareMachine){ $FileShareMachine = $Node }
+                            $FileShareCD.AllNodes += (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'FileShare')
+                        }
+                        if($Node.Role -icontains 'RasterDataStoreItem'){
+                            $RasterDataStoreItemCD.AllNodes += (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'RasterDataStoreItem')
+                        }
+                        if($Node.Role -icontains 'Server') {
+                            if($null -eq $PrimaryServerMachine){ $PrimaryServerMachine = $Node }
+                            $ServerCD.AllNodes += (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'Server')
+                        }
+                        if($Node.Role -icontains 'Portal') {
+                            if($null -eq $PrimaryPortalMachine){ $PrimaryPortalMachine = $Node }
+                            $PortalCD.AllNodes += (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'Portal')
+                        }
+                        if(($Node.Role -icontains 'ServerWebAdaptor') -or ($Node.Role -icontains 'PortalWebAdaptor')) {
+                            $ServerContext = if($ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ $null }
+                            $PortalContext = if($ConfigurationParamsHashtable.ConfigData.PortalContext){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ $null }
+                            $WAAdminAccessEnabled = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled){$ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled}else{ $False }
+                            $WANode = (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'WebAdaptor' -ServerContext $ServerContext -PortalContext $PortalContext -WebAdaptorAdminAccessEnabled $WAAdminAccessEnabled )
+
+                            if($WANode.IsServerWebAdaptorEnabled){
+                                if($WANode.ServerContext -ieq $ConfigurationParamsHashtable.ConfigData.ServerContext){ 
+                                    $ServerWAMachines += $WANode.NodeName
+                                    if($null -eq $ServerWAExternalHostName){
+                                        $ServerWAExternalHostName = if($WANode.SSLCertificate){ $WANode.SSLCertificate.CName }else{ Get-FQDN $WANode.NodeName }
+                                    }
+                                }
+                                if(-not($IsServerWAOnSeparateMachine)){
+                                    $IsServerWAOnSeparateMachine = (($AllNodes | Where-Object { $_.NodeName -ine $WANode.NodeName } | Measure-Object).Count -gt 0)
+                                }
+                                if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer"){
+                                    $WANode.PSObject.Properties.Remove('AdminAccessEnabled')
+                                }
+                            }
+                            if($WANode.IsPortalWebAdaptorEnabled){
+                                $PortalWAMachines += $NodeName.NodeName
+                                if($null -eq $PortalWAExternalHostName){
+                                    $PortalWAExternalHostName = if($WANode.SSLCertificate){ $WANode.SSLCertificate.CName }else{ Get-FQDN $WANode.NodeName }
+                                }
+                            }
+
+                            $WebAdaptorCD.AllNodes += $WANode
+                        }
+                        if($Node.Role -icontains 'DataStore') {
+                            $DsTypes = $Node.DataStoreTypes
+                            if($DsTypes -icontains "Relational" -and ($null -eq $PrimaryDataStore)) { $PrimaryDataStore = $Node }
+                            if($DsTypes -icontains "SpatioTemporal" -and ($null -eq $PrimaryBigDataStore)) { $PrimaryBigDataStore = $Node }
+                            if($DsTypes -icontains "TileCache" -and ($null -eq $PrimaryTileCache)) { $PrimaryTileCache = $Node }
+                            $DataStoreCD.AllNodes += (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'DataStore')
+                        }
+                        if($Node.Role -icontains 'SQLServer') {
+                            $SQLServerNode = (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'SQLServer')
+                            $SQLServerCD.AllNodes += $SQLServerNode
+                        }
+                    }
+                    if(($JobFlag -eq $True) -and $FileShareCheck){
+                        $JobFlag = $False
+                        $FilePathsArray = @()
+                        if($ConfigurationParamsHashtable.ConfigData.Server){
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\') -and $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\')){
+                                $FilePathsArray += $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation
+                                $FilePathsArray += $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
+                            }else{
+                                throw "One or both of the Config Store Location and Server Directories Root Location is not a file share location"
+                            }
+                        }
+                        if($ConfigurationParamsHashtable.ConfigData.Portal){
+                            if($ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\')){
+                                $FilePathsArray += $ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation
+                            }
+                        }
+
+                        $FileShareArgs = @{
+                            ConfigurationData = $FileShareCD
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
+                            FileShareName = $ConfigurationParamsHashtable.ConfigData.FileShareName
+                            FileShareLocalPath = $ConfigurationParamsHashtable.ConfigData.FileShareLocalPath  
+                            FilePaths = ($FilePathsArray -join ",")
+                        }
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISFileShare" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $FileShareArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+
+                    if(($JobFlag -eq $True) -and $ServerCheck){
+                        $JobFlag = $False
+                        $ServerArgs = @{
+                            ConfigurationData = $ServerCD
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
+                            ConfigStoreLocation = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation
+                            ServerDirectoriesRootLocation = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
+                            ServerDirectories = if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){$ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories}else{$null}
+                            ServerLogsLocation = if($ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation){$ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation}else{$null}
+                            SslRootOrIntermediate = ($ConfigurationParamsHashtable.ConfigData.SslRootOrIntermediate | ConvertTo-Json)
+                            DebugMode = $DebugMode
+                        }
+
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer"){
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
+                                $ServerArgs["ContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
+                            }                                
+                        }else{
+                            $ServerArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
+                            $ServerArgs["OpenFirewallPorts"] = ($PortalCheck -or $DataStoreCheck -or $IsServerWAOnSeparateMachine)
+                            $ServerArgs["RegisteredDirectories"] = ($ConfigurationParamsHashtable.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
+                            $ServerArgs["LocalRepositoryPath"] = if($ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath){$ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath}else{$null}
+                        }
+
+                        if($ConfigurationParamsHashtable.ConfigData.CloudStorageType){
+                            
+                            $ServerArgs["CloudStorageType"] = $ConfigurationParamsHashtable.ConfigData.CloudStorageType
+                            $ServerArgs["AzureFileShareName"]  = if($ConfigurationParamsHashtable.ConfigData.CloudStorageType -ieq "AzureFiles"){ $ConfigurationParamsHashtable.ConfigData.AzureFileShareName }else{ $null }
+                            $ServerArgs["CloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.CloudNamespace
+                            $ServerArgs["CloudStorageCredentials"] = $CloudStorageCredentials
+                        }
+                        $ConfigurationName = if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){"ArcGISNotebookServer"}else{"ArcGISServer"} 
+                        $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+
+                    if(($JobFlag -eq $True) -and $ConfigurationParamsHashtable.ConfigData.Server.Databases){
+                        foreach($DB in $ConfigurationParamsHashtable.ConfigData.Server.Databases){
+                            if($JobFlag -eq $True){
+                                $DatabaseServerAdministratorCredential = $null
+                                if($DB.DatabaseAdminUser){
+                                    $DatabaseAdminUserPassword = if( $DB.DatabaseAdminUser.PasswordFilePath ){ Get-Content $DB.DatabaseAdminUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseAdminUser.Password -AsPlainText -Force }
+                                    $DatabaseServerAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.DatabaseAdminUser.UserName, $DatabaseAdminUserPassword )
+                                }
+
+                                $SDEUserCredential = $null
+                                if($DB.SDEUser){
+                                    $SDEUserPassword = if( $DB.SDEUser.PasswordFilePath ){ Get-Content $DB.SDEUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.Credentials.SDEUser.Password -AsPlainText -Force }
+                                    $SDEUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.SDEUser.UserName, $SDEUserPassword )
+                                }
+
+                                $DatabaseUserCredential = $null
+                                if($DB.DatabaseUser){
+                                    $DatabaseUserPassword = if( $DB.DatabaseUserCredential.PasswordFilePath ){ Get-Content $DB.DatabaseUserCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseUserCredential.Password -AsPlainText -Force }
+                                    $DatabaseUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.DatabaseUserCredential.UserName, $DatabaseUserPassword )
+                                }
+
+                                if((($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'SQLServer' -and $_.NodeName -ieq $DB.DatabaseServerHostName } | Measure-Object).Count -gt 0)){
+                                    $SQLServerArgs = @{
+                                        ConfigurationData = $SQLServerCD
+                                        DatabaseServerHostName = $DB.DatabaseServerHostName
+                                        DatabaseServerAdministratorCredential = $DatabaseServerAdministratorCredential
+                                    }
+                                    
+                                    $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISSQLServer" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $SQLServerArgs -Credential $Credential -DebugMode $DebugMode
+                                }
+
+                                if($JobFlag -eq $True){
+                                    $DBArgs = @{
+                                        ConfigurationData = $ServerCD
+                                        PrimaryServiceMachine = $PrimaryServerMachine.NodeName
+                                        SiteAdministratorCredential = $SiteAdministratorCredential
+                                        DatabaseType = $DB.DatabaseType
+                                        DatabaseServerHostName = $DB.DatabaseServerHostName
+                                        DatabaseName = $DB.DatabaseName
+                                        DatabaseServerAdministratorCredential = $DatabaseServerAdministratorCredential
+                                        SDEUserCredential = $SDEUserCredential
+                                        DatabaseUserCredential = $DatabaseUserCredential
+                                        DatabaseIsManaged = $DB.DatabaseIsManaged
+                                        EnableGeodatabase = $DB.EnableGeodatabase
+                                    }
+
+                                    $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISRegisterSQLEGDB" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $DBArgs -Credential $Credential -DebugMode $DebugMode
+                                }
+                            }
+                        }
+                    }
+
+                    $ServerExternalDNSHostName = $null
+                    if($ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer){
+                        $ServerExternalDNSHostName = $ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer
+                    }else{
+                        if($null -ne $ServerWAExternalHostName){
+                            $ServerExternalDNSHostName = $ServerWAExternalHostName
+                        }
+                    }
+
+                    if(($JobFlag -eq $True) -and $ServerCheck -and -not(($null -eq $ServerExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer))){
+                        $ServerSettingsArgs = @{
+                            ConfigurationData = $ServerCD
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
+                            ExternalDNSHostName = $ServerExternalDNSHostName 
+                            ServerContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
+                        }
+                        $ConfigurationName = "ArcGISNotebookServerSettings"
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ne "NotebookServer"){
+                            $ConfigurationName = "ArcGISServerSettings"
+                            $ServerSettingsArgs["InternalLoadBalancer"] = if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer }else{ $null }
+                        }
+
+                        $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerSettingsArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+
+                    
+                    $Version = $ConfigurationParamsHashtable.ConfigData.Version
+                    if(($JobFlag -eq $True) -and $PortalCheck){
+                        $JobFlag = $False
+                        $MajorVersion = $Version.Split(".")[1]
+                        $PortalArgs = @{
+                            ConfigurationData = $PortalCD
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            Version = $Version
+                            PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
+                            ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation
+                            AdminEmail = $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.Email
+                            AdminSecurityQuestionIndex = $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
+                            AdminSecurityAnswer = $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
+                            LicenseFilePath = if($ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath }else{ $null }
+                            UserLicenseTypeId = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId }else{ $null }
+                            ADServiceCredential = $ADServiceCredential
+                            EnableAutomaticAccountCreation = if($ConfigurationParamsHashtable.ConfigData.Portal.EnableAutomaticAccountCreation){ $true }else{ $false }
+                            DefaultRoleForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser }else{ $null }
+                            DefaultUserLicenseTypeIdForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser }else{ $null }
+                            DisableServiceDirectory = if($ConfigurationParamsHashtable.ConfigData.Portal.DisableServiceDirectory){ $true }else{ $false }
+                            SslRootOrIntermediate = ($ConfigurationParamsHashtable.ConfigData.SslRootOrIntermediate | ConvertTo-Json)
+                            DebugMode = $DebugMode
+                        }
+                        if($ConfigurationParamsHashtable.ConfigData.CloudStorageType){
+                            $PortalArgs["CloudStorageType"] = $ConfigurationParamsHashtable.ConfigData.CloudStorageType
+                            $PortalArgs["AzureFileShareName"]  = if($ConfigurationParamsHashtable.ConfigData.CloudStorageType -ieq "AzureFiles"){ $ConfigurationParamsHashtable.ConfigData.AzureFileShareName }else{ $null }
+                            $PortalArgs["CloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.CloudNamespace
+                            $PortalArgs["CloudStorageCredentials"] = $CloudStorageCredentials
+                        }
+
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISPortal" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $PortalArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+
+                    $PortalExternalDNSHostName = $null
+                    if($PortalCheck){
+                        if($ConfigurationParamsHashtable.ConfigData.Portal.ExternalLoadBalancer){
+                            $PortalExternalDNSHostName = $ConfigurationParamsHashtable.ConfigData.Portal.ExternalLoadBalancer
+                        }else{
+                            if($PortalWAExternalHostName){
+                                $PortalExternalDNSHostName = $PortalWAExternalHostName 
+                            }
+                        }
+                    }
+
+                    if(($JobFlag -eq $True) -and $PortalCheck){
+                        $PortalSettingsArgs = @{
+                            ConfigurationData = $PortalCD
+                            PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ExternalDNSHostName = $PortalExternalDNSHostName
+                            PortalContext = if($null -ne $PortalExternalDNSHostName){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ $null }
+                            InternalLoadBalancer = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ $null }
+                        }
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISPortalSettings" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $PortalSettingsArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+
+                    if(($JobFlag -eq $True) -and $WebAdaptorCheck){
+                        $JobFlag = $False
+                        $WebAdaptorArgs = @{
+                            ConfigurationData           = $WebAdaptorCD
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            PrimaryServerMachine        = $PrimaryServerMachine.NodeName
+                            PrimaryPortalMachine        = $PrimaryPortalMachine.NodeName
+                        }
+                        if($ServerCheck){
+                            $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
+                        }
+
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+                    
+                    if(($JobFlag -eq $True) -and $DataStoreCheck){
+                        $JobFlag = $False
+                        $DataStoreArgs = @{
+                            Version = $Version
+                            ConfigurationData = $DataStoreCD
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
+                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
+                            PrimaryDataStore = $PrimaryDataStore.NodeName
+                            PrimaryBigDataStore = $PrimaryBigDataStore.NodeName
+                            PrimaryTileCache = $PrimaryTileCache.NodeName
+                            EnableFailoverOnPrimaryStop = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.DataStore.EnableFailoverOnPrimaryStop){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop }else{ $False }
+                            DebugMode = $DebugMode
+                        }
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $DataStoreArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+
+                    if(($JobFlag -eq $True) -and $RasterDataStoreItemCheck){
+                        $JobFlag = $False
+                        $ArcGISRasterDataStoreItemArgs = @{
+                            ConfigurationData = $RasterDataStoreItemCD
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
+                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
+                            FileShareName = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){$null}else{$ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.FileShareName}
+                            FileShareLocalPath = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){$null}else{$ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath}
+                            ExternalFileSharePath = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){ $ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath }else{ $null }
+                        }
+
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISRasterDataStoreItem" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ArcGISRasterDataStoreItemArgs -Credential $Credential -DebugMode $DebugMode
+                    }
+                    
+
+                    if(($JobFlag -eq $True) -and $ServerCheck){
+                        $RemoteFederation = $PortalServerFederation = $False
+                        $RemoteSiteAdministrator = $null
+                        if($PortalCheck){
+                            $PortalServerFederation = $True
+                            $PortalHostName = if($null -ne $PortalExternalDNSHostName){ $PortalExternalDNSHostName }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryPortalMachine.NodeName} }
+                            $PortalPort = if($null -ne $PortalExternalDNSHostName){ 443 }else{ 7443 }
+                            $PortalContext = if($null -ne $PortalExternalDNSHostName){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ 'arcgis' }
+                        }elseif($ConfigurationParamsHashtable.ConfigData.Federation){
+                            $RemoteFederation = $True
+                            $PortalHostName = $ConfigurationParamsHashtable.ConfigData.Federation.PortalHostName
+                            $PortalPort = $ConfigurationParamsHashtable.ConfigData.Federation.PortalPort
+                            $PortalContext = $ConfigurationParamsHashtable.ConfigData.Federation.PortalContext
+
+                            $RemoteSiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.Password -AsPlainText -Force }
+                            $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.UserName, $RemoteSiteAdministratorPassword )
+                        }
+
+                        if($RemoteFederation -or $PortalServerFederation){
+                            $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
+                            $ServerServiceURL = if($null -ne $ServerExternalDNSHostName){ $ServerExternalDNSHostName }else{  if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName} }
+                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{ if($ServerRole -ieq 'NotebookServer'){11443}else{6443} }
+                            $ServerServiceURLContext = if($null -ne $ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ 'arcgis' }
+
+                            $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
+                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}else{6443}
+                            $ServerSiteAdminURLContext = 'arcgis'
+
+                            if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
+                                $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
+                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}else{6443}
+                                $ServerSiteAdminURLContext = 'arcgis'
+                            }else{
+                                if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer')){ 
+                                    # Check this for LB when no WAs specified
+                                    if($ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer){
+                                        $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer
+                                        $ServerSiteAdminURLContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
+                                        $ServerSiteAdminURLPort = 443
+                                    }else{
+                                        if(($null -ne $ServerExternalDNSHostName) <#-and $ServerWAAdminAccessEnabled#>){
+                                            $ServerSiteAdminURL = $ServerExternalDNSHostName
+                                            $ServerSiteAdminURLContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
+                                            $ServerSiteAdminURLPort = 443
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            $FederationArgs = @{
+                                ConfigurationData = $ServerCD
+                                PrimaryServerMachine = $PrimaryServerMachine.NodeName
+                                PortalHostName = $PortalHostName
+                                PortalPort = $PortalPort
+                                PortalContext = $PortalContext
+                                ServerHostName = $ServerServiceURL
+                                ServerPort = $ServerServiceURLPort
+                                ServerContext = $ServerServiceURLContext
+                                ServerSiteAdminUrlHostName = $ServerSiteAdminURL
+                                ServerSiteAdminUrlPort = $ServerSiteAdminURLPort
+                                ServerSiteAdminUrlContext = $ServerSiteAdminURLContext
+                                SiteAdministratorCredential = $SiteAdministratorCredential
+                                RemoteSiteAdministrator = if($RemoteFederation){ $RemoteSiteAdministrator }else{ $SiteAdministratorCredential }
+                                IsHostingServer = ($ServerCheck -and $PortalCheck -and $DataStoreCheck) #Check for relational ds only
+                                ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
+                            }
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISFederation" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $FederationArgs -Credential $Credential -DebugMode $DebugMode
+                        }
+                    }
+                
+                    if($JobFlag -eq $True){ 
+                        if($PortalCheck){
+                            $PrimaryPortalCName = if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryPortalMachine.NodeName}
+                            $PortalUrl = "$($PrimaryPortalCName):7443/arcgis" 
+                            if($null -ne $PortalExternalDNSHostName){
+                                $PortalUrl = "$($PortalExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.PortalContext)" 
+                            }
+
+                            Write-Information -InformationAction Continue "Portal Admin URL - https://$PortalUrl/portaladmin"
+                            Write-Information "Portal URL - https://$PortalUrl/home"    
+                        }
+                        if($ServerCheck){
+                            $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
+                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}else{6443}
+                            $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
+                            $ServerAdminURL = "$($PrimaryServerCName):$($Port)/arcgis"
+
+                            if($null -ne $ServerExternalDNSHostName){
+                                $ServerURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
+                                if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled){
+                                    $ServerAdminURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
+                                }
+                            }
+
+                            Write-Information -InformationAction Continue "Server Admin URL - https://$ServerAdminURL/admin"
+                            Write-Information -InformationAction Continue "Server Manager URL - https://$ServerURL/manager"
+                            Write-Information -InformationAction Continue "Server Rest URL - https://$ServerURL/rest"
+                        }
+                    }
+                }
+            }
+        }else{
+            throw "File directory validations failed for server or portal. Please check and run again."  
+        }
+
     }elseif($Mode -ieq "Upgrade"){
-        Write-Host "Dot Sourcing the Configuration:- WebAdaptorUninstall"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\WebAdaptorUninstall.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- WebAdaptorInstall"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\WebAdaptorInstall.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- PortalUpgrade"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\PortalUpgrade.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- PortalUpgradeStandbyJoin"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\PortalUpgradeStandbyJoin.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- ServerUpgrade"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\ServerUpgrade.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- DataStoreUpgradeInstall"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\DataStoreUpgradeInstall.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- DataStoreUpgradeConfigure"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\DataStoreUpgradeConfigure.ps1" -Verbose:$false
-
-        Write-Host "Dot Sourcing the Configuration:- SpatioTemporalDatastoreStart"
-        . "$PSScriptRoot\Configurations-OnPrem\Upgrades\SpatioTemporalDatastoreStart.ps1" -Verbose:$false
-
         $HostingConfig = $null
 
         $OtherConfigs = @()
-
+        
         Foreach($cf in $ConfigurationParametersFile){
             $cfJSON = (ConvertFrom-Json (Get-Content $cf -Raw))
             $cfHashtable = Convert-PSObjectToHashtable $cfJSON
@@ -974,270 +1417,227 @@ function Configure-ArcGIS
                 }else{
                     $PortalConfig = $HostingConfig
                 }
+
+                $PortalLicenseFilePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
+                $PortalLicensePassword = $null
+
+                if($PortalConfig.ConfigData.Portal.LicensePasswordFilePath){
+                    $PortalLicensePassword = (Get-Content $PortalConfig.ConfigData.Credentials.Portal.LicensePasswordFilePath | ConvertTo-SecureString )
+                }elseif($PortalConfig.ConfigData.Portal.LicensePassword){
+                    $PortalLicensePassword = (ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.Portal.LicensePassword -AsPlainText -Force)
+                }
                 
-                $SevenZipInstallerPath = if($PortalConfig.ConfigData.SevenZipInstallerPath){$PortalConfig.ConfigData.SevenZipInstallerPath}else{$null}
-                $SevenZipInstallerDir = if($PortalConfig.ConfigData.SevenZipInstallerDir){$PortalConfig.ConfigData.SevenZipInstallerDir}else{$null}
-                $PrimaryPortalMachine = ""
-                $PrimaryPortalMachineNode = $null
-                $StandByPortalMachine = ""
-                $StandByPortalMachineNode = $null
+                $PrimaryNodeToAdd = $null
+                $StandbyNodeToAdd = $null
                 $IsMultiMachinePortal = $False
                 
                 for ( $i = 0; $i -lt $PortalConfig.AllNodes.count; $i++ ){
                     $Role = $PortalConfig.AllNodes[$i].Role
                     if($Role -icontains 'Portal'){
-                        if(-not($PrimaryPortalMachine)){
-                            $PrimaryPortalMachineNode = $PortalConfig.AllNodes[$i]
-                            $PrimaryPortalMachine = $PrimaryPortalMachineNode.NodeName
+                        $Node = $PortalConfig.AllNodes[$i]
+
+                        $NodeToAdd = @{ 
+                            NodeName = $Node.NodeName; 
+                        }
+                        if($Node.TargetNodeEncyrptionCertificateFilePath -and $Node.TargetNodeEncyrptionCertificateThumbprint){
+                            $NodeToAdd["CertificateFile"] = $Node.TargetNodeEncyrptionCertificateFilePath
+                            $NodeToAdd["Thumbprint"] = $Node.TargetNodeEncyrptionCertificateThumbprint
                         }else{
-                            $StandByPortalMachineNode = $PortalConfig.AllNodes[$i]
-                            $StandByPortalMachine = $StandByPortalMachineNode.NodeName
+                            $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+                        }
+
+                        $NodeToAdd["PortalLicenseFilePath"] = if($Node.PortalLicenseFilePath){ $Node.PortalLicenseFilePath } else{ $PortalLicenseFilePath } 
+                        if($Node.PortalLicenseFilePath){
+                            if($Node.PortalLicensePassword -or $Node.PortalLicensePasswordFilePath){
+                                if($Node.PortalLicensePasswordFilePath){
+                                    $NodeToAdd["PortalLicensePassword"] = (Get-Content $Node.PortalLicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($Node.PortalLicensePassword){
+                                    $NodeToAdd["PortalLicensePassword"] = (ConvertTo-SecureString $Node.PortalLicensePassword -AsPlainText -Force)
+                                }
+                            }
+                        }else{
+                            if($null -ne $PortalLicensePassword){
+                                $NodeToAdd["PortalLicensePassword"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("PlaceHolder", $PortalLicensePassword )
+                            }
+                        }
+                        
+                        if(-not($PrimaryNodeToAdd)){
+                            $PrimaryNodeToAdd = $NodeToAdd
+                        }else{
+                            $StandbyNodeToAdd = $NodeToAdd
                             $IsMultiMachinePortal = $True
                         }
                     }
                 }
 
-                $PortalSAPassword = ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-                $PortalSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalSAPassword )
-                $PortalIsSADomainAccount = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$True}else{$False}
-                $PortalPSAPassword = ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
-                $PortalPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PortalPSAPassword )
+                $PortalServiceAccountIsDomainAccount = $PortalConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+                $PortalServiceAccountIsMSA = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsMSA){$PortalConfig.ConfigData.Credentials.ServiceAccount.IsMSA}else{ $false}
+                $PortalServiceAccountPassword = if( $PortalConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+                $PortalServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalServiceAccountPassword )
                 
+                $PortalSiteAdministratorPassword = if($PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
+                $PortalSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PortalSiteAdministratorPassword )
+
                 $HasPortalNodes = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0
                 if($HasPortalNodes){
                     $HasPortalWANodes = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor'} | Measure-Object).Count -gt 0
                     if($HasPortalWANodes){
-                        Write-Host "WebAdaptor Uninstall"
-                        ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'}).NodeName){
-                            $cd = @{
-                                AllNodes = @(
-                                    @{
-                                        NodeName = $WANode
-                                        PSDscAllowPlainTextPassword = $true
-                                    }
-                                )
+                        Write-Information -InformationAction Continue "WebAdaptor Uninstall"
+                        ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'})){
+                            $NodeToAdd = @{ 
+                                NodeName = $WANode.NodeName; 
                             }
-                            if(Test-Path ".\WebAdaptorUninstall") {
-                                Remove-Item ".\WebAdaptorUninstall" -Force -ErrorAction Ignore -Recurse
+                            if($WANode.TargetNodeEncyrptionCertificateFilePath -and $WANode.TargetNodeEncyrptionCertificateThumbprint){
+                                $NodeToAdd["CertificateFile"] = $WANode.TargetNodeEncyrptionCertificateFilePath
+                                $NodeToAdd["Thumbprint"] = $WANode.TargetNodeEncyrptionCertificateThumbprint
+                            }else{
+                                $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
                             }
                             
-                            Write-Host "Compiling the Configuration:- Web Adaptor Uninstall for Portal"
-                            WebAdaptorUninstall -ConfigurationData $cd -Version $PortalConfig.ConfigData.Version -InstallerPath $PortalConfig.ConfigData.WebAdaptor.Installer.Path -Context $PortalConfig.ConfigData.PortalContext -Verbose
-
-                            if($Credential){
-                                $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorUninstall -Credential $Credential -DebugMode $DebugMode
-                            }else{
-                                $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorUninstall -DebugMode $DebugMode
+                            $WebAdaptorUninstallArgs = @{
+                                ConfigurationData = @{ AllNodes = @( $NodeToAdd ) }
+                                Version = $PortalConfig.ConfigData.Version 
+                                InstallerPath = $PortalConfig.ConfigData.WebAdaptor.Installer.Path 
+                                Context = $PortalConfig.ConfigData.PortalContext
                             }
+                            
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUninstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUninstallArgs -Credential $Credential -DebugMode $DebugMode
                         }
                     }
 
                     if($JobFlag -eq $True){
-                        if($PortalConfig.ConfigData.ExternalLoadBalancer){
-                            $ExternalDNSName = $PortalConfig.ConfigData.ExternalLoadBalancer
-                        }else{
-                            if(($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
-                                $PortalWAMachineNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
-                                $ExternalDNSName = Get-FQDN $PortalWAMachineNode.NodeName
-                                if(($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
-                                {
-                                    $ExternalDNSName = ($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias
-                                }
-
-                                if(($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'LoadBalancer' } | Measure-Object).Count -gt 0){
-                                    $LoadbalancerNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'LoadBalancer')} | Select-Object -First 1)
-                                    $ExternalDNSName = Get-FQDN $LoadbalancerNode.NodeName
-                                    if(($LoadbalancerNode.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer'}  | Measure-Object).Count -gt 0)
-                                    {
-                                        $ExternalDNSName = ($LoadbalancerNode.SslCertificates | Where-Object { $_.Target -icontains 'LoadBalancer' }  | Select-Object -First 1).Alias
-                                    }
-                                }
-                            }else{
-                                $ExternalDNSName = Get-FQDN $PrimaryPortalMachine
-                                if(($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal'}  | Measure-Object).Count -gt 0)
-                                {
-                                    $ExternalDNSName = ($PrimaryPortalMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'Portal' }  | Select-Object -First 1).Alias
-                                }
-                            }
+                        $PortalUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
+                        if($IsMultiMachinePortal){
+                            $PortalUpgradeCD.AllNodes += $StandbyNodeToAdd
                         }
 
                         $VersionArray = $PortalConfig.ConfigData.Version.Split(".")
                         $MajorVersion = $VersionArray[1]
                         $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
-                        
-                        $LicenseFilePath = $PortalConfig.ConfigData.Portal.LicenseFilePath
-                        $LicensePassword = $null
-                        if($PortalConfig.ConfigData.Server.LicensePassword)
-                        {
-                            $LicensePassword = $PortalConfig.ConfigData.Portal.LicensePassword
-                        }
 
-                        $PrimaryLicenseFilePath = $LicenseFilePath
-                        $PrimaryLicensePassword = $LicensePassword
-                        if($PrimaryPortalMachineNode.PortalLicenseFilePath -and $PrimaryPortalMachineNode.PortalLicensePassword)
-                        {
-                            $PrimaryLicenseFilePath = $PrimaryPortalMachineNode.PortalLicenseFilePath
-                            $PrimaryLicensePassword = $PrimaryPortalMachineNode.PortalLicensePassword
-                        }
-
-                        Write-Host "Portal Upgrade"
-                        if($IsMultiMachinePortal){
-                            $cd = @{
-                                AllNodes = @(
-                                    @{
-                                        NodeName = $PrimaryPortalMachine
-                                        PSDscAllowPlainTextPassword = $true
-                                    },
-                                    @{
-                                        NodeName = $StandByPortalMachine
-                                        PSDscAllowPlainTextPassword = $true
-                                    }
-                                );
+                        if($MajorVersion -ge 7){
+                            $PortalUpgradeArgs = @{
+                                ConfigurationData = $PortalUpgradeCD 
+                                Version = $PortalConfig.ConfigData.Version
+                                InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
+                                ServiceAccount = $PortalServiceAccountCredential
+                                IsServiceAccountDomainAccount = $PortalServiceAccountIsDomainAccount
+                                IsServiceAccountMSA = $PortalServiceAccountIsMSA
                             }
-                            
-                            $StandbyLicenseFilePath = $LicenseFilePath
-                            $StandbyLicensePassword = $LicensePassword
-                            if($StandByPortalMachineNode.PortalLicenseFilePath -and $StandByPortalMachineNode.PortalLicensePassword)
-                            {
-                                $StandbyLicenseFilePath = $StandByPortalMachineNode.PortalLicenseFilePath
-                                $StandbyLicensePassword = $StandByPortalMachineNode.PortalLicensePassword
+                            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
+                                $PortalUpgradeArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
+                            }
+
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeArgs -Credential $Credential -DebugMode $DebugMode
+
+                            if($IsMultiMachinePortal -and ($JobFlag -eq $True)){
+                                $PortalPostUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
+
+                                $PortalPostUpgradeArgs = @{
+                                    ConfigurationData = $PortalPostUpgradeCD
+                                    SiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                }
+
+                                $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalPostUpgradeArgs -Credential $Credential -DebugMode $DebugMode
+                            }
+                        }else{       
+                            $PortalExternalDNSHostName = $null
+                            if($ConfigurationParamsHashtable.ConfigData.Portal.ExternalLoadBalancer){
+                                $PortalExternalDNSHostName = $ConfigurationParamsHashtable.ConfigData.Portal.ExternalLoadBalancer
+                            }else{
+                                if(($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')}  | Measure-Object).Count -gt 0){
+                                    $PortalWAMachineNode = ($PortalConfig.AllNodes | Where-Object { ($_.Role -icontains 'PortalWebAdaptor')} | Select-Object -First 1)
+                                    $PortalExternalDNSHostName = Get-FQDN $PortalWAMachineNode.NodeName
+                                    if(($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0)
+                                    {
+                                        $PortalExternalDNSHostName = ($PortalWAMachineNode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).CNameFQDN
+                                    }
+                                }
                             }
 
                             $PortalUpgradeArgs = @{
-                                ConfigurationData = $cd 
+                                ConfigurationData = $PortalUpgradeCD 
                                 OldVersion = $PortalConfig.ConfigData.OldVersion
                                 Version = $PortalConfig.ConfigData.Version
-                                PrimaryPortalMachine = $PrimaryPortalMachine 
-                                StandbyMachineName =  $StandByPortalMachine
+                                PrimaryPortalMachine = $PrimaryNodeToAdd.NodeName 
                                 InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                InstallDir = $PortalConfig.ConfigData.Portal.Installer.InstallDir 
-                                ContentDir = $PortalConfig.ConfigData.Portal.Installer.ContentDir
-                                PrimaryLicensePath = $PrimaryLicenseFilePath
-                                PrimaryLicensePassword = $PrimaryLicensePassword
-                                StandbyLicensePath = $StandbyLicenseFilePath
-                                StandbyLicensePassword = $StandbyLicensePassword 
                                 Context = $PortalConfig.ConfigData.PortalContext
-                                ServiceAccount = $PortalSACredential
-                                IsSADomainAccount = $PortalIsSADomainAccount
-                                PrimarySiteAdmin = $PortalPSACredential 
-                                PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
+                                ServiceAccount = $PortalServiceAccountCredential
+                                IsServiceAccountDomainAccount = $PortalServiceAccountIsDomainAccount
+                                IsServiceAccountMSA = $PortalServiceAccountIsMSA
+                                SiteAdministratorCredential = $PortalSiteAdministratorCredential 
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                ExternalDNSName = $ExternalDNSName 
+                                ExternalDNSName = $PortalExternalDNSHostName 
+                                InternalLoadBalancer = if($PortalConfig.ConfigData.Server.InternalLoadBalancer){ $PortalConfig.ConfigData.Server.InternalLoadBalancer }else{ $null }
                                 IsMultiMachinePortal = $IsMultiMachinePortal
-                                SevenZipInstallerPath = $SevenZipInstallerPath
-                                SevenZipInstallerDir = $SevenZipInstallerDir
                             }
-                        }else{
-                            $cd = @{
-                                AllNodes = @(
-                                    @{
-                                        NodeName = $PrimaryPortalMachine
-                                        PSDscAllowPlainTextPassword = $true
-                                    }
-                                )
+
+                            if($IsMultiMachinePortal){
+                                $PortalUpgradeArgs.Add("StandbyMachineName", $StandbyNodeToAdd.NodeName)
+                                $PortalUpgradeArgs.Add("InstallDir", $PortalConfig.ConfigData.Portal.Installer.InstallDir)
+                                $PortalUpgradeArgs.Add("ContentDir", $PortalConfig.ConfigData.Portal.Installer.ContentDir)
                             }
                             
-                            $PortalUpgradeArgs = @{
-                                ConfigurationData = $cd 
-                                OldVersion = $PortalConfig.ConfigData.OldVersion
-                                Version = $PortalConfig.ConfigData.Version 
-                                PrimaryPortalMachine = $PrimaryPortalMachine
-                                InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
-                                PrimaryLicensePath = $PrimaryLicenseFilePath
-                                PrimaryLicensePassword = $PrimaryLicensePassword
-                                Context = $PortalConfig.ConfigData.PortalContext
-                                ServiceAccount = $PortalSACredential
-                                IsSADomainAccount = $PortalIsSADomainAccount
-                                PrimarySiteAdmin = $PortalPSACredential 
-                                PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
-                                ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                ExternalDNSName = $ExternalDNSName 
-                                IsMultiMachinePortal = $False
-                                SevenZipInstallerPath = $SevenZipInstallerPath
-                                SevenZipInstallerDir = $SevenZipInstallerDir
-                            }
-                        }
-                        if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
-                            $PortalUpgradeArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
-                        }
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgradeV1" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeArgs -Credential $Credential -DebugMode $DebugMode
 
-                        if(Test-Path ".\PortalUpgrade") {
-                            Remove-Item ".\PortalUpgrade" -Force -ErrorAction Ignore -Recurse
-                        }
-                        PortalUpgrade @PortalUpgradeArgs -Verbose
-                        if($Credential){
-                            $JobFlag = Start-DSCJob -ConfigurationName PortalUpgrade -Credential $Credential -DebugMode $DebugMode
-                        }else{
-                            $JobFlag = Start-DSCJob -ConfigurationName PortalUpgrade -DebugMode $DebugMode
-                        }
+                            if($IsMultiMachinePortal -and ($JobFlag -eq $True)){
+                                $PortalUpgradeStandbyArgs = @{
+                                    ConfigurationData = @{ AllNodes = @( $StandbyNodeToAdd ); }
+                                    PrimaryPortalMachine = $PrimaryNodeToAdd.NodeName
+                                    Context = $PortalConfig.ConfigData.PortalContext
+                                    SiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                    ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
+                                    AdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email
+                                    AdminSecurityQuestionIndex = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
+                                    AdminSecurityAnswer = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
+                                }
 
-
-                        if($IsMultiMachinePortal -and ($JobFlag -eq $True)){
-                            $cd = @{
-                                AllNodes = @(
-                                    @{
-                                        NodeName = $StandByPortalMachine
-                                        PSDscAllowPlainTextPassword = $true
+                                if($PortalConfig.ConfigData.CloudStorageType){
+                                    $CloudStorageCredentials = $null
+                                    if($PortalConfig.ConfigData.Credentials.CloudStorageAccount){
+                                        $CloudStorageAccountPassword = if( $PortalConfig.ConfigData.Credentials.CloudStorageAccount.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Credentials.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.CloudStorageAccount.Password -AsPlainText -Force }
+                                        $CloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.CloudStorageAccount.UserName, $CloudStorageAccountPassword )
+                                    }else{
+                                        throw "No credentials provided for Cloud Storage for $($PortalConfig.ConfigData.CloudStorageType)"
                                     }
-                                );
-                            }
+                                    
+                                    $PortalUpgradeStandbyArgs["CloudStorageType"] = $PortalConfig.ConfigData.CloudStorageType
+                                    $PortalUpgradeStandbyArgs["AzureFileShareName"]  = if($PortalConfig.ConfigData.CloudStorageType -ieq "AzureFiles"){ $PortalConfig.ConfigData.AzureFileShareName }else{ $null }
+                                    $PortalUpgradeStandbyArgs["CloudNamespace"] = $PortalConfig.ConfigData.CloudNamespace
+                                    $PortalUpgradeStandbyArgs["CloudStorageCredentials"] = $CloudStorageCredentials
+                                }
 
-                            $StandbyLicenseFilePath = $LicenseFilePath
-                            if($StandByPortalMachineNode.PortalLicenseFilePath)
-                            {
-                                $StandbyLicenseFilePath = $StandByPortalMachineNode.PortalLicenseFilePath
-                            }
-                        
-                            $PortalUpgradeStandbyArgs = @{
-                                ConfigurationData = $cd 
-                                Version = $PortalConfig.ConfigData.Version 
-                                PrimaryPortalMachine = $PrimaryPortalMachine 
-                                Context = $PortalConfig.ConfigData.PortalContext
-                                PrimarySiteAdmin = $PortalPSACredential 
-                                PrimarySiteAdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email 
-                                ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                ExternalDNSName = $ExternalDNSName
-                                LicenseFilePath = $StandbyLicenseFilePath
-                                UserLicenseType = if($PortalConfig.ConfigData.Portal.PortalLicenseUserType){ $PortalConfig.ConfigData.Portal.PortalLicenseUserType }else{ $null }
-                            }
-
-                            if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
-                                $PortalUpgradeStandbyArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
-                            }
-
-                            PortalUpgradeStandbyJoin @PortalUpgradeStandbyArgs -Verbose
-                            if($Credential){
-                                $JobFlag = Start-DSCJob -ConfigurationName PortalUpgradeStandbyJoin -Credential $Credential -DebugMode $DebugMode
-                            }else{
-                                $JobFlag = Start-DSCJob -ConfigurationName PortalUpgradeStandbyJoin -DebugMode $DebugMode
+                                $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgradeStandbyJoinV1" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeStandbyArgs -Credential $Credential -DebugMode $DebugMode
                             }
                         }
 
                         if(($JobFlag -eq $True) -and $HasPortalWANodes){
-                            Write-Host "WebAdaptor Upgrade"
+                            Write-Information -InformationAction Continue "WebAdaptor Upgrade"
                             ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'})){
-                                $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).Alias }else{ Get-FQDN $WANode.NodeName }
-                                $cd = @{
-                                    AllNodes = @(
-                                        @{
-                                            NodeName = $WANode.NodeName
-                                            ExternalHostName = $WAExternalHostName
-                                            PSDscAllowPlainTextPassword = $true
-                                        }
-                                    )
-                                }    
-                                if(Test-Path ".\WebAdaptorInstall") {
-                                    Remove-Item ".\WebAdaptorInstall" -Force -ErrorAction Ignore -Recurse
-                                }    
-                                WebAdaptorInstall -ConfigurationData $cd -WebAdaptorRole "PortalWebAdaptor" -Version $PortalConfig.ConfigData.Version `
-                                                    -InstallerPath $PortalConfig.ConfigData.WebAdaptor.Installer.Path -Context $PortalConfig.ConfigData.PortalContext `
-                                                    -ComponentHostName $PrimaryPortalMachine -PSACredential $PortalPSACredential `
-                                                    -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
-                                if($Credential){
-                                    $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -Credential $Credential -DebugMode $DebugMode
-                                }else{
-                                    $JobFlag = Start-DSCJob -ConfigurationName WebAdaptorInstall -DebugMode $DebugMode
+                                $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).CNameFQDN }else{ Get-FQDN $WANode.NodeName }
+                                $NodeToAdd = @{ 
+                                    NodeName = $WANode.NodeName; 
+                                    ExternalHostName = $WAExternalHostName
                                 }
+                                
+                                if($WANode.TargetNodeEncyrptionCertificateFilePath -and $WANode.TargetNodeEncyrptionCertificateThumbprint){
+                                    $NodeToAdd["CertificateFile"] = $WANode.TargetNodeEncyrptionCertificateFilePath
+                                    $NodeToAdd["Thumbprint"] = $WANode.TargetNodeEncyrptionCertificateThumbprint
+                                }else{
+                                    $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+                                }
+
+                                $WebAdaptorInstallArgs = @{
+                                    ConfigurationData = @{ AllNodes = @($NodeToAdd) }
+                                    WebAdaptorRole = "PortalWebAdaptor" 
+                                    Version = $PortalConfig.ConfigData.Version
+                                    InstallerPath = $PortalConfig.ConfigData.WebAdaptor.Installer.Path 
+                                    Context = $PortalConfig.ConfigData.PortalContext 
+                                    ComponentHostName = $PrimaryNodeToAdd.NodeName
+                                    SiteAdministratorCredential = $PortalSiteAdministratorCredential
+                                }
+
+                                $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorInstallArgs -Credential $Credential -DebugMode $DebugMode
                             }
                         }
                     }
@@ -1261,11 +1661,11 @@ function Configure-ArcGIS
             
             if($JobFlag -eq $True){
                 if($HostingConfig){
-                    Write-Host "Hosting Server Upgrade"
+                    Write-Information -InformationAction Continue "Hosting Server Upgrade"
                     if($Credential){
-                        $JobFlag = ServerUpgradeScript -cf $HostingConfig -Credential $Credential -DebugMode $DebugMode
+                        $JobFlag = Invoke-ServerUpgradeScript -cf $HostingConfig -Credential $Credential -DebugMode $DebugMode
                     }else{
-                        $JobFlag = ServerUpgradeScript -cf $HostingConfig -DebugMode $DebugMode
+                        $JobFlag = Invoke-ServerUpgradeScript -cf $HostingConfig -DebugMode $DebugMode
                     }
                 }
             }
@@ -1273,11 +1673,11 @@ function Configure-ArcGIS
             if($JobFlag -eq $True){
                 if($OtherConfigs){
                     for ( $i = 0; $i -lt $OtherConfigs.count; $i++ ){
-                        Write-Host "Other Server Upgrade"
+                        Write-Information -InformationAction Continue "Other Server Upgrade"
                         if($Credential){
-                            $JobFlag = ServerUpgradeScript -cf $OtherConfigs[$i] -Credential $Credential -DebugMode $DebugMode
+                            $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -Credential $Credential -DebugMode $DebugMode
                         }else{
-                            $JobFlag = ServerUpgradeScript -cf $OtherConfigs[$i] -DebugMode $DebugMode
+                            $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -DebugMode $DebugMode
                         }
                     }
                 }
@@ -1290,208 +1690,181 @@ function Configure-ArcGIS
                     }else{
                         $DSConfig = $HostingConfig
                     }
-
-                    $SevenZipInstallerPath = if($DSConfig.ConfigData.SevenZipInstallerPath){$DSConfig.ConfigData.SevenZipInstallerPath}else{$null}
-                    $SevenZipInstallerDir = if($DSConfig.ConfigData.SevenZipInstallerDir){$DSConfig.ConfigData.SevenZipInstallerDir}else{$null}
                     
-                    $DSSAPassword = ConvertTo-SecureString $DSConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-                    $DSSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($DSConfig.ConfigData.Credentials.ServiceAccount.UserName, $DSSAPassword )
-
-                    $DSPSAPassword = ConvertTo-SecureString $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
-                    $DSPSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($DSConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $DSPSAPassword )
+                    $DSServiceAccountIsDomainAccount = $DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+                    $DSServiceAccountIsMSA = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsMSA){$DSConfig.ConfigData.Credentials.ServiceAccount.IsMSA}else{ $false}  
+                    $DSSAPassword = if( $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+                    $DSServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Credentials.ServiceAccount.UserName, $DSSAPassword )
+                    
+                    $DSPSAPassword = if($DSConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
+                    $DSSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $DSPSAPassword )
                     
                     $HasDataStoreNodes = ($DSConfig.AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0
                     if($HasDataStoreNodes){
                         $Version = $DSConfig.ConfigData.Version
                         $VersionArray = $Version.split(".")
-                        Write-Host "DataStore Upgrade to $Version"
+                        Write-Information -InformationAction Continue "DataStore Upgrade to $Version"
                         if($VersionArray[1] -gt 5){
-                            $cd = @{
-                                AllNodes = @(
-                                    @{
-                                        NodeName = "*"
-                                        PSDscAllowPlainTextPassword = $true
-                                    }
-                                )
-                            }
+                            $cd = @{AllNodes = @()}
+
+                            $PrimaryDataStore = $null
+                            $PrimaryBigDataStore = @{AllNodes = @()}
+                            $PrimaryTileCache = $null
+                            $PrimaryDataStoreCD = @{AllNodes = @()}
+                            $PrimaryBigDataStoreCD = $null
+                            $PrimaryTileCacheCD = @{AllNodes = @()}
 
                             for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
-                                $DSNode = $DSConfig.AllNodes[$i].NodeName
-                                if($DSConfig.AllNodes[$i].Role -icontains 'DataStore'){
+                                $DSNode = $DSConfig.AllNodes[$i]
+                                if($DSNode.Role -icontains 'DataStore'){
+                                    $DsTypes = $DSNode.DataStoreTypes
+
                                     $NodeToAdd = @{
-                                        NodeName = $DSNode
+                                        NodeName = $DSNode.NodeName
+                                    }
+
+                                    if($DSNode.TargetNodeEncyrptionCertificateFilePath -and $DSNode.TargetNodeEncyrptionCertificateThumbprint){
+                                        $NodeToAdd["CertificateFile"] = $DSNode.TargetNodeEncyrptionCertificateFilePath
+                                        $NodeToAdd["Thumbprint"] = $DSNode.TargetNodeEncyrptionCertificateThumbprint
+                                    }else{
+                                        $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+                                    }
+                                   
+                                    if($DsTypes -icontains "Relational" -and ($null -eq $PrimaryDataStore))
+                                    {
+                                        $PrimaryDataStore = $DSNode
+                                        $PrimaryDataStoreCD.AllNodes += $NodeToAdd
+                                    }
+                                    if($DsTypes -icontains "SpatioTemporal" -and ($null -eq $PrimaryBigDataStore))
+                                    {
+                                        $PrimaryBigDataStore = $DSNode
+                                        $PrimaryBigDataStoreCD.AllNodes += $NodeToAdd
+                                    }
+                                    if($DsTypes -icontains "TileCache")
+                                    {
+                                        $NodeToAdd["HasMultiMachineTileCache"] = (($DSConfig.AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' }  | Measure-Object).Count -gt 1)
+
+                                        if($null -eq $PrimaryTileCache){
+                                            $PrimaryTileCache = $DSNode
+                                            $PrimaryTileCacheCD.AllNodes += $NodeToAdd
+                                        }
                                     }
                                     $cd.AllNodes += $NodeToAdd 
                                 }
                             }
 
-                            if(Test-Path ".\DataStoreUpgradeInstall") {
-                                Remove-Item ".\DataStoreUpgradeInstall" -Force -ErrorAction Ignore -Recurse
+                            $DataStoreUpgradeInstallArgs = @{
+                                ConfigurationData = $cd 
+                                Version = $DSConfig.ConfigData.Version 
+                                ServiceAccount = $DSServiceAccountCredential
+                                IsServiceAccountDomainAccount = $DSServiceAccountIsDomainAccount
+                                IsServiceAccountMSA =   $DSServiceAccountIsMSA
+                                InstallerPath = $DSConfig.ConfigData.DataStore.Installer.Path 
+                                InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir
                             }
 
-                            DataStoreUpgradeInstall -ConfigurationData $cd -Version $DSConfig.ConfigData.Version -ServiceAccount $DSSACredential `
-                                -InstallerPath $DSConfig.ConfigData.DataStore.Installer.Path -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir `
-                                -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
-                            if($Credential){
-                                $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeInstall -Credential $Credential -DebugMode $DebugMode
-                            }else{
-                                $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeInstall -DebugMode $DebugMode
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeInstallArgs -Credential $Credential -DebugMode $DebugMode
+
+                            if($JobFlag -and ($null -ne $PrimaryDataStore)){
+                                $DataStoreUpgradeConfigureArgs = @{
+                                    ConfigurationData = $PrimaryDataStoreCD 
+                                    SiteAdministratorCredential = $DSSiteAdministratorCredential
+                                    ServerMachineName = $PrimaryServerMachine
+                                    ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
+                                    InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
+                                    Version = $DSConfig.ConfigData.Version
+                                }
+
+                                $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
 
-                            $PrimaryDataStore = ""
-                            $PrimaryBigDataStore = ""
-                            $PrimaryTileCache = ""
-                            for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ )
-                            {
-                                $Role = $DSConfig.AllNodes[$i].Role
-                                if($Role -icontains 'DataStore')
-                                {
-                                    $DsTypes = $DSConfig.AllNodes[$i].DataStoreTypes
-                                    if($DsTypes -icontains "Relational" -and -not($PrimaryDataStore))
-                                    {
-                                        $PrimaryDataStore = $DSConfig.AllNodes[$i].NodeName 
-                                    }
-                                    if($DsTypes -icontains "SpatioTemporal" -and -not($PrimaryBigDataStore))
-                                    {
-                                        $PrimaryBigDataStore = $DSConfig.AllNodes[$i].NodeName
-                                    }
-                                    if($DsTypes -icontains "TileCache" -and -not($PrimaryTileCache))
-                                    {
-                                        $PrimaryTileCache = $DSConfig.AllNodes[$i].NodeName
-                                    }
+                            if(($JobFlag -eq $True) -and ($null -ne $PrimaryTileCache) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName)){
+                                $DataStoreUpgradeConfigureArgs = @{
+                                    ConfigurationData = $PrimaryTileCacheCD
+                                    SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                    ServerMachineName = $PrimaryServerMachine
+                                    ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
+                                    InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
+                                    Version = $DSConfig.ConfigData.Version
                                 }
+                                $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
 
-                            if($JobFlag -and $PrimaryDataStore){
-                                $cd = @{
-                                    AllNodes = @(
-                                        @{
-                                            NodeName = $PrimaryDataStore
-                                            PSDscAllowPlainTextPassword = $true
-                                        }
-                                    )
+                            if(($JobFlag -eq $True) -and ($null -ne $PrimaryBigDataStore) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName) -and ($PrimaryDataStore.NodeName -ne $PrimaryBigDataStore.NodeName)){
+                                $DataStoreUpgradeConfigureArgs = @{
+                                    ConfigurationData = $PrimaryBigDataStoreCD
+                                    SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                    ServerMachineName = $PrimaryServerMachine
+                                    ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
+                                    InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
+                                    Version = $DSConfig.ConfigData.Version
                                 }
-                                if(Test-Path ".\DataStoreUpgradeConfigure") {
-                                    Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
-                                }
-                                DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
-                                if($Credential){
-                                    $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
-                                }else{
-                                    $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -DebugMode $DebugMode
-                                }
+                                $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
-
-                            if(($JobFlag -eq $True) -and $PrimaryTileCache -and ($PrimaryDataStore -ne $PrimaryTileCache)){
-                                $cd = @{
-                                    AllNodes = @(
-                                        @{
-                                            NodeName = $PrimaryTileCache
-                                            PSDscAllowPlainTextPassword = $true
-                                        }
-                                    )
-                                }
-                                if(Test-Path ".\DataStoreUpgradeConfigure") {
-                                    Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
-                                }
-                                DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
-                                if($Credential){
-                                    $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
-                                }else{
-                                    $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -DebugMode $DebugMode
-                                }
-                            }
-
-                            if(($JobFlag -eq $True) -and $PrimaryBigDataStore -and ($PrimaryDataStore -ne $PrimaryTileCache) -and ($PrimaryDataStore -ne $PrimaryBigDataStore)){
-                                $cd = @{
-                                    AllNodes = @(
-                                        @{
-                                            NodeName = $PrimaryBigDataStore
-                                            PSDscAllowPlainTextPassword = $true
-                                        }
-                                    )
-                                }
-                                if(Test-Path ".\DataStoreUpgradeConfigure") {
-                                    Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
-                                }
-                                DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                    -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
-                                if($Credential){
-                                    $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
-                                }else{
-                                    $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -DebugMode $DebugMode
-                                }
-                            }                    
-
                         }else{
-                            $BigDataStoreMachinesArray = @()
+                            $BigDataStoreCD = @{ AllNodes = @() }
                             for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
-                                $Role = $DSConfig.AllNodes[$i].Role
-                                $DSNode = $DSConfig.AllNodes[$i].NodeName
+                                $DSNode = $DSConfig.AllNodes[$i]
+                                $Role = $DSNode.Role
                                 if($Role -icontains 'DataStore'){
-                                    $cd = @{
-                                        AllNodes = @(
-                                            @{
-                                                NodeName = $DSNode
-                                                PSDscAllowPlainTextPassword = $true
-                                            }
-                                        )
+                                    $NodeToAdd = @{
+                                        NodeName = $DSNode.NodeName
                                     }
-                                    if(Test-Path ".\DataStoreUpgradeInstall") {
-                                        Remove-Item ".\DataStoreUpgradeInstall" -Force -ErrorAction Ignore -Recurse
-                                    }
-                                
-                                    DataStoreUpgradeInstall -ConfigurationData $cd -Version $DSConfig.ConfigData.Version -ServiceAccount $DSSACredential `
-                                        -InstallerPath $DSConfig.ConfigData.DataStore.Installer.Path `
-                                        -SevenZipInstallerPath $SevenZipInstallerPath -SevenZipInstallerDir $SevenZipInstallerDir -Verbose
-                                    if($Credential){
-                                        $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeInstall -Credential $Credential -DebugMode $DebugMode
-                                    }else{
-                                        $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeInstall -DebugMode $DebugMode
+                                    if($DSNode.DataStoreTypes -icontains "TileCache"){
+                                        $NodeToAdd["HasMultiMachineTileCache"] = (($DSConfig.AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' }  | Measure-Object).Count -gt 1)
                                     }
 
-                                    if(Test-Path ".\DataStoreUpgradeConfigure") {
-                                        Remove-Item ".\DataStoreUpgradeConfigure" -Force -ErrorAction Ignore -Recurse
+                                    if($DSNode.TargetNodeEncyrptionCertificateFilePath -and $DSNode.TargetNodeEncyrptionCertificateThumbprint){
+                                        $NodeToAdd["CertificateFile"] = $DSNode.TargetNodeEncyrptionCertificateFilePath
+                                        $NodeToAdd["Thumbprint"] = $DSNode.TargetNodeEncyrptionCertificateThumbprint
+                                    }else{
+                                        $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
                                     }
+
+                                    $DataStoreUpgradeInstallArgs = @{
+                                        ConfigurationData = @{ AllNodes = @($NodeToAdd) }
+                                        Version = $DSConfig.ConfigData.Version 
+                                        ServiceAccount = $DSSiteAdministratorCredential 
+                                        IsServiceAccountDomainAccount = $DSServiceAccountIsDomainAccount
+                                        IsServiceAccountMSA = $DSServiceAccountIsMSA
+                                        InstallerPath = $DSConfig.ConfigData.DataStore.Installer.Path 
+                                        InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir
+                                    }
+        
+                                    $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeInstallArgs -Credential $Credential -DebugMode $DebugMode
+                                    
                                     if($JobFlag -eq $True){
-                                        DataStoreUpgradeConfigure -ConfigurationData $cd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine `
-                                            -ContentDirectoryLocation $DSConfig.ConfigData.DataStore.ContentDirectoryLocation -InstallDir $DSConfig.ConfigData.DataStore.Installer.InstallDir -Version $DSConfig.ConfigData.Version -Verbose
-                                        if($Credential){
-                                            $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -Credential $Credential -DebugMode $DebugMode
-                                        }else{
-                                            $JobFlag = Start-DSCJob -ConfigurationName DataStoreUpgradeConfigure -DebugMode $DebugMode
+                                        $DataStoreUpgradeConfigureArgs = @{
+                                            ConfigurationData = @{ AllNodes = @($NodeToAdd) }
+                                            SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                            ServerMachineName = $PrimaryServerMachine
+                                            ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
+                                            InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
+                                            Version = $DSConfig.ConfigData.Version
                                         }
-                                    }
-                                    if($DSConfig.AllNodes[$i].DataStoreTypes -icontains "SpatioTemporal"){
-                                        $BigDataStoreMachinesArray += $DSNode
-                                    }
-                                    if($JobFlag -eq $True){
-                                        break
+
+                                        $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
+                                    
+                                        if($DSNode.DataStoreTypes -icontains "SpatioTemporal"){
+                                            $BigDataStoreCD.AllNodes += $NodeToAdd
+                                        }
+                                        if($JobFlag -eq $True){
+                                            break
+                                        }
                                     }
                                 }
                             }
-                            if(($JobFlag -eq $True) -and $BigDataStoreMachinesArray){
-                                Write-Host "BigDataStore Upgrade"
+                            if(($JobFlag -eq $True) -and ($BigDataStoreCD.AllNodes.Count -gt 0)){
+                                Write-Information -InformationAction Continue "BigDataStore Upgrade"
                                 Foreach($nd in $BigDataStoreMachinesArray){
-                                    $cd = @{
-                                        AllNodes = @(
-                                            @{
-                                                NodeName = $nd
-                                                PSDscAllowPlainTextPassword = $true
-                                            }
-                                        )
+                                    $SpatioTemporalDatastoreStartArgs = @{
+                                        ConfigurationData = $BigDataStoreCD
+                                        SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                        ServerMachineName = $PrimaryServerMachine 
                                     }
-                                    if(Test-Path ".\SpatioTemporalDatastoreStart") {
-                                        Remove-Item ".\SpatioTemporalDatastoreStart" -Force -ErrorAction Ignore -Recurse
-                                    }
-                                    SpatioTemporalDatastoreStart -NodeName $nd -PrimarySiteAdmin $DSPSACredential -ServerMachineName $PrimaryServerMachine -ConfigurationData $cd -Verbose
-                                    if($Credential){
-                                        $JobFlag = Start-DSCJob -ConfigurationName SpatioTemporalDatastoreStart -Credential $Credential -DebugMode $DebugMode
-                                    }else{
-                                        $JobFlag = Start-DSCJob -ConfigurationName SpatioTemporalDatastoreStart -DebugMode $DebugMode
-                                    }
+
+                                    $JobFlag = Invoke-DSCJob -ConfigurationName "SpatioTemporalDatastoreStart" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $SpatioTemporalDatastoreStartArgs -Credential $Credential -DebugMode $DebugMode
+
                                     if($JobFlag -eq $True){
                                         break
                                     }
@@ -1504,5 +1877,88 @@ function Configure-ArcGIS
         }
     }
 }
-   
-Export-ModuleMember -Function Get-FQDN, Configure-ArcGIS, Publish-WebApp, Invoke-BuildArcGISAzureImage
+
+function Invoke-PublishWebApp
+{
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $NodeName,
+
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $WebAppName,
+
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $SourceDir,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+        
+        [switch]
+        $DebugSwitch
+    )
+
+    $DebugMode = if($DebugSwitch){ $True }else{ $False } 
+
+    $Args = @{
+        NodeName = $NodeName 
+        WebAppName = $WebAppName 
+        SourceDir = $SourceDir
+    }
+
+    Invoke-DSCJob -ConfigurationName "DeployWebApp" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $Args -Credential $Credential -DebugMode $DebugMode
+}
+
+function Invoke-PublishGISService
+{
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory=$True)]
+        [System.String]
+        $ConfigurationParametersFile,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+        
+        [switch]
+        $DebugSwitch
+    )
+    
+    $DebugMode = if($DebugSwitch){ $True }else{ $False } 
+    
+    $ConfigurationParamsJSON = (ConvertFrom-Json (Get-Content $ConfigurationParametersFile -Raw))
+    $cf = Convert-PSObjectToHashtable $ConfigurationParamsJSON
+
+    $NodeToAdd = @{ NodeName = $cf.ServerNode }
+                                
+    if($cf.TargetNodeEncyrptionCertificateFilePath -and $cf.TargetNodeEncyrptionCertificateThumbprint){
+        $NodeToAdd["CertificateFile"] = $cf.TargetNodeEncyrptionCertificateFilePath
+        $NodeToAdd["Thumbprint"] = $cf.TargetNodeEncyrptionCertificateThumbprint
+    }else{
+        $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
+    }
+
+    $PublisherAccountPassword = if( $cf.PublisherAccountCredential.PasswordFilePath ){ Get-Content $cf.PublisherAccountCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.PublisherAccountCredential.Password -AsPlainText -Force }
+    $PublisherAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.PublisherAccountCredential.UserName, $PublisherAccountPassword )
+    
+    $ConfigData = @{ 
+        ConfigurationData = @{ AllNodes = @($NodeToAdd) }
+        PublisherAccountCredentials = $PublisherAccountCredential
+        PortalHostName = $cf.PortalHostName
+        PortalPort = $cf.PortalPort
+        PortalContext = $cf.PortalContext
+        ServerHostName = $cf.ServerHostName
+        ServerContext = $cf.ServerContext
+        ServerPort = $cf.ServerPort
+        GISServices = $cf.GISServices
+    }
+    $ConfigurationName = "PublishGISService"
+    Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ConfigData -Credential $Credential -DebugMode $DebugMode
+}
+
+Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage

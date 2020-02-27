@@ -387,7 +387,7 @@ function Set-TargetResource
                     if($existingFedServer.url -ine $ServiceUrl) {
                         Write-Verbose "Server with admin URL $ServerSiteAdminUrl already exits, but its public URL '$($existingFedServer.url)' does match expected '$ServiceUrl'"					
                         try {
-                            $resp = UnFederate-Server -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -ServerID $existingFedServer.id -Token $token.token -Referer $Referer
+                            $resp = Invoke-UnFederateServer -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -ServerID $existingFedServer.id -Token $token.token -Referer $Referer
                             if($resp.error) {			
                                 Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
                             }else {
@@ -409,7 +409,7 @@ function Set-TargetResource
             [int]$NumOfAttempts = 0
             while(($Done -eq $false) -and ($NumOfAttempts -lt 3))
             {
-                $resp = Federate-Server -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
+                $resp = Invoke-FederateServer -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
                             -ServerServiceUrl $ServiceUrl -ServerAdminUrl $ServerSiteAdminUrl -ServerAdminCredential $SiteAdministrator
                 if($resp.error) {			
                     Write-Verbose "[ERROR]:- Federation returned error. Error:- $($resp.error)"
@@ -480,7 +480,7 @@ function Set-TargetResource
                 Write-Verbose "Updating Server Role and Function"
                 try {
                     Write-Verbose "Making a request to $ServerSiteAdminUrl/admin/security/config/changeServerRole"
-                    Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config/changeServerRole" -HttpFormParameters @{ serverRole = $ServerRole; serverFunction = $ServerFunctions; f= 'json'; token = $token.token } -Referer $Referer -HttpMethod 'POST' -LogResponse -TimeOutSec 150
+                    Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config/changeServerRole" -HttpFormParameters @{ serverRole = $ServerRole; serverFunction = $ServerFunctions; f= 'json'; token = $token.token } -Referer $Referer -HttpMethod 'POST' -Verbose -TimeOutSec 150
                     Write-Verbose "Updated Server Role to '$($ServerRole)' and Function to '$($ServerFunctions)'"
                 }
                 catch{
@@ -555,7 +555,7 @@ function Set-TargetResource
         if($fedServer) {
             Write-Verbose "Server with Admin URL $ServerSiteAdminUrl already exists"
             try {
-                $resp = UnFederate-Server -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -ServerID $fedServer.id -Token $token.token -Referer $Referer
+                $resp = Invoke-UnFederateServer -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -ServerID $fedServer.id -Token $token.token -Referer $Referer
                 if($resp.error) {			
                     Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
                 }else {
@@ -584,7 +584,7 @@ function Set-TargetResource
     }
 }
 
-function Federate-Server
+function Invoke-FederateServer
 {
     [CmdletBinding()]
     param(
@@ -618,10 +618,10 @@ function Federate-Server
     Write-Verbose "Federation EndPoint:- $FederationUrl"
     Write-Verbose "Referer:- $Referer"
     Write-Verbose "Federation Parameters:- url:- $ServerServiceUrl adminUrl = $ServerAdminUrl"
-    Invoke-ArcGISWebRequest -Url $FederationUrl -Verbose -HttpFormParameters @{ f='json'; url = $ServerServiceUrl; adminUrl = $ServerAdminUrl; username = $ServerAdminCredential.UserName; password = $ServerAdminCredential.GetNetworkCredential().Password; token = $PortalToken } -Referer $Referer -LogResponse -TimeOutSec 180
+    Invoke-ArcGISWebRequest -Url $FederationUrl -Verbose -HttpFormParameters @{ f='json'; url = $ServerServiceUrl; adminUrl = $ServerAdminUrl; username = $ServerAdminCredential.UserName; password = $ServerAdminCredential.GetNetworkCredential().Password; token = $PortalToken } -Referer $Referer -TimeOutSec 300
 }
 
-function UnFederate-Server
+function Invoke-UnFederateServer
 {
     [CmdletBinding()]
     param(
@@ -646,7 +646,7 @@ function UnFederate-Server
 
     $UnFederationUrl = "https://$($PortalHostName):$($Port)/$SiteName/portaladmin/federation/servers/$($ServerID)/unfederate"
     Write-Verbose "UnFederate the server with ID $($ServerID) using admin URL $UnFederationUrl"
-    Invoke-ArcGISWebRequest -Url $UnFederationUrl -HttpFormParameters @{ f='json'; token = $Token } -Referer $Referer -LogResponse -TimeOutSec 90
+    Invoke-ArcGISWebRequest -Url $UnFederationUrl -HttpFormParameters @{ f='json'; token = $Token } -Referer $Referer -Verbose -TimeOutSec 90
 }
 
 function Get-FederatedServers
@@ -721,7 +721,7 @@ function Update-ServerAdminUrlForPortal
         $FederatedServer
     )
 
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$PortalPort/$($SiteName)" + "/sharing/rest/portals/0123456789ABCDEF/servers/$($FederatedServer.id)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; name =  $ServerAdminUrl; url = $FederatedServer.url; adminUrl = $ServerAdminUrl; isHosted = $FederatedServer.isHosted; serverType = $FederatedServer.serverType; } -Referer $Referer -LogResponse
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$PortalPort/$($SiteName)" + "/sharing/rest/portals/0123456789ABCDEF/servers/$($FederatedServer.id)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; name =  $ServerAdminUrl; url = $FederatedServer.url; adminUrl = $ServerAdminUrl; isHosted = $FederatedServer.isHosted; serverType = $FederatedServer.serverType; } -Referer $Referer -Verbose
 } 
 
 function Get-OAuthApplication
@@ -781,12 +781,13 @@ function Update-OAuthApplication
     )
     
     $redirect_uris = ConvertTo-Json $AppObject.redirect_uris -Depth 1    
-    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + "/sharing/oauth2/apps/$($AppId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; redirect_uris = $redirect_uris } -Referer $Referer -LogResponse
+    Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)" + "/sharing/oauth2/apps/$($AppId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; redirect_uris = $redirect_uris } -Referer $Referer -Verbose
 }
 
 function Update-FederatedServer
 {
     [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
     param(        
         [System.String]
 		$PortalHostName = 'localhost', 
@@ -818,7 +819,7 @@ function Update-FederatedServer
     )
     
     try{
-        $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 120 -LogResponse 
+        $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 120 -Verbose 
         Write-Verbose ($response | ConvertTo-Json -Depth 5 -Compress)
         $response
     }catch{
@@ -904,7 +905,7 @@ function Update-SecurityConfigForServer
     }    
     if(-not($Done) -and $response){
         # Throw an exception if we were not able to update config
-        Check-ResponseStatus $response -Url $UpdateConfigUrl
+        Confirm-ResponseStatus $response -Url $UpdateConfigUrl
     }
 }
 

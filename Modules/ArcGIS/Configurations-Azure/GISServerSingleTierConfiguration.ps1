@@ -132,7 +132,7 @@
     )
 
     
-    function Extract-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -148,7 +148,8 @@
         $FileName
     }
     
-
+	Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_License
 	Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Server_TLS
@@ -171,11 +172,11 @@
     ## Download license files
     ##    
     if($ServerLicenseFileUrl) {
-        $ServerLicenseFileName = Extract-FileNameFromUrl $ServerLicenseFileUrl
+        $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }    
     if($SSLCertificateFileUrl) {
-        $SSLCertificateFileName = Extract-FileNameFromUrl $SSLCertificateFileUrl
+        $SSLCertificateFileName = Get-FileNameFromUrl $SSLCertificateFileUrl
         Invoke-WebRequest -OutFile $SSLCertificateFileName -Uri $SSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
     }
         
@@ -324,7 +325,7 @@
                   {
                       TestScript = { 
                                         $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                        $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                        $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                                         if($result -like '*none*')
                                         {
                                             return $false
@@ -332,7 +333,7 @@
                                         return $true
                                     }
                       SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						            $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+						            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
 					              }
                       GetScript            = { return @{} }                  
                       DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
@@ -430,7 +431,7 @@
 				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'			
             }
 
-			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store'))
+			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server'))
 			{
 				Service "$($ServiceToStop.Replace(' ','_'))_Service"
 				{
@@ -609,7 +610,7 @@
 					SiteAdministrator          = $SiteAdministratorCredential                         
 					CName                      = $ExternalDNSHostName 
 					CertificateFileLocation    = (Join-Path $(Get-Location).Path $SSLCertificateFileName)
-					CertificatePassword        = $SSLCertificatePassword.GetNetworkCredential().Password
+					CertificatePassword        = $SSLCertificatePassword
 					EnableSSL                  = -not($Join)
 					DependsOn                  = if($HasValidServiceCredential) { @('[ArcGIS_Server]Server') } else { $null }
 				}
@@ -622,7 +623,7 @@
 					Ensure                  = 'Present'
 					ExternalDNSName         = $ExternalDNSHostName                        
 					CertificateFileLocation = (Join-Path $(Get-Location).Path $SSLCertificateFileName)
-					CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword.GetNetworkCredential().Password } else { $null }
+					CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword } else { $null }
 					DependsOn				= if($HasValidServiceCredential) { @('[ArcGIS_GeoEvent]ArcGIS_GeoEvent') } else { $null }
 				}
                         

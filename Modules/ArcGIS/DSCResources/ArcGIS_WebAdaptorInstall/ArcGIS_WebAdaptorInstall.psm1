@@ -16,10 +16,6 @@
         A MSFT_Credential Object - Primary Site Administrator.
     .PARAMETER LogPath
         Path where the Install logs will be saved.
-    .PARAMETER SevenZipMsiInstallerPath
-        Optional Path to location for 7-Zip MSI installer.
-    .PARAMETER SevenZipInstallDir
-        Optional Path to location where 7-Zip will be installed.
 #>
 
 function Get-TargetResource
@@ -36,7 +32,7 @@ function Get-TargetResource
 		[System.String]
 		$Version,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path
 
@@ -61,25 +57,17 @@ function Set-TargetResource
 		[System.String]
 		$Version,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Arguments,
 
 		[System.String]
         $LogPath,
         
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $SevenZipMsiInstallerPath,
-
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $SevenZipInstallDir,
-
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -96,7 +84,7 @@ function Set-TargetResource
                                         "IIS-ManagementService", "IIS-ISAPIExtensions",
                                         "IIS-ISAPIFilter", "IIS-RequestFiltering",
                                         "IIS-WindowsAuthentication", "IIS-StaticContent",
-                                        "IIS-ASPNET45", "IIS-NetFxExtensibility45")
+                                        "IIS-ASPNET45", "IIS-NetFxExtensibility45", "IIS-WebSockets")
 
         foreach($pr in $PreRequisiteWindowsFeatures){
             Write-Verbose "Installing Windows Feature: $pr"
@@ -126,35 +114,10 @@ function Set-TargetResource
                 New-Item $TempFolder -ItemType directory            
             }  
                        
-            $SevenZipInstallDirectory = if($SevenZipInstallDir){ $SevenZipInstallDir }else{ Join-Path ${env:ProgramFiles} '7-Zip' }
-            $SevenZipPath = (Join-Path $SevenZipInstallDirectory '7z.exe') 
-            if(-not(Test-Path $SevenZipPath)) 
-            {
-                Write-Verbose "7Zip not found at $SevenZipPath"
-                Write-Verbose 'Installing 7Zip'
-                
-                $MsiFile = Join-Path $TempFolder '7Zip.msi'
-                if($SevenZipMsiInstallerPath){
-                    $MsiFile = $SevenZipMsiInstallerPath
-                }else{
-                    Invoke-WebRequest -Uri 'https://osdn.net/frs/redir.php?m=pumath&f=sevenzip%2F64449%2F7z938-x64.msi' -OutFile $MsiFile
-                }
-                
-                Write-Verbose "msiexec /i $MsiFile /qn  INSTALLDIR=""$SevenZipInstallDirectory"""
-                Start-Process msiexec -ArgumentList "/i $MsiFile /qn INSTALLDIR=""$SevenZipInstallDirectory""" -Wait -Verbose
-                Start-Sleep -Seconds 30 # Allow files to be copied to Program Files
-            }
-
-            if(-not(Test-Path $SevenZipPath)) 
-            {
-                throw "7-Zip not found at $SevenZipPath"
-            }
-
             Write-Verbose "Extracting $Path to $TempFolder"
-            Write-Verbose """$SevenZipPath"" x -y $Path -o$TempFolder"
-            Start-Process -FilePath $SevenZipPath -ArgumentList " x -y $Path -o$TempFolder" -Wait
+            Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait
             Write-Verbose 'Done Extracting. Waiting 15 seconds to allow the extractor to close files'
-            Start-Sleep -Seconds 15 # To allow 7-zip to close files
+            Start-Sleep -Seconds 15
 
             $SetupExe = Get-ChildItem -Path $TempFolder -Filter 'Setup.exe' -Recurse | Select-Object -First 1
             $ExecPath = $SetupExe.FullName
@@ -198,7 +161,7 @@ function Set-TargetResource
         Set-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/Default Web Site/$($Context)"  -filter "system.web/httpRuntime" -name "executionTimeout" -value "01:00:00"
     }
     elseif($Ensure -eq 'Absent') {
-        $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+        $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
         foreach($wa in $WAInstalls){
             if($wa.InstallLocation -match "\\$($Context)\\"){
                 #SanityCheck - if($ProductIds -contains $wa.IdentifyingNumber)
@@ -234,24 +197,16 @@ function Test-TargetResource
 		[System.String]
 		$Version,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Arguments,
 
 		[System.String]
         $LogPath,
-        
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $SevenZipMsiInstallerPath,
-
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $SevenZipInstallDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -260,7 +215,7 @@ function Test-TargetResource
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
     if($WAInstalls.Length -gt 1){
         Write-Verbose "Multiple Instances of Web Adaptor are already installed"
     }

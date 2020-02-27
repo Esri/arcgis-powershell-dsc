@@ -39,6 +39,8 @@
         $DebugMode
     )
     
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_xSmbShare
     Import-DscResource -Name ArcGIS_Disk
