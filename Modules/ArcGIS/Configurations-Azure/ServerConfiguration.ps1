@@ -73,7 +73,7 @@
         $DebugMode        
     )
 
-    function Extract-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -89,6 +89,8 @@
         $FileName
     }
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_License
 	Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Server_TLS
@@ -104,11 +106,12 @@
     ## Download license file
     ##
     if($ServerLicenseFileUrl -and ($ServerLicenseFileUrl.Trim().Length -gt 0)) {
-        $ServerLicenseFileName = Extract-FileNameFromUrl $ServerLicenseFileUrl
+        $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }    
         
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1    
+    $LastServerHostName = $ServerHostName | Select-Object -Last 1
     $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
     if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
     $FileShareRootPath = "\\$ipaddress\$FileShareName"
@@ -232,7 +235,7 @@
                       {
                           TestScript = { 
                                             $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                            $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                                             if($result -like '*none*')
                                             {
                                                 return $false
@@ -240,7 +243,7 @@
                                             return $true
                                         }
                           SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						                $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+						                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
 					                  }
                           GetScript            = { return @{} }                  
                           DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
@@ -333,13 +336,14 @@
                     SiteAdministrator          = $SiteAdministratorCredential                         
                     CName                      = $ServerEndpoint 
                     CertificateFileLocation    = $CertificateLocalFilePath
-                    CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword.GetNetworkCredential().Password } else { $null }
+                    CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
                     EnableSSL                  = -not($Join)
+                    ServerType                 = "GeneralPurposeServer"
 			        DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') 
                 }
             }
 
-		    foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent'))
+            foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

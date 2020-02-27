@@ -1,5 +1,5 @@
 
-function Download-File($url, $targetFile)
+function Invoke-DownloadFile($url, $targetFile)
 {
    try {
         Start-BitsTransfer -Source $url -Destination $targetFile
@@ -31,7 +31,7 @@ function Download-File($url, $targetFile)
            $downloadedBytes = $downloadedBytes + $count
        }
 
-       #Write-Progress -activity "Finished downloading file '$($url.split('/') | Select -Last 1)'"
+       #Write-Progress -activity "Finished downloading file '$($url.split('/') | Select-Object -Last 1)'"
 
        $targetStream.Flush()
        $targetStream.Close()
@@ -103,7 +103,7 @@ function Set-TargetResource
           }	      
           if($url.StartsWith('http', [System.StringComparison]::InvariantCultureIgnoreCase)) {
               Write-Verbose "Downloading file $url to $DestinationPath"
-              Download-File -url $url -targetFile $DestinationPath
+              Invoke-DownloadFile -url $url -targetFile $DestinationPath
           }else {
                 if($UseAzureFiles){
                     $AvailableDriveLetter = AvailableDriveLetter
@@ -214,7 +214,7 @@ Function AvailableDriveLetter ()
     $Letter = [int][char]'C'
     $i = @()
     #getting all the used Drive letters reported by the Operating System
-    $(Get-PSDrive -PSProvider filesystem) | %{$i += $_.name}
+    $(Get-PSDrive -PSProvider filesystem) | ForEach-Object{$i += $_.name}
     #Adding the excluded letter
     $i+=$ExcludedLetter
     while($i -contains $([char]$Letter)){$Letter++}

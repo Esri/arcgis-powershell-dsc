@@ -117,7 +117,7 @@ function Set-TargetResource
     Write-Verbose "SET: Find firewall rules with specified parameters for Name = $Name, DisplayGroup = $DisplayGroup"
     $firewallRules = Get-FirewallRules -Name $Name -DisplayGroup $DisplayGroup                                   
     
-    $exists = ($firewallRules -ne $null)       
+    $exists = ($null -ne $firewallRules)
     
     if ($Ensure -eq "Present")
     {        

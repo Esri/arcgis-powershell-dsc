@@ -2,7 +2,7 @@
 class ArcGIS_WaitForComponent : OMI_BaseResource
 {
 	[Key, ValueMap{"Server","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal"}, Values{"Server","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal"}] String Component;
-	[Key, ValueMap{"Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade"}, Values{"Server","Portal","WebAdaptor","DataStore","LoadBalancer","PortalUpgrade"}] String InvokingComponent;
+	[Key, ValueMap{"Server","Portal","WebAdaptor","DataStore","PortalUpgrade"}, Values{"Server","Portal","WebAdaptor","DataStore","PortalUpgrade"}] String InvokingComponent;
 	[Key] String ComponentHostName;
 	[Key] String ComponentContext;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;    

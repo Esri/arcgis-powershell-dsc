@@ -14,9 +14,11 @@
         $MachineAdministratorCredential
     )
 
+	Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_xSmbShare
 
-	$FileShareHostName = $env:ComputerName    
+	#$FileShareHostName = $env:ComputerName    
     $FileShareLocalPath = (Join-Path $env:SystemDrive "ArcGIS\Deployment\Downloads")
 	$FileShareName = "UpgradeSetups"  
 	$IsDebugMode = $DebugMode -ieq 'true'

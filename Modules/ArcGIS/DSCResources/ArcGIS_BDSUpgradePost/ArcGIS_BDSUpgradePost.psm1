@@ -164,6 +164,7 @@ function Test-TargetResource
 function Test-SpatiotemporalBigDataStoreStarted
 {
     [CmdletBinding()]
+    [OutputType([System.Boolean])]
     param(
         [System.String]
         $ServerURL, 
@@ -191,7 +192,7 @@ function Test-SpatiotemporalBigDataStoreStarted
    Write-Verbose $Url
    try {    
     $response = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST'    
-    $n = $response.nodes | where {$_.name -ieq (Resolve-DnsName -Type ANY $env:ComputerName).IPAddress}
+    $n = $response.nodes | Where-Object {$_.name -ieq (Resolve-DnsName -Type ANY $env:ComputerName).IPAddress}
     Write-Verbose "Machine Ip --> $($n.name)"
     $n -and $response.isHealthy -ieq 'True'
    }
@@ -228,7 +229,7 @@ function Start-SpatiotemporalBigDataStore
    }
    Write-Verbose "Data Store Path:- $dataStorePath"
    $Url = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + "$dataStorePath/machines/$MachineFQDN/start/"
-   Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -LogResponse
+   Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -Verbose
 }
 
 Export-ModuleMember -Function *-TargetResource

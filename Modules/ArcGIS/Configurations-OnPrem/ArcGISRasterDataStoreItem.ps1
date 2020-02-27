@@ -1,0 +1,69 @@
+Configuration ArcGISRasterDataStoreItem
+{
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullorEmpty()]
+        [System.Management.Automation.PSCredential]
+        $ServiceCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $false,
+
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullorEmpty()]
+        [System.Management.Automation.PSCredential]
+        $SiteAdministratorCredential,
+
+        [System.String]
+        $PrimaryServerMachine,
+
+        [System.String]
+        $ExternalFileSharePath,
+
+        [System.String]
+        $FileShareName,
+
+        [System.String]
+        $FileShareLocalPath
+    )
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DscResource -Name ArcGIS_FileShare
+    Import-DSCResource -Name ArcGIS_DataStoreItem
+
+    Node $AllNodes.NodeName
+    {
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+        
+        if(-not($ExternalFileSharePath)){
+            ArcGIS_FileShare RasterAnalysisFileShare
+            {
+                FileShareName = $FileShareName
+                FileShareLocalPath = $FileShareLocalPath
+                Ensure = 'Present'
+                Credential = $ServiceCredential
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
+            }
+        }
+        
+        ArcGIS_DataStoreItem RasterDataStoreItem
+        {
+            Name = "RasterFileShareDataStore"
+            HostName = (Get-FQDN $PrimaryServerMachine)
+            Ensure = "Present"
+            SiteAdministrator = $SiteAdministratorCredential
+            DataStoreType = "RasterStore"
+            DataStorePath = if($ExternalFileSharePath){ $ExternalFileSharePath }else{ "\\$($env:ComputerName)\$($FileShareName)" }
+        }
+    }
+}

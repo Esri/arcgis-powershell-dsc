@@ -8,46 +8,47 @@ Configuration ServerUpgrade{
         
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsSADomainAccount = $False,
+        $IsServiceAccountDomainAccount = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsServiceAccountMSA = $False,
 
         [System.String]
         $InstallerPath,
 
         [System.String]
-        $LicensePath,
-
-        [System.String]
-        $LicensePassword,
-
-        [System.String]
-        $ServerRole,
+        $InstallDir,
         
         [System.String]
         $GeoEventServerInstaller,
 
-        [System.String]
-        $SevenZipInstallerPath = $null,
-
-        [System.String]
-        $SevenZipInstallerDir = $null
-
+        [System.Array]
+        $ContainerImagePaths
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_ServerUpgrade 
+    Import-DscResource -Name ArcGIS_NotebookServerUpgrade 
     Import-DscResource -Name ArcGIS_xFirewall
     
     Node $AllNodes.NodeName {
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+        
         $NodeName = $Node.NodeName
-
-        $MachineFQDN = [System.Net.DNS]::GetHostByName($NodeName).HostName
+        $MachineFQDN = Get-FQDN $NodeName
         
         $Depends = @()
-        if(-not($IsSADomainAccount)){
+        if(-not($IsServiceAccountDomainAccount)){
             User ArcGIS_RunAsAccount
             {
                 UserName = $ServiceAccount.UserName
@@ -59,50 +60,7 @@ Configuration ServerUpgrade{
             $Depends += '[User]ArcGIS_RunAsAccount'
         }
 
-        ArcGIS_Install ServerUpgrade{
-            Name = "Server"
-            Version = $Version
-            Path = $InstallerPath
-            Arguments = "/qb USER_NAME=$($ServiceAccount.UserName) PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
-            Ensure = "Present"
-            SevenZipMsiInstallerPath = $SevenZipInstallerPath
-            SevenZipInstallDir = $SevenZipInstallerDir
-            DependsOn = $Depends
-        }
-
-        $Depends += '[ArcGIS_Install]ServerUpgrade'
-
-        if(-not($ServerRole) -or ($ServerRole -ieq "GeoEvent")){
-            $ServerRole = "GeneralPurposeServer"
-        }
-        if($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "ImageHosting"){
-            $ServerRole = "ImageServer"
-        }
-        
-        ArcGIS_License ServerLicense
-        {
-            LicenseFilePath = $LicensePath
-            Password = $LicensePassword
-            Ensure = "Present"
-            Component = 'Server'
-            ServerRole = $ServerRole 
-            Force = $True
-            DependsOn = $Depends
-        }
-
-        $Depends += '[ArcGIS_License]ServerLicense'
-
-        ArcGIS_ServerUpgrade ServerConfigureUpgrade{
-            Ensure = "Present"
-            Version = $Version
-            ServerHostName = $MachineFQDN
-            DependsOn = $Depends
-        }
-
-        #Upgrade GeoEvents
-        if($ServerRole -ieq "GeoEvent"){
-            $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
-
+        if($Node.ServerRole -ieq "GeoEvent"){
             ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Stop
             {
                 Name = 'ArcGISGeoEvent'
@@ -111,6 +69,61 @@ Configuration ServerUpgrade{
                 State = 'Stopped'
                 DependsOn = $Depends
             }
+            $Depends += '[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service_Stop'
+        }
+
+        ArcGIS_Install ServerUpgrade{
+            Name = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" } 
+            Version = $Version
+            Path = $InstallerPath
+            Arguments = "/qb USER_NAME=$($ServiceAccount.UserName) PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
+            Ensure = "Present"
+            DependsOn = $Depends
+        }
+
+        $Depends += '[ArcGIS_Install]ServerUpgrade'
+
+        ArcGIS_License ServerLicense
+        {
+            LicenseFilePath = $Node.ServerLicenseFilePath
+            LicensePassword = $Node.ServerLicensePassword
+            Ensure = "Present"
+            Component = 'Server'
+            ServerRole = $Node.ServerRole 
+            Force = $True
+            DependsOn = $Depends
+        }
+
+        $Depends += '[ArcGIS_License]ServerLicense'
+
+        if($ServerRole -ieq "NotebookServer"){
+            ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $MachineFQDN
+                DependsOn = $Depends
+            }
+
+            if($ContainerImagePaths.Count -gt 0){
+                ArcGIS_NotebookUpgradePostInstall "NotebookPostInstall$($Node.NodeName)" {
+                    SiteName            = 'arcgis' 
+                    ContainerImagePaths = $ContainerImagePaths
+                    InstallDir          = $InstallDir
+                    DependsOn           = $Depends
+                }
+            }
+        }else{
+            ArcGIS_ServerUpgrade ServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $MachineFQDN
+                DependsOn = $Depends
+            }
+        }
+
+        #Upgrade GeoEvents
+        if($Node.ServerRole -ieq "GeoEvent"){
+            $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
 
             ArcGIS_Install GeoEventServerUpgrade{
                 Name = "GeoEvent"
@@ -118,8 +131,6 @@ Configuration ServerUpgrade{
                 Path = $GeoEventServerInstaller
                 Arguments = "/qb PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
                 Ensure = "Present"
-                SevenZipMsiInstallerPath = $SevenZipInstallerPath
-                SevenZipInstallDir = $SevenZipInstallerDir
                 DependsOn = $Depends
             }
 

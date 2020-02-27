@@ -229,11 +229,11 @@ function Start-ArcGISServerMachine
     param(
     [System.String]
         [Parameter(Mandatory=$true)]
-        $ServerHostName = 'localhost',
+        $ServerHostName,
 
         [int]
         [Parameter(Mandatory=$true)]
-        $ServerPort = 6443,
+        $ServerPort,
 
         [System.String]
         [Parameter(Mandatory=$false)]

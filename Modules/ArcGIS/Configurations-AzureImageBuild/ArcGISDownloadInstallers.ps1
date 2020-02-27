@@ -47,6 +47,21 @@
                     AFSCredential = if($UseAzureFiles){ $AFSCredential }else{ $null }         
                     Ensure = $Ensure
                 }
+
+                if((($Installer.Patches).Length -gt 0) -and $Installer.PatchesLocalDir) {
+                    foreach($patch in $Installer.Patches){
+                        $PatchFileName = Split-Path $patch -leaf
+                        ArcGIS_RemoteFile "$($Installer.Name.Replace(' ', '_'))_$($PatchFileName.Replace(' ', '_'))"
+                        {
+                            Url = $PatchFileName
+                            DestinationPath = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir) $PatchFileName)
+                            UseAzureFiles = if($UseAzureFiles){ $true }else{ $false }
+                            AFSEndpoint = if($UseAzureFiles){ $AFSEndpoint }else{ $null }
+                            AFSCredential = if($UseAzureFiles){ $AFSCredential }else{ $null }         
+                            Ensure = $Ensure
+                        }
+                    }
+                }
             }
         }
     }

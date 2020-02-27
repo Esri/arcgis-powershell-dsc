@@ -7,7 +7,7 @@
         - "Absent" ensures that Component in Unlicensed (Not Implemented).
     .PARAMETER LicenseFilePath
         Path to License File 
-    .PARAMETER Password
+    .PARAMETER LicensePassword
         Optional Password for the corresponding License File 
     .PARAMETER Version
         Optional Version for the corresponding License File 
@@ -47,8 +47,8 @@ function Set-TargetResource
         $LicenseFilePath,
         
         [parameter(Mandatory = $false)]
-		[System.String]
-        $Password,
+		[System.Management.Automation.PSCredential]
+        $LicensePassword,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -58,7 +58,7 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
 
-        [ValidateSet("Server","Portal","Desktop","Pro","NotebookServer")]
+        [ValidateSet("Server","Portal","Desktop","Pro")]
 		[System.String]
 		$Component,
 
@@ -91,8 +91,8 @@ function Set-TargetResource
                     $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
                 } 
                 $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-                $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
-                $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+                $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+                $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
             }catch{
                 throw "Couldn't Find The Product - $Component"            
             }finally{
@@ -108,7 +108,7 @@ function Set-TargetResource
         Write-Verbose "Licensing from $LicenseFilePath" 
         if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
             Write-Verbose "Version $LicenseVersion Component $Component" 
-            License-Software -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -Password $Password -IsSingleUse $IsSingleUse
+            Invoke-LicenseSoftware -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse
         }
         else {
             Write-Verbose "Version $LicenseVersion Component $Component Role $ServerRole" 
@@ -116,8 +116,8 @@ function Set-TargetResource
             $StdErrLogFilePath = Join-Path $env:TEMP "$(Get-Date -format "dd-MM-yy-HH-mm")-stderr.txt"
             Write-Verbose "StdOutputLogFilePath:- $StdOutputLogFilePath" 
             Write-Verbose "StdErrLogFilePath:- $StdErrLogFilePath" 
-            License-Software -Product $Component -LicenseFilePath $LicenseFilePath `
-                         -Version $LicenseVersion -Password $Password -IsSingleUse $IsSingleUse `
+            Invoke-LicenseSoftware -Product $Component -ServerRole $ServerRole -LicenseFilePath $LicenseFilePath `
+                         -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse `
                          -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath
         }
     }else {
@@ -137,8 +137,8 @@ function Test-TargetResource
         $LicenseFilePath,
         
         [parameter(Mandatory = $false)]
-		[System.String]
-		$Password,
+		[System.Management.Automation.PSCredential]
+		$LicensePassword,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -148,7 +148,7 @@ function Test-TargetResource
 		[System.String]
 		$Ensure,
 
-		[ValidateSet("Server","Portal","Desktop","Pro","NotebookServer")]
+		[ValidateSet("Server","Portal","Desktop","Pro")]
 		[System.String]
 		$Component,
 
@@ -177,8 +177,8 @@ function Test-TargetResource
                 $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
             } 
             $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-            $ComponentName = if($Component -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
-            $RealVersion = (get-wmiobject Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+            $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+            $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
         }catch{
             throw "Couldn't Find The Product - $Component"        
         }finally{
@@ -267,7 +267,7 @@ function Test-TargetResource
 		    elseif($ServerRole -ieq 'GeoAnalytics') {
 			    $searchtext = 'geoasvr'
             }
-            elseif($Component -ieq 'NotebookServer') {
+            elseif($ServerRole -ieq 'NotebookServer') {
                 $searchtexts += 'notebooksstdsvr'
 			    $searchtext = 'notebooksadvsvr'
 		    }

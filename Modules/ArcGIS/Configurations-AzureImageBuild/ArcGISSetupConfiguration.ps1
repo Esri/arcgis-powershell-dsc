@@ -16,6 +16,7 @@
     )
 
     Import-DscResource -Name ArcGIS_Install
+    Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_xWindowsUpdate
     Import-DscResource -Name ArcGIS_InstallMsiPackage
 
@@ -33,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License10.7"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License10.8"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -51,8 +52,8 @@
         Script SetAutomaticPageFileManagement
         {
             GetScript = { }
-            SetScript = { $computer = Get-WmiObject Win32_computersystem -EnableAllPrivileges; $computer.AutomaticManagedPagefile = $true; $computer.Put() }
-            TestScript = { (Get-WmiObject Win32_computersystem -EnableAllPrivileges).AutomaticManagedPagefile }
+            SetScript = { Get-CimInstance -ClassName Win32_ComputerSystem | Set-CimInstance -Property @{ AutomaticManagedPageFile = $false } -ErrorAction Stop }
+            TestScript = { (Get-CimInstance Win32_computersystem).AutomaticManagedPagefile }
         }
         $Depends += "[Script]SetAutomaticPageFileManagement"
 
@@ -131,6 +132,17 @@
                         DependsOn = $Depends
                     }
                     $Depends += "[ArcGIS_Install]AI_$($Installer.Name.Replace(' ', '_'))"
+
+                    if((($Installer.Patches).Length -gt 0) -and $Installer.PatchesLocalDir) {
+                        ArcGIS_InstallPatch "$($Installer.Name)InstallPatch"
+                        {
+                            Name = $Installer.Name
+                            Version = "00"
+                            ProductId = $Installer.ProductId
+                            PatchesDir = $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir)
+                            Ensure = "Present"
+                        }
+                    }
                 }
                 if(-not($DesktopImage)){
                     if(@("ArcGIS for Server","Portal for ArcGIS","DataStore","Notebook Server") -Contains $Installer.Name){

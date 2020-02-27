@@ -12,6 +12,8 @@ Configuration DataStoreUpgradePreInstall{
         $DebugMode
     )
     
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_WindowsService
     
     Node localhost {

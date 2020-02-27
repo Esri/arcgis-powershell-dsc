@@ -3,11 +3,15 @@
 class ArcGIS_NotebookServer : OMI_BaseResource
 {
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-    [Key] String ConfigurationStoreLocation;
-	[Write] String ServerDirectoriesRootLocation;
+    [Write] String ConfigurationStoreLocation;
+	[Key] String ServerDirectoriesRootLocation;
+	[Write] String ServerDirectories;
+	[Write] String ServerLogsLocation;
 	[Write] String ConfigStoreCloudStorageConnectionString;
+	[Write] String ConfigStoreCloudStorageAccountName;
 	[Write] String ConfigStoreCloudStorageConnectionSecret;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-    [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
-	[Write] String WebContextURL;
+	[Write, Description("Is Joining Existing site")] Boolean Join;
+	[Write] String PeerServerHostName;
+	[Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
 };

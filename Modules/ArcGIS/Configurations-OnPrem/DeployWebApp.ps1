@@ -13,6 +13,13 @@ Configuration DeployWebApp
 
     Node $NodeName
     {
+      if($Node.Thumbprint){
+          LocalConfigurationManager
+          {
+              CertificateId = $Node.Thumbprint
+          }
+      }
+
         WindowsFeature IIS 
         { 
           Ensure = "Present"

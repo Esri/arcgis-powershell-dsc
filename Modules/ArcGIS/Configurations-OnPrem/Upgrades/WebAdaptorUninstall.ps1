@@ -11,11 +11,18 @@ Configuration WebAdaptorUninstall{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
 
     Node $AllNodes.NodeName {
-       
+        
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+
         ArcGIS_WebAdaptorInstall WebAdaptorUninstall
         { 
             Context = $Context 

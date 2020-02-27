@@ -1,0 +1,13 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_PortalSettings")]
+class ArcGIS_PortalSettings : OMI_BaseResource
+{
+	[Key] String PortalHostName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String PortalAdministrator;
+	[Write] String ExternalDNSName;
+	[Write] String PortalContext;
+	[Write] String PortalEndPoint;
+	[Write] String PortalEndPointPort;
+	[Write] String PortalEndPointContext;
+};
+

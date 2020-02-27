@@ -63,10 +63,10 @@ function Set-TargetResource
         $Referer = "http://localhost"
         $ServerSiteURL = "https://$($ServerHostName):11443"
         [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
-        $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -LogResponse -HttpMethod 'GET'
+        $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
         if($ResponseStatus.isUpgrade -ieq $true ){
             Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
-            $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{ f = 'json' } -Referer $Referer -LogResponse
+            $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose
             if($Response.status -ieq "success"){
                 Write-Verbose 'Notebook Server Upgrade Successful'
             }else{
@@ -105,11 +105,11 @@ function Test-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
-    $result = Check-ServerVersion -Version $Version
+    $result = Confirm-ServerVersion -Version $Version
     
     $Referer = "http://localhost"
     $ServerUpgradeUrl = "https://$($ServerHostName):11443/arcgis/admin/upgrade"
-    $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -LogResponse -HttpMethod 'GET'
+    $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
     
     if($result) {
         if($ResponseStatus.isUpgrade -ieq $true ){
@@ -130,7 +130,7 @@ function Test-TargetResource
     }
 }
 
-function Check-ServerVersion(){
+function Confirm-ServerVersion{
     [CmdletBinding()]
     [OutputType([System.Boolean])]
 	param(

@@ -28,7 +28,7 @@ function Add-RewriteRule
 	)
 
     $ExistingRule = Get-WebConfigurationProperty -Name Collection -PSPath $PSPath -Filter $Filter | Where-Object { $_.Name -ieq $RuleName }
-    if($ExistingRule -eq $null) {   
+    if($null -eq $ExistingRule) {   
         Add-WebConfigurationProperty -PSPath $PSPath  -Filter $Filter -name "." `
                          -Value @{
                                     name=$RuleName 
@@ -156,7 +156,7 @@ function Add-OutboundRewriteRule
 	)
 
     $ExistingRule = Get-WebConfigurationProperty -Name Collection -PSPath $PSPath -Filter $Filter | Where-Object { $_.Name -ieq $RuleName }
-    if($ExistingRule -eq $null) {  
+    if($null -eq $ExistingRule) {  
 		
         $Port = if($IsServerEndpoint) { if($IsHttp) { '6(?:1|0)80' } else { '6(?:1|4)43' } } else { if($IsHttp) { '7080' } else { '7443' } }
         if($EnableNotebookServerEndpoints){
@@ -213,7 +213,7 @@ function Add-OutboundRulePreCondition
     $PreConditionName = 'IsRedirection'
 
     $ExistingPreCondition =  Get-WebConfigurationProperty -Name Collection -PSPath $PSPath -Filter $Filter | Where-Object { $_.Name -ieq $PreConditionName }
-    if($ExistingPreCondition -eq $null) {
+    if($null -eq $ExistingPreCondition) {
         Add-WebConfigurationProperty -PSPath $PSPath -Filter "$Filter" -Name . -Value $PreConditionName 
 
         $list = @{
@@ -357,9 +357,10 @@ function Enable-FailedRequestTracking
     & "$env:SystemRoot\system32\inetsrv\appcmd" set config -section:system.applicationHost/sites "/[name='$WebSiteName'].traceFailedRequestsLogging.directory:%SystemDrive%\inetpub\logs\FailedReqLogFiles" /commit:apphost
 }
 
-function Has-WebAdaptorVirtualDirectory
+function Test-HasWebAdaptorVirtualDirectory
 {
-	[CmdletBinding()]
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
 	param(
 	)
 
@@ -639,7 +640,7 @@ function Set-TargetResource
             $config.enabled = $true
             $hasChanged = $true
         }
-        if(($config.reverseRewriteHostInResponseHeaders -eq $null) -or ($config.reverseRewriteHostInResponseHeaders -eq $true)) {
+        if(($null -eq $config.reverseRewriteHostInResponseHeaders) -or ($config.reverseRewriteHostInResponseHeaders -eq $true)) {
             Write-Verbose "Disabling ReverseRewriteHostInResponseHeaders"
             $config.reverseRewriteHostInResponseHeaders = $false
             $hasChanged = $true
@@ -789,7 +790,7 @@ function Set-TargetResource
     }
 
 	if($EnableGeoEventEndpoints) {	
-        @("IIS:\Sites\$SiteName\geoevent", "IIS:\Sites\$SiteName\arcgis") | %{
+        @("IIS:\Sites\$SiteName\geoevent", "IIS:\Sites\$SiteName\arcgis") | ForEach-Object {
 			$pspath = $_
 			Write-Verbose "Processing PSPath '$pspath'"
 			$PreConditionName = 'IsRedirection'
@@ -853,14 +854,14 @@ function Set-TargetResource
             Write-Verbose "Machine:- $FqdnOfHost"       			
 			$Url = if($EnableNotebookServerEndpoints){"https://$($FqdnOfHost):$NotebookServerHttpsPort/arcgis/admin/"}else{"https://$($FqdnOfHost):$ServerHttpsPort/arcgis/admin/"}
 			Write-Verbose "Wait for $Url to initialize"
-			Wait-ForUrl -Url $Url -HttpMethod 'POST' -MaxWaitTimeInSeconds 30 -LogFailures
+			Wait-ForUrl -Url $Url -HttpMethod 'POST' -MaxWaitTimeInSeconds 30 -Verbose
 			Write-Verbose "Import certificate for Server from $Url"
             Import-CertFromServerIntoTrustedCertStore -Url $Url
 
 			if($EnableGeoEventEndpoints) {
 				$Url = "https://$($FqdnOfHost):$GeoEventHttpsPort/geoevent/admin/"
 				Write-Verbose "Wait for $Url to initialize"
-				Wait-ForUrl -Url $Url -HttpMethod 'POST' -MaxWaitTimeInSeconds 30 -LogFailures
+				Wait-ForUrl -Url $Url -HttpMethod 'POST' -MaxWaitTimeInSeconds 30 -Verbose
 				Write-Verbose "Import certificate for GeoEvent Endpoint from $Url"
 				Import-CertFromServerIntoTrustedCertStore -Url $Url
 			}
@@ -873,7 +874,7 @@ function Set-TargetResource
             Write-Verbose "Machine:- $FqdnOfHost"       
 			$Url = "https://$($FqdnOfHost):$PortalHttpsPort/arcgis/portaladmin/"
 			#Write-Verbose "Wait for $Url to initialize"
-			#Wait-ForUrl -Url $Url -LogFailures
+			#Wait-ForUrl -Url $Url -Verbose
 			#Write-Verbose "Finished waiting. Now import certificate for Portal from $Url"
             Import-CertFromServerIntoTrustedCertStore -Url $Url
         }
@@ -1031,7 +1032,7 @@ function Test-TargetResource
 			$VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
             #Start-Sleep -Seconds 30
             #Write-Verbose 'Checking Web Adaptor VDir'
-            #$result = -not(Has-WebAdaptorVirtualDirectory)
+            #$result = -not(Test-HasWebAdaptorVirtualDirectory)
             #Write-Verbose "VDir Present:- $result"
         
             if(-not($EnableGeoEventEndpoints) -or -not($EnableNotebookServerEndpoints)) {
@@ -1094,7 +1095,7 @@ function Test-TargetResource
                 if($config.enabled -eq $false) {                
                     $needsChanges = $true
                 }
-                if(($config.reverseRewriteHostInResponseHeaders -eq $null) -or ($config.reverseRewriteHostInResponseHeaders -eq $true)) {                
+                if(($null -eq $config.reverseRewriteHostInResponseHeaders) -or ($config.reverseRewriteHostInResponseHeaders -eq $true)) {                
                     $needsChanges = $true
                 }      
                 if($needsChanges) {
@@ -1115,13 +1116,13 @@ function Test-TargetResource
 
             if(-not($EnableGeoEventEndpoints) -and -not($EnableNotebookServerEndpoints)) {
                 if($result) {            
-                    if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-Server' }) -eq $null) {   
+                    if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-Server' })) {   
                         Write-Verbose "URL Rewrite Rule 'RP-HTTP-Server' not found"
                         $result = $false
                     }
                 } 
                 if($result) {            
-                    if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-Server' }) -eq $null) {   
+                    if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-Server' })) {   
                         Write-Verbose "URL Rewrite Rule 'RP-HTTPS-Server' not found"
                         $result = $false
                     }
@@ -1131,13 +1132,13 @@ function Test-TargetResource
             if($PortalEndPoint -and $PortalEndPoint.Trim().Length -gt 0) {
                 $pspath = "IIS:\Sites\$SiteName\portal"
                 if($result) {            
-                    if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-Portal' }) -eq $null) {   
+                    if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-Portal' })) {   
                         Write-Verbose "URL Rewrite Rule 'RP-HTTP-Portal' not found"
                         $result = $false
                     }
                 } 
                 if($result) {          
-                    if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-Portal' }) -eq $null) {   
+                    if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-Portal' })) {   
                         Write-Verbose "URL Rewrite Rule 'RP-HTTPS-Portal' not found"
                         $result = $false
                     }
@@ -1145,13 +1146,13 @@ function Test-TargetResource
 
                 $pspath = "IIS:\Sites\$SiteName"
                 if($result) {            
-                    if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-BaseContextPath' }) -eq $null) {   
+                    if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-BaseContextPath' })) {   
                         Write-Verbose "URL Rewrite Rule 'RP-HTTP-BaseContextPath' not found"
                         $result = $false
                     }
                 } 
                 if($result) {          
-                    if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-BaseContextPath' }) -eq $null) {   
+                    if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-BaseContextPath' })) {   
                         Write-Verbose "URL Rewrite Rule 'RP-HTTPS-BaseContextPath' not found"
                         $result = $false
                     }
@@ -1161,26 +1162,26 @@ function Test-TargetResource
 				
 				$pspath = "IIS:\Sites\$SiteName\arcgis"
 				if($result) {            
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-Server' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-Server' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTP-Server' not found"
 						$result = $false
 					}
 				} 
 				if($result) {            
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-Server' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-Server' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTPS-Server' not found"
 						$result = $false
 					}
 				} 
 
 				if($result) {            
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-WebSocket-GeoEvent' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-WebSocket-GeoEvent' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTP-WebSocket-GeoEvent' not found"
 						$result = $false
 					}
 				} 
 				if($result) {            
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-WebSocket-GeoEvent' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-WebSocket-GeoEvent' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTPS-WebSocket-GeoEvent' not found"
 						$result = $false
 					}
@@ -1188,13 +1189,13 @@ function Test-TargetResource
                 
 				$pspath = "IIS:\Sites\$SiteName\geoevent"
 				if($result) {           
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-GeoEvent' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-GeoEvent' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTP-GeoEvent' not found"
                         $result = $false
 					}
 				} 
 				if($result) {    
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-GeoEvent' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-GeoEvent' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTPS-GeoEvent' not found"
                         $result = $false
 					}
@@ -1203,13 +1204,13 @@ function Test-TargetResource
             
             if($EnableNotebookServerEndpoints) {
                 # if($result) {            
-				# 	if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-WebSocket-GeoEvent' }) -eq $null) {   
+				# 	if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-WebSocket-GeoEvent' })){
 				# 		Write-Verbose "URL Rewrite Rule 'RP-HTTP-WebSocket-GeoEvent' not found"
 				# 		$result = $false
 				# 	}
 				# } 
 				if($result) {            
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-WebSocket-NotebookServer' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-WebSocket-NotebookServer' })){
 						Write-Verbose "URL Rewrite Rule 'RP-HTTPS-WebSocket-NotebookServer' not found"
 						$result = $false
 					}
@@ -1217,13 +1218,13 @@ function Test-TargetResource
                 
 				$pspath = "IIS:\Sites\$SiteName\notebookserver"
 				# if($result) {           
-				# 	if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-GeoEvent' }) -eq $null) {   
+				# 	if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTP-GeoEvent' })) {   
 				# 		Write-Verbose "URL Rewrite Rule 'RP-HTTP-GeoEvent' not found"
                 #         $result = $false
 				# 	}
 				# } 
 				if($result) {    
-					if((Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-NotebookServer' }) -eq $null) {   
+					if($null -eq (Get-WebConfigurationProperty -Name Collection -PSPath $pspath -Filter $Filter | Where-Object { $_.Name -ieq 'RP-HTTPS-NotebookServer' })) {   
 						Write-Verbose "URL Rewrite Rule 'RP-HTTPS-GeoEvent' not found"
                         $result = $false
 					}

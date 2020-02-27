@@ -455,7 +455,7 @@ function Get-DataStoreInfo
 
    $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'  
    Wait-ForUrl -Url  $DataStoreConfigureUrl -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 20 
-   Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -LogResponse 
+   Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -Verbose 
 }
 
 function Register-DataStore
@@ -530,7 +530,7 @@ function Register-DataStore
                     dsSettings = '{"directory":"' + $DataStoreContentDirectory.Replace('\', '\\') + '"' + $featuresJson + '}'
                   }       
     #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
-    $HttpBody = To-HttpBody $WebParams
+    #$HttpBody = ConvertTo-HttpBody $WebParams
     
     $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'    
     Write-Verbose "Register DataStore at $DataStoreAdminEndpoint with DataStore Content directory at $DataStoreContentDirectory for server $ServerSiteUrl"
@@ -539,23 +539,21 @@ function Register-DataStore
     [System.Int32]$NumAttempts = 1
     while(-not($Done)) {
         Write-Verbose "Register DataStore Attempt $NumAttempts"
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates        
-	    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
         [bool]$failed = $false
         $response = $null
         try {
-            $alreadyRegistered = $false
+            $DatastoresToRegisterFlag = $true
             if($NumAttempts -gt 1) {
                 Write-Verbose "Checking if datastore is registered"
                 $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $Token -Referer $Referer `
                                             -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
                                             -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential
 
-                $alreadyRegistered = ($DatastoresToRegister.Count -gt 0)
+                $DatastoresToRegisterFlag = ($DatastoresToRegister.Count -gt 0)
             }            
-            if(-not($alreadyRegistered)) {
+            if($DatastoresToRegisterFlag) {
                 Write-Verbose "Register DataStore on Machine $MachineFQDN"             
-                $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer 'http://localhost' -TimeOutSec 450 -LogResponse -Verbose
+                $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer 'http://localhost' -TimeOutSec 450 -Verbose
                 if($response.error) {
                     Write-Verbose "Error Response - $($response.error)"
                     throw [string]::Format("ERROR: failed. {0}" , $response.error.message)
@@ -832,6 +830,7 @@ function Set-BackupLocation
 function Test-SpatiotemporalBigDataStoreStarted
 {
     [CmdletBinding()]
+    [OutputType([System.Boolean])]
     param(
         [System.String]
         $ServerURL, 
@@ -906,7 +905,7 @@ function Start-SpatiotemporalBigDataStore
    }
    Write-Verbose "Data Store Path:- $dataStorePath"
    $Url = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + "$dataStorePath/machines/$MachineFQDN/start/"
-   Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -LogResponse
+   Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -Verbose
 }
 
 

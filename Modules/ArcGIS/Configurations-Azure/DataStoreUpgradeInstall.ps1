@@ -17,10 +17,13 @@ Configuration DataStoreUpgradeInstall{
         
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $DebugMode
+        $DebugMode,
+
+        [System.String]
+        $TileCacheMachineNames
     )
     
-	function Extract-FileNameFromUrl
+	function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -36,8 +39,11 @@ Configuration DataStoreUpgradeInstall{
         $FileName
     }
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WindowsService
+    Import-DscResource -Name ArcGIS_xFirewall
     
     Node localhost {
         LocalConfigurationManager
@@ -54,10 +60,7 @@ Configuration DataStoreUpgradeInstall{
 
 		$InstallerFileName = Split-Path $InstallerPath -Leaf
 
-		$fPassword = ConvertTo-SecureString $FileshareMachineCredential.GetNetworkCredential().Password -AsPlainText -Force
-        $fCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SiteUpgradeVM\$($FileshareMachineCredential.UserName)", $fPassword )
-
-        $InstallerPathOnMachine = "$env:TEMP\datastore\$InstallerFileName" 
+		$InstallerPathOnMachine = "$env:TEMP\datastore\$InstallerFileName" 
 
 		File DownloadInstallerFromFileShare      
 		{            	
@@ -65,7 +68,7 @@ Configuration DataStoreUpgradeInstall{
 			Type = "File"             	
 			SourcePath = $InstallerPath 	
 			DestinationPath =  $InstallerPathOnMachine     
-			Credential = $fCredential     
+			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
 		}
 
@@ -127,6 +130,66 @@ Configuration DataStoreUpgradeInstall{
                 StartupType = 'Automatic'
                 State = 'Running'
                 DependsOn = $Depends
+            }
+        }
+
+        $TileCacheMachineNamesArray = $TileCacheMachineNames.Split(",")
+
+        if(($MajorVersion -gt 7)){
+            ArcGIS_xFirewall TileCache_DataStore_FirewallRules
+            {
+                Name                  = "ArcGISTileCacheDataStore" 
+                DisplayName           = "ArcGIS Tile Cache Data Store" 
+                DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                Ensure                = 'Present' 
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("29079-29082")                        
+                Protocol              = "TCP" 
+            }
+            
+            ArcGIS_xFirewall TileCache_FirewallRules_OutBound
+            {
+                Name                  = "ArcGISTileCacheDataStore-Out" 
+                DisplayName           = "ArcGIS TileCache Data Store Out" 
+                DisplayGroup          = "ArcGIS TileCache Data Store" 
+                Ensure                = 'Present'
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("29079-29082")       
+                Direction             = "Outbound"                        
+                Protocol              = "TCP" 
+            } 
+            
+            if(($TileCacheMachineNamesArray.Length -gt 1) -and ($TileCacheMachineNamesArray -iContains $env:ComputerName)){
+                ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
+                {
+                    Name                  = "ArcGISMultiMachineTileCacheDataStore" 
+                    DisplayName           = "ArcGIS Multi Machine Tile Cache Data Store" 
+                    DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("4369","29083-29090")                        
+                    Protocol              = "TCP" 
+                }
+            
+                ArcGIS_xFirewall MultiMachine_TileCache_FirewallRules_OutBound
+                {
+                    Name                  = "ArcGISMultiMachineTileCacheDataStore-Out" 
+                    DisplayName           = "ArcGIS Multi Machine TileCache Data Store Out" 
+                    DisplayGroup          = "ArcGIS TileCache Data Store" 
+                    Ensure                = 'Present'
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("4369","29083-29090")       
+                    Direction             = "Outbound"                        
+                    Protocol              = "TCP" 
+                } 
             }
         }
     }

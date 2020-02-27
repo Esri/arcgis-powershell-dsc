@@ -32,7 +32,7 @@ function Get-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","Portal")]
+        [ValidateSet("Server","NotebookServer","Portal")]
         [System.String]
         $Component,
 
@@ -72,7 +72,7 @@ function Set-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","Portal")]
+        [ValidateSet("Server","NotebookServer","Portal")]
         [System.String]
         $Component,
 
@@ -102,209 +102,64 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') {
-        try
-        {
-            $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
-            $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
-            foreach($wa in $WAInstalls){
-                if($wa.InstallLocation -match "\\$($Context)\\"){
-                    if($wa.Version.StartsWith("10.7")){
-                        $ConfigureToolPath = if($wa.Name -match "10.7.1"){ '\ArcGIS\WebAdaptor\IIS\10.7.1\Tools\ConfigureWebAdaptor.exe' }else{ '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe' }
-                        break
-                    }
-                }        
-            }
-
-            $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
-            $Arguments = ""
-            if($Component -ieq 'Server') {
-                
-                $AdminAccessString = "false"
-                if($AdminAccessEnabled){
-                    $AdminAccessString = "true"
+        $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+        $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
+        foreach($wa in $WAInstalls){
+            if($wa.InstallLocation -match "\\$($Context)\\"){
+                if($wa.Version.StartsWith("10.7")){
+                    $ConfigureToolPath = if($wa.Name -match "10.7.1"){ '\ArcGIS\WebAdaptor\IIS\10.7.1\Tools\ConfigureWebAdaptor.exe' }else{ '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe' }
+                    break
+                }elseif($wa.Version.StartsWith("10.8")){	
+                    $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\10.8\Tools\ConfigureWebAdaptor.exe'	
+                    break	
                 }
+            }        
+        }
 
-                $SiteURL = "https://$($ComponentHostName):6443"
-                $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
-                Write-Verbose $WAUrl
-                $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
-                Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
-                $Arguments = "/m server /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password) /a $AdminAccessString"
-            }
-            elseif($Component -ieq 'Portal'){
-                $SiteURL = "https://$($ComponentHostName):7443"
-                $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
-                Write-Verbose $WAUrl
-                $SiteUrlCheck = "$($SiteURL)/arcgis/sharing/rest/info?f=json"
-                Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
-                $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
-            }
-            #Write-Verbose "Executing $ExecPath with arguments $Arguments"
-            #Write-Verbose "$ExecPath $Arguments"
-            #Start-Process -FilePath $ExecPath -ArgumentList $Arguments -Wait
-
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = $ExecPath
-            $psi.Arguments = $Arguments
-            $psi.UseShellExecute = $false #start the process from it's own executable file    
-            $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-            $psi.RedirectStandardError = $true #enable the process to read from standard error
-            
-            $p = [System.Diagnostics.Process]::Start($psi)
-            $p.WaitForExit()
-            $op = $p.StandardOutput.ReadToEnd()
-            if($op -and $op.Length -gt 0) {
-                Write-Verbose "Output of execution:- $op"
-                if($op.StartsWith("ERROR")){
-                    throw $op
-                }
-            }
-            $err = $p.StandardError.ReadToEnd()
-            if($err -and $err.Length -gt 0) {
-                Write-Verbose $err
-                throw $err
-            }
+        $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
+        try{
+            Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $wa.Version
         }catch{
-            Write-Verbose "[WARNING]:- Error:- $_"
-            if($Component -ieq 'Portal'){
-                $PortalFQDN = Get-FQDN $ComponentHostName #->SiteURL
+            $SleepTimeInSeconds = 30
+            if($Component -ieq 'Portal' -and ($_ -imatch "The underlying connection was closed: An unexpected error occurred on a receive." -or $_ -imatch "The operation timed out while waiting for a response from the portal application")){
+                Write-Verbose "[WARNING]:- Error:- $_."
+                $PortalWAUrlHealthCheck = "https://$($HostName)/$($Context)/portaladmin/healthCheck"
+                $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
                 try{
-                    $dnsName = Resolve-DnsName -Name $HostName -Type ANY
+                    Wait-ForUrl $PortalWAUrlHealthCheck -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -SleepTimeInSeconds $SleepTimeInSeconds -ThrowErrors -Verbose -IsWebAdaptor
                 }catch{
-                    $dnsName = [System.Net.Dns]::GetHostAddresses($HostName)
-                }
-                $MachineIP = ($dnsName | Select-Object -First 1).IPAddress 
-                $Referer = "http://localhost"
-                $WebAdaptorUrl = "https://$($HostName)/$($Context)"
-                
-                $token = Get-PortalToken -PortalHostName $PortalFQDN -SiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer		    
-
-                $WebAdaptorsForPortal = Get-WebAdaptorsForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-				Write-Verbose "Current number of WebAdaptors on Portal:- $($WebAdaptorsForPortal.webAdaptors.Length)"
-                $AlreadyExists = $false
-                $WebAdaptorId = ""
-				$WebAdaptorsForPortal.webAdaptors | Where-Object { $_.httpPort -eq 80 -and $_.httpsPort -eq 443 } | ForEach-Object {
-                    if($_.webAdaptorURL -ieq  $WebAdaptorUrl) {
-                        Write-Verbose "Webadaptor with require properties URL $($_.webAdaptorURL) and Name $($_.machineName) already exists"
-                        $AlreadyExists = $true
-                        $WebAdaptorId = $_.id
-                        #break
-                    }
-				}
-                
-                if(-not($AlreadyExists)) {        
-					#Register the ExternalDNSName and PortalEndPoint as a web adaptor for Portal
-					Write-Verbose "Registering the Endpoint with Url $WebAdaptorUrl as a Web Adaptor for Portal"
-					Register-WebAdaptorForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer `
-                                                                        -WebAdaptorUrl $WebAdaptorUrl -MachineName $HostName -MachineIP $MachineIP -HttpPort 80 -HttpsPort 443
-                    
-                    Write-Verbose "Waiting 3 minutes for web server to apply changes before polling for endpoint being available"
-                    Start-Sleep -Seconds 180 # Add a 3 minute wait to allow the web server to go down
-                    Write-Verbose "Updating Web Adaptors which causes a web server restart. Waiting for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
-                    Wait-ForUrl -Url "https://$($PortalFQDN):7443/arcgis/portaladmin/" -MaxWaitTimeInSeconds 360 -HttpMethod 'GET' -LogFailures
-                    Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
-                    
-                    $WebAdaptorsForPortal = Get-WebAdaptorsForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-				    $WebAdaptorsForPortal.webAdaptors | Where-Object { $_.httpPort -eq 80 -and $_.httpsPort -eq 443 } | ForEach-Object {
-                        if($_.webAdaptorURL -ieq  $WebAdaptorUrl) {
-                            $WebAdaptorId = $_.id
-                        }
-                    }    
-                }
-                
-                try{
-                    Write-Verbose "Configuring WebAdaptor on Machine"
-
-                    $PortalSiteUrl = "https://$($PortalFQDN):7443"
-                    Wait-ForUrl "$PortalSiteUrl/arcgis/portaladmin/" -HttpMethod 'POST'
-                    $PortalMachines = Get-PortalMachines -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-                    
-                    $pspath = "$env:SystemDrive\inetpub\wwwroot\$($Context)\WebAdaptor.config"
-                    $WAConfigFile = New-Object System.Xml.XmlDocument
-                    $WAConfigFile.Load($pspath)
-                    $SharedK = Get-SharedKeyForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
-                    
-                    if($WAConfigFile.SelectSingleNode("//Config/Portal/SharedKey")){
-                        $nd = $WAConfigFile.SelectSingleNode("//Config/Portal/SharedKey")
-                        $nd.InnerText = $SharedK
-                    }else{
-                        [System.XML.XMLElement]$SharedKey = $WAConfigFile.CreateElement("SharedKey");
-                        $SharedKey.InnerText = $SharedK
-                        $WAConfigFile.SelectSingleNode("//Config/Portal").AppendChild($SharedKey)
-                    }
-
-                    if($WAConfigFile.SelectSingleNode("//Config/Portal/Id")){
-                        $nd = $WAConfigFile.SelectSingleNode("//Config/Portal/Id")
-                        $nd.InnerText = $WebAdaptorId
-                    }else{
-                        [System.XML.XMLElement]$Id = $WAConfigFile.CreateElement("Id");
-                        $Id.InnerText = $WebAdaptorId
-                        $WAConfigFile.SelectSingleNode("//Config/Portal").AppendChild($Id)
-                    }
-                    
-                    if($WAConfigFile.SelectSingleNode("//Config/Portal/HttpPort")){
-                        $nd = $WAConfigFile.SelectSingleNode("//Config/Portal/HttpPort")
-                        $nd.InnerText = "7080"
-                    }else{
-                        [System.XML.XMLElement]$HttpPort = $WAConfigFile.CreateElement("HttpPort");
-                        $HttpPort.InnerText = "7080"
-                        $WAConfigFile.SelectSingleNode("//Config/Portal").AppendChild($HttpPort)
-                    }
-
-                    if($WAConfigFile.SelectSingleNode("//Config/Portal/HttpsPort")){
-                        $nd = $WAConfigFile.SelectSingleNode("//Config/Portal/HttpsPort")
-                        $nd.InnerText = "7443"
-                    }else{
-                        [System.XML.XMLElement]$HttpsPort = $WAConfigFile.CreateElement("HttpsPort");
-                        $HttpsPort.InnerText =  "7443"
-                        $WAConfigFile.SelectSingleNode("//Config/Portal").AppendChild($HttpsPort)
-                    }
-
-                    if($WAConfigFile.SelectSingleNode("//Config/Portal/URL")){
-                        $nd = $WAConfigFile.SelectSingleNode("//Config/Portal/URL")
-                        $nd.InnerText = $PortalSiteUrl
-                    }else{
-                        [System.XML.XMLElement]$URL = $WAConfigFile.CreateElement("URL");      
-                        $URL.InnerText = $PortalSiteUrl         
-                        $WAConfigFile.SelectSingleNode("//Config/Portal").AppendChild($URL)
-                    }
-
-                    if($WAConfigFile.SelectSingleNode("//Config/Portal/PortalNodes") -and $WAConfigFile.SelectSingleNode("//Config/Portal/PortalNodes").HasChildNodes){
-                        Write-Verbose "Portal Nodes Node exists"
-                    }else{
-                        [System.XML.XMLElement]$PortalNodes = $WAConfigFile.CreateElement("PortalNodes");
-                        $WAConfigFile.SelectSingleNode("//Config/Portal").AppendChild($PortalNodes)
-                    }
-  
-                    ForEach($PMachine in $PortalMachines){
-                        #$nd = $WAConfigFile.SelectSingleNode("//Config/Portal/Id")
-                        #$nd.InnerText = $WebAdaptorId
-
-                        $node = $WAConfigFile.Config.Portal.PortalNodes.ChildNodes | where {$_.'#text' -eq $PMachine}
-                        if(-not($node)){
-                            [System.XML.XMLElement]$elem = $WAConfigFile.CreateElement("Node");
-                            $elem.InnerText = $PMachine
-                            $WAConfigFile.SelectSingleNode("//Config/Portal/PortalNodes").AppendChild($elem)
+                    Write-Verbose "[WARNING]:- $_. Retrying in $SleepTimeInSeconds Seconds"
+                    Start-Sleep -Seconds $SleepTimeInSeconds
+                    $NumAttempts        = 2 
+                    $Done               = $false
+                    while (-not($Done) -and ($NumAttempts++ -le 10)){
+                        try{
+                            Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $wa.Version
+                        }catch{
+                            Write-Verbose "[WARNING]:- Error:- $_."
+                            if($_ -imatch "The underlying connection was closed: An unexpected error occurred on a receive." -or $_ -imatch "The operation timed out while waiting for a response from the portal application"){
+                                try{
+                                    Wait-ForUrl $PortalWAUrlHealthCheck -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -SleepTimeInSeconds $SleepTimeInSeconds -ThrowErrors -Verbose -IsWebAdaptor
+                                    $Done = $true
+                                }catch{
+                                    Write-Verbose "[WARNING]:- $_. Retrying in $SleepTimeInSeconds Seconds"
+                                    Start-Sleep -Seconds $SleepTimeInSeconds
+                                }
+                            }else{
+                                throw "[ERROR]:- $_"
+                            }
                         }
                     }
-
-                    $WAConfigFile.Save($pspath)
-
-                    # Recycle the application pool
-                    Import-Module WebAdministration
-                    $pool = (Get-Item "IIS:\Sites\Default Web Site\$Context"| Select-Object applicationPool).applicationPool
-                    Restart-WebAppPool $pool
-                    Write-Verbose "WebAppPool Recycled. Sleeping for a minute for it to comeback up."
-                    Start-Sleep -Seconds 60
-                }catch{
-                    Write-Verbose "[WARNING]:- Error Occured: $_"
                 }
+            }else{
+                throw "[ERROR]:- $_"
             }
         }
     }else{
         Write-Verbose "Absent Not Implemented Yet!"
     }
 }
+
 function Test-TargetResource
 {
     [CmdletBinding()]
@@ -316,7 +171,7 @@ function Test-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","Portal")]
+        [ValidateSet("Server","NotebookServer","Portal")]
         [System.String]
         $Component,
 
@@ -345,13 +200,13 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $WAInstalls = (get-wmiobject Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
     $result = $false
     foreach($wa in $WAInstalls){
         if($wa.InstallLocation -match "\\$($Context)\\"){
             $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
             [xml]$WAConfig = Get-Content $WAConfigPath
-            $ServerSiteURL = "https://$($ComponentHostName):6443"
+            $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}else{"https://$($ComponentHostName):6443"}
             $PortalSiteUrl = "https://$($ComponentHostName):7443"
             if(($Component -ieq "Server") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
                 if($OverwriteFlag){
@@ -369,6 +224,17 @@ function Test-TargetResource
                         }else{
                             $result = $true
                         } 
+                    }
+                }
+            }
+            if(($Component -ieq "NotebookServer") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
+                if($OverwriteFlag){
+                    $result =  $false
+                }else{
+                    if(URLAvailable("https://$Hostname/$Context/admin")){
+                        $result =  $true
+                    }else{
+                        $result =  $false
                     }
                 }
             }elseif(($Component -ieq "Portal") -and ($WAConfig.Config.Portal.URL -like $PortalSiteUrl)){
@@ -390,6 +256,103 @@ function Test-TargetResource
     $result
 }
 
+function Start-RegisterWebAdaptorCMDLineTool{
+    [CmdletBinding()]
+    param (
+        [System.String]
+        $ExecPath,
+
+        [System.String]
+        $Component,
+
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$HostName,
+
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$ComponentHostName,
+
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Context,
+
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator,
+        
+        [System.Boolean]
+        $AdminAccessEnabled = $false,
+
+        [System.String]
+		$Version        
+    )
+
+    $Arguments = ""
+    if($Component -ieq 'Server') {
+                
+        $AdminAccessString = "false"
+        if($AdminAccessEnabled){
+            $AdminAccessString = "true"
+        }
+
+        $SiteURL = "https://$($ComponentHostName):6443"
+        $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
+        Write-Verbose $WAUrl
+        $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
+        Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
+        $Arguments = "/m server /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password) /a $AdminAccessString"
+    }
+    elseif($Component -ieq 'NotebookServer') {
+        $SiteURL = "https://$($ComponentHostName):11443"
+        $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
+        Write-Verbose $WAUrl
+        $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
+        Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
+        $WAMode = if($Version.StartsWith("10.7")){ "server" }else{ "notebook" }
+        $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+
+        if($Version.StartsWith("10.7")){
+            $AdminAccessString = "false"
+            if($AdminAccessEnabled){
+                $AdminAccessString = "true"
+            }
+            $Arguments += " /a $AdminAccessString"
+        }
+
+    }
+    elseif($Component -ieq 'Portal'){
+        $SiteURL = "https://$($ComponentHostName):7443"
+        $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
+        Write-Verbose $WAUrl
+        $SiteUrlCheck = "$($SiteURL)/arcgis/sharing/rest/info?f=json"
+        Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
+        $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $ExecPath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+    
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    $op = $p.StandardOutput.ReadToEnd()
+    if($op -and $op.Length -gt 0) {
+        Write-Verbose "Output of execution:- $op"
+        if($op.StartsWith("ERROR") -or ($_ -imatch "The underlying connection was closed: An unexpected error occurred on a receive.") -or ($op -imatch "The operation timed out while waiting for a response from the portal application")){
+            throw $op
+        }
+    }
+    $err = $p.StandardError.ReadToEnd()
+    if($err -and $err.Length -gt 0) {
+        Write-Verbose $err
+        throw $err
+    }
+}
+
+
 function URLAvailable([string]$Url){
     Write-Verbose "Checking URLAvailable : $Url"
 
@@ -401,133 +364,6 @@ function URLAvailable([string]$Url){
     }
 }
 
-function Get-WebAdaptorsForPortal
-{
-    [CmdletBinding()]
-    param(
-		[System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost'
-    )
-
-	Invoke-ArcGISWebRequest -HttpMethod "GET" -Url ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors") -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer -LogResponse   
-}
-
-function Get-PortalMachines
-{
-    [CmdletBinding()]
-    param(
-		[System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost'
-    )
-
-    $MachineNames = @()
-    $Machines = Invoke-ArcGISWebRequest -HttpMethod "GET" -Url ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/machines") -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer -LogResponse
-    $Machines.machines | ForEach-Object {
-       $MachineNames += $_.machineName
-    }
-
-    $MachineNames
-}
-
-function Get-SharedKeyForPortal
-{
-    [CmdletBinding()]
-    param(
-		[System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost'
-    )
-
-    $SharedKey = Invoke-ArcGISWebRequest -HttpMethod "GET" -Url ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors/config") -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer
-    $SharedKey.sharedKey
-}
-
-function Register-WebAdaptorForPortal 
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-		$PortalHostName = 'localhost', 
-
-        [System.String]
-		$SiteName = 'arcgis', 
-
-        [System.Int32]
-		$Port = 7443,
-		
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer = 'http://localhost', 
-
-        [System.String]
-		$WebAdaptorUrl, 
-
-        [System.String]
-        $MachineName, 
-        
-        [System.String]
-		$MachineIP, 
-
-        [System.Int32]
-		$HttpPort = 80, 
-
-		[System.Int32]
-		$HttpsPort = 443
-    )
-    [System.String]$RegisterWebAdaptorsUrl = ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors/register")
-	Write-Verbose "Register Web Adaptor URL:- $RegisterWebAdaptorsUrl"
-    $WebParams = @{ token = $Token
-                    f = 'json'
-                    webAdaptorURL = $WebAdaptorUrl
-                    machineName = $MachineName
-                    machineIP = $MachineIP
-                    httpPort = $HttpPort.ToString()
-                    httpsPort = $HttpsPort.ToString()
-                  }
-	try {
-		Invoke-ArcGISWebRequest -Url $RegisterWebAdaptorsUrl -HttpFormParameters $WebParams -Referer $Referer -TimeoutSec 360 -ErrorAction Ignore
-	}
-	catch {
-		Write-Verbose "[WARNING] Register-WebAdaptorForPortal returned an error. Error:- $_"
-	}
-}
 
 Export-ModuleMember -Function *-TargetResource
 

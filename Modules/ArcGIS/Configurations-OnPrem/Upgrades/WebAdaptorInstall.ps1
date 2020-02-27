@@ -17,24 +17,25 @@ Configuration WebAdaptorInstall{
         $ComponentHostName, 
 
         [System.Management.Automation.PSCredential]
-		$PSACredential,
-
-        [System.String]
-        $SevenZipInstallerPath = $null,
-
-        [System.String]
-        $SevenZipInstallerDir = $null
+		$SiteAdministratorCredential
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_WebAdaptor
 
     Node $AllNodes.NodeName {
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+        
         $NodeName = $Node.NodeName 
         
-        $MachineFQDN = [System.Net.DNS]::GetHostByName($NodeName).HostName
+        $MachineFQDN = (Get-FQDN $NodeName)
 
         if($WebAdaptorRole -ieq "PortalWebAdaptor"){
             $Component = 'Portal'
@@ -48,8 +49,6 @@ Configuration WebAdaptorInstall{
             Path = $InstallerPath
             Arguments = "/qb VDIRNAME=$($Context) WEBSITE_ID=1";
             Ensure = "Present"
-            SevenZipMsiInstallerPath = $SevenZipInstallerPath
-            SevenZipInstallDir = $SevenZipInstallerDir
             Version = $Version
         } 
 
@@ -58,10 +57,10 @@ Configuration WebAdaptorInstall{
             Ensure = "Present"
             Component = $Component
             HostName =  $Node.ExternalHostName
-            ComponentHostName = [System.Net.DNS]::GetHostByName($ComponentHostName).HostName
+            ComponentHostName = (Get-FQDN $ComponentHostName)
             Context = $Context
             OverwriteFlag = $False
-            SiteAdministrator = $PSACredential
+            SiteAdministrator = $SiteAdministratorCredential
             DependsOn = @('[ArcGIS_WebAdaptorInstall]WebAdaptorInstall')
         }
         

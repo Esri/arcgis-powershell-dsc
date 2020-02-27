@@ -63,7 +63,9 @@
         [System.String]
         $DebugMode
     )
-    	
+        
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_DataStore
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
@@ -99,6 +101,7 @@
 
 	Node localhost
 	{
+        $DataStoreDependsOn = @()
         LocalConfigurationManager
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
@@ -137,6 +140,7 @@
                     PasswordChangeRequired = $false
                     PasswordNeverExpires = $true
                 }
+                $DataStoreDependsOn += @('[User]ArcGIS_RunAsAccount')
             }
 
             ArcGIS_WindowsService ArcGIS_DataStore_Service
@@ -145,46 +149,34 @@
                 Credential      = $ServiceCredential
                 StartupType     = 'Automatic'
                 State           = 'Running' 
-                DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+                DependsOn       = $DataStoreDependsOn
             }
+            $DataStoreDependsOn += @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')
                 
             ArcGIS_Service_Account DataStore_Service_Account
 		    {
 			    Name            = 'ArcGIS Data Store'
 			    RunAsAccount    = $ServiceCredential
 			    Ensure          = 'Present'
-			    DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
+			    DependsOn       = $DataStoreDependsOn
                 DataDir         = $DataStoreContentDirectory  
                 IsDomainAccount = $IsServiceCredentialDomainAccount
-		    }
+            }
+            $DataStoreDependsOn += @('[ArcGIS_Service_Account]DataStore_Service_Account')
 
-            ArcGIS_DataStore DataStore
-		    {
-			    Ensure                     = 'Present'
-			    SiteAdministrator          = $SiteAdministratorCredential
-			    ServerHostName             = $ServerMachineName
-			    ContentDirectory           = $DataStoreContentDirectory
-			    IsStandby                  = $IsStandBy
-                #DatabaseBackupsDirectory   = $DataStoreBackupLocation
-                #FileShareRoot              = "\\$($FileShareMachineName)\$($FileShareName)"
-                RunAsAccount               = $ServiceCredential 
-                DataStoreTypes             = $DataStoreTypes.split(",")
-                IsEnvAzure                 = $true
-			    DependsOn                  = @('[ArcGIS_Service_Account]DataStore_Service_Account')
-		    } 
-        
             ArcGIS_xFirewall DataStore_FirewallRules
 		    {
-				    Name                  = "ArcGISDataStore" 
-				    DisplayName           = "ArcGIS Data Store" 
-				    DisplayGroup          = "ArcGIS Data Store" 
-				    Ensure                = 'Present' 
-				    Access                = "Allow" 
-				    State                 = "Enabled" 
-				    Profile               = ("Domain","Private","Public")
-				    LocalPort             = ("2443", "9876", "29080", "29081")                        
-				    Protocol              = "TCP" 
-		    } 
+                Name                  = "ArcGISDataStore" 
+                DisplayName           = "ArcGIS Data Store" 
+                DisplayGroup          = "ArcGIS Data Store" 
+                Ensure                = 'Present' 
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("2443", "9876")                        
+                Protocol              = "TCP" 
+            } 
+            $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules')
 
             if($IsDataStoreWithStandby) 
             {
@@ -200,10 +192,88 @@
 				    LocalPort             = ("9876")       
 				    Direction             = "Outbound"                        
 				    Protocol              = "TCP" 
-			    }   
-            }         
+                }   
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
+            }       
+            
+            if($DataStoreTypes.split(",") -iContains "TileCache"){
+                ArcGIS_xFirewall TileCache_DataStore_FirewallRules
+                {
+                    Name                  = "ArcGISTileCacheDataStore" 
+                    DisplayName           = "ArcGIS Tile Cache Data Store" 
+                    DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("29079-29082")
+                    Protocol              = "TCP" 
+                }
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_DataStore_FirewallRules')
 
-		    foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent'))
+                ArcGIS_xFirewall TileCache_FirewallRules_OutBound
+                {
+                    Name                  = "ArcGISTileCacheDataStore-Out" 
+                    DisplayName           = "ArcGIS TileCache Data Store Out" 
+                    DisplayGroup          = "ArcGIS TileCache Data Store" 
+                    Ensure                = 'Present'
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("29079-29082")
+                    Direction             = "Outbound"                        
+                    Protocol              = "TCP" 
+                } 
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
+
+                if($IsDataStoreWithStandby) {
+                    ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
+                    {
+                        Name                  = "ArcGISMultiMachineTileCacheDataStore" 
+                        DisplayName           = "ArcGIS Multi Machine Tile Cache Data Store" 
+                        DisplayGroup          = "ArcGIS TileCache Data Store" 
+                        Ensure                = 'Present' 
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("4369","29083-29090")
+                        Protocol              = "TCP" 
+                    }
+                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_DataStore_FirewallRules')
+
+                    ArcGIS_xFirewall MultiMachine_TileCache_FirewallRules_OutBound
+                    {
+                        Name                  = "ArcGISMultiMachineTileCacheDataStore-Out" 
+                        DisplayName           = "ArcGIS Multi Machine TileCache Data Store Out" 
+                        DisplayGroup          = "ArcGIS TileCache Data Store" 
+                        Ensure                = 'Present'
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("4369","29083-29090")
+                        Direction             = "Outbound"                        
+                        Protocol              = "TCP" 
+                    } 
+                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_FirewallRules_OutBound')
+                }
+            }
+
+            ArcGIS_DataStore DataStore
+		    {
+			    Ensure                     = 'Present'
+			    SiteAdministrator          = $SiteAdministratorCredential
+			    ServerHostName             = $ServerMachineName
+			    ContentDirectory           = $DataStoreContentDirectory
+			    IsStandby                  = $IsStandBy
+                #DatabaseBackupsDirectory   = $DataStoreBackupLocation
+                #FileShareRoot              = "\\$($FileShareMachineName)\$($FileShareName)"
+                RunAsAccount               = $ServiceCredential 
+                DataStoreTypes             = $DataStoreTypes.split(",")
+                IsEnvAzure                 = $true
+			    DependsOn                  = $DataStoreDependsOn
+		    } 
+
+		    foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

@@ -18,14 +18,6 @@ Configuration PortalUpgrade{
         $FileshareMachineCredential,
 
         [parameter(Mandatory = $true)]
-        [System.String]
-        $PortalLicenseFileUrl,
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $PortalLicenseUserType,
-        
-        [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
 
@@ -33,20 +25,12 @@ Configuration PortalUpgrade{
         [System.String]
         $ServiceCredentialIsDomainAccount = 'false',
 
-        [parameter(Mandatory = $true)]
-        [System.Management.Automation.PSCredential]
-		$SiteAdministratorCredential,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $StandbyPortalMachineName,
-		
 		[Parameter(Mandatory=$false)]
         [System.String]
         $DebugMode		
     )
 
-	function Extract-FileNameFromUrl
+	function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -62,14 +46,13 @@ Configuration PortalUpgrade{
         $FileName
     }
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+    Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install 
-    Import-DscResource -Name ArcGIS_License 
-	Import-DscResource -name ArcGIS_WindowsService
+    Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_Portal 
-    Import-DscResource -Name ArcGIS_PortalUnregister 
-    Import-DscResource -Name ArcGIS_PortalUpgrade 
-
+    
     $IsDebugMode = $DebugMode -ieq 'true'
     $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
@@ -98,23 +81,7 @@ Configuration PortalUpgrade{
 
         $Depends = @()
 
-        if($StandbyPortalMachineName){
-			$StandbyMachine = Get-FQDN $StandbyPortalMachineName
-            ArcGIS_PortalUnregister UnregisterStandyPortal
-            {
-                PortalEndPoint = $MachineFQDN
-                PrimarySiteAdmin = $SiteAdministratorCredential
-                StandbyMachine = $StandbyPortalMachineName
-				Version = $Version
-            }
-            $Depends += '[ArcGIS_PortalUnregister]UnregisterStandyPortal'
-        } 
-		
-		$InstallerFileName = Split-Path $PortalInstallerPath -Leaf
-
-		$fPassword = ConvertTo-SecureString $FileshareMachineCredential.GetNetworkCredential().Password -AsPlainText -Force
-        $fCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SiteUpgradeVM\$($FileshareMachineCredential.UserName)", $fPassword )
-
+        $InstallerFileName = Split-Path $PortalInstallerPath -Leaf
         $InstallerPathOnMachine = "$env:TEMP\portal\$InstallerFileName"
         
 		File DownloadInstallerFromFileShare      
@@ -123,7 +90,7 @@ Configuration PortalUpgrade{
 			Type = "File"             	
 			SourcePath = $PortalInstallerPath 	
 			DestinationPath = $InstallerPathOnMachine    
-			Credential = $fCredential     
+			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
         }
         
@@ -160,7 +127,7 @@ Configuration PortalUpgrade{
                 Type = "File"             	
                 SourcePath = $WebStylesInstallerPath 	
                 DestinationPath = $WebStylesInstallerPathOnMachine    
-                Credential = $fCredential     
+                Credential = $FileshareMachineCredential     
                 DependsOn = $Depends  
             }
             
@@ -188,25 +155,6 @@ Configuration PortalUpgrade{
             $Depends += '[Script]RemoveWebStylesInstaller'
         }
         
-        if($PortalLicenseFileUrl) {
-			$PortalLicenseFileName = Extract-FileNameFromUrl $PortalLicenseFileUrl
-			Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-		}    
-
-        if($PortalLicenseFileName -and ($MajorVersion -lt 7)) 
-        {
-            ArcGIS_License PortalLicense
-            {
-                LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName)
-                Ensure          = 'Present'
-                Component       = 'Portal'
-				Force           = $True
-				DependsOn       = $Depends
-            } 
-
-            $Depends += '[ArcGIS_License]PortalLicense'
-        }
-		
         ArcGIS_WindowsService Portal_for_ArcGIS_Service
         {
             Name            = 'Portal for ArcGIS'
@@ -228,16 +176,6 @@ Configuration PortalUpgrade{
 			Ensure          = 'Present'
             DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}else{@('[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}
             DataDir         = $DataDirsForPortal
-        }
-        
-        $Depends += '[ArcGIS_Service_Account]Portal_Service_Account'
-        
-        ArcGIS_PortalUpgrade PortalUpgrade
-        {
-            PortalAdministrator = $SiteAdministratorCredential 
-            PortalHostName = $MachineFQDN
-            LicenseFilePath = if($MajorVersion -ge 7){ (Join-Path $(Get-Location).Path $PortalLicenseFileName) }else{ $null }
-            DependsOn = $Depends
         }
     }
 }

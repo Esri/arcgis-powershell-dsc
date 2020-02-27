@@ -49,7 +49,7 @@
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $PortalLicenseUserType
+        $PortalLicenseUserTypeId
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
@@ -88,7 +88,7 @@
         $DebugMode
     )
 
-    function Extract-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -105,7 +105,7 @@
     }
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS 
+    Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_License
 	Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
@@ -119,22 +119,23 @@
     Import-DscResource -Name ArcGIS_xSmbShare
     Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
-    Import-DscResource -Name ArcGIS_AzurePreFed
+    Import-DscResource -Name ArcGIS_ServerSettings
+    Import-DscResource -Name ArcGIS_PortalSettings
     Import-DscResource -Name ArcGIS_LogHarvester
     
     ##
     ## Download license files
     ##
     if($ServerLicenseFileUrl) {
-        $ServerLicenseFileName = Extract-FileNameFromUrl $ServerLicenseFileUrl
+        $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }
     if($PortalLicenseFileUrl) {
-        $PortalLicenseFileName = Extract-FileNameFromUrl $PortalLicenseFileUrl
+        $PortalLicenseFileName = Get-FileNameFromUrl $PortalLicenseFileUrl
         Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }
     if($SSLCertificateFileUrl) {
-        $SSLCertificateFileName = Extract-FileNameFromUrl $SSLCertificateFileUrl
+        $SSLCertificateFileName = Get-FileNameFromUrl $SSLCertificateFileUrl
         Invoke-WebRequest -OutFile $SSLCertificateFileName -Uri $SSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
     }
 
@@ -306,7 +307,7 @@
                   {
                       TestScript = { 
                                         $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                        $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                        $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                                         if($result -like '*none*')
                                         {
                                             return $false
@@ -314,7 +315,7 @@
                                         return $true
                                     }
                       SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						            $result | %{Write-verbose -Message "cmdkey: $_" -Verbose}
+						            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
 					              }
                       GetScript            = { return @{} }                  
                       DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
@@ -397,7 +398,7 @@
                 ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
 		    }
         
-            if($PortalLicenseFileName -and ($PortalLicenseFileName -ine $ServerLicenseFileName) -and [string]::IsNullOrEmpty($PortalLicenseUserType))
+            if($PortalLicenseFileName -and ($PortalLicenseFileName -ine $ServerLicenseFileName) -and [string]::IsNullOrEmpty($PortalLicenseUserTypeId))
             {
                 ArcGIS_License PortalLicense
 			    {
@@ -518,12 +519,10 @@
         
 		    ArcGIS_Portal Portal
 		    {
-                PortalEndPoint                        = $env:ComputerName
-                PortalContext                         = 'portal'
+                PortalHostName                        = if($MachineName -ieq $env:ComputerName){ $MachineName }else{ $PeerMachineName }
                 Ensure                                = 'Present'
                 LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
-                UserLicenseType                       = if($PortalLicenseUserType){$PortalLicenseUserType}else{$null}
-			    ExternalDNSName                       = $ExternalDNSHostName
+                UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
 			    PortalAdministrator                   = $SiteAdministratorCredential 
 			    DependsOn                             = $PortalDependsOn
 			    AdminEmail                            = 'portaladmin@admin.com'
@@ -557,40 +556,118 @@
                 DependsOn         = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
                 IsDomainAccount = $IsServiceCredentialDomainAccount
 		    } 
+            $DataStoreDependsOn = @('[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account')
 
-		    ArcGIS_xFirewall DataStore_FirewallRules
+            ArcGIS_xFirewall DataStore_FirewallRules
 		    {
-				    Name                  = "ArcGISDataStore" 
-				    DisplayName           = "ArcGIS Data Store" 
-				    DisplayGroup          = "ArcGIS Data Store" 
-				    Ensure                = 'Present' 
-				    Access                = "Allow" 
-				    State                 = "Enabled" 
-				    Profile               = ("Domain","Private","Public")
-				    LocalPort             = ("2443", "9876", "29080", "29081")                        
-				    Protocol              = "TCP" 
-		    } 
+                Name                  = "ArcGISDataStore" 
+                DisplayName           = "ArcGIS Data Store" 
+                DisplayGroup          = "ArcGIS Data Store" 
+                Ensure                = 'Present' 
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("2443", "9876")                        
+                Protocol              = "TCP" 
+            }
+            $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules')
 
-		    $DataStoreDependsOn = @('[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account')
-            if($IsDualMachineDeployment) 
-            {
+            if($IsDualMachineDeployment){
                 ArcGIS_xFirewall DataStore_FirewallRules_OutBound
 			    {
-					    Name                  = "ArcGISDataStore-Out" 
-					    DisplayName           = "ArcGIS Data Store Out" 
-					    DisplayGroup          = "ArcGIS Data Store" 
-					    Ensure                = 'Present'
-					    Access                = "Allow" 
-					    State                 = "Enabled" 
-					    Profile               = ("Domain","Private","Public")
-					    LocalPort             = ("9876")       
-					    Direction             = "Outbound"                        
-					    Protocol              = "TCP" 
+                    Name                  = "ArcGISDataStore-Out" 
+                    DisplayName           = "ArcGIS Data Store Out" 
+                    DisplayGroup          = "ArcGIS Data Store" 
+                    Ensure                = 'Present'
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("9876")       
+                    Direction             = "Outbound"                        
+                    Protocol              = "TCP" 
 			    } 
-
-			    $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules', '[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
+			    $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
             }
 
+            if($DataStoreTypes.split(",") -iContains "TileCache"){
+                ArcGIS_xFirewall TileCache_DataStore_FirewallRules
+                {
+                    Name                  = "ArcGISTileCacheDataStore" 
+                    DisplayName           = "ArcGIS Tile Cache Data Store" 
+                    DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("29079-29082")
+                    Protocol              = "TCP" 
+                }
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_DataStore_FirewallRules')
+                
+                ArcGIS_xFirewall TileCache_FirewallRules_OutBound
+                {
+                    Name                  = "ArcGISTileCacheDataStore-Out" 
+                    DisplayName           = "ArcGIS TileCache Data Store Out" 
+                    DisplayGroup          = "ArcGIS TileCache Data Store" 
+                    Ensure                = 'Present'
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("29079-29082")
+                    Direction             = "Outbound"                        
+                    Protocol              = "TCP" 
+                } 
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
+
+                if($IsDualMachineDeployment) {
+                    ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
+                    {
+                        Name                  = "ArcGISMultiMachineTileCacheDataStore" 
+                        DisplayName           = "ArcGIS Multi Machine Tile Cache Data Store" 
+                        DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                        Ensure                = 'Present' 
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("4369","29083-29090")
+                        Protocol              = "TCP" 
+                    }
+                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_DataStore_FirewallRules')
+
+                    ArcGIS_xFirewall MultiMachine_TileCache_FirewallRules_OutBound
+                    {
+                        Name                  = "ArcGISMultiMachineTileCacheDataStore-Out" 
+                        DisplayName           = "ArcGIS Multi Machine TileCache Data Store Out" 
+                        DisplayGroup          = "ArcGIS TileCache Data Store" 
+                        Ensure                = 'Present'
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("4369","29083-29090")
+                        Direction             = "Outbound"                        
+                        Protocol              = "TCP" 
+                    } 
+                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_FirewallRules_OutBound')
+                }
+            }
+
+            if($IsDualMachineDeployment -and ($DataStoreTypes.split(",") -iContains "SpatioTemporal")){
+                ArcGIS_xFirewall SpatioTemporalDataStore_FirewallRules
+                {
+                    Name                  = "ArcGISSpatioTemporalDataStore" 
+                    DisplayName           = "ArcGIS SpatioTemporal Data Store" 
+                    DisplayGroup          = "ArcGIS SpatioTemporal Data Store" 
+                    Ensure                = 'Present'
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("2443", "9320", "9220")                        
+                    Protocol              = "TCP" 
+                } 
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules')
+            }
+            
+            $DataStoreDependsOn += @('[ArcGIS_Server]Server')
             ArcGIS_DataStore DataStore
 		    {
 			    Ensure                     = 'Present'
@@ -605,7 +682,6 @@
                 IsEnvAzure                 = $true
                 DependsOn                  = $DataStoreDependsOn
 		    } 
-
         
             ArcGIS_xFirewall ReverseProxy_FirewallRules
             {
@@ -627,7 +703,7 @@
             Ensure                  = 'Present'
             ExternalDNSName         = $ExternalDNSHostName                        
             CertificateFileLocation = (Join-Path $(Get-Location).Path $SSLCertificateFileName)
-            CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword.GetNetworkCredential().Password } else { $null }
+            CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword } else { $null }
         }
 
         ArcGIS_ReverseProxy_ARR WebProxy
@@ -649,20 +725,30 @@
 
         if($env:ComputerName -ieq $LastHostName) # Perform on Last machine
         {
-            ArcGIS_AzurePreFed AzurePreFederation
-		    {
-                Ensure              = 'Present'
+            ArcGIS_ServerSettings ServerSettings
+            {
                 ServerContext       = 'server'
-			    PortalContext       = 'portal'
-			    ServerHostName      = $MachineName
-			    PortalHostName      = $MachineName
-			    ExternalDNSName     = $ExternalDNSHostName
-			    PortalAdministrator = $SiteAdministratorCredential
-			    SiteAdministrator   = $SiteAdministratorCredential
-			    ServerEndPoint      = $MachineName
-			    PortalEndPoint      = $MachineName
-            }    
-            
+                ServerHostName      = $MachineName
+                ServerEndPoint      = $MachineName #ExternalDNSHostName
+                ServerEndPointPort  = 6443 #443
+                ServerEndPointContext = 'arcgis' #443
+                ExternalDNSName     = $ExternalDNSHostName
+                SiteAdministrator   = $SiteAdministratorCredential
+                DependsOn = @('[ArcGIS_Server]Server','[ArcGIS_ReverseProxy_ARR]WebProxy')
+            }
+
+            ArcGIS_PortalSettings PortalSettings
+            {
+                ExternalDNSName     = $ExternalDNSHostName
+                PortalContext       = 'portal'
+                PortalHostName      = $MachineName
+                PortalEndPoint      = $MachineName
+                PortalEndPointPort    = 7443
+                PortalEndPointContext = 'arcgis'
+                PortalAdministrator = $SiteAdministratorCredential
+                DependsOn = @('[ArcGIS_Portal]Portal','[ArcGIS_ReverseProxy_ARR]WebProxy')
+            }
+
             ArcGIS_Federation Federate
             {
                 PortalHostName = (Get-FQDN $MachineName)
@@ -679,7 +765,7 @@
                 SiteAdministrator = $SiteAdministratorCredential
                 ServerRole = 'HOSTING_SERVER'
                 ServerFunctions = 'GeneralPurposeServer'
-                DependsOn = if($HasValidServiceCredential) { @('[ArcGIS_ReverseProxy_ARR]WebProxy','[ArcGIS_Portal]Portal','[ArcGIS_Server]Server') } else { @('[ArcGIS_ReverseProxy_ARR]WebProxy') }
+                DependsOn = if($HasValidServiceCredential) { @('[ArcGIS_ReverseProxy_ARR]WebProxy','[ArcGIS_PortalSettings]PortalSettings','[ArcGIS_ServerSettings]ServerSettings') } else { @('[ArcGIS_ReverseProxy_ARR]WebProxy') }
             }
         }
 

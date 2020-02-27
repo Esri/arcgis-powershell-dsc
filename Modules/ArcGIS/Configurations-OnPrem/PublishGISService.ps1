@@ -1,64 +1,67 @@
 Configuration PublishGISService
 {
-    Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS
-    Import-DscResource -Name ArcGIS_Server_Service
-    
-    $PrimaryServerMachine = ""
-    $PrimaryPortalMachine = ""
-    for ( $i = 0; $i -lt $AllNodes.count; $i++ ){
-        $Role = $AllNodes[$i].Role
-        if($Role -icontains 'Server' -and -not($PrimaryServerMachine)){
-            $PrimaryServerMachine  = $AllNodes[$i].NodeName
-        }
-        if($Role -icontains 'Portal' -and -not($PrimaryPortalMachine))
-        {
-            $PrimaryPortalMachine= $AllNodes[$i].NodeName
-        }
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullorEmpty()]
+        [System.Management.Automation.PSCredential]
+        $PublisherAccountCredential,
 
-    }
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $PortalHostName,
+
+        [Parameter(Mandatory=$False)]
+        [System.Int32]
+        $PortalPort,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $PortalContext,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ServerHostName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ServerContext,
+
+        [Parameter(Mandatory=$False)]
+        [System.Int32]
+        $ServerPort,
+
+        $GISServices
+    )
+
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DscResource -Name ArcGIS_Server_Service
 
     Node $AllNodes.NodeName
     {
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
+            }
+        }
+        
         if($Node.NodeName -ieq $PrimaryServerMachine){
-
-            if($ConfigurationData.ConfigData.Portal.SslCertifcate){
-                $PortalHostName = $ConfigurationData.ConfigData.Portal.SslCertifcate.Alias
-                $PortalPort = 443
-                $PortalContext = $ConfigurationData.ConfigData.PortalContext
-            }else{
-                $PortalHostName = (Get-FQDN $PrimaryPortalMachine)
-                $PortalPort = 7443
-                $PortalContext = "arcgis"
-            }
-
-            if($ConfigurationData.ConfigData.Server.SslCertifcate){
-                $ServerHostName = $ConfigurationData.ConfigData.Server.SslCertifcate.Alias
-                $ServerPort = 443
-                $ServerContext = $ConfigurationData.ConfigData.ServerContext
-            }else{
-                $ServerHostName =(Get-FQDN $PrimaryServerMachine)
-                $ServerPort = 6443
-                $ServerContext = "arcgis"
-            }
-
-            $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
-            $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
-            
-            for ( $i = 0; $i -lt $ConfigurationData.ConfigData.GISServices.count; $i++ ){
-                $Service = $ConfigurationData.ConfigData.GISServices[$i]
-                ArcGIS_Server_Service PublishService{
-                    ServerHostName = $ServerHostName
+            for ( $i = 0; $i -lt $GISServices.count; $i++ ){
+                $Service = $GISServices[$i]
+                ArcGIS_Server_Service "PublishService$($Service.Name)" {
+                    PublisherAccount = $PublisherAccountCredential
+                    PathToItemInfoFile = $Service.PathToItemInfoFile
                     PathToSourceFile = $Service.PathToSourceFile
-                    ServiceName = $Service.ServiceName
-                    ServiceType = $Service.ServiceType
+                    ServiceName = $Service.Name
+                    ServiceType = $Service.Type
                     Folder = $Service.Folder
-                    ServerContext = $ServerContext
-                    Port = $ServerPort
                     State = "STARTED"
                     Ensure = "Present"
-                    PublisherAccount = $PSACredential
-                    PathToItemInfoFile = ""
+                    ServerHostName = $ServerHostName
+                    ServerContext = $ServerContext
+                    Port = $ServerPort
                     PortalHostName = $PortalHostName
                     PortalPort = $PortalPort
                     PortalContext = $PortalContext
@@ -66,5 +69,4 @@ Configuration PublishGISService
             }
         }
     }
-    
 }

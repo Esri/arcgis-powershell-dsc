@@ -172,9 +172,9 @@ Function Test-FileSharePath
 }
 
 function Get-FreeDriveLetter {
-    $drives = [io.driveinfo]::getdrives() | % {$_.name[0]}
-    $alpha = 65..90 | % { [char]$_ }
-    $avail = diff $drives $alpha | select -ExpandProperty inputobject
+    $drives = [io.driveinfo]::getdrives() | ForEach-Object {$_.name[0]}
+    $alpha = 65..90 | ForEach-Object { [char]$_ }
+    $avail = Compare-Object $drives $alpha | Select-Object -ExpandProperty inputobject
     $avail[0]
 }
 

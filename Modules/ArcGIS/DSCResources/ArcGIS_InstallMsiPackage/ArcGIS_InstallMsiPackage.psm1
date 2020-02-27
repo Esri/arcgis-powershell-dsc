@@ -28,7 +28,7 @@ function Get-TargetResource
 		[System.String]
 		$Name,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path,
 
@@ -48,10 +48,11 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path,
 
@@ -59,7 +60,7 @@ function Set-TargetResource
 		[System.String]
 		$ProductId,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Arguments,
 
@@ -136,7 +137,7 @@ function Test-TargetResource
 		[System.String]
 		$Name,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path,
 
@@ -144,7 +145,7 @@ function Test-TargetResource
 		[System.String]
 		$ProductId,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Arguments,
 

@@ -1,7 +1,20 @@
 Configuration ArcGISUninstall
 {
+    param(
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServiceCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $false
+    )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_FileShare
@@ -9,24 +22,13 @@ Configuration ArcGISUninstall
     
     Node $AllNodes.NodeName
     {   
-        if($ConfigurationData.ConfigData.Credentials){
-            $SAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force
-            $SACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
-
-            $PSAPassword = ConvertTo-SecureString $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force
-            $PSACredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PSAPassword )
-        
-            if(-not($ConfigurationData.ConfigData.Credentials.ServiceAccount.IsDomainAccount)){
-                User ArcGIS_RunAsAccount
-                {
-                    UserName = $ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName
-                    Password = $SACredential
-                    FullName = 'ArcGIS Run As Account'
-                    Ensure = "Present"
-                }
+        if($Node.Thumbprint){
+            LocalConfigurationManager
+            {
+                CertificateId = $Node.Thumbprint
             }
         }
-
+        
         for ( $i = 0; $i -lt $Node.Role.Count; $i++ )
         {        
             $NodeRole = $Node.Role[$i]
@@ -38,16 +40,12 @@ Configuration ArcGISUninstall
                         ArcGIS_Install GeoEventServerUninstall{
                             Name = "GeoEvent"
                             Version = $ConfigurationData.ConfigData.Version
-                            Path = $ConfigurationData.ConfigData.GeoEventServer.Installer.Path
-                            Arguments = "/qb PASSWORD=$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Password)";
                             Ensure = "Absent"
                         }
                     }
                     ArcGIS_Install ServerUninstall{
-                        Name = "Server"
+                        Name = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
                         Version = $ConfigurationData.ConfigData.Version
-                        Path = $ConfigurationData.ConfigData.Server.Installer.Path
-                        Arguments = "/qn InstallDir=$($ConfigurationData.ConfigData.Server.Installer.InstallDir) INSTALLDIR1=$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)";
                         Ensure = "Absent"
                     }
                 }
@@ -56,18 +54,27 @@ Configuration ArcGISUninstall
                     { 
                         Name = "Portal"
                         Version = $ConfigurationData.ConfigData.Version
-                        Path = $ConfigurationData.ConfigData.Portal.Installer.Path
-                        Arguments = "/qn INSTALLDIR=$($ConfigurationData.ConfigData.Portal.Installer.InstallDir) CONTENTDIR=$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)";
                         Ensure = "Absent"
                     }
+
+                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    $MajorVersion = $VersionArray[1]
+                    $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
+                    if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                        ArcGIS_Install "WebStylesUninstall$($Node.NodeName)"
+                        { 
+                            Name = "WebStyles"
+                            Version = $ConfigurationData.ConfigData.Version
+                            Ensure = "Absent"
+                        }
+                    }
+
                 }
                 'DataStore'{
                     ArcGIS_Install DataStoreUninstall
                     { 
                         Name = "DataStore"
                         Version = $ConfigurationData.ConfigData.Version
-                        Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
-                        Arguments = "/qb InstallDir=$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)"
                         Ensure = "Absent"
                     }
                 }
@@ -79,21 +86,17 @@ Configuration ArcGISUninstall
                         ArcGIS_WebAdaptorInstall WebAdaptorUninstallPortal
                         { 
                             Context = $ConfigurationData.ConfigData.PortalContext 
-                            Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
-                            Arguments = "/qb VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=1";
-                            Ensure = "Absent"
                             Version = $ConfigurationData.ConfigData.Version
+                            Ensure = "Absent"
                         } 
                     }
 
-                    if(($WebAdaptorRole -ieq "ServerWebAdaptor") -and $ConfigurationData.ConfigData.ServerContext){
+                    if(($WebAdaptorRole -ieq "ServerWebAdaptor") -and $Node.ServerContext){
                         ArcGIS_WebAdaptorInstall WebAdaptorUninstallServer
                         { 
-                            Context = $ConfigurationData.ConfigData.ServerContext 
-                            Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
-                            Arguments = "/qb VDIRNAME=$($ConfigurationData.ConfigData.ServerContext) WEBSITE_ID=1";
-                            Ensure = "Absent"
+                            Context = $Node.ServerContext
                             Version = $ConfigurationData.ConfigData.Version
+                            Ensure = "Absent"
                         } 
                     }
                 }
@@ -103,45 +106,11 @@ Configuration ArcGISUninstall
                         FileShareName = $ConfigurationData.ConfigData.FileShareName
                         FileShareLocalPath = $ConfigurationData.ConfigData.FileShareLocalPath
                         Ensure = 'Absent'
-                        Credential = $SACredential
-                    }
-                }
-                'LoadBalancer'{
-
-                    $DCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($ConfigurationData.ConfigData.Credentials.ServiceAccount.Domain)\$($ConfigurationData.ConfigData.Credentials.ServiceAccount.UserName)", $SAPassword )
-                    
-                    $TempFolder = "$($env:SystemDrive)\Temp"
-
-                    if(Test-Path $TempFolder)
-                    {
-                        Remove-Item -Path $TempFolder -Recurse 
-                    }
-                    if(-not(Test-Path $TempFolder))
-                    {
-                        New-Item $TempFolder -ItemType directory            
-                    }
-
-                    foreach ($h in $ConfigurationData.ConfigData.LoadBalancer.InstallerPath)
-                    {
-                        $FileName = Split-Path $h.FilePath -leaf
-
-                        ArcGIS_InstallMsiPackage "AIMP_$($h.Name.Replace(' ', '_'))"
-                        {
-                            Name = $h.Name
-                            Path = $ExecutionContext.InvokeCommand.ExpandString("$TempFolder\$FileName")
-                            Ensure = "Absent"
-                            ProductId = $h.ProductId
-                            Arguments = " /quiet"
-                        }
-                    }
-
-                    WindowsFeature ARRWebServerUninstall {
-                        Ensure = "Absent"
-                        Name =  "Web-Server"
+                        Credential = $ServiceCredential
                     }
                 }
                 'SqlServer'{
-                    $InstallerPath = $ConfigurationData.ConfigData.SQLServer.SQLServerInstallerPath
+                    $InstallerPath = $Node.SQLServerInstallerPath
                     Script SQLServerUninstall
                     {
                         GetScript = {
@@ -166,7 +135,7 @@ Configuration ArcGISUninstall
                                 }
                             }else{
                                 #Very Very Crude. Needs a lot of refinement
-                                $app = Get-WmiObject -Class Win32_Product | Where-Object {$_.Name -imatch "sql"}
+                                $app = Get-CimInstance -Class Win32_Product | Where-Object {$_.Name -imatch "sql"}
                                 $app.Uninstall()
                             }
                         }
@@ -184,8 +153,6 @@ Configuration ArcGISUninstall
                     { 
                         Name = "Desktop"
                         Version = $ConfigurationData.ConfigData.DesktopVersion
-                        Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
-                        Arguments = "/qb"
                         Ensure = "Absent"
                     }
                 }
@@ -193,8 +160,6 @@ Configuration ArcGISUninstall
                     ArcGIS_Install ProUninstall{
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion
-                        Path = $ConfigurationData.ConfigData.Pro.Installer.Path
-                        Arguments = "/qb"
                         Ensure = "Absent"
                     }
                 }
@@ -203,8 +168,6 @@ Configuration ArcGISUninstall
                     ArcGIS_Install LicenseManagerUninstall{
                         Name = "LicenseManager"
                         Version = $ConfigurationData.ConfigData.LicenseManagerVersion
-                        Path = $ConfigurationData.ConfigData.LicenseManager.Installer.Path
-                        Arguments = "/qb INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
                         Ensure = "Absent"
                     }
                 }
