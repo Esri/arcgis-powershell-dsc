@@ -1,6 +1,8 @@
 <#
     .SYNOPSIS
         Creates a SelfSigned Certificate or Installs a SSL Certificated Provided and Configures it with Server
+    .PARAMETER ServerHostName
+        Optional Host Name or IP of the Machine on which the Server has been installed and is to be configured.
     .PARAMETER Ensure
         Take the values Present or Absent. 
         - "Present" ensures the certificate is installed and configured with the Server.
@@ -33,6 +35,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
         $SiteName
@@ -48,6 +54,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$SiteName,
@@ -90,16 +100,23 @@ function Set-TargetResource
         throw "Certificate File '$CertificateFileLocation' is not found or inaccessible"
     }
     
-    $ServiceName = if($ServerType -ieq "NotebookServer"){ 'ArcGIS Notebook Server' }else{'ArcGIS Server'}
+    $ServiceName = "ArcGIS Server"
+    $SitePort = 6443
+    if($ServerType -ieq "NotebookServer"){
+        $ServiceName = "ArcGIS Notebook Server"
+        $SitePort = 11443
+    }elseif($ServerType -ieq "MissionServer"){
+        $ServiceName = "ArcGIS Mission Server"
+        $SitePort = 20443
+    }
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
 
     $RestartRequired = $false
     
-	$FQDN = Get-FQDN $env:COMPUTERNAME
-    $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }else{ 6443 }
-    $ServerUrl = "https://$($FQDN):$($SitePort)"
-
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
+	$ServerUrl = "https://$($FQDN):$($SitePort)"
+    
     Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" 
     $Referer = $ServerUrl
                       
@@ -111,7 +128,7 @@ function Set-TargetResource
     $Info = Invoke-ArcGISWebRequest -Url ($ServerUrl.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -Verbose -HttpMethod 'GET'
     $ServerMinorVersion = "$($Info.fullVersion)".Split('.')[1]
     
-    if($EnableSSL -and -not($ServerType -ieq "NotebookServer"))
+    if($EnableSSL -and -not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer"))
     {
         # Get the current security configuration
         Write-Verbose 'Getting security config for site'
@@ -292,7 +309,7 @@ function Set-TargetResource
     Write-Verbose "Waiting for Url '$ServerURL/$SiteName/admin' to respond"
 	Wait-ForUrl -Url "$ServerURL/$SiteName/admin" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
 
-    if(-not($ServerType -ieq "NotebookServer")){
+    if(-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer")){
         Write-Verbose 'Verifying that security config for site can be retrieved'
         $config = Get-SecurityConfig -ServerURL $ServerURL -SiteName $SiteName -Token $token.token -Referer $Referer 
         Write-Verbose "SSLEnabled:- $($config.sslEnabled)"    
@@ -305,6 +322,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
         $SiteName,
@@ -350,8 +371,13 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $false
        
-    $FQDN = Get-FQDN $env:COMPUTERNAME
-    $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }else{ 6443 }
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
+    $SitePort = 6443
+    if($ServerType -ieq "NotebookServer"){
+        $SitePort = 11443
+    }elseif($ServerType -ieq "MissionServer"){
+        $SitePort = 20443
+    }
     $ServerUrl = "https://$($FQDN):$($SitePort)"
         
     Wait-ForUrl -Url "$($ServerUrl)/$SiteName/admin/" -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
@@ -366,7 +392,7 @@ function Test-TargetResource
     $ServerMinorVersion = "$($Info.fullVersion)".Split('.')[1]
     Write-Verbose $ServerMinorVersion
 
-    if($EnableSSL -and -not($ServerType -ieq "NotebookServer")){
+    if($EnableSSL -and -not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer")){
         $secConfig = Get-SecurityConfig -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer    
         $result = ($secConfig -and $secConfig.sslEnabled)
         Write-Verbose "SSL Enabled:- $result"
@@ -374,7 +400,7 @@ function Test-TargetResource
 
     $CertWithCNameExists = $false
 
-    if($result -or (-not($EnableSSL -and -not($ServerType -ieq "NotebookServer"))))
+    if($result -or (-not($EnableSSL -and -not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer"))))
     {
         # SSL is enabled
         # Check the CName and issues on the SSL Certificate
@@ -603,7 +629,7 @@ function Import-ExistingCertificate
     $props = @{ f= 'json';  alias = $CertAlias; certPassword = $CertificatePassword.GetNetworkCredential().Password  }    
 
     $Header = @{}
-    if($ServerType -ne "NotebookServer"){
+    if(-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer")){
         $props["token"] = $Token;
     }else{
         $Header["X-Esri-Authorization"] = "Bearer $Token"

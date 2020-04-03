@@ -14,7 +14,7 @@ Configuration ArcGISInstall{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -90,19 +90,21 @@ Configuration ArcGISInstall{
             {
                 'Server'
                 {
+                    $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+
                     ArcGIS_Install ServerInstall
                     {
-                        Name = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
+                        Name = $ServerTypeName
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
-                        Arguments = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`"" }else{ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`"" } 
+                        Arguments = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer"){ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`"" }else{ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`"" } 
                         Ensure = "Present"
                     }
 
                     if ($ConfigurationData.ConfigData.Server.Installer.PatchesDir) {
                         ArcGIS_InstallPatch ServerInstallPatch
                         {
-                            Name = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" }
+                            Name = $ServerTypeName
                             Version = $ConfigurationData.ConfigData.Version
                             PatchesDir = $ConfigurationData.ConfigData.Server.Installer.PatchesDir
                             Ensure = "Present"

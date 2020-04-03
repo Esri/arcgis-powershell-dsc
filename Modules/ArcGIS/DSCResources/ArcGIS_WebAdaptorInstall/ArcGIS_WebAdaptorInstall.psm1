@@ -115,7 +115,7 @@ function Set-TargetResource
             }  
                        
             Write-Verbose "Extracting $Path to $TempFolder"
-            Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait
+            Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait -NoNewWindow
             Write-Verbose 'Done Extracting. Waiting 15 seconds to allow the extractor to close files'
             Start-Sleep -Seconds 15
 

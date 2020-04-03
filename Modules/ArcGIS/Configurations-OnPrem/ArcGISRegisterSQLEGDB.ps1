@@ -8,7 +8,7 @@ Configuration ArcGISRegisterSQLEGDB{
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
 
         [Parameter(Mandatory=$true)]
         [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase")]
@@ -45,7 +45,7 @@ Configuration ArcGISRegisterSQLEGDB{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DSCResource -Name ArcGIS_EGDB
     
     Node $AllNodes.NodeName
@@ -62,7 +62,7 @@ Configuration ArcGISRegisterSQLEGDB{
             {
                 DatabaseServer              = $DatabaseServerHostName
                 DatabaseName                = $DatabaseName
-                ServerSiteAdministrator     = $SiteAdministratorCredential
+                ServerSiteAdministrator     = $ServerPrimarySiteAdminCredential
                 DatabaseServerAdministrator = $DatabaseServerAdministratorCredential
                 SDEUser                     = $SDEUserCredential
                 DatabaseUser                = $DatabaseUserCredential

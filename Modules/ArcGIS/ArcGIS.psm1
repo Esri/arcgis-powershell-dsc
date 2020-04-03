@@ -262,8 +262,8 @@ function Invoke-ServerUpgradeScript {
     $cfServiceAccountPassword = if( $cf.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $cf.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
     $cfServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Credentials.ServiceAccount.UserName, $cfServiceAccountPassword )
     
-    $cfSiteAdministratorPassword = if($cf.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $cf.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
-    $cfSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Credentials.PrimarySiteAdmin.UserName, $cfSiteAdministratorPassword )
+    $cfSiteAdministratorPassword = if($cf.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $cf.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Server.PrimarySiteAdmin.Password -AsPlainText -Force }
+    $cfSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Server.PrimarySiteAdmin.UserName, $cfSiteAdministratorPassword )
     
     $JobFlag = $True
 
@@ -920,8 +920,17 @@ function Invoke-ArcGISConfiguration
                     $RasterDataStoreItemCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'RasterDataStoreItem' } | Measure-Object).Count -gt 0)
                     $WebAdaptorCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'ServerWebAdaptor' -or $_.Role -icontains 'PortalWebAdaptor' } | Measure-Object).Count -gt 0)
                     
-                    $SiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
-                    $SiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.UserName, $SiteAdministratorPassword )
+                    $ServerPrimarySiteAdminCredential = $null 
+                    if($ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin){
+                        $ServerPrimarySiteAdminPassword = if( $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.Password -AsPlainText -Force }
+                        $ServerPrimarySiteAdminCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.UserName, $ServerPrimarySiteAdminPassword )
+                    }
+
+                    $PortalAdministratorCredential = $null 
+                    if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator){
+                        $PortalAdministratorPassword = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Password -AsPlainText -Force }
+                        $PortalAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.UserName, $PortalAdministratorPassword )
+                    }
                     
                     $CloudStorageCredentials = $null
                     if($ConfigurationParamsHashtable.ConfigData.Credentials.CloudStorageAccount){
@@ -992,9 +1001,9 @@ function Invoke-ArcGISConfiguration
                                     }
                                 }
                                 if(-not($IsServerWAOnSeparateMachine)){
-                                    $IsServerWAOnSeparateMachine = (($AllNodes | Where-Object { $_.NodeName -ine $WANode.NodeName } | Measure-Object).Count -gt 0)
+                                    $IsServerWAOnSeparateMachine = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.NodeName -ine $WANode.NodeName } | Measure-Object).Count -gt 0)
                                 }
-                                if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer"){
+                                if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "MissionServer"){
                                     $WANode.PSObject.Properties.Remove('AdminAccessEnabled')
                                 }
                             }
@@ -1055,7 +1064,7 @@ function Invoke-ArcGISConfiguration
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
                             ConfigStoreLocation = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation
                             ServerDirectoriesRootLocation = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
@@ -1065,7 +1074,7 @@ function Invoke-ArcGISConfiguration
                             DebugMode = $DebugMode
                         }
 
-                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer"){
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "MissionServer"){
                             if($ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
                                 $ServerArgs["ContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
                             }                                
@@ -1077,13 +1086,19 @@ function Invoke-ArcGISConfiguration
                         }
 
                         if($ConfigurationParamsHashtable.ConfigData.CloudStorageType){
-                            
                             $ServerArgs["CloudStorageType"] = $ConfigurationParamsHashtable.ConfigData.CloudStorageType
                             $ServerArgs["AzureFileShareName"]  = if($ConfigurationParamsHashtable.ConfigData.CloudStorageType -ieq "AzureFiles"){ $ConfigurationParamsHashtable.ConfigData.AzureFileShareName }else{ $null }
                             $ServerArgs["CloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.CloudNamespace
                             $ServerArgs["CloudStorageCredentials"] = $CloudStorageCredentials
                         }
-                        $ConfigurationName = if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){"ArcGISNotebookServer"}else{"ArcGISServer"} 
+
+                        $ConfigurationName = "ArcGISServer"
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){
+                            $ConfigurationName = "ArcGISNotebookServer"
+                        }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
+                            $ConfigurationName = "ArcGISMissionServer"
+                        }
+
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
@@ -1122,7 +1137,7 @@ function Invoke-ArcGISConfiguration
                                     $DBArgs = @{
                                         ConfigurationData = $ServerCD
                                         PrimaryServiceMachine = $PrimaryServerMachine.NodeName
-                                        SiteAdministratorCredential = $SiteAdministratorCredential
+                                        ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                                         DatabaseType = $DB.DatabaseType
                                         DatabaseServerHostName = $DB.DatabaseServerHostName
                                         DatabaseName = $DB.DatabaseName
@@ -1151,13 +1166,17 @@ function Invoke-ArcGISConfiguration
                     if(($JobFlag -eq $True) -and $ServerCheck -and -not(($null -eq $ServerExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer))){
                         $ServerSettingsArgs = @{
                             ConfigurationData = $ServerCD
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
                             ExternalDNSHostName = $ServerExternalDNSHostName 
                             ServerContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
                         }
                         $ConfigurationName = "ArcGISNotebookServerSettings"
-                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ne "NotebookServer"){
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
+                            $ConfigurationName = "ArcGISMissionServerSettings"
+                        }
+                        
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ne "NotebookServer" -and $ConfigurationParamsHashtable.ConfigData.ServerRole -ne "MissionServer"){
                             $ConfigurationName = "ArcGISServerSettings"
                             $ServerSettingsArgs["InternalLoadBalancer"] = if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer }else{ $null }
                         }
@@ -1175,13 +1194,13 @@ function Invoke-ArcGISConfiguration
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            PortalAdministratorCredential = $PortalAdministratorCredential
                             Version = $Version
                             PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
                             ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation
-                            AdminEmail = $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.Email
-                            AdminSecurityQuestionIndex = $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
-                            AdminSecurityAnswer = $ConfigurationParamsHashtable.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
+                            AdminEmail = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Email
+                            AdminSecurityQuestionIndex = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex
+                            AdminSecurityAnswer = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswer
                             LicenseFilePath = if($ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath }else{ $null }
                             UserLicenseTypeId = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId }else{ $null }
                             ADServiceCredential = $ADServiceCredential
@@ -1213,11 +1232,11 @@ function Invoke-ArcGISConfiguration
                         }
                     }
 
-                    if(($JobFlag -eq $True) -and $PortalCheck){
+                    if(($JobFlag -eq $True) -and $PortalCheck -and -not(($null -eq $PortalExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer))){
                         $PortalSettingsArgs = @{
                             ConfigurationData = $PortalCD
                             PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            PortalAdministratorCredential = $PortalAdministratorCredential
                             ExternalDNSHostName = $PortalExternalDNSHostName
                             PortalContext = if($null -ne $PortalExternalDNSHostName){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ $null }
                             InternalLoadBalancer = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ $null }
@@ -1229,7 +1248,8 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = $False
                         $WebAdaptorArgs = @{
                             ConfigurationData           = $WebAdaptorCD
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
+                            PortalAdministratorCredential = $PortalAdministratorCredential
                             PrimaryServerMachine        = $PrimaryServerMachine.NodeName
                             PrimaryPortalMachine        = $PrimaryPortalMachine.NodeName
                         }
@@ -1249,7 +1269,7 @@ function Invoke-ArcGISConfiguration
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
                             PrimaryDataStore = $PrimaryDataStore.NodeName
                             PrimaryBigDataStore = $PrimaryBigDataStore.NodeName
@@ -1267,7 +1287,7 @@ function Invoke-ArcGISConfiguration
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            SiteAdministratorCredential = $SiteAdministratorCredential
+                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
                             FileShareName = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){$null}else{$ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.FileShareName}
                             FileShareLocalPath = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){$null}else{$ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath}
@@ -1292,26 +1312,26 @@ function Invoke-ArcGISConfiguration
                             $PortalPort = $ConfigurationParamsHashtable.ConfigData.Federation.PortalPort
                             $PortalContext = $ConfigurationParamsHashtable.ConfigData.Federation.PortalContext
 
-                            $RemoteSiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.Password -AsPlainText -Force }
-                            $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Federation.PrimarySiteAdmin.UserName, $RemoteSiteAdministratorPassword )
+                            $RemoteSiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.Password -AsPlainText -Force }
+                            $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.UserName, $RemoteSiteAdministratorPassword )
                         }
 
                         if($RemoteFederation -or $PortalServerFederation){
                             $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             $ServerServiceURL = if($null -ne $ServerExternalDNSHostName){ $ServerExternalDNSHostName }else{  if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName} }
-                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{ if($ServerRole -ieq 'NotebookServer'){11443}else{6443} }
+                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{6443}}
                             $ServerServiceURLContext = if($null -ne $ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ 'arcgis' }
 
                             $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
-                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}else{6443}
+                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
                             $ServerSiteAdminURLContext = 'arcgis'
 
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}else{6443}
+                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
                                 $ServerSiteAdminURLContext = 'arcgis'
                             }else{
-                                if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer')){ 
+                                if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer')-or ($ServerRole -ieq 'MissionServer')){ 
                                     # Check this for LB when no WAs specified
                                     if($ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer){
                                         $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer
@@ -1339,8 +1359,8 @@ function Invoke-ArcGISConfiguration
                                 ServerSiteAdminUrlHostName = $ServerSiteAdminURL
                                 ServerSiteAdminUrlPort = $ServerSiteAdminURLPort
                                 ServerSiteAdminUrlContext = $ServerSiteAdminURLContext
-                                SiteAdministratorCredential = $SiteAdministratorCredential
-                                RemoteSiteAdministrator = if($RemoteFederation){ $RemoteSiteAdministrator }else{ $SiteAdministratorCredential }
+                                ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
+                                RemoteSiteAdministrator = if($RemoteFederation){ $RemoteSiteAdministrator }else{ $PortalAdministratorCredential }
                                 IsHostingServer = ($ServerCheck -and $PortalCheck -and $DataStoreCheck) #Check for relational ds only
                                 ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             }
@@ -1361,7 +1381,7 @@ function Invoke-ArcGISConfiguration
                         }
                         if($ServerCheck){
                             $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
-                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}else{6443}
+                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){20443}else{6443}
                             $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
                             $ServerAdminURL = "$($PrimaryServerCName):$($Port)/arcgis"
 
@@ -1373,7 +1393,9 @@ function Invoke-ArcGISConfiguration
                             }
 
                             Write-Information -InformationAction Continue "Server Admin URL - https://$ServerAdminURL/admin"
-                            Write-Information -InformationAction Continue "Server Manager URL - https://$ServerURL/manager"
+                            if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer'))){
+                                Write-Information -InformationAction Continue "Server Manager URL - https://$ServerURL/manager"
+                            }
                             Write-Information -InformationAction Continue "Server Rest URL - https://$ServerURL/rest"
                         }
                     }
@@ -1475,8 +1497,8 @@ function Invoke-ArcGISConfiguration
                 $PortalServiceAccountPassword = if( $PortalConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
                 $PortalServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalServiceAccountPassword )
                 
-                $PortalSiteAdministratorPassword = if($PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
-                $PortalSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $PortalSiteAdministratorPassword )
+                $PortalSiteAdministratorPassword = if($PortalConfig.ConfigData.Portal.PortalAdministrator.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Portal.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Portal.PortalAdministrator.Password -AsPlainText -Force }
+                $PortalSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Portal.PortalAdministrator.UserName, $PortalSiteAdministratorPassword )
 
                 $HasPortalNodes = ($PortalConfig.AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0
                 if($HasPortalNodes){
@@ -1530,12 +1552,12 @@ function Invoke-ArcGISConfiguration
 
                             $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeArgs -Credential $Credential -DebugMode $DebugMode
 
-                            if($IsMultiMachinePortal -and ($JobFlag -eq $True)){
+                            if($JobFlag -eq $True){
                                 $PortalPostUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
 
                                 $PortalPostUpgradeArgs = @{
                                     ConfigurationData = $PortalPostUpgradeCD
-                                    SiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                    PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
                                 }
 
                                 $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalPostUpgradeArgs -Credential $Credential -DebugMode $DebugMode
@@ -1565,11 +1587,14 @@ function Invoke-ArcGISConfiguration
                                 ServiceAccount = $PortalServiceAccountCredential
                                 IsServiceAccountDomainAccount = $PortalServiceAccountIsDomainAccount
                                 IsServiceAccountMSA = $PortalServiceAccountIsMSA
-                                SiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
                                 ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
                                 ExternalDNSName = $PortalExternalDNSHostName 
                                 InternalLoadBalancer = if($PortalConfig.ConfigData.Server.InternalLoadBalancer){ $PortalConfig.ConfigData.Server.InternalLoadBalancer }else{ $null }
                                 IsMultiMachinePortal = $IsMultiMachinePortal
+                                AdminEmail = $PortalConfig.ConfigData.Portal.PortalAdministrator.Email
+                                AdminSecurityQuestionIndex = $PortalConfig.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex
+                                AdminSecurityAnswer = $PortalConfig.ConfigData.Portal.PortalAdministrator.SecurityAnswer
                             }
 
                             if($IsMultiMachinePortal){
@@ -1585,11 +1610,11 @@ function Invoke-ArcGISConfiguration
                                     ConfigurationData = @{ AllNodes = @( $StandbyNodeToAdd ); }
                                     PrimaryPortalMachine = $PrimaryNodeToAdd.NodeName
                                     Context = $PortalConfig.ConfigData.PortalContext
-                                    SiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                    PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
                                     ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
-                                    AdminEmail = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.Email
-                                    AdminSecurityQuestionIndex = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
-                                    AdminSecurityAnswer = $PortalConfig.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
+                                    AdminEmail = $PortalConfig.ConfigData.Portal.PortalAdministrator.Email
+                                    AdminSecurityQuestionIndex = $PortalConfig.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex
+                                    AdminSecurityAnswer = $PortalConfig.ConfigData.Portal.PortalAdministrator.SecurityAnswer
                                 }
 
                                 if($PortalConfig.ConfigData.CloudStorageType){
@@ -1696,8 +1721,8 @@ function Invoke-ArcGISConfiguration
                     $DSSAPassword = if( $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
                     $DSServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Credentials.ServiceAccount.UserName, $DSSAPassword )
                     
-                    $DSPSAPassword = if($DSConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.Password -AsPlainText -Force }
-                    $DSSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Credentials.PrimarySiteAdmin.UserName, $DSPSAPassword )
+                    $DSPSAPassword = if($DSConfig.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Server.PrimarySiteAdmin.Password -AsPlainText -Force }
+                    $DSSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Server.PrimarySiteAdmin.UserName, $DSPSAPassword )
                     
                     $HasDataStoreNodes = ($DSConfig.AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0
                     if($HasDataStoreNodes){
@@ -1768,7 +1793,7 @@ function Invoke-ArcGISConfiguration
                             if($JobFlag -and ($null -ne $PrimaryDataStore)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryDataStoreCD 
-                                    SiteAdministratorCredential = $DSSiteAdministratorCredential
+                                    ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential
                                     ServerMachineName = $PrimaryServerMachine
                                     ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
                                     InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
@@ -1781,7 +1806,7 @@ function Invoke-ArcGISConfiguration
                             if(($JobFlag -eq $True) -and ($null -ne $PrimaryTileCache) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryTileCacheCD
-                                    SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                    ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
                                     ServerMachineName = $PrimaryServerMachine
                                     ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
                                     InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
@@ -1793,7 +1818,7 @@ function Invoke-ArcGISConfiguration
                             if(($JobFlag -eq $True) -and ($null -ne $PrimaryBigDataStore) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName) -and ($PrimaryDataStore.NodeName -ne $PrimaryBigDataStore.NodeName)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryBigDataStoreCD
-                                    SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                    ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
                                     ServerMachineName = $PrimaryServerMachine
                                     ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
                                     InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
@@ -1824,7 +1849,7 @@ function Invoke-ArcGISConfiguration
                                     $DataStoreUpgradeInstallArgs = @{
                                         ConfigurationData = @{ AllNodes = @($NodeToAdd) }
                                         Version = $DSConfig.ConfigData.Version 
-                                        ServiceAccount = $DSSiteAdministratorCredential 
+                                        ServiceAccount = $DSServiceAccountCredential 
                                         IsServiceAccountDomainAccount = $DSServiceAccountIsDomainAccount
                                         IsServiceAccountMSA = $DSServiceAccountIsMSA
                                         InstallerPath = $DSConfig.ConfigData.DataStore.Installer.Path 
@@ -1836,7 +1861,7 @@ function Invoke-ArcGISConfiguration
                                     if($JobFlag -eq $True){
                                         $DataStoreUpgradeConfigureArgs = @{
                                             ConfigurationData = @{ AllNodes = @($NodeToAdd) }
-                                            SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                            ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
                                             ServerMachineName = $PrimaryServerMachine
                                             ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
                                             InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
@@ -1859,7 +1884,7 @@ function Invoke-ArcGISConfiguration
                                 Foreach($nd in $BigDataStoreMachinesArray){
                                     $SpatioTemporalDatastoreStartArgs = @{
                                         ConfigurationData = $BigDataStoreCD
-                                        SiteAdministratorCredential = $DSSiteAdministratorCredential 
+                                        ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
                                         ServerMachineName = $PrimaryServerMachine 
                                     }
 

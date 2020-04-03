@@ -3,7 +3,7 @@ Configuration ArcGISNotebookServerSettings{
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
         
         [Parameter(Mandatory=$false)]
         [System.String]
@@ -20,7 +20,7 @@ Configuration ArcGISNotebookServerSettings{
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_NotebookServerSettings
 
     Node $AllNodes.NodeName
@@ -35,8 +35,9 @@ Configuration ArcGISNotebookServerSettings{
         if($Node.NodeName -ieq $PrimaryServerMachine){
             ArcGIS_NotebookServerSettings NotebookServerSettings
             {
+                ServerHostName      = (Get-FQDN $Node.NodeName)
                 WebContextURL       = "https://$ExternalDNSHostName/$($ServerContext)"
-                SiteAdministrator   = $SiteAdministratorCredential
+                SiteAdministrator   = $ServerPrimarySiteAdminCredential
             }
         }
     }

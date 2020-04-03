@@ -8,6 +8,8 @@
         Take the values Present or Absent. 
         - "Present" ensures that DataStore is Configured if not.
         - "Absent" ensures that DataStore is unconfigured or derigestered with the GIS Server - Not Implemented).
+    .PARAMETER DatastoreMachineHostName
+        Optional Host Name or IP of the Machine on which the DataStore has been installed and is to be configured.
     .PARAMETER ServerHostName
         HostName of the GIS Server for which you want to create and register a data store.
     .PARAMETER SiteAdministrator
@@ -33,6 +35,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $DatastoreMachineHostName,
+
         [ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure,
@@ -78,6 +84,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $DatastoreMachineHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$ServerHostName,
@@ -114,7 +124,7 @@ function Set-TargetResource
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    $MachineFQDN = Get-FQDN $env:ComputerName
+    $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
 	
     $ServiceName = 'ArcGIS Data Store'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
@@ -122,7 +132,7 @@ function Set-TargetResource
 
     if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
         $RestartRequired = $false
-        $expectedHostIdentifierType = 'hostname'
+        $expectedHostIdentifierType = if($MachineFQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
         $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $DataStoreInstallDirectory
         $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $DataStoreInstallDirectory
         Write-Verbose "Current value of property hostidentifier is '$hostidentifier' and hostidentifierType is '$hostidentifierType'"
@@ -192,7 +202,7 @@ function Set-TargetResource
 
     $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
     $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
-                                                            -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
+                                                            -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
                                                             -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator
 
     if($DatastoresToRegister.Count -gt 0){
@@ -205,10 +215,10 @@ function Set-TargetResource
 
     if($DataStoreTypes -icontains "SpatioTemporal"){
         Write-Verbose "Checking if the Spatiotemporal Big Data Store has started."
-        if(-not(Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN)) {
+        if(-not(Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN)) {
             Write-Verbose "Starting the Spatiotemporal Big Data Store."
-            Start-SpatiotemporalBigDataStore -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
-            $TestBDSStatus = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $FQDN
+            Start-SpatiotemporalBigDataStore -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
+            $TestBDSStatus = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
             Write-Verbose "Just Checking:- $($TestBDSStatus)"
         }else {
             Write-Verbose "The Spatiotemporal Big Data Store is already started."
@@ -308,6 +318,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $DatastoreMachineHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$ServerHostName,
@@ -348,7 +362,7 @@ function Test-TargetResource
     $result = $true
     
     $FQDN = Get-FQDN $ServerHostName
-    $MachineFQDN = Get-FQDN $env:ComputerName
+    $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
     $ServerUrl = "https://$($FQDN):6443"    
 	$Referer = $ServerUrl
     
@@ -366,7 +380,7 @@ function Test-TargetResource
             $ServiceName = 'ArcGIS Data Store'
             $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
             $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-            $expectedHostIdentifierType = 'hostname'
+            $expectedHostIdentifierType = if($MachineFQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
             $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
             $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
             Write-Verbose "Current value of property hostidentifier is '$hostidentifier' and hostidentifierType is '$hostidentifierType'"
@@ -388,7 +402,7 @@ function Test-TargetResource
     
     $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
     $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
-                                -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
+                                -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
                                 -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator
 
     if($DatastoresToRegister.Count -gt 0){
@@ -546,7 +560,7 @@ function Register-DataStore
             if($NumAttempts -gt 1) {
                 Write-Verbose "Checking if datastore is registered"
                 $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $Token -Referer $Referer `
-                                            -DataStoreTypes $DataStoreTypes -MachineFQDN (Get-FQDN $env:ComputerName) `
+                                            -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
                                             -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential
 
                 $DatastoresToRegisterFlag = ($DatastoresToRegister.Count -gt 0)
@@ -625,10 +639,10 @@ function Get-DataStoreTypesToRegister
         }
 
         if($dsTestResult -and $serverTestResult){
-            Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
+            Write-Verbose "The machine with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
         }else{
             $DatastoresToRegister += $dstype
-            Write-Verbose "The machine $($env:ComputerName) with FQDN '$MachineFQDN' does NOT participates in a registered '$dstype' data store"
+            Write-Verbose "The machine with FQDN '$MachineFQDN' does NOT participates in a registered '$dstype' data store"
         }
     }
 

@@ -4,6 +4,6 @@ class ArcGIS_PortalUnregister : OMI_BaseResource
 {
 	[Key] String PortalEndPoint;
 	[Key] String StandbyMachine;
-	[Write, EmbeddedInstance("MSFT_Credential")] String PrimarySiteAdmin;
+	[Write, EmbeddedInstance("MSFT_Credential")] String PortalAdministrator;
 	[Write] String Version;
 };

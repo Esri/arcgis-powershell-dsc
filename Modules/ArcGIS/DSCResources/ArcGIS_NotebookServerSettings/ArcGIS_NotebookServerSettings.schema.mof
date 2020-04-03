@@ -2,6 +2,7 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_NotebookServerSettings")]
 class ArcGIS_NotebookServerSettings : OMI_BaseResource
 {
+    [Write] String ServerHostName;
     [Key] String WebContextURL;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;   
 };

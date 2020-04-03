@@ -6,19 +6,12 @@
                 "Server",
                 "ServerWebAdaptor"
             ]
-        },
-        {
-            "NodeName": "[Machine Name]",
-            "Role": [
-                "Server",
-                "FileShare"
-            ]
         }
     ],
     "ConfigData": {
         "Version": "[Version of ArcGIS Deployment]",
-        "ServerRole": "NotebookServer",
-        "ServerContext": "notebook",
+        "ServerRole": "MissionServer",
+        "ServerContext": "mission",
         "Credentials": {
             "ServiceAccount": {
                 "Password": "[ServiceAccount Password]",
@@ -27,26 +20,36 @@
             }
         },
         "Server": {
-            "LicenseFilePath": "[License File Path - Notebook Server ]",
+            "LicenseFilePath": "[License File Path - Mission Server ]",
             "Installer": {
                 "Path": "[Server Installer Path]",
-                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
-                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] "
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]"                
             },
-            "ServerDirectoriesRootLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisnotebook\\directories",
-            "ConfigStoreLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\\\arcgisnotebook\\config-store",
-            "ContainerImagePaths": [
-                "C:\\docker_images\\ArcGIS_Notebook_Docker_Standard_108.tar.gz",
-                "C:\\docker_images\\ArcGIS_Notebook_Docker_Advanced_108.tar.gz"
-            ],
+            "ServerDirectoriesRootLocation": "C:\\arcgismissionserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgismissionserver\\config-store",
             "ServerDirectories": [
                 {
                     "name": "arcgisworkspace",
-                    "path": "[Required - DFS Shared Workspace - 'C:\\arcgisnotebook\\arcgisworkspace']",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgisworkspace",
                     "type": "WORKSPACE"
+                },
+                {
+                    "name": "arcgisoutput",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgisoutput",
+                    "type": "OUTPUT"
+                },
+                {
+                    "name": "arcgissystem",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgissystem",
+                    "type": "SYSTEM"
+                },
+                {
+                    "name": "arcgisjobs",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgisjobs",
+                    "type": "JOBS"
                 }
             ],
-            "ServerLogsLocation": "",
+            "ServerLogsLocation": "C:\\arcgismissionserver\\logs",
             "PrimarySiteAdmin": {
                 "UserName": "[PrimarySiteAdmin Username]",
                 "Password": "[PrimarySiteAdmin Password]"

@@ -1,10 +1,12 @@
 Configuration ArcGISWebAdaptor
 {
     param(
-        [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
+
+        [System.Management.Automation.PSCredential]
+        $PortalAdministratorCredential,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -20,7 +22,7 @@ Configuration ArcGISWebAdaptor
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
@@ -77,13 +79,13 @@ Configuration ArcGISWebAdaptor
             ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)"
             {
                 Ensure              = "Present"
-                Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }else{ 'Server' }
+                Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }else{ 'Server' }
                 HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN } 
                 ComponentHostName   = (Get-FQDN $PrimaryServerMachine)
                 Context             = $Node.ServerContext
                 OverwriteFlag       = $False
-                SiteAdministrator   = $SiteAdministratorCredential
-                AdminAccessEnabled  = if($ServerRole -ieq "NotebookServer"){ $true }else{ if($Node.AdminAccessEnabled) { $true } else { $false } }
+                SiteAdministrator   = $ServerPrimarySiteAdminCredential
+                AdminAccessEnabled  = if($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer"){ $true }else{ if($Node.AdminAccessEnabled) { $true } else { $false } }
                 DependsOn           = $Depends
             }
             $Depends += "[ArcGIS_WebAdaptor]ConfigureServerWebAdaptor$($Node.NodeName)"
@@ -98,7 +100,7 @@ Configuration ArcGISWebAdaptor
                 ComponentHostName   = (Get-FQDN $PrimaryPortalMachine)
                 Context             = $Node.PortalContext
                 OverwriteFlag       = $False
-                SiteAdministrator   = $SiteAdministratorCredential
+                SiteAdministrator   = $PortalAdministratorCredential
                 DependsOn           = $Depends
             }
         }

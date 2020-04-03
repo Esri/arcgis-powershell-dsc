@@ -5,6 +5,8 @@
         Indicates to make sure GeoEvents Server is Configured Correcly. Take the values Present or Absent. 
         - "Present" ensures that GeoEvents Server is Configured Correcly, if not Configured created.
         - "Absent" ensures that GeoEvents Server is unconfigured, i.e. if present (not implemented).
+    .PARAMETER ServerHostName
+        Optional Host Name or IP of the Machine on which the GeoEvent has been installed and is to be configured.
     .PARAMETER Name
         Name of the Geoevent Server Resource
     .PARAMETER SiteAdministrator
@@ -21,6 +23,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name
@@ -36,6 +42,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
@@ -83,7 +93,7 @@ function Set-TargetResource
             Write-Verbose "Unable to Install Window Feature - IIS-WebSockets"
         }
 
-		$FQDN = Get-FQDN $env:ComputerName
+		$FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
 		$ServerUrl = "https://$($FQDN):6443"   
 		$Referer = $ServerUrl
 		Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
@@ -222,6 +232,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
@@ -256,7 +270,7 @@ function Test-TargetResource
     $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")
 
     if($result) {
-        $FQDN = Get-FQDN $env:ComputerName
+        $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
 		$ServerUrl = "https://$($FQDN):6443"   
 		$Referer = $ServerUrl
 		Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5

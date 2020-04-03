@@ -14,7 +14,7 @@
                 {
                     "Path": "[Server SSL Certificate Path]",
                     "Password": "[Server SSL Password]",
-                    "Alias": "[Server CName Alias]",
+                    "CNameFQDN": "[Server CName Alias]",
                     "Target": [
                         "Server"
                     ]
@@ -31,7 +31,7 @@
                 {
                     "Path": "[WebAdaptor SSL Certificate Path]",
                     "Password": "[WebAdaptor SSL Password]",
-                    "Alias": "[WebAdaptor CName Alias]",
+                    "CNameFQDN": "[WebAdaptor CName Alias]",
                     "Target": [
                         "WebAdaptor"
                     ]
@@ -47,7 +47,7 @@
                 {
                     "Path": "[Portal SSL Certificate Path]",
                     "Password": "[Portal SSL Password]",
-                    "Alias": "[Portal CName Alias]",
+                    "CNameFQDN": "[Portal CName Alias]",
                     "Target": [
                         "Portal"
                     ]
@@ -61,13 +61,6 @@
         "PortalContext": "portal",
         "ServerRole": "GeneralPurposeServer",
         "Credentials": {
-            "PrimarySiteAdmin": {
-                "UserName": "[PrimarySiteAdmin Username]",
-                "Email": "[PrimarySiteAdmin Email]",
-                "Password": "[PrimarySiteAdmin Password]",
-                "SecurityQuestionIndex": 1,
-                "SecurityAnswer": "vanilla"
-            },
             "ServiceAccount": {
                 "Password": "[ServiceAccount Password]",
                 "UserName": "[ServiceAccount Username - Can be a Domain Account]",
@@ -92,7 +85,11 @@
                 "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] "
             },
             "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
-            "ConfigStoreLocation": "C:\\arcgisserver\\config-store"
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
         },
         "Portal": {
             "LicenseFilePath": "[License File Path - Portal ]",
@@ -103,7 +100,14 @@
                 "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
                 "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
             },
-            "ContentDirectoryLocation": "C:\\portalforarcgis\\content\\arcgisportal\\content"
+            "ContentDirectoryLocation": "C:\\portalforarcgis\\content\\arcgisportal\\content",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            }
         },
         "DataStore": {
             "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",

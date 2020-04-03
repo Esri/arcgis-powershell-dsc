@@ -4,7 +4,7 @@ Configuration DataStoreUpgradeConfigure{
         $Version,
 
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
 
         [System.String]
         $ServerMachineName,
@@ -17,7 +17,7 @@ Configuration DataStoreUpgradeConfigure{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"} 
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     
     Node $AllNodes.NodeName {
@@ -34,7 +34,7 @@ Configuration DataStoreUpgradeConfigure{
         {
             ServerHostName = $ServerHostName
             Ensure = 'Present'
-            SiteAdministrator = $SiteAdministratorCredential
+            SiteAdministrator = $ServerPrimarySiteAdminCredential
             ContentDirectory = $ContentDirectoryLocation
             InstallDir = $InstallDir
         }

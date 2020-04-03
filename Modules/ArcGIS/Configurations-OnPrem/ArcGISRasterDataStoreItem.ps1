@@ -17,7 +17,7 @@ Configuration ArcGISRasterDataStoreItem
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
 
         [System.String]
         $PrimaryServerMachine,
@@ -32,7 +32,7 @@ Configuration ArcGISRasterDataStoreItem
         $FileShareLocalPath
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_FileShare
     Import-DSCResource -Name ArcGIS_DataStoreItem
 
@@ -61,7 +61,7 @@ Configuration ArcGISRasterDataStoreItem
             Name = "RasterFileShareDataStore"
             HostName = (Get-FQDN $PrimaryServerMachine)
             Ensure = "Present"
-            SiteAdministrator = $SiteAdministratorCredential
+            SiteAdministrator = $ServerPrimarySiteAdminCredential
             DataStoreType = "RasterStore"
             DataStorePath = if($ExternalFileSharePath){ $ExternalFileSharePath }else{ "\\$($env:ComputerName)\$($FileShareName)" }
         }

@@ -1,16 +1,16 @@
 <#
     .SYNOPSIS
-        Makes a request to the installed Notebook Server to create a New Server Site
+        Makes a request to the installed Mission Server to create a New Server Site
     .PARAMETER ServerHostName
-        Optional Host Name or IP of the Machine on which the Notebook Server has been installed and is to be configured.
+        Optional Host Name or IP of the Machine on which the Mission Server has been installed and is to be configured.
     .PARAMETER Ensure
-        Ensure makes sure that a Notebook Server site is configured. Take the values Present or Absent. 
-        - "Present" ensures that a Notebook server site is created.
-        - "Absent" ensures that existing Notebook server site is deleted.
+        Ensure makes sure that a Mission Server site is configured. Take the values Present or Absent. 
+        - "Present" ensures that a Mission server site is created.
+        - "Absent" ensures that existing Mission server site is deleted.
     .PARAMETER ConfigurationStoreLocation
         Key - Path to Configuration store - Can be a Physical Location or Network Share Address
     .PARAMETER ServerDirectoriesRootLocation
-        Path to Notebook Server Root Directories - Can be a Physical Location or Network Share Address
+        Path to Mission Server Root Directories - Can be a Physical Location or Network Share Address
     .PARAMETER ServerDirectories
         Default Server Directories Object.
     .PARAMETER ConfigStoreCloudStorageConnectionString
@@ -22,7 +22,7 @@
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER LogLevel
-        Defines the Logging Level of Notebook Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
+        Defines the Logging Level of Mission Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
 #>
 function Get-TargetResource
 {
@@ -66,14 +66,6 @@ function Get-TargetResource
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $SiteAdministrator,
-
-        [parameter(Mandatory = $false)]
-        [System.Boolean]
-        $Join,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $PeerServerHostName,
         
         [parameter(Mandatory = $false)]
         [System.String]
@@ -127,14 +119,6 @@ function Set-TargetResource
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $SiteAdministrator,
-
-        [parameter(Mandatory = $false)]
-        [System.Boolean]
-        $Join,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $PeerServerHostName,
         
         [parameter(Mandatory = $false)]
         [System.String]
@@ -152,24 +136,28 @@ function Set-TargetResource
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
 
-    $ServiceName = 'ArcGIS Notebook Server'
+    $ServiceName = 'ArcGIS Mission Server'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
     
-	Write-Verbose "Waiting for Server 'https://$($FQDN):11443/arcgis/admin' to initialize"
-    Wait-ForUrl "https://$($FQDN):11443/arcgis/admin" -HttpMethod 'GET'
+	Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
+    Wait-ForUrl "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET'
     if($Ensure -ieq 'Present') {       
         $Referer = 'http://localhost' 
         $RestartRequired = $false
 
-        $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-        if($configuredHostName -ine $FQDN){
-            Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
-            if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-                # Need to restart the service to pick up the hostname 
-                $RestartRequired = $true 
+        [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Mission Server').RealVersion
+        Write-Verbose "Mission Server Version is $RealVersion"
+        if($RealVersion -ne "10.8"){
+            $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
+            if($configuredHostName -ine $FQDN){
+                Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
+                if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
+                    # Need to restart the service to pick up the hostname 
+                    $RestartRequired = $true 
+                }
             }
-        }   
+        }
 
         if($RestartRequired) {
 			try {
@@ -191,13 +179,11 @@ function Set-TargetResource
                 Write-Verbose "[WARNING] Starting Service $_"
             }
 
-			Write-Verbose "Waiting for Server 'https://$($FQDN):11443/arcgis/admin' to initialize"
-            Wait-ForUrl "https://$($FQDN):11443/arcgis/admin" -HttpMethod 'GET'
+			Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
         }
 
-
-        $ServerUrl = "https://$($FQDN):11443"
-        Write-Verbose "Checking for Notebook Server site on '$ServerUrl'"
+        $ServerUrl = "https://$($FQDN):20443"
+        Write-Verbose "Checking for Mission Server site on '$ServerUrl'"
         $siteExists = $false
         try {  
             $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
@@ -207,66 +193,60 @@ function Set-TargetResource
             Write-Verbose "[WARNING] GetToken returned:- $_"
         }
         if(-not($siteExists)) {
+            [int]$Attempt = 1
+            [bool]$Done = $false
+            while(-not($Done) -and ($Attempt -le 3)) {
+                try {
+                    Write-Verbose 'Creating Site'
+                    if($Attempt -gt 1) {
+                        Write-Verbose "Attempt # $Attempt"   
+                    }            
+                    Invoke-CreateSite -ServerURL $ServerUrl -Credential $SiteAdministrator -ConfigurationStoreLocation $ConfigurationStoreLocation `
+                    -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation `
+                                -ServerDirectories $ServerDirectories -Verbose -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
+                                -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
+                                -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel
+                    $Done = $true
+                    Write-Verbose 'Created Site'
+                }catch{
+                    Write-Verbose "[WARNING] Error while creating site on attempt $Attempt Error:- $_"
+                    if($Attempt -lt 1) {
+                        Write-Verbose "Restarting Service $ServiceName"
+                        Stop-Service -Name $ServiceName  -Force
+                        Write-Verbose 'Stopping the service' 
+                        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'                            
+                        Write-Verbose 'Starting the service'
+                        Start-Service -Name $ServiceName         
+                        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+                        Write-Verbose "Restarted Service $ServiceName"
 
-            if($Join){
-                Write-Verbose 'Joining Site'
-                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer
-                Write-Verbose 'Joined Site'
-            }else{
-                [int]$Attempt = 1
-                [bool]$Done = $false
-                while(-not($Done) -and ($Attempt -le 3)) {
-                    try {
-                        Write-Verbose 'Creating Site'
-                        if($Attempt -gt 1) {
-                            Write-Verbose "Attempt # $Attempt"   
-                        }            
-                        Invoke-CreateSite -ServerURL $ServerUrl -Credential $SiteAdministrator -ConfigurationStoreLocation $ConfigurationStoreLocation `
-                        -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation `
-                                    -ServerDirectories $ServerDirectories -Verbose -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
-                                    -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
-                                    -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel
-                        $Done = $true
-                        Write-Verbose 'Created Site'
-                    }catch{
-                        Write-Verbose "[WARNING] Error while creating site on attempt $Attempt Error:- $_"
-                        if($Attempt -lt 1) {
-                            Write-Verbose "Restarting Service $ServiceName"
-                            Stop-Service -Name $ServiceName  -Force
-                            Write-Verbose 'Stopping the service' 
-                            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'                            
-                            Write-Verbose 'Starting the service'
-                            Start-Service -Name $ServiceName         
-                            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-                            Write-Verbose "Restarted Service $ServiceName"
-
-                            Write-Verbose "Waiting for Server 'https://$($FQDN):11443/arcgis/admin' to initialize"
-                            Wait-ForUrl -Url "https://$($FQDN):11443/arcgis/admin" -HttpMethod 'GET'
-                        }else{
-                            if($_.ToString().IndexOf('The remote name could not be resolved') -gt -1) {
-                                if($Attempt -ge 3) {
-                                    throw "Failed to create site after multiple attempts due to network initialization. Please retry using the back and finish buttons"
-                                }else {
-                                    # ArcGIS Server was not able to resolve the host (networking race conditions). Retry
-                                    Write-Verbose "Possible networking initialization error. Retry site creation after 30 seconds"
-                                    Start-Sleep -Seconds 30
-                                }
+                        Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
+                        Wait-ForUrl -Url "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET'
+                    }else{
+                        if($_.ToString().IndexOf('The remote name could not be resolved') -gt -1) {
+                            if($Attempt -ge 3) {
+                                throw "Failed to create site after multiple attempts due to network initialization. Please retry using the back and finish buttons"
                             }else {
-                                throw $_
+                                # ArcGIS Server was not able to resolve the host (networking race conditions). Retry
+                                Write-Verbose "Possible networking initialization error. Retry site creation after 30 seconds"
+                                Start-Sleep -Seconds 30
                             }
+                        }else {
+                            throw $_
                         }
                     }
-                    $Attempt = $Attempt + 1
                 }
+                $Attempt = $Attempt + 1
             }
-            Write-Verbose "Waiting for Server 'https://$($FQDN):11443/arcgis/admin' to initialize"
-            Wait-ForUrl -Url "https://$($FQDN):11443/arcgis/admin" -HttpMethod 'GET' -Verbose
+            
+            Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
+            Wait-ForUrl -Url "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET' -Verbose
         }else{
             Write-Verbose "Site Already Exists."
         }
 
         #Write-Verbose 'Get Server Token'   
-        $token = Get-ServerToken -ServerEndPoint "https://$($FQDN):11443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+        $token = Get-ServerToken -ServerEndPoint "https://$($FQDN):20443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
 
         Write-Verbose "Ensuring Log Level $LogLevel"	
         $logSettings = Get-LogSettings -ServerURL $ServerUrl -Token $token.token -Referer $Referer
@@ -278,13 +258,13 @@ function Set-TargetResource
             }
             $logSettings.logLevel = $LogLevel
             Write-Verbose "Updating log level to $($logSettings.logLevel) and log dir to $($logSettings.logDir)"
-            Update-LogSettings -ServerURL "https://$($FQDN):11443" -Token $token.token -Referer $Referer -logSettings $logSettings 
+            Update-LogSettings -ServerURL "https://$($FQDN):20443" -Token $token.token -Referer $Referer -logSettings $logSettings 
             #Write-Verbose "Updated log level to $($logSettings.settings.logLevel)"
         }
     }
     elseif($Ensure -ieq 'Absent') {
         Write-Verbose 'Deleting Site'
-        Invoke-DeleteSite -ServerURL "https://$($FQDN):11443" -Credential $SiteAdministrator
+        Invoke-DeleteSite -ServerURL "https://$($FQDN):20443" -Credential $SiteAdministrator
         Write-Verbose 'Site Deleted'
 
         Write-Verbose "Deleting contents of $ConfigStoreRootLocation"
@@ -336,14 +316,6 @@ function Test-TargetResource
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $SiteAdministrator,
-
-        [parameter(Mandatory = $false)]
-        [System.Boolean]
-        $Join,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $PeerServerHostName,
         
         [parameter(Mandatory = $false)]
         [System.String]
@@ -355,7 +327,7 @@ function Test-TargetResource
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'http://localhost'
-    $ServerUrl = "https://$($FQDN):11443"
+    $ServerUrl = "https://$($FQDN):20443"
     $result = $false
     try {        
         Write-Verbose "Checking for site on '$ServerUrl'"
@@ -385,8 +357,10 @@ function Test-TargetResource
         }
     }
 
-    if($result) {
-        $ServiceName = 'ArcGIS Notebook Server'
+    [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Mission Server').RealVersion
+    Write-Verbose "Mission Server Version is $RealVersion"
+    if($result -and ($RealVersion -ne "10.8")) {
+        $ServiceName = 'ArcGIS Mission Server'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
         $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir 
         $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
@@ -448,8 +422,8 @@ function Invoke-CreateSite
         
     if(($ConfigStoreCloudStorageConnectionString) -and ($ConfigStoreCloudStorageConnectionSecret) -and ($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1))
     {
-        $VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-        Write-Verbose "Notebook Server Version - $VersionObject"
+        $VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Mission Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+        Write-Verbose "Mission Server Version - $VersionObject"
         $MajorVersion = $VesionObject.Split('.')[1]
 
         Write-Verbose "Using Azure Cloud Storage for the config store"
@@ -514,6 +488,16 @@ function Invoke-CreateSite
         }
     }
 
+    $directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"}| Measure-Object).Count -gt 0){
+        ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"})
+    }else{
+        @{
+            name = "arcgisjobs"
+            path = "$ServerDirectoriesRootLocation\arcgisjobs"
+            type = "JOBS"
+        }
+    }
+
     $requestParams = @{ 
                         username = $Credential.UserName
                         password = $Credential.GetNetworkCredential().Password
@@ -526,15 +510,16 @@ function Invoke-CreateSite
 
     if(-not([string]::IsNullOrEmpty($ServerLogsLocation))){           
         $requestParams["logsSettings"] = (ConvertTo-Json -Compress -InputObject @{
-            logLevel= $LogLevel;
-            logDir= $ServerLogsLocation;
-            maxErrorReportsCount= 10;
-            maxLogFileAge= 90
+            logLevel = $LogLevel;
+            logDir = $ServerLogsLocation;
+            maxErrorReportsCount = 10;
+            maxLogFileAge = 90;
+            usageMeteringEnabled = $False
         })
     }
 
     # make sure Tomcat is up and running BEFORE sending a request
-    Write-Verbose "Waiting for Server 'https://$($FQDN):11443/arcgis/admin' to initialize"
+    Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
     Wait-ForUrl -Url $baseHostUrl -SleepTimeInSeconds 5 -HttpMethod 'GET' -Verbose
 
     $httpRequestBody = ConvertTo-HttpBody -props $requestParams
@@ -548,61 +533,6 @@ function Invoke-CreateSite
             throw "Create Site Failed.  Code:- $($response.error.code), Error:- $($response.error.message)"
         }
     }   
-}
-
-function Join-Site
-{
-    [CmdletBinding()]
-    Param
-    (
-      [System.String]
-      $ServerName,
-  
-      [System.Management.Automation.PSCredential]
-      $Credential,
-  
-      [System.String]
-      $Referer
-    )
-
-    $ServerFQDN = Get-FQDN $ServerName
-
-	$SiteServerURL = "https://$($ServerFQDN):11443/arcgis/admin"
-	$LocalAdminURL = "https://localhost:11443/arcgis/admin"
-	$JoinSiteUrl   = "$LocalAdminURL/joinSite"
-
-	$JoinSiteParams = @{ adminURL = $SiteServerURL; f = 'json'; username = $Credential.UserName; password = $Credential.GetNetworkCredential().Password }
-	Write-Verbose "Waiting for Site Server URL $SiteServerUrl to respond"
-	Wait-ForUrl $SiteServerUrl -Verbose    
-                  
-	Write-Verbose "Waiting for Local Admin URL $LocalAdminURL to respond"
-	Wait-ForUrl $LocalAdminURL -Verbose  
-    
-    $NumAttempts        = 0           
-	$SleepTimeInSeconds = 30
-	$Success            = $false
-	$Done               = $false
-	while ((-not $Done) -and ($NumAttempts++ -lt 3)){                 
-        $response = Invoke-ArcGISWebRequest -Url $JoinSiteUrl -HttpFormParameters $JoinSiteParams -Referer $Referer -TimeOutSec 360
-        if($response) {
-			if ($response -and $response.status -and ($response.status -ine "success")) {
-				$Done    = $true
-                $Success = $true
-                Write-Verbose "Join Site operation successful. Waiting for $($response.pollAfter) seconds for Notebook Server to initialize."
-                Start-Sleep -Seconds $response.pollAfter
-				break
-			}
-        }
-        Write-Verbose "Attempt # $NumAttempts failed."
-		if ($response.status)   { Write-Verbose "`tStatus   : $($response.status)."   }
-		if ($response.messages) { Write-Verbose "`tMessages : $($response.messages)." }
-		Write-Verbose "Retrying after $SleepTimeInSeconds seconds..."
-        Start-Sleep -Seconds $SleepTimeInSeconds 
-    }
-
-    if (-not($Success)) {
-		throw "Failed to Join Site after multiple attempts. Error on last attempt:- $($json.messages)"
-    }
 }
 
 function Get-LogSettings
@@ -652,7 +582,6 @@ function Update-LogSettings
         Write-Verbose "[WARNING]: Code:- $($response.error.code), Error:- $($response.error.message)" 
     }
 }
-
 
 function Invoke-DeleteSite
 {    

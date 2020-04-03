@@ -10,7 +10,7 @@ Configuration PortalUpgradeStandbyJoinV1{
 
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $PortalSiteAdministratorCredential,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -46,7 +46,7 @@ Configuration PortalUpgradeStandbyJoinV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"} 
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_PortalUpgrade 
     
@@ -90,7 +90,7 @@ Configuration PortalUpgradeStandbyJoinV1{
             PortalHostName                          = $MachineFQDN
             LicenseFilePath                         = $null
             UserLicenseTypeId                       = $null
-            PortalAdministrator                     = $SiteAdministratorCredential 
+            PortalAdministrator                     = $PortalSiteAdministratorCredential 
             AdminEmail                              = $AdminEmail
             AdminSecurityQuestionIndex              = $AdminSecurityQuestionIndex
             AdminSecurityAnswer                     = $AdminSecurityAnswer

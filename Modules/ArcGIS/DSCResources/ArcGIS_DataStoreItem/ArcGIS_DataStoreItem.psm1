@@ -60,7 +60,7 @@ function Test-TargetResource
 
 		[parameter(Mandatory = $false)]
 		[System.String]
-		$HostName = $env:ComputerName,
+		$HostName,
 
         [parameter(Mandatory = $true)]
 		[ValidateSet("Present","Absent")]
@@ -94,7 +94,7 @@ function Test-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$result = $false
-    $FQDN = Get-FQDN $HostName
+    $FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     $ServerUrl = "$($Scheme)://$($FQDN):$Port"
       
@@ -163,7 +163,7 @@ function Set-TargetResource
 
 		[parameter(Mandatory = $false)]
 		[System.String]
-		$HostName = $env:ComputerName,
+		$HostName,
 
         [parameter(Mandatory = $true)]
 		[ValidateSet("Present","Absent")]
@@ -193,7 +193,7 @@ function Set-TargetResource
 		$DataStoreEndpoint
 	)
 	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-	$FQDN = Get-FQDN $HostName
+	$FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     $ServerUrl = "$($Scheme)://$($FQDN):$Port"
     Write-Verbose "ServerURL:- $ServerUrl"

@@ -23,13 +23,6 @@
         "AzureFileShareName": "[Required if CloudStorageType is 'AzureFiles']",
         "CloudNamespace": "[Required id using cloud storage - Unique identifiable string for your deployment to avoid conflicts]",
         "Credentials": {
-            "PrimarySiteAdmin": {
-                "UserName": "[PrimarySiteAdmin Username]",
-                "Email": "[PrimarySiteAdmin Email]",
-                "Password": "[PrimarySiteAdmin Password]",
-                "SecurityQuestionIndex": 1,
-                "SecurityAnswer": "vanilla"
-            },
             "ServiceAccount": {
                 "UserName": "[ServiceAccount Username - Can be a Domain Account]",
                 "Password": "[ServiceAccount Password]",
@@ -102,7 +95,11 @@
                     "physicalPath": "C:\\arcgisserver\\additionaldirs\\testJobs",
                     "directoryType": "JOBS"
                 }
-            ]
+            ],
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
         },
         "Portal": {
             "LicenseFilePath": "[License File Path - Portal ]",
@@ -117,7 +114,14 @@
             "ContentDirectoryLocation": "C:\\portalforarcgis\\content\\arcgisportal\\content",
             "EnableAutomaticAccountCreation": "[Optional - true | False]",
             "DefaultRoleForUser": "[Optional - Values: account_user | account_publisher | <custom role ID>]",
-            "DefaultUserLicenseTypeIdForUser": "[Optional (Valid for 10.7 and later) - Values: fieldWorkerUT | GISProfessionalStdUT | GISProfessionalBasicUT | GISProfessionalAdvUT | creatorUT | editorUT | insightsAnalystUT]"
+            "DefaultUserLicenseTypeIdForUser": "[Optional (Valid for 10.7 and later) - Values: fieldWorkerUT | GISProfessionalStdUT | GISProfessionalBasicUT | GISProfessionalAdvUT | creatorUT | editorUT | insightsAnalystUT]",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            }
         },
         "DataStore": {
             "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",

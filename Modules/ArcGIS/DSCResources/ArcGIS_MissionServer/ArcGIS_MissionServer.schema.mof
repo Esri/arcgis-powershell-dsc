@@ -1,6 +1,6 @@
 
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_NotebookServer")]
-class ArcGIS_NotebookServer : OMI_BaseResource
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_MissionServer")]
+class ArcGIS_MissionServer : OMI_BaseResource
 {
 	[Write] String ServerHostName;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
@@ -12,7 +12,5 @@ class ArcGIS_NotebookServer : OMI_BaseResource
 	[Write] String ConfigStoreCloudStorageAccountName;
 	[Write] String ConfigStoreCloudStorageConnectionSecret;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-	[Write, Description("Is Joining Existing site")] Boolean Join;
-	[Write] String PeerServerHostName;
 	[Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
 };

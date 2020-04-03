@@ -46,7 +46,19 @@ Configuration PortalUpgradeV1{
 
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $PortalSiteAdministratorCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AdminEmail,
+
+        [Parameter(Mandatory=$False)]
+        [System.Byte]
+        $AdminSecurityQuestionIndex,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AdminSecurityAnswer,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -75,7 +87,7 @@ Configuration PortalUpgradeV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_Service_Account
@@ -120,7 +132,7 @@ Configuration PortalUpgradeV1{
                 ArcGIS_PortalUnregister UnregisterStandyPortal
                 {
                     PortalEndPoint = $MachineFQDN
-                    PrimarySiteAdmin = $SiteAdministratorCredential
+                    PortalAdministrator = $PortalSiteAdministratorCredential
                     StandbyMachine = $StandbyMachine
                     Version = $Version
                 }
@@ -184,7 +196,7 @@ Configuration PortalUpgradeV1{
             if($MajorVersion -gt 5){
                 ArcGIS_PortalUpgrade PortalUpgrade
                 {
-                    PortalAdministrator = $SiteAdministratorCredential 
+                    PortalAdministrator = $PortalSiteAdministratorCredential 
                     PortalHostName = $MachineFQDN
                     LicenseFilePath = $null
                     DependsOn = $Depends
@@ -195,11 +207,11 @@ Configuration PortalUpgradeV1{
                 {
                     Ensure = 'Present'
                     PortalHostName = $MachineFQDN
-                    PortalAdministrator = $SiteAdministratorCredential 
+                    PortalAdministrator = $PortalSiteAdministratorCredential 
                     DependsOn =  $Depends
-                    AdminEmail = $SiteAdministratorCredential
-                    AdminSecurityQuestionIndex = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityQuestionIndex
-                    AdminSecurityAnswer = $ConfigurationData.ConfigData.Credentials.PrimarySiteAdmin.SecurityAnswer
+                    AdminEmail = $AdminEmail
+                    AdminSecurityQuestionIndex = $AdminSecurityQuestionIndex
+                    AdminSecurityAnswer = $AdminSecurityAnswer
                     ContentDirectoryLocation = $ContentDirectoryLocation
                     Join = $False
                     IsHAPortal =  if($IsMultiMachinePortal){$True}else{$False}
@@ -217,7 +229,7 @@ Configuration PortalUpgradeV1{
                         PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $MachineFQDN }}
                         PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $Context }
                         PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
-                        PortalAdministrator     = $SiteAdministratorCredential
+                        PortalAdministrator     = $PortalSiteAdministratorCredential
                         DependsOn               = $Depends
                     }
                     $Depends += "[ArcGIS_PortalSettings]PortalSettings"
@@ -230,7 +242,7 @@ Configuration PortalUpgradeV1{
                 ComponentHostName = $PrimaryPortalHostName
                 ComponentContext =  "arcgis"
                 Ensure = "Present"
-                Credential =  $SiteAdministratorCredential
+                Credential =  $PortalSiteAdministratorCredential
                 RetryIntervalSec = 60
                 RetryCount = 60
             }

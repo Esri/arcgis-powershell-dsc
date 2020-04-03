@@ -3,7 +3,7 @@ Configuration ArcGISPortalSettings{
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $PortalAdministratorCredential,
 
         [Parameter(Mandatory=$false)]
         [System.String]
@@ -23,7 +23,7 @@ Configuration ArcGISPortalSettings{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_PortalSettings
     
     Node $AllNodes.NodeName
@@ -44,7 +44,7 @@ Configuration ArcGISPortalSettings{
                 PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ Get-FQDN $PrimaryPortalMachine }}
                 PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $PortalContext }
                 PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
-                PortalAdministrator     = $SiteAdministratorCredential
+                PortalAdministrator     = $PortalAdministratorCredential
             }
         }
     }
