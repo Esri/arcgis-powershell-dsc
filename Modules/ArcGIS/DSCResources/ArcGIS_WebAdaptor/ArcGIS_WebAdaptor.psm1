@@ -6,7 +6,7 @@
         - "Present" ensures that WebAdaptor is Configured.
         - "Absent" ensures that WebAdaptor is unconfigured - Not Implemented.
     .PARAMETER Component
-        Sets the type of WebAdaptor to be installed - Server or Portal
+        Sets the type of WebAdaptor to be installed - Server, Notebook Server, Mission Server or Portal
     .PARAMETER HostName
         Host Name of the Machine on which the WebAdaptor is Installed
     .PARAMETER ComponentHostName
@@ -32,7 +32,7 @@ function Get-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","Portal")]
         [System.String]
         $Component,
 
@@ -72,7 +72,7 @@ function Set-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","Portal")]
         [System.String]
         $Component,
 
@@ -171,7 +171,7 @@ function Test-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","Portal")]
         [System.String]
         $Component,
 
@@ -206,7 +206,7 @@ function Test-TargetResource
         if($wa.InstallLocation -match "\\$($Context)\\"){
             $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
             [xml]$WAConfig = Get-Content $WAConfigPath
-            $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}else{"https://$($ComponentHostName):6443"}
+            $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}else{"https://$($ComponentHostName):6443"}
             $PortalSiteUrl = "https://$($ComponentHostName):7443"
             if(($Component -ieq "Server") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
                 if($OverwriteFlag){
@@ -237,7 +237,19 @@ function Test-TargetResource
                         $result =  $false
                     }
                 }
-            }elseif(($Component -ieq "Portal") -and ($WAConfig.Config.Portal.URL -like $PortalSiteUrl)){
+            }
+            elseif(($Component -ieq "MissionServer") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
+                if($OverwriteFlag){
+                    $result =  $false
+                }else{
+                    if(URLAvailable("https://$Hostname/$Context/admin")){
+                        $result =  $true
+                    }else{
+                        $result =  $false
+                    }
+                }
+            }
+            elseif(($Component -ieq "Portal") -and ($WAConfig.Config.Portal.URL -like $PortalSiteUrl)){
                 if($OverwriteFlag){
                   $result =  $false
                 }else{
@@ -289,7 +301,6 @@ function Start-RegisterWebAdaptorCMDLineTool{
 
     $Arguments = ""
     if($Component -ieq 'Server') {
-                
         $AdminAccessString = "false"
         if($AdminAccessEnabled){
             $AdminAccessString = "true"
@@ -318,7 +329,15 @@ function Start-RegisterWebAdaptorCMDLineTool{
             }
             $Arguments += " /a $AdminAccessString"
         }
-
+    }
+    elseif($Component -ieq 'MissionServer') {
+        $SiteURL = "https://$($ComponentHostName):20443"
+        $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
+        Write-Verbose $WAUrl
+        $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
+        Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
+        $WAMode = "mission"
+        $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
     }
     elseif($Component -ieq 'Portal'){
         $SiteURL = "https://$($ComponentHostName):7443"

@@ -17,7 +17,7 @@ Configuration ArcGISServer
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
         
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -83,7 +83,7 @@ Configuration ArcGISServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_WindowsService
@@ -309,11 +309,12 @@ Configuration ArcGISServer
 
         ArcGIS_Server "Server$($Node.NodeName)"
         {
+            ServerHostName = $MachineFQDN
             Ensure = 'Present'
-            SiteAdministrator = $SiteAdministratorCredential
+            SiteAdministrator = $ServerPrimarySiteAdminCredential
             ConfigurationStoreLocation = $ConfigStoreLocation
             ServerDirectoriesRootLocation = $ServerDirectoriesRootLocation
-            ServerDirectories = (ConvertTo-JSON $ServerDirectories -Depth 5)
+            ServerDirectories = if($ServerDirectories -ne $null){ (ConvertTo-JSON $ServerDirectories -Depth 5) }else{ $null }
             ServerLogsLocation = $ServerLogsLocation
             LocalRepositoryPath = $LocalRepositoryPath
             Join =  if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false } 
@@ -329,9 +330,10 @@ Configuration ArcGISServer
         if($Node.SSLCertificate){
             ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
             {
+                ServerHostName = $MachineFQDN
                 Ensure = 'Present'
                 SiteName = 'arcgis'
-                SiteAdministrator = $SiteAdministratorCredential                         
+                SiteAdministrator = $ServerPrimarySiteAdminCredential                         
                 CName =  $Node.SSLCertificate.CName
                 CertificateFileLocation = $Node.SSLCertificate.Path
                 CertificatePassword = $Node.SSLCertificate.Password
@@ -345,9 +347,10 @@ Configuration ArcGISServer
             if(@("10.5.1").Contains($ConfigurationData.ConfigData.Version)){
                 ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
                 {
+                    ServerHostName = $MachineFQDN
                     Ensure = 'Present'
                     SiteName = 'arcgis'
-                    SiteAdministrator = $SiteAdministratorCredential                         
+                    SiteAdministrator = $ServerPrimarySiteAdminCredential                         
                     CName = $MachineFQDN
                     ServerType = "GeneralPurposeServer"
                     EnableSSL = $True
@@ -360,8 +363,9 @@ Configuration ArcGISServer
         if ($RegisteredDirectories -and ($Node.NodeName -ieq $PrimaryServerMachine)) {
             ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"
             { 
+                ServerHostName = $MachineFQDN
                 Ensure = 'Present'
-                SiteAdministrator = $SiteAdministratorCredential
+                SiteAdministrator = $ServerPrimarySiteAdminCredential
                 DirectoriesJSON = $RegisteredDirectories
                 DependsOn = $Depends
             }
@@ -409,9 +413,10 @@ Configuration ArcGISServer
 
             ArcGIS_GeoEvent ArcGIS_GeoEvent
             {
+                ServerHostName            = $MachineFQDN
                 Name	                  = 'ArcGIS GeoEvent'
                 Ensure	                  =  "Present"
-                SiteAdministrator         = $SiteAdministratorCredential
+                SiteAdministrator         = $ServerPrimarySiteAdminCredential
                 WebSocketContextUrl       = "wss://$($MachineFQDN):6143/arcgis" #Fix this
                 DependsOn                 = $Depends
                 #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }

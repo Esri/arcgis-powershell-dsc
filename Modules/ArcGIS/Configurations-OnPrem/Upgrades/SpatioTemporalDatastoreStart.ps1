@@ -1,14 +1,14 @@
 Configuration SpatioTemporalDatastoreStart{
     param(
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
 
         [System.String]
         $ServerMachineName
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"} 
     Import-DscResource -Name ArcGIS_BDSUpgradePost
 
     Node $AllNodes.NodeName {
@@ -23,7 +23,7 @@ Configuration SpatioTemporalDatastoreStart{
         
         ArcGIS_BDSUpgradePost SpatioTemporalDatastoreStart{
             ServerHostName = $ServerMachineHostName
-            SiteAdministrator = $SiteAdministratorCredential
+            SiteAdministrator = $ServerPrimarySiteAdminCredential
             Ensure = 'Present'
         }
     }

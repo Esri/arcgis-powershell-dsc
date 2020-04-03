@@ -62,13 +62,6 @@
         "FileShareName": "[File Share Name]",
         "ServerRole": "GeneralPurposeServer",
         "Credentials": {
-            "PrimarySiteAdmin": {
-                "UserName": "[PrimarySiteAdmin Username]",
-                "Email": "[PrimarySiteAdmin Email]",
-                "Password": "[PrimarySiteAdmin Password]",
-                "SecurityQuestionIndex": 1,
-                "SecurityAnswer": "vanilla"
-            },
             "ServiceAccount": {
                 "Password": "[ServiceAccount Password]",
                 "UserName": "[ServiceAccount Username - Can be a Domain Account]",
@@ -85,7 +78,11 @@
             "ServerDirectoriesRootLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\directories",
             "ConfigStoreLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\config-store",
             "ExternalLoadBalancer": "",
-            "InternalLoadBalancer": ""
+            "InternalLoadBalancer": "",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
         },
         "Portal": {
             "LicenseFilePath": "[License File Path - Portal ]",
@@ -98,7 +95,14 @@
             },
             "ContentDirectoryLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\portalforarcgis\\content\\arcgisportal\\content",
             "ExternalLoadBalancer": "",
-            "InternalLoadBalancer": ""
+            "InternalLoadBalancer": "",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            }
         },
         "DataStore": {
             "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",

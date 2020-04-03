@@ -9,7 +9,7 @@ function Get-TargetResource
         $PortalEndPoint,
             
 		[System.Management.Automation.PSCredential]
-        $PrimarySiteAdmin,
+        $PortalAdministrator,
         
         [parameter(Mandatory = $true)]
         [System.String]
@@ -36,7 +36,7 @@ function Test-TargetResource
         $PortalEndPoint,
             
 		[System.Management.Automation.PSCredential]
-        $PrimarySiteAdmin,
+        $PortalAdministrator,
         
         [parameter(Mandatory = $true)]
         [System.String]
@@ -56,7 +56,7 @@ function Test-TargetResource
     
     if(-not($result)){
 		$Referer = 'http://localhost'
-		$token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PrimarySiteAdmin -Referer $Referer
+		$token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
     
 		$Machines = Invoke-ArcGISWebRequest -Url ("https://$($PortalEndPoint):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
 		$StandbyFlag = $false
@@ -85,7 +85,7 @@ function Set-TargetResource
         $PortalEndPoint,
             
 		[System.Management.Automation.PSCredential]
-        $PrimarySiteAdmin,
+        $PortalAdministrator,
         
         [parameter(Mandatory = $true)]
         [System.String]
@@ -100,7 +100,7 @@ function Set-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $Referer = 'http://localhost'
-    $token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PrimarySiteAdmin -Referer $Referer
+    $token = Get-PortalToken -PortalHostName $PortalEndPoint -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
         
     Write-Verbose "Unregistering $StandbyMachine Portal"
     $StandbyMachineHostName = Get-FQDN $StandbyMachine

@@ -21,7 +21,7 @@ Configuration ArcGISDataStore
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -53,7 +53,7 @@ Configuration ArcGISDataStore
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore
@@ -266,8 +266,9 @@ Configuration ArcGISDataStore
 
         ArcGIS_DataStore "DataStore$($Node.NodeName)"
         {
+            DatastoreMachineHostName = (Get-FQDN $Node.NodeName)
             Ensure = 'Present'
-            SiteAdministrator = $SiteAdministratorCredential
+            SiteAdministrator = $ServerPrimarySiteAdminCredential
             ServerHostName = (Get-FQDN $PrimaryServerMachine)
             ContentDirectory = $ContentDirectoryLocation
             DependsOn = $Depends

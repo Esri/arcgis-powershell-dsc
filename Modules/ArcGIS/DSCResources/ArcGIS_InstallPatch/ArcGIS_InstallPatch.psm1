@@ -155,6 +155,9 @@ function Test-TargetResource
     if($Name -ieq "Notebook Server"){
         $ComponentName = 'NotebookServer'
     }
+    if($Name -ieq "Mission Server"){
+        $ComponentName = 'MissionServer'
+    }
 
     if(-not($ProductId)){
         $trueName = $Name

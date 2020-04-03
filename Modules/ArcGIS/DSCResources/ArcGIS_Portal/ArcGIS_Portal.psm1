@@ -409,7 +409,7 @@ function Set-TargetResource {
     $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
 
     if ((Test-Path -Path $InstallDir)) {    
-        $expectedHostIdentifierType = 'hostname'
+        $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
         $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
         $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
         if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
@@ -784,8 +784,8 @@ function Test-TargetResource {
         
         $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
 
-        $expectedHostIdentifierType = 'hostname'
-		$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
+        $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
+        $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
 		$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
 		if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
             Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        

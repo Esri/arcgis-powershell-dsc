@@ -1,6 +1,8 @@
 <#
     .SYNOPSIS
         Makes a request to the installed Server to create a New Server Site or Join it to an existing Server Site
+    .PARAMETER ServerHostName
+        Optional Host Name or IP of the Machine on which the Server has been installed and is to be configured.
     .PARAMETER Ensure
         Ensure makes sure that a Server site is configured and joined to site if specified. Take the values Present or Absent. 
         - "Present" ensures that a server site is created or the server is joined to an existing site.
@@ -44,6 +46,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[ValidateSet("Present","Absent")]
         [System.String]
         $Ensure,    
@@ -113,6 +119,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure,
@@ -180,7 +190,7 @@ function Set-TargetResource
         #Write-Verbose ("PSA Password:- " + $SiteAdministrator.GetNetworkCredential().Password) 
     }
 
-    $FQDN = Get-FQDN $env:COMPUTERNAME    
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
 
 	$ServiceName = 'ArcGIS Server'
@@ -263,7 +273,7 @@ function Set-TargetResource
         if($Join) {
             if(-not($siteExists)) {
                 Write-Verbose 'Joining to Server Site'
-                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer -CurrentMachineName $env:ComputerName -DeploymentMajorVersion $DeploymentImageVersion.Minor
+                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer -CurrentMachineServerHostName $FQDN -DeploymentMajorVersion $DeploymentImageVersion.Minor
                 Write-Verbose 'Joined to Server Site'
             }else{
                 Write-Verbose "Skipping Join site operation. $FQDN already belongs to a site."
@@ -415,6 +425,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
         [parameter(Mandatory = $true)]
         [System.String]
         $ConfigurationStoreLocation,
@@ -477,7 +491,7 @@ function Test-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    $FQDN = Get-FQDN $env:COMPUTERNAME   
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):6443"
@@ -811,7 +825,7 @@ function Join-Site
         $Referer,
 
         [System.String]
-        $CurrentMachineName,
+        $CurrentMachineServerHostName,
 
         [System.String]
         $DeploymentMajorVersion
@@ -867,7 +881,7 @@ function Join-Site
 	##
 	## Adding site (might) restart the server instance (Wait for admin endpoint to comeback up)
 	##
-	$LocalMachineFQDN = "https://$(Get-FQDN $CurrentMachineName):6443/arcgis/admin/"
+	$LocalMachineFQDN = "https://$($CurrentMachineServerHostName):6443/arcgis/admin/"
 	Write-Verbose "Waiting for Machine URL $LocalMachineFQDN to respond"
 	Wait-ForUrl $LocalMachineFQDN -Verbose
   
@@ -879,9 +893,9 @@ function Join-Site
     
     ####### Add to cluster
     if($DeploymentMajorVersion -lt 8){
-        Write-Verbose "Adding machine '$CurrentMachineName' to cluster '$clusterName'"  
+        Write-Verbose "Adding machine '$CurrentMachineServerHostName' to cluster '$clusterName'"  
         $AddMachineUrl  = "$LocalAdminURL/clusters/$clusterName/machines/add" 
-        $AddMachineParams = @{ token = $token.token; f = 'json';machineNames = $CurrentMachineName }
+        $AddMachineParams = @{ token = $token.token; f = 'json';machineNames = $CurrentMachineServerHostName }
 
         $NumAttempts        = 1 
         $SleepTimeInSeconds = 30
@@ -906,7 +920,7 @@ function Join-Site
             throw "Failed to add machine to cluster. Error on last attempt:- $($response.messages)"
         }
 
-        Write-Verbose "Machine '$CurrentMachineName' is added to cluster '$clusterName'"
+        Write-Verbose "Machine '$CurrentMachineServerHostName' is added to cluster '$clusterName'"
     }
 }  
 

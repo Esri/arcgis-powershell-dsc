@@ -2,6 +2,7 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_LogHarvester")]
 class ArcGIS_LogHarvester : OMI_BaseResource
 {
+	[Write] String HostName;
 	[Key, ValueMap{"Server"}, Values{"Server"}] String ComponentType;
 	[Write, Description("Enable Harvester Plugin for Server and Service Logs")] Boolean EnableLogHarvesterPlugin;
 	[Write] String LogOutputFolder;

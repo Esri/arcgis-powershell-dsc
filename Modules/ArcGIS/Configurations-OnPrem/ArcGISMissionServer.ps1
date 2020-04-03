@@ -1,4 +1,4 @@
-Configuration ArcGISNotebookServer
+Configuration ArcGISMissionServer
 {
     param(
         [Parameter(Mandatory=$true)]
@@ -70,9 +70,8 @@ Configuration ArcGISNotebookServer
         $DebugMode = $False
     )
 
-    Import-DscResource -Name ArcGIS_NotebookServer
-    Import-DscResource -Name ArcGIS_NotebookPostInstall
-    Import-DscResource -Name ArcGIS_NotebookServerSettings
+    Import-DscResource -Name ArcGIS_MissionServer
+    Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_WindowsService
@@ -92,11 +91,11 @@ Configuration ArcGISNotebookServer
         if($CloudStorageType -ieq 'AzureFiles') {
             $AzureFilesEndpoint = if($Pos -gt -1){$StorageAccountCredential.UserName.Replace('.blob.','.file.')}else{$StorageAccountCredential.UserName}                   
             $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
-            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\notebookserver\config-store"
-            $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\notebookserver\server-dirs" 
+            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\missionserver\config-store"
+            $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\missionserver\server-dirs" 
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($CloudNamespace)notebookserver$($EndpointSuffix);DefaultEndpointsProtocol=https;"
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($CloudNamespace)missionserver$($EndpointSuffix);DefaultEndpointsProtocol=https;"
             $ConfigStoreCloudStorageAccountName = "AccountName=$AccountName"
             $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($CloudStorageCredentials.GetNetworkCredential().Password)"
         }
@@ -112,33 +111,33 @@ Configuration ArcGISNotebookServer
         }
 
         $MachineFQDN = Get-FQDN $Node.NodeName
-        $IsMultiMachineNotebookServer = (($AllNodes | Measure-Object).Count -gt 1)
+        $IsMultiMachineMissionServer = (($AllNodes | Measure-Object).Count -gt 1)
         $DependsOn = @()
 
-        ArcGIS_xFirewall NotebookServer_FirewallRules
+        ArcGIS_xFirewall MissionServer_FirewallRules
         {
-            Name                  = "ArcGISNotebookServer"
-            DisplayName           = "ArcGIS for Notebook Server"
-            DisplayGroup          = "ArcGIS for Notebook Server"
+            Name                  = "ArcGISMissionServer"
+            DisplayName           = "ArcGIS for Mission Server"
+            DisplayGroup          = "ArcGIS for Mission Server"
             Ensure                = 'Present'
             Access                = "Allow"
             State                 = "Enabled"
             Profile               = ("Domain","Private","Public")
-            LocalPort             = ("11443")
+            LocalPort             = ("20443","20300","20301")
             Protocol              = "TCP"
             DependsOn       	   = $DependsOn
         }
-        $DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
+        $DependsOn += '[ArcGIS_xFirewall]MissionServer_FirewallRules'
 
-        ArcGIS_WindowsService ArcGIS_for_NotebookServer_Service
+        ArcGIS_WindowsService ArcGIS_for_MissionServer_Service
         {
-            Name            = 'ArcGIS Notebook Server'
+            Name            = 'ArcGIS Mission Server'
             Credential      = $ServiceCredential
             StartupType     = 'Automatic'
             State           = 'Running' 
             DependsOn       = $DependsOn
         }
-        $DependsOn += '[ArcGIS_WindowsService]ArcGIS_for_NotebookServer_Service'
+        $DependsOn += '[ArcGIS_WindowsService]ArcGIS_for_MissionServer_Service'
 
         $DataDirs = @()
         if($null -ne $CloudStorageType){
@@ -163,16 +162,16 @@ Configuration ArcGISNotebookServer
             $DataDirs += $ServerLogsLocation
         }
 
-        ArcGIS_Service_Account NotebookServer_Service_Account
+        ArcGIS_Service_Account MissionServer_Service_Account
         {
-            Name            = 'ArcGIS Notebook Server'
+            Name            = 'ArcGIS Mission Server'
             RunAsAccount    = $ServiceCredential
             IsDomainAccount = $ServiceCredentialIsDomainAccount
             Ensure          = 'Present'
             DataDir         = $DataDirs
             DependsOn       = $DependsOn
         }
-        $DependsOn += '[ArcGIS_Service_Account]NotebookServer_Service_Account'
+        $DependsOn += '[ArcGIS_Service_Account]MissionServer_Service_Account'
 
         if($AzureFilesEndpoint -and $CloudStorageCredentials -and ($CloudStorageType -ieq 'AzureFiles')) 
         {
@@ -204,7 +203,7 @@ Configuration ArcGISNotebookServer
         if($Node.NodeName -ine $PrimaryServerMachine)
         {
             WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
-                ResourceName = "[ArcGIS_NotebookServer]NotebookServer$($PrimaryServerMachine)"
+                ResourceName = "[ArcGIS_MissionServer]MissionServer$($PrimaryServerMachine)"
                 NodeName = $PrimaryServerMachine
                 RetryIntervalSec = 60
                 RetryCount = 100
@@ -213,7 +212,7 @@ Configuration ArcGISNotebookServer
             $DependsOn += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
         }
 
-        ArcGIS_NotebookServer "NotebookServer$($Node.NodeName)"
+        ArcGIS_MissionServer "MissionServer$($Node.NodeName)"
         {
             ServerHostName                          = $MachineFQDN
             Ensure                                  = 'Present'
@@ -226,14 +225,12 @@ Configuration ArcGISNotebookServer
             ConfigStoreCloudStorageAccountName      = $ConfigStoreCloudStorageAccountName
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
             ServerLogsLocation                      = $ServerLogsLocation
-            Join                                    = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
-            PeerServerHostName                      = Get-FQDN $PrimaryServerMachine
             DependsOn                               = $DependsOn
         }
-        $DependsOn += "[ArcGIS_NotebookServer]NotebookServer$($Node.NodeName)"
+        $DependsOn += "[ArcGIS_MissionServer]MissionServer$($Node.NodeName)"
 
         if($Node.SSLCertificate){
-            ArcGIS_Server_TLS "NotebookServer_TLS_$($Node.NodeName)"
+            ArcGIS_Server_TLS "MissionServer_TLS_$($Node.NodeName)"
             {
                 ServerHostName = $MachineFQDN
                 Ensure = 'Present'
@@ -244,18 +241,10 @@ Configuration ArcGISNotebookServer
                 CertificatePassword = $Node.SSLCertificate.Password
                 EnableSSL = $True
                 SslRootOrIntermediate = $SslRootOrIntermediate
-                ServerType = "NotebookServer"
+                ServerType = "MissionServer"
                 DependsOn = $DependsOn
             }
-            $DependsOn += "[ArcGIS_Server_TLS]NotebookServer_TLS_$($Node.NodeName)"
-        }
-
-        if($ContainerImagePaths.Count -gt 0){
-            ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                SiteName            = 'arcgis' 
-                ContainerImagePaths = $ContainerImagePaths
-                DependsOn           = $DependsOn
-            }
+            $DependsOn += "[ArcGIS_Server_TLS]MissionServer_TLS_$($Node.NodeName)"
         }
     }
 }

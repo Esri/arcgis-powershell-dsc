@@ -17,7 +17,7 @@ Configuration ArcGISPortal
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $PortalAdministratorCredential,
 
         [Parameter(Mandatory=$True)]
         [System.String]
@@ -97,7 +97,7 @@ Configuration ArcGISPortal
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_WindowsService
@@ -290,7 +290,7 @@ Configuration ArcGISPortal
             PortalHostName = $MachineFQDN
             LicenseFilePath = $LicenseFilePath
             UserLicenseTypeId = $UserLicenseTypeId
-            PortalAdministrator = $SiteAdministratorCredential 
+            PortalAdministrator = $PortalAdministratorCredential 
             DependsOn =  $Depends
             AdminEmail = $AdminEmail
             AdminSecurityQuestionIndex = $AdminSecurityQuestionIndex
@@ -313,9 +313,10 @@ Configuration ArcGISPortal
         if($Node.SSLCertificate){
             ArcGIS_Portal_TLS ArcGIS_Portal_TLS
             {
+                PortalEndPoint          = $MachineFQDN
                 Ensure                  = 'Present'
                 SiteName                = 'arcgis'
-                SiteAdministrator       = $SiteAdministratorCredential 
+                SiteAdministrator       = $PortalAdministratorCredential 
                 CName                   = $Node.SSLCertificate.CName
                 CertificateFileLocation = $Node.SSLCertificate.Path
                 CertificatePassword     = $Node.SSLCertificate.Password

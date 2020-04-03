@@ -1,6 +1,8 @@
 <#
     .SYNOPSIS
         Makes a request to Harvest ArcGIS Enterprise Component logs in a standardized format using Log Harvestor Plugin
+    .PARAMETER HostName
+        Optional Host Name or IP of the Machine on which the component has been installed and is to be configured.
     .PARAMETER ComponentType
         ArcGIS Enterprise Component Name for which the Logs need to be harvested (Valid Value - Server)
     .PARAMETER EnableLogHarvesterPlugin
@@ -14,6 +16,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
     (
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $HostName,
+
         [ValidateSet("Server")]
         [parameter(Mandatory = $true)]    
         [System.String]
@@ -36,6 +42,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
     (
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $HostName,
+     
         [ValidateSet("Server")]
         [parameter(Mandatory = $true)]    
         [System.String]
@@ -139,7 +149,7 @@ function Set-TargetResource
     }
 
     if($ComponentType -eq "Server"){
-        $FQDN = Get-FQDN $env:COMPUTERNAME
+        $FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }
         Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
         Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
     }
@@ -151,6 +161,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
     (
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $HostName,
+
         [ValidateSet("Server")]
         [parameter(Mandatory = $true)]    
         [System.String]

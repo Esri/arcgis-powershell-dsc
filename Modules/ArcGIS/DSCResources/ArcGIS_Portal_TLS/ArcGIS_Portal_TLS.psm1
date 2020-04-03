@@ -89,12 +89,8 @@ function Set-TargetResource
     if($CertificateFileLocation -and (Test-Path $CertificateFileLocation)) 
 	{
 		$result = $false
-        $MachineEndPoint = if($PortalEndPoint) { $PortalEndPoint} else { $env:COMPUTERNAME }
-	    $FQDN = $MachineEndPoint
-        if($FQDN.IndexOf('.') -lt 0) {
-            $FQDN = Get-FQDN $MachineEndPoint
-        }
-        $PortalUrl = "https://$($FQDN):7443"  
+        $FQDN = if($PortalEndPoint) { Get-FQDN $PortalEndPoint} else { Get-FQDN $env:COMPUTERNAME }
+	    $PortalUrl = "https://$($FQDN):7443"  
         $PortalAdminUrl = "$($PortalUrl)/$SiteName/portaladmin/"
 		$Referer = $PortalUrl
 		try{
@@ -298,11 +294,7 @@ function Test-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $false
-    $MachineEndPoint = if($PortalEndPoint) { $PortalEndPoint} else { $env:COMPUTERNAME }	
-	$FQDN = $MachineEndPoint
-    if(-not($FQDN -as [ipaddress])) {
-        $FQDN = Get-FQDN $MachineEndPoint
-    }
+    $FQDN = if($PortalEndPoint) { Get-FQDN $PortalEndPoint } else { Get-FQDN $env:COMPUTERNAME }
     $PortalURL = "https://$($FQDN):7443" 
     $PortalAdminUrl = "$($PortalURL)/$SiteName/portaladmin/"
 	#Write-Verbose "Waiting for portal at 'https://$($FQDN):7443/$($SiteName)/sharing/rest/' to initialize" 

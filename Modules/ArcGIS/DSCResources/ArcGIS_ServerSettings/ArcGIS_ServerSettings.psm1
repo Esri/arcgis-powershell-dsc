@@ -127,7 +127,7 @@ function Set-TargetResource
 
 	if($RestartRequired)
     {
-		$ServiceName = if($ServerType -ieq "NotebookServer"){ 'ArcGIS Notebook Server' }else{'ArcGIS Server'}
+		$ServiceName = 'ArcGIS Server'
         Write-Verbose "Restarting Service $ServiceName"
 		Stop-Service -Name $ServiceName  -Force		
 		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'		

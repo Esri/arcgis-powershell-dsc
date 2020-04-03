@@ -4,7 +4,7 @@ Configuration ArcGISFederation
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential,
+        $ServerPrimarySiteAdminCredential,
         
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -61,7 +61,7 @@ Configuration ArcGISFederation
         
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
     Import-DscResource -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName
@@ -87,7 +87,7 @@ Configuration ArcGISFederation
                 ServerSiteAdminUrlContext = $ServerSiteAdminUrlContext
                 Ensure = "Present"
                 RemoteSiteAdministrator = $RemoteSiteAdministrator
-                SiteAdministrator = $SiteAdministratorCredential
+                SiteAdministrator = $ServerPrimarySiteAdminCredential
                 ServerRole = if($IsHostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
                 ServerFunctions = $ServerRole
             }  

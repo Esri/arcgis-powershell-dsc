@@ -451,9 +451,19 @@ function Invoke-LicenseSoftware
             }
         }
     }else{
-        if($Product -ieq "Server" -and $ServerRole -ieq "NotebookServer" -and ($Version.Split('.')[1] -ge 8)){
-            $InstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
-            $SoftwareAuthExePath = "$($InstallLocation)framework\bin\SoftwareAuthorization.exe"
+        if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($Version.Split('.')[1] -ge 8)){
+            $ServerTypeName = "Server"
+            if($ServerRole -ieq "NotebookServer"){ 
+                $ServerTypeName = "Notebook Server" 
+            }elseif($ServerRole -ieq "MissionServer"){ 
+                $ServerTypeName = "Mission Server"
+            }
+            $InstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ServerTypeName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+            if($ServerRole -ieq "MissionServer"){
+                $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorization.exe"
+            }else{
+                $SoftwareAuthExePath = "$($InstallLocation)framework\bin\SoftwareAuthorization.exe"
+            }
         }
     }
     Write-Verbose "Licensing Product [$Product] using Software Authorization Utility at $SoftwareAuthExePath" -Verbose
@@ -889,12 +899,12 @@ function Get-ComponentCode
        [CmdletBinding()]
        param
        (
-        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","Monitor","WebStyles","Desktop","Pro","LicenseManager")]
+        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","MissionServer","Monitor","WebStyles","Desktop","Pro","LicenseManager")]
         [parameter(Mandatory = $true)]
         [System.String]
         $ComponentName,
 
-        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","2018.0","2018.1","2019.0","2019.1","2019.2")]
+        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0")]
         [parameter(Mandatory = $true)]
         [System.String]
         $Version
@@ -954,6 +964,9 @@ function Get-ComponentCode
             '10.7.1' = 'F6DF77B9-F35E-4877-A7B1-63E1918B4E19'
             '10.8' = 'B1DB581E-E66C-4E58-B9E3-50A4D6CB5982'
         }
+        MissionServer = @{
+            '10.8' = 'A1A58B32-2ADF-4EAD-AC84-BE97318CA569'
+        }
         Monitor = @{
             '10.7' = '0497042F-0CBB-40C0-8F62-F1922B90E12E'
             '10.7.1' = 'FF811F17-42F9-4539-A879-FC8EDB9D6C46'
@@ -976,6 +989,7 @@ function Get-ComponentCode
             '2019.0' = '23696ED6-78BA-44A8-B4C7-1BC979131533'
             '2019.1' = 'BA3C546E-6FAC-405C-B2C9-30BC6E26A7A9'
             '2019.2' = '77F1D4EB-0225-4626-BB9E-7FCB4B0309E5'
+            '2020.0' = 'F89EA66A-6AC2-401C-B8A0-E3ABDB5EDC10'
         }
         Pro = @{
             '2.0' = '28A4967F-DE0D-4076-B62D-A1A9EA62FF0A'
@@ -983,7 +997,7 @@ function Get-ComponentCode
             '2.2' = 'A23CF244-D194-4471-97B4-37D448D2DE76'
             '2.3' = '9CB8A8C5-202D-4580-AF55-E09803BA1959'
             '2.4' = 'E3B1CE52-A1E6-4386-95C4-5AB450EF57BD'
-            '2.5' = '0D695F82-EB12-4430-A241-20226042FD40'	
+            '2.5' = '0D695F82-EB12-4430-A241-20226042FD40'
         }
     }
     $ProductCodes[$ComponentName][$Version]    

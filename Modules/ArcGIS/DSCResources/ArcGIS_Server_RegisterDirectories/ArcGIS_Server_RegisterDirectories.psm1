@@ -1,6 +1,8 @@
 <#
     .SYNOPSIS
         Makes a request to the installed Server to Register Existing External Cache Directories with existing Server Site
+    .PARAMETER ServerHostName
+        Optional Host Name or IP of the Machine on which the Server has been installed and is to be configured.
     .PARAMETER Ensure
         Ensure makes sure that a Cache Directories are registered to site if specified. Take the values Present or Absent. 
         - "Present" ensures that a server site is created or the server is joined to an existing site.
@@ -16,6 +18,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
         [parameter(Mandatory = $true)]
         [System.String]
         $DirectoriesJSON,
@@ -39,6 +45,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+
         [parameter(Mandatory = $true)]
         [System.String]
         $DirectoriesJSON,
@@ -54,7 +64,7 @@ function Set-TargetResource
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $FQDN = Get-FQDN $env:COMPUTERNAME    
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
@@ -99,6 +109,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        $ServerHostName,
+        
         [parameter(Mandatory = $true)]
         [System.String]
         $DirectoriesJSON,
@@ -115,7 +129,7 @@ function Test-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    $FQDN = Get-FQDN $env:COMPUTERNAME   
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):6443"

@@ -14,13 +14,13 @@
             "NodeName": "[Machine 2 Name]",
             "Role": [
                 "Server",
-                "ServerWebAdaptor",
+                "ServerWebAdaptor"
             ],
             "SslCertificates": [
                 {
                     "Path": "[Server SSL Certificate Path]",
                     "Password": "[Server SSL Password]",
-                    "Alias": "[Server CName Alias]",
+                    "CNameFQDN": "[Server CName Alias]",
                     "Target": [
                         "Server"
                     ]
@@ -28,7 +28,7 @@
                 {
                     "Path": "[Server WebAdaptor SSL Certificate Path]",
                     "Password": "[Server WebAdaptor SSL Password]",
-                    "Alias": "[Server WebAdaptor CName Alias]",
+                    "CNameFQDN": "[Server WebAdaptor CName Alias]",
                     "Target": [
                         "WebAdaptor"
                     ]
@@ -45,7 +45,7 @@
                 {
                     "Path": "[Common Cert for Portal and Portal Webadaptor SSL Certificate Path]",
                     "Password": "[Common Cert SSL Password]",
-                    "Alias": "[Common Cert CName Alias]",
+                    "CNameFQDN": "[Common Cert CName Alias]",
                     "Target": [
                         "Portal",
                         "WebAdaptor"
@@ -60,13 +60,6 @@
         "PortalContext": "portal",
         "ServerRole": "GeneralPurposeServer",
         "Credentials": {
-            "PrimarySiteAdmin": {
-                "UserName": "[PrimarySiteAdmin Username]",
-                "Email": "[PrimarySiteAdmin Email]",
-                "Password": "[PrimarySiteAdmin Password]",
-                "SecurityQuestionIndex": 1,
-                "SecurityAnswer": "vanilla"
-            },
             "ServiceAccount": {
                 "Password": "[ServiceAccount Password]",
                 "UserName": "[ServiceAccount Username - Can be a Domain Account]",
@@ -91,7 +84,11 @@
                 "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] "
             },
             "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
-            "ConfigStoreLocation": "C:\\arcgisserver\\config-store"
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
         },
         "Portal": {
             "LicenseFilePath": "[License File Path - Portal ]",
@@ -102,7 +99,14 @@
                 "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
                 "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
             },
-            "ContentDirectoryLocation": "C:\\portalforarcgis\\content\\arcgisportal\\content"
+            "ContentDirectoryLocation": "C:\\portalforarcgis\\content\\arcgisportal\\content",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            }
         },
         "DataStore": {
             "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",

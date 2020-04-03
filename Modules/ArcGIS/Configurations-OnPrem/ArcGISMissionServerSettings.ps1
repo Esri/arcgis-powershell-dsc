@@ -1,4 +1,4 @@
-Configuration ArcGISServerSettings{
+Configuration ArcGISMissionServerSettings{
     param(
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -15,17 +15,13 @@ Configuration ArcGISServerSettings{
 
         [Parameter(Mandatory=$false)]
         [System.String]
-        $ServerContext,
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $InternalLoadBalancer
+        $ServerContext
     )
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
-    Import-DscResource -Name ArcGIS_ServerSettings
+    Import-DscResource -Name ArcGIS_MissionServerSettings
 
     Node $AllNodes.NodeName
     {
@@ -37,15 +33,12 @@ Configuration ArcGISServerSettings{
         }
         
         if($Node.NodeName -ieq $PrimaryServerMachine){
-            ArcGIS_ServerSettings ServerSettings
+            ArcGIS_MissionServerSettings ArcGIS_MissionServerSettings
             {
-                ServerHostName          = Get-FQDN $PrimaryServerMachine
-                SiteAdministrator       = $ServerPrimarySiteAdminCredential
-                ExternalDNSName         = $ExternalDNSHostName
-                ServerContext           = $ServerContext
-                ServerEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $null } }
-                ServerEndPointPort      = if($InternalLoadBalancer){ 6443 }else{ 443 }
-                ServerEndPointContext   = if($InternalLoadBalancer){ 'arcgis' }else{ $ServerContext }
+                ServerHostName      = (Get-FQDN $Node.NodeName)
+                WebContextURL       = "https://$ExternalDNSHostName/$($ServerContext)"
+                WebSocketContextUrl = "wss://$ExternalDNSHostName/$($ServerContext)"
+                SiteAdministrator   = $ServerPrimarySiteAdminCredential
             }
         }
     }

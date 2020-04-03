@@ -3,11 +3,11 @@ Configuration PortalPostUpgradeV2 {
     param(
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-		$SiteAdministratorCredential
+		$PortalSiteAdministratorCredential
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"} 
     Import-DscResource -Name ArcGIS_PortalUpgrade 
 
     Node $AllNodes.NodeName {
@@ -24,7 +24,7 @@ Configuration PortalPostUpgradeV2 {
 
         ArcGIS_PortalUpgrade PortalUpgrade
         {
-            PortalAdministrator = $SiteAdministratorCredential 
+            PortalAdministrator = $PortalSiteAdministratorCredential 
             PortalHostName = $MachineFQDN
             LicenseFilePath = $Node.PortalLicenseFilePath
         }

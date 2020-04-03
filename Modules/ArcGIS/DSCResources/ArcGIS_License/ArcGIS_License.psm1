@@ -62,7 +62,7 @@ function Set-TargetResource
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -91,7 +91,7 @@ function Set-TargetResource
                     $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
                 } 
                 $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-                $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+                $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" } else{ $Component }
                 $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
             }catch{
                 throw "Couldn't Find The Product - $Component"            
@@ -152,7 +152,7 @@ function Test-TargetResource
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -177,7 +177,7 @@ function Test-TargetResource
                 $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
             } 
             $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-            $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }else{ $Component }
+            $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" } else{ $Component }
             $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
         }catch{
             throw "Couldn't Find The Product - $Component"        
@@ -270,6 +270,10 @@ function Test-TargetResource
             elseif($ServerRole -ieq 'NotebookServer') {
                 $searchtexts += 'notebooksstdsvr'
 			    $searchtext = 'notebooksadvsvr'
+            }
+            elseif($ServerRole -ieq 'MissionServer') {
+                $searchtexts += 'missionsvr_4'
+                $searchtext = 'missionsvr'
 		    }
             $searchtexts += $searchtext
             foreach($text in $searchtexts) {
