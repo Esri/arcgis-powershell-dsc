@@ -330,22 +330,46 @@ Configuration ArcGISInstall{
                 }
                 'Pro'
                 {
+                    # Installation Notes: https://pro.arcgis.com/en/pro-app/get-started/arcgis-pro-installation-administration.htm
                     $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
-                    $Arguments = "/qb ALLUSERS=`"$($ConfigurationData.ConfigData.Pro.AllUsers)`" Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`" BLOCKADDINS=`"$($ConfigurationData.ConfigData.Pro.BlockAddIns)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    $Arguments = "/qb Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`""
+                    
+                    # TODO: The SOFTWARE_CLASS does not get added if not supported, should this fail? Currently it uses the default handling mechanism. 
+                    $licenseTypes = "viewer","editor","professional"
+                    if ($ConfigurationData.ConfigData.Pro.SoftwareClass){
+                        if ($licenseTypes -match $ConfigurationData.ConfigData.Pro.SoftwareClass.ToLower()) {
+                            $Arguments += " SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Pro.SoftwareClass)`""
+                        }
+                    }
+
+                    if (-not ([string]::IsNullOrEmpty($ConfigurationData.ConfigData.Pro.Installer.InstallDir))){
+                        $Arguments += " INSTALLDIR=`"$($ConfigurationData.ConfigData.Pro.Installer.InstallDir)`""
+                    }
+
+                    if ($ConfigurationData.ConfigData.Pro.BlockAddIns -match '^[0-5]+$') {
+                        $Arguments += " BLOCKADDINS=$($ConfigurationData.ConfigData.Pro.BlockAddIns)" #ensure valid blockaddin value / defauts to allow all addins (0)
+                    }
+
                     if($ConfigurationData.ConfigData.Pro.AuthorizationType -ieq "CONCURRENT_USE"){
                         $Arguments += " ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Pro.EsriLicenseHost)`"" 
                     }
-
+                    
+                    if($ConfigurationData.ConfigData.Pro.AllUsers -ieq "1"){
+                        $Arguments += " ALLUSERS=$($ConfigurationData.ConfigData.Pro.AllUsers)" #installed for all users / defaults to per user (2)
+                    }
+                    
                     if($ConfigurationData.ConfigData.Pro.LockAuthSettings -and $ConfigurationData.ConfigData.Pro.LockAuthSettings -eq $False){
                         $Arguments += " LOCK_AUTH_SETTINGS=False"
                     }   
+                    
                     if($ConfigurationData.ConfigData.Pro.EnableEUEI -and $ConfigurationData.ConfigData.Pro.EnableEUEI -eq $False){
                         $Arguments += " ENABLEEUEI=0"
                     } 
+                    
                     if($ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup -and $ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup -eq $False){
                         $Arguments += " CHECKFORUPDATESATSTARTUP=0"
                     }   
-
+                    
                     ArcGIS_Install ProInstall{
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion
