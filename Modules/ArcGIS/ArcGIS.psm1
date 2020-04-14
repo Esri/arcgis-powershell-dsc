@@ -581,7 +581,7 @@ function Invoke-ArcGISConfiguration
     )
     
     $DebugMode = if($DebugSwitch){ $True }else{ $False } 
-
+    
     if(@("Install","InstallLicense","InstallLicenseConfigure","Uninstall") -icontains $Mode){
         $ConfigurationParamsJSON = $null
         Foreach($cf in $ConfigurationParametersFile){
@@ -778,8 +778,7 @@ function Invoke-ArcGISConfiguration
                     }
                 }
                 
-                if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep)){
-
+                if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep) -or($ConfigurationParamsHashtable.ConfigData.LicenseManager)){
                     $LicenseCD = @{
                         AllNodes = @() 
                     }
@@ -898,6 +897,10 @@ function Invoke-ArcGISConfiguration
                             if($ConfigurationParamsHashtable.ConfigData.Pro){
                                 $NodeToAdd["ProLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Pro.LicenseFilePath
                                 $NodeToAdd["ProVersion"] = $ConfigurationParamsHashtable.ConfigData.ProVersion
+                            }
+                            if($ConfigurationParamsHashtable.ConfigData.LicenseManager){
+                                $NodeToAdd["LicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath
+                                $NodeToAdd["LicenseManagerVersion"] = $ConfigurationParamsHashtable.ConfigData.LicenseManagerVersion
                             }
                         }
                         if($NodeToAdd.Role.Count -gt 0){

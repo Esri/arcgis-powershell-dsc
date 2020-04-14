@@ -450,6 +450,11 @@ function Invoke-LicenseSoftware
                 $SoftwareAuthExePath = "$($LMInstallLocation)bin\SoftwareAuthorizationLS.exe"
             }
         }
+    } elseif ($Product -ieq 'LM') { # add standalone license manager as a server role
+        $LMInstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "License Manager" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+        if($LMInstallLocation){
+            $SoftwareAuthExePath = "$($LMInstallLocation)bin\SoftwareAuthorizationLS.exe"
+        }
     }else{
         if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($Version.Split('.')[1] -ge 8)){
             $ServerTypeName = "Server"

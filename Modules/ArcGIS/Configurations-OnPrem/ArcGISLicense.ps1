@@ -93,6 +93,17 @@ Configuration ArcGISLicense
                             Force = $ForceLicenseUpdate
                         }
                     }
+                    if($Node.LicenseManagerVersion -and $Node.LicenseFilePath){ #standalone license manager server role
+                        ArcGIS_License "LMLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath = $Node.LicenseFilePath
+                            LicensePassword = $null
+                            Ensure = "Present"
+                            Component = 'LM'
+                            Version = $Node.LicenseManagerVersion #Ignored, will default to 10.6 in ArcGIS_License.psm1
+                            Force = $ForceLicenseUpdate
+                        }
+                    }
                 }
             }
         }

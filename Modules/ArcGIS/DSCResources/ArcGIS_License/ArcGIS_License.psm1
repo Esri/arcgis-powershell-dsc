@@ -58,7 +58,7 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
 
-        [ValidateSet("Server","Portal","Desktop","Pro")]
+        [ValidateSet("Server","Portal","Desktop","Pro","LM")]
 		[System.String]
 		$Component,
 
@@ -103,7 +103,7 @@ function Set-TargetResource
         }
         Write-Verbose "RealVersion of ArcGIS Software:- $RealVersion" 
         $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-        $LicenseVersion = if($Component -ieq 'Pro'){ '10.6' }else{ $RealVersion }
+        $LicenseVersion = if($Component -ieq 'Pro' -or $Component -ieq 'LM'){ '10.6' }else{ $RealVersion }
 
         Write-Verbose "Licensing from $LicenseFilePath" 
         if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
@@ -148,7 +148,7 @@ function Test-TargetResource
 		[System.String]
 		$Ensure,
 
-		[ValidateSet("Server","Portal","Desktop","Pro")]
+		[ValidateSet("Server","Portal","Desktop","Pro","LM")]
 		[System.String]
 		$Component,
 
