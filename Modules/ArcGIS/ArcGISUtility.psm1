@@ -435,9 +435,9 @@ function Invoke-LicenseSoftware
     )
 
     $SoftwareAuthExePath = "$env:SystemDrive\Program Files\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
-    if($Product -ieq 'Desktop' -or $Product -ieq 'Pro') {
+    if(@('Desktop','Pro','LicenseManager') -icontains $Product) {
         $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
-        if($IsSingleUse){
+        if($IsSingleUse -or ($Product -ne 'LicenseManager')){
             if($Product -ieq 'Desktop'){
                 $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\softwareauthorization.exe"
             }elseif($Product -ieq 'Pro'){
@@ -452,7 +452,7 @@ function Invoke-LicenseSoftware
         }
     }else{
         if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($Version.Split('.')[1] -ge 8)){
-            $ServerTypeName = "Server"
+            $ServerTypeName = "ArcGIS Server"
             if($ServerRole -ieq "NotebookServer"){ 
                 $ServerTypeName = "Notebook Server" 
             }elseif($ServerRole -ieq "MissionServer"){ 

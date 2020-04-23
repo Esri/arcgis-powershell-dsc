@@ -777,8 +777,13 @@ function Invoke-ArcGISConfiguration
                         $ProSkipLicenseStep = $true
                     }
                 }
-                
-                if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep)){
+
+                $LicenseManagerSkipLicenseStep = $true
+                if($ConfigurationParamsHashtable.ConfigData.LicenseManagerVersion -and $LicenseManagerCheck -and $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath){
+                    $LicenseManagerSkipLicenseStep = $false
+                }
+
+                if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep -and $LicenseManagerSkipLicenseStep)){
 
                     $LicenseCD = @{
                         AllNodes = @() 
@@ -898,6 +903,10 @@ function Invoke-ArcGISConfiguration
                             if($ConfigurationParamsHashtable.ConfigData.Pro){
                                 $NodeToAdd["ProLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Pro.LicenseFilePath
                                 $NodeToAdd["ProVersion"] = $ConfigurationParamsHashtable.ConfigData.ProVersion
+                            }
+                            if($ConfigurationParamsHashtable.ConfigData.LicenseManager -and $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath){
+                                $NodeToAdd["LicenseManagerLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath
+                                $NodeToAdd["LicenseManagerVersion"] = $ConfigurationParamsHashtable.ConfigData.LicenseManagerVersion
                             }
                         }
                         if($NodeToAdd.Role.Count -gt 0){
@@ -1418,7 +1427,7 @@ function Invoke-ArcGISConfiguration
             $HasServerNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0
             $HasDataStoreNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0
 
-            if(($HasPortalNodes -or $HasDataStoreNodes) -and $HasServerNodes){
+            if(($HasPortalNodes -and $HasDataStoreNodes -and $HasServerNodes){
                 $HostingConfig = $cfHashtable
             }else{
                 $OtherConfigs += $cfHashtable
@@ -1433,7 +1442,7 @@ function Invoke-ArcGISConfiguration
 
         $JobFlag = $True
         if($JobFlag -eq $True){
-            if($HostingConfig -or (-not($HostingConfig) -and $OtherConfigs)){              
+            if($HostingConfig -or (-not($HostingConfig) -and (($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0))){
                 if(-not($HostingConfig)){
                     $PortalConfig = $OtherConfigs[0]
                 }else{
@@ -1669,21 +1678,6 @@ function Invoke-ArcGISConfiguration
                 }
             }
 
-            if(-not($HostingConfig)){
-                $ServerConfig = $OtherConfigs[0]
-            }else{
-                $ServerConfig = $HostingConfig
-            }
-
-            $PrimaryServerMachine = ""
-            for ( $i = 0; $i -lt $ServerConfig.AllNodes.count; $i++ ){
-
-                $Role = $ServerConfig.AllNodes[$i].Role
-                if($Role -icontains 'Server' -and -not($PrimaryServerMachine)){
-                    $PrimaryServerMachine  = $ServerConfig.AllNodes[$i].NodeName
-                }
-            }
-            
             if($JobFlag -eq $True){
                 if($HostingConfig){
                     Write-Information -InformationAction Continue "Hosting Server Upgrade"
@@ -1698,22 +1692,27 @@ function Invoke-ArcGISConfiguration
             if($JobFlag -eq $True){
                 if($OtherConfigs){
                     for ( $i = 0; $i -lt $OtherConfigs.count; $i++ ){
-                        Write-Information -InformationAction Continue "Other Server Upgrade"
-                        if($Credential){
-                            $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -Credential $Credential -DebugMode $DebugMode
-                        }else{
-                            $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -DebugMode $DebugMode
+                        if($OtherConfigs[$i].AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
+                            Write-Information -InformationAction Continue "Other Server Upgrade"
+                            if($Credential){
+                                $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -Credential $Credential -DebugMode $DebugMode
+                            }else{
+                                $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -DebugMode $DebugMode
+                            }
                         }
                     }
                 }
             }
             
             if($JobFlag -eq $True){
-                if($HostingConfig -or (-not($HostingConfig) -and $OtherConfigs)){
-                    if(-not($HostingConfig)){
-                        $DSConfig = $OtherConfigs[0]
-                    }else{
-                        $DSConfig = $HostingConfig
+                if($HostingConfig -or (-not($HostingConfig) -and (($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0 -and ($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0))){
+                    $DSConfig = if(-not($HostingConfig)){ $OtherConfigs[0] }else{ $HostingConfig }
+                    $PrimaryServerMachine = ""
+                    for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
+                        $Role = $DSConfig.AllNodes[$i].Role
+                        if($Role -icontains 'Server' -and -not($PrimaryServerMachine)){
+                            $PrimaryServerMachine  = $DSConfig.AllNodes[$i].NodeName
+                        }
                     }
                     
                     $DSServiceAccountIsDomainAccount = $DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount
