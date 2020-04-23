@@ -1427,7 +1427,7 @@ function Invoke-ArcGISConfiguration
             $HasServerNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0
             $HasDataStoreNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0
 
-            if(($HasPortalNodes -and $HasDataStoreNodes -and $HasServerNodes){
+            if($HasPortalNodes -and $HasDataStoreNodes -and $HasServerNodes){
                 $HostingConfig = $cfHashtable
             }else{
                 $OtherConfigs += $cfHashtable
