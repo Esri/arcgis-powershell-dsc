@@ -108,7 +108,7 @@ function Set-TargetResource
         Write-Verbose "Licensing from $LicenseFilePath" 
         if(@('Desktop', 'Pro', 'LicenseManager') -icontains $Component) {
             Write-Verbose "Version $LicenseVersion Component $Component" 
-            Invoke-LicenseSoftware -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse
+            Invoke-LicenseSoftware -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse -Verbose
         }
         else {
             Write-Verbose "Version $LicenseVersion Component $Component Role $ServerRole" 
@@ -118,7 +118,7 @@ function Set-TargetResource
             Write-Verbose "StdErrLogFilePath:- $StdErrLogFilePath" 
             Invoke-LicenseSoftware -Product $Component -ServerRole $ServerRole -LicenseFilePath $LicenseFilePath `
                          -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse `
-                         -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath
+                         -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath -Verbose
         }
     }else {
         throw "Ensure = 'Absent' not implemented"
