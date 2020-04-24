@@ -62,9 +62,9 @@
                 "Path": "[Portal Installer Path]",
                 "WebStylesPath": "[Optional Parameter starting ArcGIS Enterprise 10.7.1 - Portal Web Styles Installer Path]",
                 "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
-                "ContentDir": "[Portal Content Dir for Install- Ex. C:\\portalforarcgis\\content]"
+                "ContentDir": "[Portal Content Dir for Install- Ex. C:\\arcgisportal"
             },
-            "ContentDirectoryLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\portalforarcgis\\content\\arcgisportal\\content",
+            "ContentDirectoryLocation": "\\\\[File Share Machine 1]\\[File Share Name]\\arcgisportal\\content",
             "PortalAdministrator": {
                 "UserName": "[PortalAdministrator Username]",
                 "Email": "[PortalAdministrator Email]",
