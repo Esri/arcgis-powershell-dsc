@@ -1789,7 +1789,7 @@ function Invoke-ArcGISConfiguration
 
                             $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeInstallArgs -Credential $Credential -DebugMode $DebugMode
 
-                            if($JobFlag -and ($null -ne $PrimaryDataStore)){
+                            if($JobFlag -and -not([string]::IsNullOrEmpty($PrimaryDataStore))){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryDataStoreCD 
                                     ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential
@@ -1802,7 +1802,7 @@ function Invoke-ArcGISConfiguration
                                 $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
 
-                            if(($JobFlag -eq $True) -and ($null -ne $PrimaryTileCache) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName)){
+                            if(($JobFlag -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryTileCache)) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryTileCacheCD
                                     ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -1814,7 +1814,7 @@ function Invoke-ArcGISConfiguration
                                 $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
 
-                            if(($JobFlag -eq $True) -and ($null -ne $PrimaryBigDataStore) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName) -and ($PrimaryDataStore.NodeName -ne $PrimaryBigDataStore.NodeName)){
+                            if(($JobFlag -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryBigDataStore)) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName) -and ($PrimaryDataStore.NodeName -ne $PrimaryBigDataStore.NodeName)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryBigDataStoreCD
                                     ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -1972,7 +1972,7 @@ function Invoke-PublishGISService
     
     $ConfigData = @{ 
         ConfigurationData = @{ AllNodes = @($NodeToAdd) }
-        PublisherAccountCredentials = $PublisherAccountCredential
+        PublisherAccountCredential = $PublisherAccountCredential
         PortalHostName = $cf.PortalHostName
         PortalPort = $cf.PortalPort
         PortalContext = $cf.PortalContext
@@ -1985,4 +1985,4 @@ function Invoke-PublishGISService
     Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ConfigData -Credential $Credential -DebugMode $DebugMode
 }
 
-Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage
+Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService
