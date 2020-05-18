@@ -108,7 +108,13 @@ function Test-TargetResource
     $ServerEndPoint = "$($Scheme)://$($ServerHostname):$Port"
     $Url = "$ServerEndPoint/$ServerContext/admin"
     Wait-ForUrl -Url $Url -MaxWaitTimeInSeconds 180
-    $token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
+   
+    $token = ""
+	if($PortalHostName -and $PortalPort -and $PortalContext){
+		$token = Get-PortalToken -PortalHostName $PortalHostName -SiteName $PortalContext -Credential $PublisherAccount -Referer $Referer -Port $PortalPort
+	}else{
+		$token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
+	}
     
     Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
     $ServiceNameToCompare = if($Folder) { "$Folder/$ServiceName" } else { $ServiceName }
@@ -239,12 +245,18 @@ function Set-TargetResource
         
     $Referer = 'http://localhost'
 
-    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+	$Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     $ServerEndPoint = "$($Scheme)://$($ServerHostname):$Port"
-    Write-Verbose $ServerEndPoint
-    $token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
-        
-    Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
+	Write-Verbose $ServerEndPoint
+	
+	$token = ""
+	if($PortalHostName -and $PortalPort -and $PortalContext){
+		$token = Get-PortalToken -PortalHostName $PortalHostName -SiteName $PortalContext -Credential $PublisherAccount -Referer $Referer -Port $PortalPort
+	}else{
+		$token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
+	}
+    
+	Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
     $ServiceNameToCompare = if($Folder) { "$Folder/$ServiceName" } else { $ServiceName }
     $CatalogEndpoint = "$($ServerEndPoint)/$ServerContext/rest/services/$($Folder)"   
     $resp = Invoke-ArcGISWebRequest -Url $CatalogEndpoint -HttpFormParameters @{ f='json'; token = $token.token} -Referer $Referer    
@@ -257,13 +269,9 @@ function Set-TargetResource
         {
             Write-Verbose "Service with name '$ServiceName' of type '$ServiceType' already exists in folder '$($Folder)'"            
         }else {    
-            $PortalToken = ""
-            if($PortalHostName -and $PortalPort -and $PortalContext){
-                $PortalToken = Get-PortalToken -PortalHostName $PortalHostName -SiteName $PortalContext -Credential $PublisherAccount -Referer $Referer -Port $PortalPort
-            }       
             if(-not([string]::IsNullOrEmpty($Folder))){ 
-				if(-not(Test-ArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -PortalToken $PortalToken.token -Verbose)){
-                    Invoke-CreateArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -PortalToken $PortalToken.token -Verbose
+				if(-not(Test-ArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -Verbose)){
+                    Invoke-CreateArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -Verbose
                 }
             }
 
@@ -271,7 +279,7 @@ function Set-TargetResource
             $SourceFile = Get-Item $PathToSourceFile
             if($SourceFile.Extension -ieq '.sd') {
                 Write-Verbose "Publishing service '$ServiceName' of type '$ServiceType' to '$ServicePath'"
-                Publish-ArcGISService -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -SDFilePath $PathToSourceFile -ServicePath $ServicePath -Port $Port -PortalToken $PortalToken.token
+                Publish-ArcGISService -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -SDFilePath $PathToSourceFile -ServicePath $ServicePath -Port $Port -Verbose
             }else {
                 $CreateServiceUrl = if($Folder) { "$($ServerEndPoint)/$ServerContext/admin/services/$Folder/createService" } else { "$($ServerEndPoint)/$ServerContext/admin/services/createService" }
                 $service = (Get-Content $PathToSourceFile -Raw)
@@ -454,19 +462,13 @@ function Test-ArcGISServerFolder
         [parameter(Mandatory = $false)]
 		[uint32]
         $Port = 6443,
-        
-        [System.String]
-        [Parameter(Mandatory=$false)]
-        $PortalToken,
-
         [System.String]
         [Parameter(Mandatory=$true)]
         $Folder
     )
 	$Result = $False
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
-    $QueryToken = if($PortalToken){ $PortalToken }else{ $Token }
-	$response = Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$($ServerContext)/admin/services/") -HttpFormParameters @{ f = 'json'; token = $QueryToken; folderName = $Folder } -Referer $Referer -HttpMethod 'GET'
+	$response = Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$($ServerContext)/admin/services/") -HttpFormParameters @{ f = 'json'; token = $Token; folderName = $Folder } -Referer $Referer -HttpMethod 'GET'
 	$Result = $response.folders -icontains $Folder
     if($Result){
         Write-Verbose "Folder $($Folder) exists!"
@@ -499,19 +501,14 @@ function Invoke-CreateArcGISServerFolder
         [parameter(Mandatory = $false)]
 		[uint32]
         $Port = 6443,
-        
-        [System.String]
-        [Parameter(Mandatory=$false)]
-        $PortalToken,
-
+		
         [System.String]
         [Parameter(Mandatory=$true)]
         $Folder
     )
 	Write-Verbose "Creating Folder $Folder"
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
-    $QueryToken = if($PortalToken){ $PortalToken }else{ $Token }
-    Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/admin/services/createFolder') -HttpFormParameters @{ f = 'json'; token = $QueryToken; folderName = $Folder } -Referer $Referer
+    Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/admin/services/createFolder') -HttpFormParameters @{ f = 'json'; token = $Token; folderName = $Folder } -Referer $Referer
 }
 
 function Publish-ArcGISService
@@ -556,11 +553,7 @@ function Publish-ArcGISService
         
         [parameter(Mandatory = $false)]
 		[uint32]
-        $Port = 6443,
-        
-        [System.String]
-        [Parameter(Mandatory=$false)]
-        $PortalToken
+        $Port = 6443
     )       
     
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
@@ -587,10 +580,9 @@ function Publish-ArcGISService
 
     if(-not($UploadOnly)) 
     {
-		$QueryToken = if($PortalToken){ $PortalToken }else{ $Token }
-		$ServiceConfiguration = $(Get-ServiceConfiguration -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $QueryToken -Referer $Referer -ItemId $item.itemID -Port $Port -Verbose)
+		$ServiceConfiguration = $(Get-ServiceConfiguration -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port -Verbose)
 		$ServiceConfiguration.folderName = $Folder
-		$job = (Submit-ArcGISPublishJob -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $QueryToken -Referer $Referer -ItemId $item.itemID -Port $Port -ServiceConfiguration $ServiceConfiguration -Verbose)
+		$job = (Submit-ArcGISPublishJob -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port -ServiceConfiguration $ServiceConfiguration -Verbose)
         
 		Write-Verbose "[DEBUG] Job:- $(ConvertTo-Json $job -Compress -Depth 5)"
         if($job.error) {

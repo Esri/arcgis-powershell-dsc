@@ -71,28 +71,6 @@ Configuration ArcGISLicense
                 }
                 'LicenseManager'
                 {   
-                    if($Node.ProVersion -and $Node.ProLicenseFilePath){
-                        ArcGIS_License "ProLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath = $Node.ProLicenseFilePath
-                            LicensePassword = $null
-                            Ensure = "Present"
-                            Component = 'Pro'
-                            Version = $Node.ProVersion 
-                            Force = $ForceLicenseUpdate
-                        }
-                    }
-                    if($Node.DesktopVersion -and $Node.DesktopLicenseFilePath){
-                        ArcGIS_License "DesktopLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath = $Node.DesktopLicenseFilePath
-                            LicensePassword = $null
-                            Ensure = "Present"
-                            Component = 'Desktop'
-                            Version = $Node.DesktopVersion
-                            Force = $ForceLicenseUpdate
-                        }
-                    }
                     if($Node.LicenseManagerVersion -and $Node.LicenseManagerLicenseFilePath){
                         ArcGIS_License "LicenseManagerLicense$($Node.NodeName)"
                         {

@@ -114,7 +114,7 @@
             "ContentDirectoryLocation":"C:\\arcgisportal\\content",
             "EnableAutomaticAccountCreation": "[Optional - true | False]",
             "DefaultRoleForUser": "[Optional - Values: account_user | account_publisher | <custom role ID>]",
-            "DefaultUserLicenseTypeIdForUser": "[Optional (Valid for 10.7 and later) - Values: fieldWorkerUT | GISProfessionalStdUT | GISProfessionalBasicUT | GISProfessionalAdvUT | creatorUT | editorUT | insightsAnalystUT]",
+            "DefaultUserLicenseTypeIdForUser": "[Optional (Valid for 10.7 and later) - Values: fieldWorkerUT | GISProfessionalStdUT | GISProfessionalBasicUT | GISProfessionalAdvUT | creatorUT | editorUT | viewerUT]",
             "PortalAdministrator": {
                 "UserName": "[PortalAdministrator Username]",
                 "Email": "[PortalAdministrator Email]",
