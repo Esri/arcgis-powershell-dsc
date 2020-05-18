@@ -589,7 +589,7 @@ function Invoke-ArcGISConfiguration
     )
     
     $DebugMode = if($DebugSwitch){ $True }else{ $False } 
-
+    
     if(@("Install","InstallLicense","InstallLicenseConfigure","Uninstall") -icontains $Mode){
         $ConfigurationParamsJSON = $null
         Foreach($cf in $ConfigurationParametersFile){
@@ -891,6 +891,10 @@ function Invoke-ArcGISConfiguration
                                 $ValidatePortalFileShare = $True
                             } else {
                                 throw "Config Directory Location path is not a fileshare path"
+                            }
+                            if($ConfigurationParamsHashtable.ConfigData.LicenseManager){
+                                $NodeToAdd["LicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath
+                                $NodeToAdd["LicenseManagerVersion"] = $ConfigurationParamsHashtable.ConfigData.LicenseManagerVersion
                             }
                         }
                     } else {
