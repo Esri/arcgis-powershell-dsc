@@ -165,8 +165,15 @@ function Test-TargetResource
             $trueName = 'License Manager'
         }elseif($Name -ieq 'DataStore'){
             $trueName = 'Data Store'
+        }elseif($Name -ieq 'Server'){
+            $trueName = 'ArcGIS Server'
+        }elseif($Name -ieq 'MissionServer'){
+            $trueName = 'ArcGIS Mission Server'
+        }elseif($Name -ieq 'NotebookServer'){
+            $trueName = 'ArcGIS Notebook Server'
+        }elseif($Name -ieq 'Geoevent'){
+            $trueName = 'ArcGIS Geoevent Server'
         }
-        $trueName = if ($Name -ieq 'DataStore') { 'Data Store' } else { $Name }
 
         $ver = Get-CimInstance Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
         Write-Verbose "Installed Version $($ver.Version)"

@@ -6,7 +6,7 @@ Configuration ArcGISLicense
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
     Import-DscResource -Name ArcGIS_License
 
     Node $AllNodes.NodeName 
@@ -71,25 +71,14 @@ Configuration ArcGISLicense
                 }
                 'LicenseManager'
                 {   
-                    if($Node.ProVersion -and $Node.ProLicenseFilePath){
-                        ArcGIS_License "ProLicense$($Node.NodeName)"
+                    if($Node.LicenseManagerVersion -and $Node.LicenseManagerLicenseFilePath){
+                        ArcGIS_License "LicenseManagerLicense$($Node.NodeName)"
                         {
-                            LicenseFilePath = $Node.ProLicenseFilePath
+                            LicenseFilePath = $Node.LicenseManagerLicenseFilePath
                             LicensePassword = $null
                             Ensure = "Present"
-                            Component = 'Pro'
-                            Version = $Node.ProVersion 
-                            Force = $ForceLicenseUpdate
-                        }
-                    }
-                    if($Node.DesktopVersion -and $Node.DesktopLicenseFilePath){
-                        ArcGIS_License "DesktopLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath = $Node.DesktopLicenseFilePath
-                            LicensePassword = $null
-                            Ensure = "Present"
-                            Component = 'Desktop'
-                            Version = $Node.DesktopVersion
+                            Component = 'LicenseManager'
+                            Version = $Node.LicenseManagerVersion #Ignored, will default to 10.6 in ArcGIS_License.psm1
                             Force = $ForceLicenseUpdate
                         }
                     }

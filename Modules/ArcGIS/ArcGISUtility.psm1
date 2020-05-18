@@ -435,9 +435,10 @@ function Invoke-LicenseSoftware
     )
 
     $SoftwareAuthExePath = "$env:SystemDrive\Program Files\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
-    if($Product -ieq 'Desktop' -or $Product -ieq 'Pro') {
+	$LMReloadUtilityPath = ""
+    if(@('Desktop','Pro','LicenseManager') -icontains $Product) {
         $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
-        if($IsSingleUse){
+        if($IsSingleUse -or ($Product -ne 'LicenseManager')){
             if($Product -ieq 'Desktop'){
                 $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\softwareauthorization.exe"
             }elseif($Product -ieq 'Pro'){
@@ -448,6 +449,7 @@ function Invoke-LicenseSoftware
             $LMInstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "License Manager" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
             if($LMInstallLocation){
                 $SoftwareAuthExePath = "$($LMInstallLocation)bin\SoftwareAuthorizationLS.exe"
+				$LMReloadUtilityPath = "$($LMInstallLocation)bin\lmutil.exe"
             }
         }
     } elseif ($Product -ieq 'LM') { # add standalone license manager as a server role
@@ -457,7 +459,7 @@ function Invoke-LicenseSoftware
         }
     }else{
         if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($Version.Split('.')[1] -ge 8)){
-            $ServerTypeName = "Server"
+            $ServerTypeName = "ArcGIS Server"
             if($ServerRole -ieq "NotebookServer"){ 
                 $ServerTypeName = "Notebook Server" 
             }elseif($ServerRole -ieq "MissionServer"){ 
@@ -501,12 +503,16 @@ function Invoke-LicenseSoftware
         }
 	}
     else {
-        Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params
+        Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params -Verbose -Wait -NoNewWindow -PassThru
     }
     if($Product -ieq 'Desktop' -or $Product -ieq 'Pro') {
         Write-Verbose "Sleeping for 2 Minutes to finish Licensing"
         Start-Sleep -Seconds 120
     }
+	if($Product -ieq 'LicenseManager'){
+		Write-Verbose "Re-readings Licenses"
+		Start-Process -FilePath $LMReloadUtilityPath -ArgumentList 'lmreread -c @localhost'
+	}
     Write-Verbose "Finished Licensing Product [$Product]" -Verbose
 }
 

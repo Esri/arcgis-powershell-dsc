@@ -41,7 +41,7 @@
             },
             "ServerDirectoriesRootLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\directories",
             "ConfigStoreLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\config-store",
-            "PortalAdministrator": {
+            "PrimarySiteAdmin": {
                 "UserName": "[PrimarySiteAdmin Username]",
                 "Password": "[PrimarySiteAdmin Password]"
             }

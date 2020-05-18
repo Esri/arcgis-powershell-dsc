@@ -14,7 +14,7 @@
             "SeatPreference": "Fixed",
             "InstallFeatures": "[ALL | <feature1>,<feature2>,]",
             "ModifyFlexdAcl": "[TRUE | FALSE (Default)]",
-            "DesktopConfig": "TRUE",
+            "DesktopConfig": true,
             "EnableEUEI": "[ True (Default enables participation of Esri User Experience Improvement Program) | False ]",
             "Installer": {
                 "Path": "[Desktop Installer Path]",

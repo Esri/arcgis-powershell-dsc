@@ -72,8 +72,8 @@ function Test-TargetResource
 		[System.String]
         $PathToItemInfoFile,
         
+        [parameter(Mandatory = $false)]
         [System.String]
-        [ValidateNotNullorEmpty()]
 		$PortalHostName,
 
         [parameter(Mandatory = $false)]
@@ -108,7 +108,13 @@ function Test-TargetResource
     $ServerEndPoint = "$($Scheme)://$($ServerHostname):$Port"
     $Url = "$ServerEndPoint/$ServerContext/admin"
     Wait-ForUrl -Url $Url -MaxWaitTimeInSeconds 180
-    $token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
+   
+    $token = ""
+	if($PortalHostName -and $PortalPort -and $PortalContext){
+		$token = Get-PortalToken -PortalHostName $PortalHostName -SiteName $PortalContext -Credential $PublisherAccount -Referer $Referer -Port $PortalPort
+	}else{
+		$token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
+	}
     
     Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
     $ServiceNameToCompare = if($Folder) { "$Folder/$ServiceName" } else { $ServiceName }
@@ -239,33 +245,41 @@ function Set-TargetResource
         
     $Referer = 'http://localhost'
 
-    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+	$Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     $ServerEndPoint = "$($Scheme)://$($ServerHostname):$Port"
-    Write-Verbose $ServerEndPoint
-    $token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
-        
-    Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
+	Write-Verbose $ServerEndPoint
+	
+	$token = ""
+	if($PortalHostName -and $PortalPort -and $PortalContext){
+		$token = Get-PortalToken -PortalHostName $PortalHostName -SiteName $PortalContext -Credential $PublisherAccount -Referer $Referer -Port $PortalPort
+	}else{
+		$token = Get-ServerToken -ServerEndPoint $ServerEndPoint -ServerSiteName $ServerContext -Credential $PublisherAccount -Referer $Referer
+	}
+    
+	Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
     $ServiceNameToCompare = if($Folder) { "$Folder/$ServiceName" } else { $ServiceName }
     $CatalogEndpoint = "$($ServerEndPoint)/$ServerContext/rest/services/$($Folder)"   
     $resp = Invoke-ArcGISWebRequest -Url $CatalogEndpoint -HttpFormParameters @{ f='json'; token = $token.token} -Referer $Referer    
     Write-Verbose "[DEBUG] Services:- $(ConvertTo-Json $resp.services -Compress -Depth 5)"
     $ServiceExists = ($resp.services | Where-Object { $_.name -eq $ServiceNameToCompare -and $_.type -eq $ServiceType } | Measure-Object).Count -gt 0
         
-    if($Ensure -ieq 'Present') {        
-             
+    if($Ensure -ieq 'Present') 
+    {        
         if($ServiceExists) 
         {
             Write-Verbose "Service with name '$ServiceName' of type '$ServiceType' already exists in folder '$($Folder)'"            
-        }else {            
+        }else {    
+            if(-not([string]::IsNullOrEmpty($Folder))){ 
+				if(-not(Test-ArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -Verbose)){
+                    Invoke-CreateArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -Verbose
+                }
+            }
+
             $ServicePath = if($Folder) { "$($Folder)/$($ServiceName)/$ServiceType" } else { "$($ServiceName)/$ServiceType" }
             $SourceFile = Get-Item $PathToSourceFile
             if($SourceFile.Extension -ieq '.sd') {
                 Write-Verbose "Publishing service '$ServiceName' of type '$ServiceType' to '$ServicePath'"
-                $stoken = ""
-                if($PortalHostName -and $PortalPort -and $PortalContext){
-                    $stoken = Get-PortalToken -PortalHostName $PortalHostName -SiteName $PortalContext -Credential $PublisherAccount -Referer $Referer -Port $PortalPort
-                }
-                Publish-ArcGISService -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -SDFilePath $PathToSourceFile -ServicePath $ServicePath -Port $Port -PortalToken $stoken.token
+                Publish-ArcGISService -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -SDFilePath $PathToSourceFile -ServicePath $ServicePath -Port $Port -Verbose
             }else {
                 $CreateServiceUrl = if($Folder) { "$($ServerEndPoint)/$ServerContext/admin/services/$Folder/createService" } else { "$($ServerEndPoint)/$ServerContext/admin/services/createService" }
                 $service = (Get-Content $PathToSourceFile -Raw)
@@ -360,7 +374,7 @@ function Get-ArcGISPublishJobStatus
 		$Port = 6443
     )
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
-   Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/rest/services/System/PublishingTools/GPServer/Publish%20Service%20Definition/jobs/' + $JobId) -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/rest/services/System/PublishingTools/GPServer/Publish%20Service%20Definition/jobs/' + $JobId) -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
 function Wait-ArcGISServicePublishJob
@@ -424,6 +438,79 @@ function Wait-ArcGISServicePublishJob
     $Done
 }
 
+function Test-ArcGISServerFolder
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $ServerHostName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServerContext = 'arcgis',
+
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Token,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $Referer = 'http://localhost',
+        
+        [parameter(Mandatory = $false)]
+		[uint32]
+        $Port = 6443,
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Folder
+    )
+	$Result = $False
+    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+	$response = Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$($ServerContext)/admin/services/") -HttpFormParameters @{ f = 'json'; token = $Token; folderName = $Folder } -Referer $Referer -HttpMethod 'GET'
+	$Result = $response.folders -icontains $Folder
+    if($Result){
+        Write-Verbose "Folder $($Folder) exists!"
+    }else{
+        Write-Verbose "Folder $($Folder) doesn't exists!"
+    }
+	$Result
+}
+
+function Invoke-CreateArcGISServerFolder
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $ServerHostName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServerContext = 'arcgis',
+
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Token,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $Referer = 'http://localhost',
+        
+        [parameter(Mandatory = $false)]
+		[uint32]
+        $Port = 6443,
+		
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Folder
+    )
+	Write-Verbose "Creating Folder $Folder"
+    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/admin/services/createFolder') -HttpFormParameters @{ f = 'json'; token = $Token; folderName = $Folder } -Referer $Referer
+}
+
 function Publish-ArcGISService
 {
     [CmdletBinding()]
@@ -466,15 +553,11 @@ function Publish-ArcGISService
         
         [parameter(Mandatory = $false)]
 		[uint32]
-        $Port = 6443,
-        
-        [System.String]
-        [Parameter(Mandatory=$false)]
-        $PortalToken
+        $Port = 6443
     )       
     
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
-    $UploadItemUrl ="$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/admin/uploads/upload'
+    $UploadItemUrl ="$($Scheme)://$($ServerHostName):$($Port)/$($ServerContext)/admin/uploads/upload"
 
     $items = Get-ArcGISUploads -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -Port $Port
     $itemFileName = Split-Path -Path $SDFilePath -Leaf
@@ -482,7 +565,7 @@ function Publish-ArcGISService
     if(-not($item))
     {
         Write-Verbose "Item does not exist - uploading file $SDFilePath"
-        $item = ((Invoke-UploadFile -url $UploadItemUrl -filePath $SDFilePath -fileContentType 'application/octet-stream' -fileParameterName 'itemFile' `
+		$item = ((Invoke-UploadFile -url $UploadItemUrl -filePath $SDFilePath -fileContentType 'application/octet-stream' -fileParameterName 'itemFile' `
                 -Referer $Referer -formParams @{ token = $Token;  f = 'json' } -Verbose) | ConvertFrom-Json)
         if($item.status -ieq 'error'){
             throw "Failed to upload item before publishing ServicePath. " + ($item.messages -join " ")
@@ -497,12 +580,11 @@ function Publish-ArcGISService
 
     if(-not($UploadOnly)) 
     {
-        if($PortalToken){
-            $job = Submit-ArcGISPublishJob -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $PortalToken -Referer $Referer -ItemId $item.itemID -Port $Port    
-        }else{
-            $job = Submit-ArcGISPublishJob -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port
-        }
-        Write-Verbose "[DEBUG] Job:- $(ConvertTo-Json $job -Compress -Depth 5)"
+		$ServiceConfiguration = $(Get-ServiceConfiguration -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port -Verbose)
+		$ServiceConfiguration.folderName = $Folder
+		$job = (Submit-ArcGISPublishJob -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $Token -Referer $Referer -ItemId $item.itemID -Port $Port -ServiceConfiguration $ServiceConfiguration -Verbose)
+        
+		Write-Verbose "[DEBUG] Job:- $(ConvertTo-Json $job -Compress -Depth 5)"
         if($job.error) {
             $ErrorFlag = $true
             throw ("Failed to submit publish job for Service $ServicePath " + ("$($job.error.code) - " -join $job.error.message ))
@@ -593,11 +675,11 @@ function Get-ArcGISUploads
     Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/admin/uploads') -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
 }
 
-function Submit-ArcGISPublishJob
+function Get-ServiceConfiguration
 {
     [CmdletBinding()]
     param(
-    [System.String]
+        [System.String]
         [Parameter(Mandatory=$true)]
         $ServerHostName,
 
@@ -621,9 +703,46 @@ function Submit-ArcGISPublishJob
 		[uint32]
 		$Port = 6443
     )
-    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
-    Invoke-ArcGISWebRequest -Url ("$($Scheme)://$($ServerHostName):$Port/$ServerContext" + '/rest/services/System/PublishingTools/GPServer/Publish%20Service%20Definition/submitJob') `
-                            -HttpFormParameters @{ f = 'json'; token = $Token; in_sdp_id = $ItemId } -Referer $Referer
+
+	$Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    Invoke-ArcGISWebRequest -Url "$($Scheme)://$($ServerHostName):$($Port)/$($ServerContext)/admin/uploads/$($ItemId)/serviceconfiguration.json"  `
+                            -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod "GET"
+
+}
+
+function Submit-ArcGISPublishJob
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $ServerHostName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServerContext = 'arcgis',
+
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Token,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $Referer = 'http://localhost',
+
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $ItemId,
+        
+        [parameter(Mandatory = $false)]
+		[uint32]
+        $Port = 6443,
+        
+        $ServiceConfiguration
+    )
+	$Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    Invoke-ArcGISWebRequest -Url "$($Scheme)://$($ServerHostName):$($Port)/$($ServerContext)/rest/services/System/PublishingTools/GPServer/Publish%20Service%20Definition/submitJob" `
+                            -HttpFormParameters @{ f = 'json'; token = $Token; in_sdp_id = $ItemId; in_config_overwrite = (ConvertTo-Json $ServiceConfiguration -depth 10 -compress) } -Referer $Referer -Verbose
 }
 
 Export-ModuleMember -Function *-TargetResource

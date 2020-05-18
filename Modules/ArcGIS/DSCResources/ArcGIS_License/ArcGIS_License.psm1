@@ -58,7 +58,7 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
 
-        [ValidateSet("Server","Portal","Desktop","Pro","LM")]
+        [ValidateSet("Server","Portal","Desktop","Pro","LicenseManager")]
 		[System.String]
 		$Component,
 
@@ -91,7 +91,7 @@ function Set-TargetResource
                     $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
                 } 
                 $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-                $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" } else{ $Component }
+                $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
                 $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
             }catch{
                 throw "Couldn't Find The Product - $Component"            
@@ -103,12 +103,12 @@ function Set-TargetResource
         }
         Write-Verbose "RealVersion of ArcGIS Software:- $RealVersion" 
         $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-        $LicenseVersion = if($Component -ieq 'Pro' -or $Component -ieq 'LM'){ '10.6' }else{ $RealVersion }
 
+        $LicenseVersion = if($Component -ieq 'Pro' -or $Component -ieq 'LicenseManager'){ '10.6' }else{ $RealVersion }
         Write-Verbose "Licensing from $LicenseFilePath" 
-        if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
+        if(@('Desktop', 'Pro', 'LicenseManager') -icontains $Component) {
             Write-Verbose "Version $LicenseVersion Component $Component" 
-            Invoke-LicenseSoftware -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse
+            Invoke-LicenseSoftware -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse -Verbose
         }
         else {
             Write-Verbose "Version $LicenseVersion Component $Component Role $ServerRole" 
@@ -118,7 +118,7 @@ function Set-TargetResource
             Write-Verbose "StdErrLogFilePath:- $StdErrLogFilePath" 
             Invoke-LicenseSoftware -Product $Component -ServerRole $ServerRole -LicenseFilePath $LicenseFilePath `
                          -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse `
-                         -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath
+                         -StdOutputLogFilePath $StdOutputLogFilePath -StdErrLogFilePath $StdErrLogFilePath -Verbose
         }
     }else {
         throw "Ensure = 'Absent' not implemented"
@@ -148,7 +148,7 @@ function Test-TargetResource
 		[System.String]
 		$Ensure,
 
-		[ValidateSet("Server","Portal","Desktop","Pro","LM")]
+		[ValidateSet("Server","Portal","Desktop","Pro","LicenseManager")]
 		[System.String]
 		$Component,
 
@@ -177,7 +177,7 @@ function Test-TargetResource
                 $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
             } 
             $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
-            $ComponentName = if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" } else{ $Component }
+            $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
             $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
         }catch{
             throw "Couldn't Find The Product - $Component"        
@@ -195,57 +195,12 @@ function Test-TargetResource
     Write-Verbose "Version $LicenseVersion" 
     if($Component -ieq 'Desktop') {
         Write-Verbose "TODO:- Check for Desktop license. For now forcing Software Authorization Tool to License Pro."
-        <#$RegPath = "HKLM:\SOFTWARE\Wow6432Node\esri\Python$($Version)"
-        if(Test-Path $RegPath -ErrorAction Ignore) {            
-            $PythonInstallDir = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Wow6432Node\esri\Python$($Version)").PythonDir
-            $PythonPath = ((Get-ChildItem -Path $PythonInstallDir -Filter 'python.exe' -Recurse -File) | Select-Object -First 1 -ErrorAction Ignore)        
-            $PythonInterpreterPath = $PythonPath.FullName
-
-            $TempPythonFile = [System.IO.Path]::GetTempFileName()
-            Set-Content -Path $TempPythonFile -Value 'import arcpy' -Force            
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = $PythonInterpreterPath
-            $psi.Arguments = $TempPythonFile
-            $psi.UseShellExecute = $false #start the process from it's own executable file    
-            $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-            $psi.RedirectStandardError = $true #enable the process to read from standard error
-
-            try 
-            {
-                Write-Verbose "Testing for desktop initialization using arcpy script and Python interpreter path at $PythonInterpreterPath"
-                $p = [System.Diagnostics.Process]::Start($psi)
-                $p.WaitForExit()
-                $op = $p.StandardOutput.ReadToEnd()
-                if($op -and $op.Length -gt 0) {
-                    Write-Verbose "Output of python execution:- $op"
-                }
-                $err = $p.StandardError.ReadToEnd()
-                if($err -and $err.Length -gt 0) {
-                    Write-Verbose "Error  of python execution process:- $err"
-                }
-                if($p.ExitCode -eq 0) {                    
-                    Write-Verbose "Arcpy initialized correctly indicating successful desktop initialization"
-                    if($force){
-                        $result = $false
-                    }else{
-                        $result = $true
-                    }
-                }else {
-                    Write-Verbose "Arcpy initialization did not succeed. Process exit code:- $($p.ExitCode) $p"
-                }
-            }
-            catch{
-                Write-Verbose "Error testing for arcpy initialization. Error:- $_"
-            }
-            finally{
-                if($TempPythonFile -and (Test-Path $TempPythonFile)) {
-                    Remove-Item $TempPythonFile -ErrorAction Ignore
-                }
-            }
-        }#>
     }
     elseif($Component -ieq 'Pro') {
         Write-Verbose "TODO:- Check for Pro license. For now forcing Software Authorization Tool to License Pro."
+    }
+    elseif($Component -ieq 'LicenseManager') {
+        Write-Verbose "TODO:- Check for License Manger license. For now forcing Software Authorization Tool to License."
     }
     else {
         Write-Verbose "License Check Component:- $Component ServerRole:- $ServerRole"

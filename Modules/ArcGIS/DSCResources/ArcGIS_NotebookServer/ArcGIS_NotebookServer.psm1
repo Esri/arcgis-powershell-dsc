@@ -450,15 +450,15 @@ function Invoke-CreateSite
     {
         $VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
         Write-Verbose "Notebook Server Version - $VersionObject"
-        $MajorVersion = $VesionObject.Split('.')[1]
+        $MajorVersion = $($VersionObject.Split('.')[1])
 
         Write-Verbose "Using Azure Cloud Storage for the config store"
         $configStoreConnection = if($MajorVersion -ge 8){
                                 @{ 
                                     configPersistenceType= "AZURE";
                                     connectionString = $ConfigStoreCloudStorageConnectionString;
-                                    username = $ConfigStoreCloudStorageAccountName;
-                                    password = $ConfigStoreCloudStorageConnectionSecret
+                                    username = $ConfigStoreCloudStorageAccountName.TrimStart("AccountName=");
+                                    password = $ConfigStoreCloudStorageConnectionSecret.TrimStart("AccountKey=");
                                     className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
                                 }
                             }else{

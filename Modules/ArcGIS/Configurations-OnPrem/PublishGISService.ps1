@@ -35,7 +35,7 @@ Configuration PublishGISService
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
     Import-DscResource -Name ArcGIS_Server_Service
 
     Node $AllNodes.NodeName
@@ -47,25 +47,23 @@ Configuration PublishGISService
             }
         }
         
-        if($Node.NodeName -ieq $PrimaryServerMachine){
-            for ( $i = 0; $i -lt $GISServices.count; $i++ ){
-                $Service = $GISServices[$i]
-                ArcGIS_Server_Service "PublishService$($Service.Name)" {
-                    PublisherAccount = $PublisherAccountCredential
-                    PathToItemInfoFile = $Service.PathToItemInfoFile
-                    PathToSourceFile = $Service.PathToSourceFile
-                    ServiceName = $Service.Name
-                    ServiceType = $Service.Type
-                    Folder = $Service.Folder
-                    State = "STARTED"
-                    Ensure = "Present"
-                    ServerHostName = $ServerHostName
-                    ServerContext = $ServerContext
-                    Port = $ServerPort
-                    PortalHostName = $PortalHostName
-                    PortalPort = $PortalPort
-                    PortalContext = $PortalContext
-                }
+        for ( $i = 0; $i -lt $GISServices.count; $i++ ){
+            $Service = $GISServices[$i]
+            ArcGIS_Server_Service "PublishService$($Service.Name)" {
+                PublisherAccount = $PublisherAccountCredential
+                PathToItemInfoFile = $Service.PathToItemInfoFile
+                PathToSourceFile = $Service.PathToSourceFile
+                ServiceName = $Service.Name
+                ServiceType = $Service.Type
+                Folder = $Service.Folder
+                State = "STARTED"
+                Ensure = "Present"
+                ServerHostName = $ServerHostName
+                ServerContext = $ServerContext
+                Port = $ServerPort
+                PortalHostName = $PortalHostName
+                PortalPort = $PortalPort
+                PortalContext = $PortalContext
             }
         }
     }
