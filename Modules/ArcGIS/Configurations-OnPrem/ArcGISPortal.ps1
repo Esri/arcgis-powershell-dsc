@@ -90,6 +90,31 @@ Configuration ArcGISPortal
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
         $CloudStorageCredentials,
+
+        [System.Boolean]
+        $EnableEmailSettings = $False,
+
+        [System.String]
+        $EmailSettingsSMTPServerAddress,
+
+        [System.String]
+        $EmailSettingsFrom,
+
+        [System.String]
+        $EmailSettingsLabel,
+
+        [System.Boolean]
+        $EmailSettingsAuthenticationRequired = $False,
+
+        [System.Management.Automation.PSCredential]
+        $EmailSettingsCredential,
+
+        [System.Int32]
+        $EmailSettingsSMTPPort = 25,
+
+        [ValidateSet("SSL", "TLS", "NONE")]
+        [System.String]
+        $EmailSettingsEncryptionMethod = "NONE",
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -97,7 +122,7 @@ Configuration ArcGISPortal
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_WindowsService
@@ -306,7 +331,15 @@ Configuration ArcGISPortal
             DefaultUserLicenseTypeIdForUser = $DefaultUserLicenseTypeIdForUser
             DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
             ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
-            ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+            ContentDirectoryCloudContainerName = $ContentDirectoryCloudContainerName
+            EnableEmailSettings = if($EnableEmailSettings){ $True }else{ $False }
+            EmailSettingsSMTPServerAddress = if($EnableEmailSettings){ $EmailSettingsSMTPServerAddress }else{ $null }
+            EmailSettingsFrom = if($EnableEmailSettings){ $EmailSettingsFrom }else{ $null }
+            EmailSettingsLabel = if($EnableEmailSettings){ $EmailSettingsLabel }else{ $null }
+            EmailSettingsAuthenticationRequired = if($EnableEmailSettings){ $EmailSettingsAuthenticationRequired }else{ $false }
+            EmailSettingsCredential =if($EnableEmailSettings){ $EmailSettingsCredential }else{ $null }
+            EmailSettingsSMTPPort = if($EnableEmailSettings){ $EmailSettingsSMTPPort }else{ $null }
+            EmailSettingsEncryptionMethod = if($EnableEmailSettings){ $EmailSettingsEncryptionMethod }else{ "NONE" }
         }
         $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"
 

@@ -53,7 +53,7 @@ Configuration ArcGISDataStore
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore
@@ -66,6 +66,9 @@ Configuration ArcGISDataStore
             }
         }
 
+        $VersionArray = $Version.Split(".")
+        $MajorVersion = $VersionArray[1]
+        $MinorVersion = if($Version.Count -eq 3){ $VersionArray[2] }else { 0 }
         $Depends = @()
         Service ArcGIS_DataStore_Service
         {
@@ -140,7 +143,7 @@ Configuration ArcGISDataStore
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = if(($Version.Split(".")[1] -gt 7)){ ("29079-29082") }else{ ("29080", "29081") }                
+                LocalPort             = if($MajorVersion -gt 7){ ("29079-29082") }else{ ("29080", "29081") }                
                 Protocol              = "TCP" 
                 DependsOn             = $Depends
             }
@@ -155,15 +158,15 @@ Configuration ArcGISDataStore
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = if(($Version.Split(".")[1] -gt 7)){ ("29079-29082") }else{ ("29080", "29081") }
+                LocalPort             = if($MajorVersion -gt 7){ ("29079-29082") }else{ ("29080", "29081") }
                 Direction             = "Outbound"                        
                 Protocol              = "TCP" 
                 DependsOn             = $Depends
             } 
             $Depends += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
 
-            $IsMultiMachineTileCache = (($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' } | Measure-Object).Count -gt 1)
-            if($IsMultiMachineTileCache -and ($Version.Split(".")[1] -gt 7)){
+            $TileCacheMachineCount = ($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' } | Measure-Object).Count
+            if(($TileCacheMachineCount -gt 1) -and ($MajorVersion -gt 7)){
                 ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
                 {
                     Name                  = "ArcGISMultiMachineTileCacheDataStore" 
@@ -275,6 +278,7 @@ Configuration ArcGISDataStore
             IsStandby = $IsStandByRelational
             DataStoreTypes = $Node.DataStoreTypes
             IsEnvAzure = $EnableFailoverOnPrimaryStop
+            IsTileCacheDataStoreClustered = ((($MajorVersion -gt 7) -and -not($MajorVersion -eq 8 -and $MinorVersion -eq 0)) -and ($TileCacheMachineCount -gt 2))
             #RunAsAccount = $ConfigData.RunAsAccount 
             #DatabaseBackupsDirectory = $ConfigData.DataStoreBackupsDirectory
             #FileShareRoot = $ConfigData.FileShareRoot

@@ -70,6 +70,9 @@ function Get-TargetResource
         $RunAsAccount,
         
         [System.Boolean]
+        $IsTileCacheDataStoreClustered = $false,
+        
+        [System.Boolean]
 		$IsEnvAzure = $false
 	)
     
@@ -119,13 +122,17 @@ function Set-TargetResource
 		$RunAsAccount,
         
         [System.Boolean]
-		$IsEnvAzure = $false
+        $IsTileCacheDataStoreClustered = $false,
+        
+        [System.Boolean]
+        $IsEnvAzure = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
-	
+    $Referer = "https://$($MachineFQDN):2443"
+
     $ServiceName = 'ArcGIS Data Store'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $DataStoreInstallDirectory = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir.TrimEnd('\')  
@@ -180,9 +187,8 @@ function Set-TargetResource
         }	
     }
 
-    $FQDN = Get-FQDN $ServerHostName
-    $ServerUrl = "https://$($FQDN):6443"   
-    $Referer = $ServerUrl
+    $ServerFQDN = Get-FQDN $ServerHostName
+    $ServerUrl = "https://$($ServerFQDN):6443"   
     Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -Verbose
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
 
@@ -201,16 +207,19 @@ function Set-TargetResource
     }
 
     $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
-    $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
-                                                            -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
-                                                            -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator
-
-    if($DatastoresToRegister.Count -gt 0){
-        $DatastoresToRegisterString = ($DatastoresToRegister -join ',')
-        Write-Verbose "Registering datastores $DatastoresToRegisterString"
-        Register-DataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
+    $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
+                                -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
+                                -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
+                                -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered
+    
+    #Check if the TileCache mode is correct, only for 10.8.1 and above                                                            
+    if($DatastoresToRegisterOrConfigure.Count -gt 0){
+        $DatastoresToRegisterOrConfigureString = ($DatastoresToRegisterOrConfigure -join ',')
+        Write-Verbose "Registering or configuring datastores $DatastoresToRegisterOrConfigureString"
+        Invoke-RegisterOrConfigureDataStore -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
                             -ServerUrl $ServerUrl -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
-                            -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes
+                            -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes `
+                            -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered
     }
 
     if($DataStoreTypes -icontains "SpatioTemporal"){
@@ -226,7 +235,7 @@ function Set-TargetResource
     }
 
     if(-not($DataStoreTypes -icontains "SpatioTemporal") -and -not($IsStandby) -and $DatabaseBackupsDirectory){
-        $currLocation = Get-BackupLocation
+        $currLocation = Get-BackupLocation -Type "Relational"
         Write-Verbose "Current backup location is $currLocation. Requested $DatabaseBackupsDirectory"
         if($DatabaseBackupsDirectory -ine $currLocation)
         {
@@ -353,6 +362,9 @@ function Test-TargetResource
         $RunAsAccount,
         
         [System.Boolean]
+        $IsTileCacheDataStoreClustered = $false,
+        
+        [System.Boolean]
 		$IsEnvAzure = $false
     )
     
@@ -361,10 +373,10 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $true
     
-    $FQDN = Get-FQDN $ServerHostName
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
-    $ServerUrl = "https://$($FQDN):6443"    
-	$Referer = $ServerUrl
+    $Referer = "https://$($MachineFQDN):2443"
+    $ServerFQDN = Get-FQDN $ServerHostName
+    $ServerUrl = "https://$($ServerFQDN):6443"
     
     if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
         if($IsEnvAzure){
@@ -401,15 +413,16 @@ function Test-TargetResource
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
     
     $DataStoreAdminEndpoint = 'https://localhost:2443/arcgis/datastoreadmin'
-    $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
+    $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure -ServerURL $ServerUrl -Token $token.token -Referer $Referer `
                                 -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
-                                -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator
+                                -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
+                                -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered
 
-    if($DatastoresToRegister.Count -gt 0){
+    if($DatastoresToRegisterOrConfigure.Count -gt 0){
         $result = $false
     }else{
-        if(($DataStoreTypes -icontains "SpatioTemporal") -and -not($DatastoresToRegister -icontains "SpatioTemporal")){
-            $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN
+        if(($DataStoreTypes -icontains "SpatioTemporal") -and -not($DatastoresToRegisterOrConfigure -icontains "SpatioTemporal")){
+            $resultSpatioTemporal = Test-SpatiotemporalBigDataStoreStarted -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -Verbose
             if($resultSpatioTemporal) {
                 Write-Verbose 'Big data store is started'
             }else {
@@ -420,7 +433,7 @@ function Test-TargetResource
     }
 
     if(-not($DataStoreTypes -icontains "SpatioTemporal") -and $result -and $DatabaseBackupsDirectory) {
-        $currLocation = Get-BackupLocation
+        $currLocation = Get-BackupLocation -Type "Relational"
         Write-Verbose "Current backup location is $currLocation"
         if($DatabaseBackupsDirectory -ine $currLocation){
             Write-Verbose "Current backup location does not match $DatabaseBackupsDirectory"
@@ -472,7 +485,7 @@ function Get-DataStoreInfo
    Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -Verbose 
 }
 
-function Register-DataStore
+function Invoke-RegisterOrConfigureDataStore
 {
     [CmdletBinding()]
     param(
@@ -504,48 +517,55 @@ function Register-DataStore
         $MachineFQDN,
         
         [System.Array]
-        $DataStoreTypes
+        $DataStoreTypes,
+
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered
     )
+
+    [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').RealVersion
+    Write-Verbose "Version of DataStore is $RealVersion"
+    $VersionArray = $RealVersion.Split('.')
 
     $ServerSiteUrl = $ServerURL.TrimEnd('/') + '/arcgis'
 
     if(!$DataStoreContentDirectory) { throw "Must Specify DataStoreContentDirectory" }
 
-    $featuresJson = ',"features":{'
+    $featuresJson = @{}
     if($DataStoreTypes) {
-        $first = $true
         foreach($dstype in $DataStoreTypes) {
             if($dstype -ieq 'Relational') {
-                if(-not($first)){ $featuresJson += ',' } 
-                $first = $false
-                $featuresJson += '"feature.egdb":true'
+		        $featuresJson.add("feature.egdb",$true)
                 Write-Verbose "Adding Relational as a data store type"
             }
             elseif($dstype -ieq 'TileCache') {
-                if(-not($first)){ $featuresJson += ',' } 
-                $first = $false
-                $featuresJson += '"feature.nosqldb":true'
+		        $featuresJson.add("feature.nosqldb",$true)
                 Write-Verbose "Adding Tile Cache as a data store type"
             }elseif($dstype -ieq 'SpatioTemporal') {
-                if(-not($first)){ $featuresJson += ',' } 
-                $first = $false
-				$featuresJson += '"feature.bigdata":true'
+		        $featuresJson.add("feature.bigdata",$true)
                 Write-Verbose "Adding SpatioTemporal as a data store type"
-			}
+            }
         }
     }
-    $featuresJson += '}'
+
+	$dsSettings = @{
+		directory = $DataStoreContentDirectory.Replace('\\', '\').Replace('\\', '\'); 
+		features = $featuresJson;
+	}
+
+	if($DataStoreTypes -icontains "TileCache" -and (($VersionArray[1] -gt 8) -or ($RealVersion -ieq "10.8.1")) -and $IsTileCacheDataStoreClustered){
+        $dsSettings.add("storeSetting.tileCache",@{deploymentMode="cluster"})
+        $dsSettings.add("referer",$Referer)
+    }
 
     $WebParams = @{ 
-                    f = 'json'
                     username = $ServerSiteAdminCredential.UserName
                     password = $ServerSiteAdminCredential.GetNetworkCredential().Password
                     serverURL = $ServerSiteUrl
-                    dsSettings = '{"directory":"' + $DataStoreContentDirectory.Replace('\', '\\') + '"' + $featuresJson + '}'
-                  }       
-    #Write-Verbose ($WebParams | ConvertTo-Json -Depth 4)
-    #$HttpBody = ConvertTo-HttpBody $WebParams
-    
+                    dsSettings = (ConvertTo-Json $dsSettings -Compress)
+                    f = 'json'
+                }   
+   
     $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'    
     Write-Verbose "Register DataStore at $DataStoreAdminEndpoint with DataStore Content directory at $DataStoreContentDirectory for server $ServerSiteUrl"
    
@@ -559,15 +579,16 @@ function Register-DataStore
             $DatastoresToRegisterFlag = $true
             if($NumAttempts -gt 1) {
                 Write-Verbose "Checking if datastore is registered"
-                $DatastoresToRegister = Get-DataStoreTypesToRegister -ServerURL $ServerUrl -Token $Token -Referer $Referer `
-                                            -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
-                                            -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential
+                $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure -ServerURL $ServerUrl -Token $Token `
+                                            -Referer $Referer -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
+                                            -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential `
+                                            -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered
 
-                $DatastoresToRegisterFlag = ($DatastoresToRegister.Count -gt 0)
+                $DatastoresToRegisterFlag = ($DatastoresToRegisterOrConfigure.Count -gt 0)
             }            
             if($DatastoresToRegisterFlag) {
-                Write-Verbose "Register DataStore on Machine $MachineFQDN"             
-                $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer 'http://localhost' -TimeOutSec 450 -Verbose
+                Write-Verbose "Register DataStore on Machine $MachineFQDN"    
+                $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 600 -Verbose
                 if($response.error) {
                     Write-Verbose "Error Response - $($response.error)"
                     throw [string]::Format("ERROR: failed. {0}" , $response.error.message)
@@ -591,9 +612,20 @@ function Register-DataStore
         }         
         $NumAttempts++
     }
+
+    if($DataStoreTypes -icontains "TileCache" -and ($RealVersion -ieq "10.8.1") -and $IsTileCacheDataStoreClustered){
+        if((Get-NumberOfTileCacheDatastoreMachines -ServerURL $ServerUrl -Token $Token -Referer $Referer) -eq 1){
+            $TilecacheBackupLocation = Get-BackupLocation -Type "TileCache"
+            if(-not([string]::IsNullOrEmpty($TilecacheBackupLocation))){
+                Write-Verbose "Unregistering backup location to $TilecacheBackupLocation"
+                Delete-BackupLocation -BackupDirectory $TilecacheBackupLocation -Type "TileCache"
+                Write-Verbose "Unregistering backup location to $TilecacheBackupLocation"
+            }
+        }
+    }
 }
 
-function Get-DataStoreTypesToRegister
+function Get-DataStoreTypesToRegisterOrConfigure
 {
     [CmdletBinding()]
     param(
@@ -619,7 +651,10 @@ function Get-DataStoreTypesToRegister
         $DataStoreTypes, 
         
         [System.String]
-        $MachineFQDN
+        $MachineFQDN,
+
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered
     )
 
     $DataStoreInfo = Get-DataStoreInfo -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential `
@@ -628,7 +663,6 @@ function Get-DataStoreTypesToRegister
     $DatastoresToRegister = @()
     foreach($dstype in $DataStoreTypes){
         Write-Verbose "Checking if $dstype Datastore is registered"
-        $serverTestResult = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN
         $dsTestResult = $false
         if($dstype -ieq 'Relational'){
             $dsTestResult = $DataStoreInfo.relational.registered
@@ -638,6 +672,7 @@ function Get-DataStoreTypesToRegister
             $dsTestResult = $DataStoreInfo.spatioTemporal.registered
         }
 
+        $serverTestResult = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -Verbose
         if($dsTestResult -and $serverTestResult){
             Write-Verbose "The machine with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
         }else{
@@ -666,7 +701,10 @@ function Test-DataStoreRegistered
         $Type, 
         
         [System.String]
-        $MachineFQDN
+        $MachineFQDN,
+
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered
     )
 
     $result = $false
@@ -678,24 +716,66 @@ function Test-DataStoreRegistered
     }   
 
     $DataItemsUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/findItems' 
-    $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $DBType } -Referer $Referer 
+    $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $DBType } -Referer $Referer -Verbose
     $registered= $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Measure-Object).Count -gt 0
     if( $DBType -ieq 'nosql'){
         $registered = $($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Measure-Object).Count -gt 0
     }
 
     if($registered){
-        $dataStorePath = $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Select-Object -First 1).path
+        $DB = $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Select-Object -First 1)
         if( $DBType -ieq 'nosql'){
-            $dataStorePath = $($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Select-Object -First 1).path
+            $DB = ($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Select-Object -First 1)
         }
 
-        $MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $dataStorePath + '/machines'
-        $response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+        $MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $DB.path + '/machines'
+        $response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -Verbose
         $result = ($response.machines | Where-Object { $_.name -ieq $MachineFQDN } | Measure-Object).Count -gt 0
+
+        if($result -and ($Type -like "TileCache")){
+            $VersionArray = $DB.info.storeRelease.Split(".")
+            if(($VersionArray[1] -gt 8) -or ($DB.info.storeRelease -ieq "10.8.1")){
+                if($IsTileCacheDataStoreClustered){
+                    if($DB.info.architecture -ieq "masterSlave"){
+                        $result = $false
+                    }else{
+                        Write-Verbose "Tilecache Architecture is already set to Cluster."
+                    }    
+                }else{
+                    if($DB.info.architecture -ieq "masterSlave"){
+                        Write-Verbose "Tilecache Architecture is already set to masterSlave."
+                    }else{
+                        #$result = $false
+                        Write-Verbose "Tilecache Architecture is set to Cluster. Cannot be converted to masterSlave."
+                    }
+                }
+            }
+        }
     }
 
     $result
+}
+
+function Get-NumberOfTileCacheDatastoreMachines
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ServerURL, 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer
+    )
+
+    $DataItemsUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/findItems' 
+    $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = 'nosql' } -Referer $Referer 
+    $DB = ($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq "TileCache") } | Select-Object -First 1)
+    $MachinesInDataStoreUrl = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + $DB.path + '/machines'
+    $response = Invoke-ArcGISWebRequest -Url $MachinesInDataStoreUrl -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+    ($response.machines | Measure-Object).Count
 }
 
 function Start-ServerService
@@ -765,6 +845,8 @@ function Get-BackupLocation
 {
     [CmdletBinding()]
     param(
+        [System.String]
+        $Type
     )
 
     $DataStoreInstallDirectory = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').InstallDir.TrimEnd('\')
@@ -785,7 +867,9 @@ function Get-BackupLocation
     $p = [System.Diagnostics.Process]::Start($psi)
 
     $op = $p.StandardOutput.ReadToEnd()
-    $location = (($op -split [System.Environment]::NewLine) | Where-Object { $_.StartsWith('Backup location') } | Select-Object -First 1)
+    $TypeString = if($Type -ieq "Relational"){ "relational" }elseif($Type -ieq "TileCache"){ "tile" }else{ "spatio" }
+    $DatastoreInfo = $op -split 'Information for' | Where-Object { $_.Trim().StartsWith($TypeString) } | Select-Object -First 1
+    $location = (($DatastoreInfo -split [System.Environment]::NewLine) | Where-Object { $_.StartsWith('Backup location') } | Select-Object -First 1)
     if($location) {
         $pos = $location.LastIndexOf('.')
         if($pos -gt -1) {
@@ -793,6 +877,53 @@ function Get-BackupLocation
         }
     }
     $location
+}
+
+function Delete-BackupLocation
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $Type,
+
+        [System.String]
+        $BackupDirectory
+    )
+
+    $DataStoreInstallDirectory = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').InstallDir.TrimEnd('\')
+
+    $BackupToolPath = Join-Path $DataStoreInstallDirectory 'tools\configurebackuplocation.bat'
+    
+    if(-not(Test-Path $BackupToolPath -PathType Leaf)){
+        throw "$BackupToolPath not found"
+    }
+
+    $TypeString = if($Type -ieq "Relational"){ "relational" }elseif($Type -ieq "TileCache"){ "tileCache" }else{ "spatiotemporal" }
+    $Arguments = " --operation unregister --location $BackupDirectory --store $TypeString --prompt no "
+
+    Write-Verbose "Backup Unregister Tool:- $BackupToolPath $Arguments"
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $BackupToolPath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+
+    $p = [System.Diagnostics.Process]::Start($psi)
+
+    $op = $p.StandardOutput.ReadToEnd()
+    Write-Verbose $op
+    if($op -ccontains 'failed') {
+        throw "Backup Unregister Tool Failed. $op"
+    }
+
+    if($p.StandardError){
+        $err = $p.StandardError.ReadToEnd()
+		if($err -and $err.Length -gt 0) {
+			throw "Error Updating Backup location. Error:- $err"
+		}
+    }
 }
 
 function Set-BackupLocation
@@ -881,8 +1012,8 @@ function Test-SpatiotemporalBigDataStoreStarted
    $Url = $ServerURL.TrimEnd('/') + '/arcgis/admin/data/items' + "$dataStorePath/machines/$MachineFQDN/validate/"
    Write-Verbose $Url
    try {    
-    $response = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST'   
-    $n = $response.nodes | Where-Object {$_.name -ieq (Resolve-DnsName -Type ANY $env:ComputerName).IPAddress}
+    $response = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST'
+    $n = $response.nodes | Where-Object {($_.name -ieq (Resolve-DnsName -Type ANY $env:ComputerName).IPAddress) -or ($_.name -ieq $MachineFQDN)}
     Write-Verbose "Machine Ip --> $($n.name)"
     $n -and $response.isHealthy -ieq 'True'
    }

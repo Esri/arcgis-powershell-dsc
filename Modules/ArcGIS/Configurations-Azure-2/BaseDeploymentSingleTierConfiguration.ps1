@@ -72,6 +72,10 @@
         $DataStoreTypes = 'Relational'
 
         ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered = $False
+
+        ,[Parameter(Mandatory=$false)]
         [System.Int32]
         $OSDiskSize = 0
 
@@ -600,6 +604,14 @@
                 LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
                 ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString			
                 ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                EnableEmailSettings                   = $False
+                EmailSettingsSMTPServerAddress        = $null
+                EmailSettingsFrom                     = $null
+                EmailSettingsLabel                    = $null
+                EmailSettingsAuthenticationRequired   = $false
+                EmailSettingsCredential               = $null
+                EmailSettingsSMTPPort                 = $null
+                EmailSettingsEncryptionMethod         = "NONE"
             } 
 
             Script CopyPortalCertificateFileToLocalMachine
@@ -767,7 +779,7 @@
                 }
             }
 
-            if($IsDualMachineDeployment -and ($DataStoreTypes.split(",") -iContains "SpatioTemporal")){
+            if($DataStoreTypes.split(",") -iContains "SpatioTemporal"){
                 ArcGIS_xFirewall SpatioTemporalDataStore_FirewallRules
                 {
                     Name                  = "ArcGISSpatioTemporalDataStore" 
@@ -777,9 +789,26 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2443", "9320", "9220")                        
+                    LocalPort             = ("2443", "9220")                        
                     Protocol              = "TCP" 
                 } 
+                $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules')
+
+                if($IsDualMachineDeployment){
+                    ArcGIS_xFirewall SpatioTemporalDataStore_MultiMachine_FirewallRules
+                    {
+                        Name                  = "ArcGISSpatioTemporalMultiMachineDataStore" 
+                        DisplayName           = "ArcGIS SpatioTemporal Multi Machine Data Store" 
+                        DisplayGroup          = "ArcGIS SpatioTemporal Multi Machine Data Store" 
+                        Ensure                = 'Present'
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("9320")                        
+                        Protocol              = "TCP" 
+                    } 
+                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_MultiMachine_FirewallRules')
+                }
             }
 
             $DataStoreDependsOn += @('[ArcGIS_Server]Server')
@@ -796,6 +825,7 @@
                 RunAsAccount               = $ServiceCredential 
                 DataStoreTypes             = $DataStoreTypes.split(",")
                 IsEnvAzure                 = $true
+                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
                 DependsOn                  = $DataStoreDependsOn
 		    } 
 	

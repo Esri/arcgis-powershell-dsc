@@ -103,14 +103,12 @@ function Set-TargetResource
         }
         Write-Verbose "RealVersion of ArcGIS Software:- $RealVersion" 
         $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-
         $LicenseVersion = if($Component -ieq 'Pro' -or $Component -ieq 'LicenseManager'){ '10.6' }else{ $RealVersion }
         Write-Verbose "Licensing from $LicenseFilePath" 
         if(@('Desktop', 'Pro', 'LicenseManager') -icontains $Component) {
             Write-Verbose "Version $LicenseVersion Component $Component" 
             Invoke-LicenseSoftware -Product $Component -LicenseFilePath $LicenseFilePath -Version $LicenseVersion -LicensePassword $LicensePassword -IsSingleUse $IsSingleUse -Verbose
-        }
-        else {
+        } else {
             Write-Verbose "Version $LicenseVersion Component $Component Role $ServerRole" 
             $StdOutputLogFilePath = Join-Path $env:TEMP "$(Get-Date -format "dd-MM-yy-HH-mm")-stdlog.txt"
             $StdErrLogFilePath = Join-Path $env:TEMP "$(Get-Date -format "dd-MM-yy-HH-mm")-stderr.txt"
@@ -190,8 +188,7 @@ function Test-TargetResource
 
     Write-Verbose "RealVersion of ArcGIS Software to be Licensed:- $RealVersion" 
     $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-    $LicenseVersion = if($Component -ieq 'Pro'){ '10.6' }else{ $RealVersion }
-
+    
     Write-Verbose "Version $LicenseVersion" 
     if($Component -ieq 'Desktop') {
         Write-Verbose "TODO:- Check for Desktop license. For now forcing Software Authorization Tool to License Pro."

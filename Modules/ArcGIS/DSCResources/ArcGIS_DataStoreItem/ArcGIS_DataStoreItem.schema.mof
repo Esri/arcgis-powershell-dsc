@@ -12,5 +12,6 @@ class ArcGIS_DataStoreItem : OMI_BaseResource
 	[Write] String DataStoreConnectionString;
 	[Write] String DataStoreEndpoint;
 	[Write] String DataStorePath;
+	[Write] String DataStoreTable;
 };
 

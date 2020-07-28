@@ -47,6 +47,22 @@
         Enables the automaticAccountCreation on Portal
     .PARAMETER DisableServiceDirectory
         Disable the Services Directory on Portal
+    .PARAMETER EnableEmailSettings
+        Enable Email Settings on Portal
+    .PARAMETER EmailSettingsSMTPServerAddress
+        Email Settings SMTP server host on Portal
+    .PARAMETER EmailSettingsFrom
+        Email Settings SMTP Email From on Portal
+    .PARAMETER EmailSettingsLabel
+        Email Settings SMTP Email From Label on Portal
+    .PARAMETER EmailSettingsAuthenticationRequired
+        Email Settings SMTP Server Authentication Requirement Flag on Portal
+    .PARAMETER EmailSettingsCredential
+        Email Settings SMTP Server Host Authentication Credentials on Portal
+    .PARAMETER EmailSettingsSMTPPort
+        Email Settings SMTP Server Host Port on Portal
+    .PARAMETER EmailSettingsEncryptionMethod
+        Email Settings SMTP Server Encryption Method on Portal
 #>
 
 function Invoke-CreatePortalSite {    
@@ -371,7 +387,32 @@ function Set-TargetResource {
         $DefaultUserLicenseTypeIdForUser,
 
         [System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $EnableEmailSettings,
+
+        [System.String]
+        $EmailSettingsSMTPServerAddress,
+
+        [System.String]
+        $EmailSettingsFrom,
+
+        [System.String]
+        $EmailSettingsLabel,
+
+        [System.Boolean]
+        $EmailSettingsAuthenticationRequired = $False,
+
+        [System.Management.Automation.PSCredential]
+        $EmailSettingsCredential,
+
+        [System.Int32]
+        $EmailSettingsSMTPPort = 25,
+
+        [ValidateSet("SSL", "TLS", "NONE")]
+        [System.String]
+        $EmailSettingsEncryptionMethod = "NONE"
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -446,46 +487,67 @@ function Set-TargetResource {
     }
 
     if ($RestartRequired) {             
-		Restart-PortalService -ServiceName $ServiceName
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' 
+		Restart-PortalService -ServiceName $ServiceName -Verbose
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
     }    
 
     Write-Verbose "Portal at https://$($FQDN):7443"
     if ($Ensure -ieq 'Present') {
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET'
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
         $Referer = 'http://localhost'
         $RestartRequired = $false
-        try {
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
-        } catch {
-            Write-Verbose $_
+        
+        $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -Verbose -HttpMethod "GET"
+        if($SiteCreatedCheckResponse.error.message -ieq "Token Required." -and $SiteCreatedCheckResponse.error.code -eq 499){
+            Write-Verbose "Portal Site already is already created. Now checking if portal site is healthy."
+            $Attempts = 0
+            $PortalReady = $False
+            while(-not($PortalReady) -and ($Attempts -lt 2)) {
+                $SharingAPIURL = "https://$($FQDN):7443/arcgis/sharing/rest/info" 
+                Write-Verbose "Making request to Sharing API Url - $SharingAPIURL" 
+                try {
+                    Invoke-ArcGISWebRequest -Url $SharingAPIURL -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -Verbose -HttpMethod "GET"
+                    Write-Verbose "Sharing API rest endpoint is available."
+                    $PortalReady = $true
+                }catch {
+                    Write-Verbose "Sharing API rest endpoint is not available. Error:- $_. Restarting Portal."
+                    Restart-PortalService -ServiceName $ServiceName -Verbose
+                    Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
+                    $Attempts = $Attempts + 1
+                }        
+            }
+            if(-not($PortalReady)){
+                throw "Portal Site is not healthy. Please check your portal site deployment."
+            }
+        } else {
+            if($SiteCreatedCheckResponse.status -ieq "error"){
+                if($SiteCreatedCheckResponse.messages -icontains "The portal site has not been initialized. Please create a new site and try again."){
+                    if($Join -and -not($RealVersion -ieq '10.3')) {
+                        $PeerMachineFQDN = Get-FQDN $PeerMachineHostName
+                        Write-Verbose "Joining machine to portal site at peer $PeerMachineFQDN"   
+                        Join-PortalSite -PortalHostNameFQDN $FQDN -Credential $PortalAdministrator -PeerMachineHostName $PeerMachineFQDN
+                        Write-Verbose "Joined machine to portal site at peer $PeerMachineFQDN"   
+                    } else {
+                        Write-Verbose "Creating Portal Site" 
+                        Invoke-CreatePortalSite -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
+                                            -FullName $PortalAdministrator.UserName -ContentDirectoryLocation $ContentDirectoryLocation `
+                                            -Email $AdminEmail -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
+                                            -Description 'Portal Administrator' -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
+                                            -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath -UserLicenseTypeId $UserLicenseTypeId
+                        Write-Verbose 'Created Portal Site'
+                    }
+                }else{
+                    throw "[Error] - Response:- $(ConvertTo-JSON $SiteCreatedCheckResponse -Compress)"
+                }
+            }
         }
-	    if (-not($token.token)) {
-            if($Join -and (-not($RealVersion -ieq '10.3'))) {
-                $PeerMachineFQDN = Get-FQDN $PeerMachineHostName
-                Write-Verbose "Joining machine to portal site at peer $PeerMachineFQDN"   
-                Join-PortalSite -PortalHostNameFQDN $FQDN -Credential $PortalAdministrator -PeerMachineHostName $PeerMachineFQDN
-                Write-Verbose "Joined machine to portal site at peer $PeerMachineFQDN"   
-            }
-            else {
-                Write-Verbose "Creating Portal Site" 
-                Invoke-CreatePortalSite -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
-                                    -FullName $PortalAdministrator.UserName -ContentDirectoryLocation $ContentDirectoryLocation `
-                                    -Email $AdminEmail -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
-                                    -Description 'Portal Administrator' -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
-                                    -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath -UserLicenseTypeId $UserLicenseTypeId
-                Write-Verbose 'Created Portal Site'
-            }
-			Write-Verbose "Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/healthCheck?f=json' to intialize"
-			Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/healthCheck?f=json" -HttpMethod 'GET' -Verbose
-			Write-Verbose "Finished Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/healthCheck?f=json' to intialize"
 
-			$token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
-			Write-Verbose "Portal Site created. Successfully retrieved token for $($PortalAdministrator.UserName)"
-        }
-        else {
-            Write-Verbose "Portal Site already created. Successfully retrieved token for $($PortalAdministrator.UserName)"
-        }  
+        Write-Verbose "Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/healthCheck?f=json'"
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/healthCheck?f=json" -HttpMethod 'GET' -Verbose
+        Write-Verbose "Finished Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/healthCheck?f=json'"
+
+        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+        Write-Verbose "Portal Site created. Successfully retrieved token for $($PortalAdministrator.UserName)"
 
         #Populating Licenses
         if(-not($Join) -and $LicenseFilePath){
@@ -581,7 +643,7 @@ function Set-TargetResource {
             }
             
             
-           Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
             if(-not($token)){
                 $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer 'http://localhost'
             }
@@ -676,6 +738,34 @@ function Set-TargetResource {
                 Write-Verbose "Updating portal security configuration"
                 Set-PortalSecurityConfig -PortalHostName $FQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig -Depth 10) -Verbose
             }
+
+            if($RealVersion.Split('.')[1] -gt 8 -or ($RealVersion.Split('.')[1] -eq 8 -and $RealVersion.Split('.')[2] -eq 1)){
+            $UpdateEmailSettingsFlag = $False
+                try{
+                    $PortalEmailSettings = Get-PortalEmailSettings -PortalHostName $FQDN -Token $token.token -Referer $Referer
+                    if(-not($EnableEmailSettings)){
+                        Write-Verbose "Deleting Portal Email Settings"
+                        Delete-PortalEmailSettings -PortalHostName $FQDN -Token $token.token -Referer $Referer -Verbose
+                    }else{
+                        if(-not($PortalEmailSettings.smtpHost -ieq $EmailSettingsSMTPServerAddress -and $PortalEmailSettings.smtpPort -ieq $EmailSettingsSMTPPort -and $PortalEmailSettings.mailFrom -ieq $EmailSettingsFrom -and $PortalEmailSettings.mailFromLabel -ieq $EmailSettingsLabel -and $PortalEmailSettings.encryptionMethod -ieq $EmailSettingsEncryptionMethod -and $PortalEmailSettings.authRequired -ieq $EmailSettingsAuthenticationRequired -and (($EmailSettingsAuthenticationRequired -ieq $False) -or ($EmailSettingsAuthenticationRequired -ieq $True -and  $PortalEmailSettings.smtpUser -ieq $EmailSettingsCredential.UserName -and $PortalEmailSettings.smtpPass -ieq $EmailSettingsCredential.GetNetworkCredential().Password)))){
+                            $UpdateEmailSettingsFlag = $True
+                        }else{
+                            Write-Verbose "Portal Email settings configured correctly."
+                        }
+                    }
+                }catch{
+                    if($EnableEmailSettings){
+                        $UpdateEmailSettingsFlag = $True
+                    }else{
+                        Write-Verbose "Portal Email settings configured correctly."
+                    }
+                }
+
+                if($UpdateEmailSettingsFlag){
+                    Write-Verbose "Updating Portal Email Settings"
+                    Update-PortalEmailSettings -SMTPServerAddress $EmailSettingsSMTPServerAddress -From $EmailSettingsFrom -Label $EmailSettingsLabel -AuthenticationRequired $EmailSettingsAuthenticationRequired -Credential $EmailSettingsCredential -SMTPPort $EmailSettingsSMTPPort -EncryptionMethod $EmailSettingsEncryptionMethod -Token $token.token -Verbose
+                }
+            }
         }
     }
     elseif ($Ensure -ieq 'Absent') {
@@ -753,7 +843,32 @@ function Test-TargetResource {
         $DefaultUserLicenseTypeIdForUser,
 
         [System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $EnableEmailSettings,
+
+        [System.String]
+        $EmailSettingsSMTPServerAddress,
+
+        [System.String]
+        $EmailSettingsFrom,
+
+        [System.String]
+        $EmailSettingsLabel,
+
+        [System.Boolean]
+        $EmailSettingsAuthenticationRequired = $False,
+
+        [System.Management.Automation.PSCredential]
+        $EmailSettingsCredential,
+
+        [System.Int32]
+        $EmailSettingsSMTPPort = 25,
+
+        [ValidateSet("SSL", "TLS", "NONE")]
+        [System.String]
+        $EmailSettingsEncryptionMethod = "NONE"
 	)
 
 
@@ -830,19 +945,36 @@ function Test-TargetResource {
             }
         }        
     }
-
-    $Referer = 'http://localhost'   
-    try {
-        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
-        if (-not($token.token)) {
-            Write-Verbose "Unable to detect portal site"   
+    if ($result) {
+        try{
+            $Referer = 'http://localhost'
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose   
+            $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -Verbose -HttpMethod "GET"
+            if($SiteCreatedCheckResponse.error.message -ieq "Token Required." -and $SiteCreatedCheckResponse.error.code -eq 499){
+                Write-Verbose "Portal Site already is already created."
+                try {
+                    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+                    if (-not($token.token)) {
+                        Write-Verbose "Unable to retrive token from portal site"   
+                        $result = $false
+                    } else {
+                        Write-Verbose "Portal Site already created. Successfully retrieved token for $($PortalAdministrator.UserName)"
+                    }
+                } catch {
+                    Write-Verbose "Unable to retrive token from portal site - $_" 
+                    $result = $false
+                }
+            }else{
+                if($SiteCreatedCheckResponse.status -ieq "error"){
+                    Write-Verbose "Unable to detect portal site - $(ConvertTo-JSON $SiteCreatedCheckResponse -Compress)"
+                    $result = $false
+                }
+            }
+        }catch{
+            Write-Verbose "Unable to detect portal site - $_)"
             $result = $false
-        } else {
-            Write-Verbose "Portal Site already created. Successfully retrieved token for $($PortalAdministrator.UserName)"
         }
-    } catch {
-        Write-Verbose "Unable to detect portal site - $_" 
-    }      
+    }
 
     if($result -and -not($Join) -and $LicenseFilePath){
         Write-Verbose "Checking if portal licenses are populated"
@@ -955,6 +1087,24 @@ function Test-TargetResource {
                 if ($userDefaults.userLicenseType -ne $DefaultUserLicenseTypeIdForUser) {
                     Write-Verbose "Current Default User Type does not match. Updating it."
                     $result = $false
+                }
+            }
+        }
+
+        if($result -and ($RealVersion.Split('.')[1] -gt 8 -or ($RealVersion.Split('.')[1] -eq 8 -and $RealVersion.Split('.')[2] -eq 1))){
+            Write-Verbose "Checking Portal Email settings."
+            try{
+                $PortalEmailSettings = Get-PortalEmailSettings -PortalHostName $FQDN -Token $token.token -Referer $Referer
+                if(-not($EnableEmailSettings) -or ($EnableEmailSettings -eq $True -and -not($PortalEmailSettings.smtpHost -ieq $EmailSettingsSMTPServerAddress -and $PortalEmailSettings.smtpPort -ieq $EmailSettingsSMTPPort -and $PortalEmailSettings.mailFrom -ieq $EmailSettingsFrom -and $PortalEmailSettings.mailFromLabel -ieq $EmailSettingsLabel -and $PortalEmailSettings.encryptionMethod -ieq $EmailSettingsEncryptionMethod -and $PortalEmailSettings.authRequired -ieq $EmailSettingsAuthenticationRequired -and (($EmailSettingsAuthenticationRequired -ieq $False) -or ($EmailSettingsAuthenticationRequired -ieq $True -and  $PortalEmailSettings.smtpUser -ieq $EmailSettingsCredential.UserName -and $PortalEmailSettings.smtpPass -ieq $EmailSettingsCredential.GetNetworkCredential().Password))))){
+                    $result = $false
+                }else{
+                    Write-Verbose "Portal Email settings configured correctly."
+                }
+            }catch{
+                if($EnableEmailSettings){
+                    $result = $false
+                }else{
+                    Write-Verbose "Portal Email settings configured correctly."
                 }
             }
         }
@@ -1251,8 +1401,6 @@ function Set-PortalLogSettings {
     Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/logs/settings/edit") -HttpFormParameters $FormParameters -Referer $Referer -HttpMethod 'POST'
 }
 
-
-
 function Get-PortalSelfDescription {
     [CmdletBinding()]
     param(        
@@ -1305,6 +1453,135 @@ function Set-PortalSelfDescription
     }
     catch {
         Write-Verbose "[WARNING] Request to Set-PortalSelfDescription returned error:- $_"
+    }
+}
+
+function Get-PortalEmailSettings
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+
+        [System.String]
+        $SiteName = 'arcgis',
+
+        [System.Int32]
+        $Port = 7443,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    ) 
+    
+    $resp = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/system/emailSettings") `
+                        -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+						
+    if($resp.status -and $resp.status -ieq "error"){
+        throw "[Error] - Get-PortalEmailSettings Response:- $($resp.messages)"
+    }
+	
+	$resp 
+}
+
+function Update-PortalEmailSettings
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+
+        [System.String]
+        $SiteName = 'arcgis',
+
+        [System.Int32]
+        $Port = 7443,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost',
+
+        [System.String]
+        $SMTPServerAddress,
+
+        [System.String]
+        $From,
+
+        [System.String]
+        $Label,
+
+        [System.Boolean]
+        $AuthenticationRequired = $False,
+
+        [System.Management.Automation.PSCredential]
+        $Credential,
+        
+        [System.Int32]
+        $SMTPPort = 25,
+         
+        [System.String]
+        $EncryptionMethod
+    )
+
+    $emailSettingObject = @{
+        smtpServer = $SMTPServerAddress;
+        fromEmailAddress = $From;
+        fromEmailAddressLabel = $Label;
+        authRequired = if($AuthenticationRequired){ "yes" }else{ "no" };
+        smtpPort = $SMTPPort;
+        encryptionMethod = $EncryptionMethod;
+		f = 'json'; 
+		token = $Token;
+    }
+
+    if($AuthenticationRequired){
+        $emailSettingObject.Add("username",$Credential.UserName)
+        $emailSettingObject.Add("password",$Credential.GetNetworkCredential().Password)
+    }
+
+    $resp = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/system/emailSettings/update") `
+                        -HttpFormParameters $emailSettingObject -Referer $Referer -Verbose
+    if($resp.error -and $resp.error.message){
+        throw "[Error] - Update-PortalEmailSettings Response:- $($resp.error.message)"
+    }else{
+        if($resp.status -and $resp.status -ieq "success"){
+            if ($null -ne $resp.recheckAfterSeconds) {
+                Write-Verbose "Sleeping for $($resp.recheckAfterSeconds*2) seconds"
+                Start-Sleep -Seconds ($resp.recheckAfterSeconds * 2)
+            }
+            Write-Verbose "Update-PortalEmailSettings successful."
+        }
+    }
+}
+
+function Delete-PortalEmailSettings
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalHostName = 'localhost',
+
+        [System.String]
+        $SiteName = 'arcgis',
+
+        [System.Int32]
+        $Port = 7443,
+
+        [System.String]
+        $Token,
+
+        [System.String]
+        $Referer = 'http://localhost'
+    )  
+    
+    $resp = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/system/emailSettings/delete") `
+                        -HttpFormParameters @{ f = 'json'; token = $Token; } -Referer $Referer -Verbose
+    if($resp.error -and $resp.error.message){
+        throw "[Error] - Delete-PortalEmailSettings Response:- $($resp.error.message)"
     }
 }
 

@@ -21,6 +21,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
 		$PortalSiteAdministratorCredential
+
+		,[Parameter(Mandatory=$false)]
+        [System.String]
+        $IsAddingServersOrRegisterEGDB
 		
 		,[Parameter(Mandatory=$false)]
         [System.String]
@@ -445,13 +449,16 @@
 			
 			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server'))
 			{
-				Service "$($ServiceToStop.Replace(' ','_'))_Service"
-				{
-					Name			= $ServiceToStop
-					Credential		= $ServiceCredential
-					StartupType		= 'Manual'
-					State			= 'Stopped'
-					DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
+			    {
+					Service "$($ServiceToStop.Replace(' ','_'))_Service"
+					{
+						Name			= $ServiceToStop
+						Credential		= $ServiceCredential
+						StartupType		= 'Manual'
+						State			= 'Stopped'
+						DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+					}
 				}
 			}
 						
@@ -785,7 +792,7 @@
 			}
 			$RemoteFederationDependsOn += @("[ArcGIS_ServerSettings]ServerSettings")	
 
-			if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential) 
+			if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsAddingServersOrRegisterEGDB -ieq 'True')) 
 			{
 				ArcGIS_Federation Federate
 				{

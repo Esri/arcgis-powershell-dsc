@@ -46,7 +46,7 @@ Configuration PortalUpgradeStandbyJoinV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"} 
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_PortalUpgrade 
     
@@ -102,6 +102,14 @@ Configuration PortalUpgradeStandbyJoinV1{
             LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
             ContentDirectoryCloudConnectionString   = $ContentDirectoryCloudConnectionString							
             ContentDirectoryCloudContainerName      = $ContentDirectoryCloudContainerName
+            EnableEmailSettings                     = $False
+            EmailSettingsSMTPServerAddress          = $null
+            EmailSettingsFrom                       = $null
+            EmailSettingsLabel                      = $null
+            EmailSettingsAuthenticationRequired     = $false
+            EmailSettingsCredential                 = $null
+            EmailSettingsSMTPPort                   = $null
+            EmailSettingsEncryptionMethod           = "NONE"
         }
     }
 }

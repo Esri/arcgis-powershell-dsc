@@ -4,11 +4,11 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$ExternalDNSName,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$PortalContext,
         
@@ -39,11 +39,11 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$ExternalDNSName,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$PortalContext,
         
@@ -199,11 +199,11 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $false)]
 		[System.String]
 		$ExternalDNSName,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$PortalContext,
         
@@ -228,7 +228,7 @@ function Test-TargetResource
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $PortalFQDN = Get-FQDN $PortalHostName
-    $Referer = "https://$($ExternalDNSName)/$($PortalContext)"
+    $Referer = if($ExternalDNSName){"https://$($ExternalDNSName)/$($PortalContext)"}else{"https://localhost"}
 	Write-Verbose "Getting Portal Token for user '$($PortalAdministrator.UserName)' from 'https://$($PortalFQDN):7443'"
 
 	$PortalToken = Get-PortalToken -PortalHostName $PortalFQDN -Port 7443 -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer

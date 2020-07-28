@@ -105,18 +105,46 @@ function Set-TargetResource
         $info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator `
                                     -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" -Token $token.token -Referer $Referer 
 
+        $VersionArray = $info.currentVersion.split('.')                                                               
         $dstypesarray = [System.Collections.ArrayList]@()
         
         if($info.relational.registered) {
-            Write-Verbose "Relational Replication Role - $($datastoreConfigHashtable["store.relational"]["replication.role"])"
-            if($datastoreConfigHashtable["store.relational"]["replication.role"] -ieq "PRIMARY"){
-                $dstypesarray.Add('relational')
+            if(($VersionArray[1] -gt 7) -and -not(($VersionArray[1] -eq 8) -and ($VersionArray[2] -eq 0))){
+                $datastoreConfigFilePath = "$ContentDirectory\\etc\\relational-config.json"
+                $datastoreConfigJSONObject = (ConvertFrom-Json (Get-Content $datastoreConfigFilePath -Raw))
+                $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
+                Write-Verbose "Relational Replication Role - $($datastoreConfigHashtable["replication.role"])"
+                if($datastoreConfigHashtable["replication.role"] -ieq "PRIMARY"){
+                    $dstypesarray.Add('relational')
+                }
+            }else{
+                Write-Verbose "Relational Replication Role - $($datastoreConfigHashtable["store.relational"]["replication.role"])"
+                if($datastoreConfigHashtable["store.relational"]["replication.role"] -ieq "PRIMARY"){
+                    $dstypesarray.Add('relational')
+                }
             }
         }
         if($info.tileCache.registered) {
-            Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
-            if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY"){
-                $dstypesarray.Add('tilecache')
+            if($VersionArray[1] -gt 7){
+                if($VersionArray[2] -eq 0){
+                    Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
+                    if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY" -or $datastoreConfigHashtable["replication.role"] -ieq "CLUSTER_MEMBER"){
+                        $dstypesarray.Add('tilecache')
+                    }
+                }else{
+                    $datastoreConfigFilePath = "$ContentDirectory\\etc\\tilecache-config.json"
+                    $datastoreConfigJSONObject = (ConvertFrom-Json (Get-Content $datastoreConfigFilePath -Raw))
+                    $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
+                    Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["replication.role"])"
+                    if($datastoreConfigHashtable["replication.role"] -ieq "PRIMARY" -or $datastoreConfigHashtable["replication.role"] -ieq "CLUSTER_MEMBER"){
+                        $dstypesarray.Add('tilecache')
+                    }
+                }
+            }else{
+                Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
+                if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY" ){
+                    $dstypesarray.Add('tilecache')
+                }
             }
         }
         if($info.spatioTemporal.registered) {

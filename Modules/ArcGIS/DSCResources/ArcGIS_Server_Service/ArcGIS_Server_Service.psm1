@@ -35,8 +35,8 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-		$ServiceType,
-
+        $ServiceType,
+        
         [parameter(Mandatory = $false)]
 		[System.String]
 		$Folder,
@@ -123,7 +123,20 @@ function Test-TargetResource
     $ServiceExists = ($resp.services | Where-Object { $_.name -eq $ServiceNameToCompare -and $_.type -eq $ServiceType } | Measure-Object).Count -gt 0
     if($ServiceExists) {
         Write-Verbose "Service with name '$ServiceName' of type '$ServiceType' exists in folder '$($Folder)'"
-        $result = $true
+        if($SourceFile.Extension -ne '.sd'){
+            Write-Verbose 'Update Service Properties'
+            $ServicePropertiesToCheck = Convert-PSObjectToHashtable $(ConvertFrom-Json (Get-Content $PathToSourceFile -Raw))
+            $ServicePropertiesFromServer =  Convert-PSObjectToHashtable $(ConvertFrom-Json (ConvertTo-Json (Get-ServiceProperties -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -ServiceName $ServiceNameToCompare -ServiceType $ServiceType -Verbose)))
+            if(($ServicePropertiesFromServer | ConvertTo-Json -Compress) -ne ($ServicePropertiesToCheck | ConvertTo-Json -Compress)){
+                Write-Verbose "Service properties have changed, updating them."
+                $result = $False
+            }else{
+                Write-Verbose "Service properties are the same, nothing needs to change."
+                $result = $true
+            }
+        }else{
+            $result = $true
+        }
     }else {
         Write-Verbose "Service with name '$ServiceName' of type '$ServiceType' not found in folder '$($Folder)'"
     }
@@ -179,8 +192,8 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-		$ServiceType,
-
+        $ServiceType,
+        
         [parameter(Mandatory = $false)]
 		[System.String]
 		$Folder,
@@ -267,7 +280,19 @@ function Set-TargetResource
     {        
         if($ServiceExists) 
         {
-            Write-Verbose "Service with name '$ServiceName' of type '$ServiceType' already exists in folder '$($Folder)'"            
+            Write-Verbose "Service with name '$ServiceName' of type '$ServiceType' already exists in folder '$($Folder)'"   
+            if($SourceFile.Extension -ne '.sd') {
+                $ServicePropertiesToCheck = Convert-PSObjectToHashtable $(ConvertFrom-Json (Get-Content $PathToSourceFile -Raw))
+                $ServicePropertiesFromServer =  Convert-PSObjectToHashtable $(ConvertFrom-Json (ConvertTo-Json (Get-ServiceProperties -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -ServiceName $ServiceNameToCompare -ServiceType $ServiceType -Verbose)))
+
+                if(($ServicePropertiesFromServer | ConvertTo-Json -Compress) -ne ($ServicePropertiesToCheck | ConvertTo-Json -Compress)){
+                    Write-Verbose 'Updating Service Properties'
+                    Update-ServiceProperties -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -ServiceProperties (Get-Content $PathToSourceFile -Raw) -ServiceName $ServiceNameToCompare -ServiceType $ServiceType -Verbose
+                    # Wait until Service update completes.
+                    Write-Verbose "Waiting for Url '$ServerUrl/$SiteName/admin' to respond"
+                    Wait-ForUrl -Url "$ServerUrl/$SiteName/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
+                }
+            }         
         }else {    
             if(-not([string]::IsNullOrEmpty($Folder))){ 
 				if(-not(Test-ArcGISServerFolder -Folder $Folder -ServerHostName $ServerHostName -ServerContext $ServerContext -Token $token.token -Referer $Referer -Port $Port -Verbose)){
@@ -331,7 +356,7 @@ function Set-TargetResource
                     Write-Verbose "[{WARNING] Error starting service. Error:- $_"
                 }
             }
-        }      
+        }
     }
     elseif($Ensure -ieq 'Absent') {
         if(-not($ServiceExists)) 
@@ -743,6 +768,108 @@ function Submit-ArcGISPublishJob
 	$Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     Invoke-ArcGISWebRequest -Url "$($Scheme)://$($ServerHostName):$($Port)/$($ServerContext)/rest/services/System/PublishingTools/GPServer/Publish%20Service%20Definition/submitJob" `
                             -HttpFormParameters @{ f = 'json'; token = $Token; in_sdp_id = $ItemId; in_config_overwrite = (ConvertTo-Json $ServiceConfiguration -depth 10 -compress) } -Referer $Referer -Verbose
+}
+
+
+function Get-ServiceProperties
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $ServerHostName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServerContext = 'arcgis',
+
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Token,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $Referer = 'http://localhost',
+
+        [parameter(Mandatory = $false)]
+		[uint32]
+        $Port = 6443,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServiceName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServiceType
+    ) 
+
+    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    $GetServicePropertiesUrl = "$($Scheme)://$($ServerHostName):$($Port)/$($ServerContext)/admin/services/$ServiceName.$ServiceType"
+    Write-Verbose "Url:- $GetServicePropertiesUrl"
+
+    try {
+        $response = Invoke-ArcGISWebRequest -Url $GetServicePropertiesUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 30
+        Confirm-ResponseStatus $response -Url $GetServicePropertiesUrl
+        $response 
+    }
+    catch{
+        Write-Verbose "[EXCEPTION] ArcGIS_Server_Service Get-SystemServiceProperties Error:- $_"
+        $null
+    }
+}
+
+function Update-ServiceProperties
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $ServerHostName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServerContext = 'arcgis',
+
+        [System.String]
+        [Parameter(Mandatory=$true)]
+        $Token,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $Referer = 'http://localhost',
+
+        [parameter(Mandatory = $false)]
+		[uint32]
+        $Port = 6443,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServiceName,
+
+        [System.String]
+        [Parameter(Mandatory=$false)]
+        $ServiceType,
+
+        # service prop json obj
+        $ServiceProperties
+    ) 
+
+    if(-not($ServiceProperties)) {
+        throw "Service Properties parameter is not provided"
+    }
+    $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
+    $UpdateServicePropertiesUrl = "$($Scheme)://$($ServerHostName):$($Port)/$($ServerContext)/admin/services/$ServiceName.$ServiceType/edit"
+    $props = @{ f= 'json'; token = $Token; service = $ServiceProperties; runAsync='true' }
+
+    try{
+        $response = Invoke-ArcGISWebRequest -Url $UpdateServicePropertiesUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 300
+        Confirm-ResponseStatus $response -Url $UpdateServicePropertiesUrl
+        $response
+    }catch{
+        Write-Verbose "[EXCEPTION] ArcGIS_Server_Service Invoke-UpdateSystemServiceProperties Error:- $_"
+        $null
+    }
 }
 
 Export-ModuleMember -Function *-TargetResource

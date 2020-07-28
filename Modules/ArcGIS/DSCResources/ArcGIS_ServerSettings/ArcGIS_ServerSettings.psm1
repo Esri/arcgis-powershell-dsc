@@ -4,7 +4,7 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $false)]
 		[System.String]
         $ServerContext,
         
@@ -12,7 +12,7 @@ function Get-TargetResource
 		[System.String]
 		$ServerHostName,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$ExternalDNSName,
 
@@ -34,7 +34,7 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $false)]
 		[System.String]
         $ServerContext,
         
@@ -42,7 +42,7 @@ function Set-TargetResource
 		[System.String]
 		$ServerHostName,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$ExternalDNSName,
 
@@ -147,7 +147,7 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $false)]
 		[System.String]
         $ServerContext,
         
@@ -155,7 +155,7 @@ function Test-TargetResource
 		[System.String]
 		$ServerHostName,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$ExternalDNSName,
 
