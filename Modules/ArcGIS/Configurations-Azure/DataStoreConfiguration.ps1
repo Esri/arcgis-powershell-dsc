@@ -43,6 +43,10 @@
         [System.String]
         $DataStoreTypes = 'Relational'
 
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered = $False
+
         ,[Parameter(Mandatory=$true)]
         [System.String]
         $ExternalDNSHostName    
@@ -270,6 +274,7 @@
                 RunAsAccount               = $ServiceCredential 
                 DataStoreTypes             = $DataStoreTypes.split(",")
                 IsEnvAzure                 = $true
+                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
 			    DependsOn                  = $DataStoreDependsOn
 		    } 
 

@@ -287,7 +287,7 @@
                 ServerEndPointContext = 'arcgis' #server
                 ExternalDNSName     = $ExternalDNSHostName
                 SiteAdministrator   = $SiteAdministratorCredential
-                DependsOn = @('[ArcGIS_Server]Server','[ArcGIS_ReverseProxy_ARR]WebProxy')
+                DependsOn = @('[ArcGIS_ReverseProxy_ARR]WebProxy')
             }
 
             ArcGIS_PortalSettings PortalSettings
@@ -299,7 +299,7 @@
                 PortalEndPointPort    = 7443
                 PortalEndPointContext = 'arcgis'
                 PortalAdministrator = $SiteAdministratorCredential
-                DependsOn = @('[ArcGIS_Portal]Portal','[ArcGIS_ReverseProxy_ARR]WebProxy')
+                DependsOn = @('[ArcGIS_ReverseProxy_ARR]WebProxy')
             }
             
             ArcGIS_Federation Federation

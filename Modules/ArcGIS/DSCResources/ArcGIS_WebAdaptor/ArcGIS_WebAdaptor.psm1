@@ -104,21 +104,25 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {
         $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
         $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
+		$Version = ""
         foreach($wa in $WAInstalls){
             if($wa.InstallLocation -match "\\$($Context)\\"){
+				$Version = $wa.Version
                 if($wa.Version.StartsWith("10.7")){
-                    $ConfigureToolPath = if($wa.Name -match "10.7.1"){ '\ArcGIS\WebAdaptor\IIS\10.7.1\Tools\ConfigureWebAdaptor.exe' }else{ '\ArcGIS\WebAdaptor\IIS\10.7\Tools\ConfigureWebAdaptor.exe' }
+                    $Version = if($wa.Name -match "10.7.1"){ "10.7.1" }else{ "10.7" }
+                    $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
                     break
                 }elseif($wa.Version.StartsWith("10.8")){	
-                    $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\10.8\Tools\ConfigureWebAdaptor.exe'	
-                    break	
+                    $Version = if($wa.Name -match "10.8.1"){ "10.8.1" }else{ "10.8" }
+                    $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
+				    break
                 }
             }        
         }
 
         $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
         try{
-            Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $wa.Version
+            Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $Version
         }catch{
             $SleepTimeInSeconds = 30
             if($Component -ieq 'Portal' -and ($_ -imatch "The underlying connection was closed: An unexpected error occurred on a receive." -or $_ -imatch "The operation timed out while waiting for a response from the portal application")){
@@ -134,7 +138,7 @@ function Set-TargetResource
                     $Done               = $false
                     while (-not($Done) -and ($NumAttempts++ -le 10)){
                         try{
-                            Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $wa.Version
+                            Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $Version
                         }catch{
                             Write-Verbose "[WARNING]:- Error:- $_."
                             if($_ -imatch "The underlying connection was closed: An unexpected error occurred on a receive." -or $_ -imatch "The operation timed out while waiting for a response from the portal application"){
@@ -346,6 +350,9 @@ function Start-RegisterWebAdaptorCMDLineTool{
         $SiteUrlCheck = "$($SiteURL)/arcgis/sharing/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+        if(($Version.Split('.')[1] -gt 8) -or ($Version -ieq "10.8.1")){
+            $Arguments += " /r false"
+        }
     }
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo

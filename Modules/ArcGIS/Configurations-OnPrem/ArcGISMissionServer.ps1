@@ -225,6 +225,8 @@ Configuration ArcGISMissionServer
             ConfigStoreCloudStorageAccountName      = $ConfigStoreCloudStorageAccountName
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
             ServerLogsLocation                      = $ServerLogsLocation
+            Join                                    = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
+            PeerServerHostName                      = Get-FQDN $PrimaryServerMachine
             DependsOn                               = $DependsOn
         }
         $DependsOn += "[ArcGIS_MissionServer]MissionServer$($Node.NodeName)"

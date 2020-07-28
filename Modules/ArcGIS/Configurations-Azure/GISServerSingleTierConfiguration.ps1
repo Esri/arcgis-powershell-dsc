@@ -22,6 +22,10 @@
         [System.Management.Automation.PSCredential]
         $PortalSiteAdministratorCredential
 
+		,[Parameter(Mandatory=$false)]
+        [System.String]
+        $IsAddingServersOrRegisterEGDB
+
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $FederateSite 
@@ -433,13 +437,16 @@
 
 			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server'))
 			{
-				Service "$($ServiceToStop.Replace(' ','_'))_Service"
-				{
-					Name			= $ServiceToStop
-					Credential		= $ServiceCredential
-					StartupType		= 'Manual'
-					State			= 'Stopped'
-					DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
+			    {
+					Service "$($ServiceToStop.Replace(' ','_'))_Service"
+					{
+						Name			= $ServiceToStop
+						Credential		= $ServiceCredential
+						StartupType		= 'Manual'
+						State			= 'Stopped'
+						DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+					}
 				}
 			}
 						
@@ -743,7 +750,7 @@
             }        
 		}
 		
-		if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and $FederationEndPointHostName) 
+		if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and $FederationEndPointHostName -and -not($IsAddingServersOrRegisterEGDB -ieq 'True'))
         {
 			if($LastServerHostName -ieq $env:ComputerName) # Federate on the last server node, since request might hit other non initialized nodes behind the load balancer
 			{

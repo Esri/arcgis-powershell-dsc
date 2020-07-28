@@ -20,7 +20,7 @@ Configuration ArcGISMissionServerSettings{
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
     Import-DscResource -Name ArcGIS_MissionServerSettings
 
     Node $AllNodes.NodeName

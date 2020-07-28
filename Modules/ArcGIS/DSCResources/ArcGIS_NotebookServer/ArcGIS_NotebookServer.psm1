@@ -445,13 +445,14 @@ function Invoke-CreateSite
   
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
-        
+
+	$VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+    Write-Verbose "Notebook Server Version - $VersionObject"
+    $MajorVersion = $($VersionObject.Split('.')[1])
+    $MinorVersion = $($VersionObject.Split('.')[2])
+
     if(($ConfigStoreCloudStorageConnectionString) -and ($ConfigStoreCloudStorageConnectionSecret) -and ($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1))
     {
-        $VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-        Write-Verbose "Notebook Server Version - $VersionObject"
-        $MajorVersion = $($VersionObject.Split('.')[1])
-
         Write-Verbose "Using Azure Cloud Storage for the config store"
         $configStoreConnection = if($MajorVersion -ge 8){
                                 @{ 
@@ -513,6 +514,18 @@ function Invoke-CreateSite
             type = "SYSTEM"
         }
     }
+
+	if($MajorVersion -ge 8 -and $MinorVersion -gt 12790){
+		$directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"}| Measure-Object).Count -gt 0){
+			($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"})
+		}else{
+			@{
+				name = "arcgisjobs"
+				path = "$ServerDirectoriesRootLocation\arcgisjobs"
+				type = "JOBS"
+			}
+		}
+	}
 
     $requestParams = @{ 
                         username = $Credential.UserName

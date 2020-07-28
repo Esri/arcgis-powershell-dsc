@@ -145,10 +145,10 @@
                     }
                 }
                 if(-not($DesktopImage)){
-                    if(@("ArcGIS for Server","Portal for ArcGIS","DataStore","Notebook Server") -Contains $Installer.Name){
+                    if(@("ArcGIS for Server","Portal for ArcGIS","DataStore","Notebook Server","Mission Server") -Contains $Installer.Name){
                         $InstallationDirectory = $ExecutionContext.InvokeCommand.ExpandString($($Installer.Arguments).Split(" ")[1].split("=")[1].Replace('\\','\').Replace('"',""))
                         $FilesToDelete += (Join-Path $InstallationDirectory "framework/etc/arcgis-framework.properties")
-                        if($Installer.Name -ieq "ArcGIS for Server" -or $Installer.Name -ieq "Notebook Server"){
+                        if($Installer.Name -ieq "ArcGIS for Server" -or $Installer.Name -ieq "Notebook Server" -or $Installer.Name -ieq "Mission Server"){
                             $FilesToDelete += (Join-Path $InstallationDirectory "framework/etc/certificates/arcgis.keystore")
                             $FilesToDelete += (Join-Path $InstallationDirectory "framework/etc/certificates/keystorepass.dat")
                         }
@@ -185,7 +185,17 @@
                 $Depends += "[WindowsFeature]WF_$($pr)"
             }
 
-            @('ArcGISGeoEventGateway','ArcGISGeoEvent','ArcGIS Server','Portal for ArcGIS','ArcGIS Data Store','ArcGIS Notebook Server') | ForEach-Object{
+            $ServiceToStopList = @('ArcGIS Server','Portal for ArcGIS','ArcGIS Data Store')
+
+            if($Installers.Name -icontains "GeoEvent"){
+                $ServiceToStopList += "ArcGISGeoEventGateway"
+                $ServiceToStopList += "ArcGISGeoEvent"
+            } 
+            if($Installers.Name -icontains "Notebook Server"){
+                $ServiceToStopList += "ArcGIS Notebook Server"
+            }
+
+            $ServiceToStopList | ForEach-Object{
                 Service "StopService-$($_.Replace(' ', '_'))"
                 {
                     Name        = $_

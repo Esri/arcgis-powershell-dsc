@@ -114,6 +114,17 @@
                 "Password": "[PortalAdministrator Password]",
                 "SecurityQuestionIndex": 1,
                 "SecurityAnswer": "vanilla"
+            },
+            "EmailSettings":{
+                "SMTPServerAddress":"[SMTP Server Host Address]",
+                "From":"[SMTP Server Host Email From]",
+                "Label":"[SMTP Server Host Email From Label]",
+                "AuthenticationRequired":"[SMTP Server Host Authentication required flag - False | True]",
+                "SMTPPort":"[SMTP Server Host Port]",
+                "UserName": "[SMTP Server Host Authentication Username]",
+                "Password": "[SMTP Server Host Authentication Password]",
+                "PasswordFilePath": "[SMTP Server Host Authentication Password File Path]",
+                "EncryptionMethod": "[SMTP Server Host Encryption Method - SSL,TLS,NONE]"
             }
         },
         "DataStore": {

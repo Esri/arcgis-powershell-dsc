@@ -23,6 +23,9 @@
         DataStorePath Is a
         - Folder Location in Case of a Folder and a Raster Store 
         - Container Name when Registering a Azure Cloud Store
+    .PARAMETER DataStoreTable
+        DataStoreTable Is a
+        - Azure Table Name when Registering a Azure Cloud Store
     .PARAMETER DataStoreEndpoint
         DataStoreEndpoint is a
         - Azure Storage Account Endpoint in case of a CloudStore.
@@ -84,8 +87,12 @@ function Test-TargetResource
 		$DataStoreConnectionString,
 
         [System.String]
-		$DataStorePath,
-
+        $DataStorePath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $DataStoreTable,
+        
         [System.String]
 		$DataStoreEndpoint
 	)
@@ -187,7 +194,11 @@ function Set-TargetResource
 		$DataStoreConnectionString,
 
         [System.String]
-		$DataStorePath,
+        $DataStorePath,
+        
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $DataStoreTable,
 
         [System.String]
 		$DataStoreEndpoint
@@ -218,7 +229,7 @@ function Set-TargetResource
             Write-Verbose "Cloud DataStore Item with name '$Name' does not exist. Registering it"
             Register-AzureCloudDataStoreItem -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token `
                                              -AzureStorageConnectionString $DataStoreConnectionString -AzureStorageAccountEndpoint $DataStoreEndpoint `
-                                             -Referer $Referer -ItemName $Name -AzureContainerName $DataStorePath
+                                             -Referer $Referer -ItemName $Name -AzureContainerName $DataStorePath -AzureTableName $DataStoreTable
         }
     }
     elseif($DataStoreType -ieq 'BigDataFileShare') {
@@ -248,14 +259,25 @@ function Get-DataStoreItemsOfType
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'https://localhost:6443', 
-        [System.String]$SiteName = 'arcgis', 
-        [System.String]$Token, 
-        [System.String]$Referer = 'http://localhost',
-        [System.String]$Types,
-        [System.String]$AncestorPath
+        [System.String]
+        $ServerURL = 'https://localhost:6443', 
+        
+        [System.String]
+        $SiteName = 'arcgis', 
+        
+        [System.String]
+        $Token, 
+        
+        [System.String]
+        $Referer = 'http://localhost',
+        
+        [System.String]
+        $Types,
+        
+        [System.String]
+        $AncestorPath
     )
-    
+
     $DataItemsUrl = $ServerURL.TrimEnd('/') + '/' + $SiteName + '/admin/data/findItems' 
     Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $Types; ancestorPath = $AncestorPath } -Referer $Referer 
 }
@@ -264,16 +286,29 @@ function Register-SharedFolderDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'https://localhost:6443', 
-        [System.String]$SiteName = 'arcgis', 
-        [System.String]$Token, 
-        [System.String]$Referer = 'http://localhost',
+        [System.String]
+        $ServerURL = 'https://localhost:6443', 
+        
+        [System.String]
+        $SiteName = 'arcgis', 
+        
+        [System.String]
+        $Token, 
+        
+        [System.String]
+        $Referer = 'http://localhost',
+        
         [parameter(Mandatory = $true)]
-        [System.String]$ItemName,
+        [System.String]
+        $ItemName,
+        
         [parameter(Mandatory = $true)]
-        [System.String]$FolderLocalPath,
+        [System.String]
+        $FolderLocalPath,
+        
         [parameter(Mandatory = $true)]
-        [System.String]$FolderHostName
+        [System.String]
+        $FolderHostName
     )
     
     $RegisterDataItemUrl = $ServerURL.TrimEnd('/') + '/' + $SiteName + '/admin/data/registerItem' 
@@ -286,14 +321,25 @@ function Register-BigDataFileShareDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'https://localhost:6443', 
-        [System.String]$SiteName = 'arcgis', 
-        [System.String]$Token, 
-        [System.String]$Referer = 'http://localhost',
+        [System.String]
+        $ServerURL = 'https://localhost:6443', 
+        
+        [System.String]
+        $SiteName = 'arcgis', 
+        
+        [System.String]
+        $Token, 
+        
+        [System.String]
+        $Referer = 'http://localhost',
+
         [parameter(Mandatory = $true)]
-        [System.String]$ItemName,
+        [System.String]
+        $ItemName,
+
         [parameter(Mandatory = $true)]
-        [System.String]$Path
+        [System.String]
+        $Path
     )
     
     $RegisterDataItemUrl = $ServerURL.TrimEnd('/') + '/' + $SiteName + '/admin/data/registerItem' 
@@ -309,14 +355,25 @@ function Register-RasterDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'https://localhost:6443', 
-        [System.String]$SiteName = 'arcgis', 
-        [System.String]$Token, 
-        [System.String]$Referer = 'http://localhost',
+        [System.String]
+        $ServerURL = 'https://localhost:6443', 
+        
+        [System.String]
+        $SiteName = 'arcgis', 
+        
+        [System.String]
+        $Token, 
+        
+        [System.String]
+        $Referer = 'http://localhost',
+
         [parameter(Mandatory = $true)]
-        [System.String]$ItemName,
+        [System.String]
+        $ItemName,
+
         [parameter(Mandatory = $true)]
-        [System.String]$DataStorePath
+        [System.String]
+        $DataStorePath
     )
     
     $RegisterDataItemUrl = $ServerURL.TrimEnd('/') + '/' + $SiteName + '/admin/data/registerItem' 
@@ -333,18 +390,37 @@ function Register-AzureCloudDataStoreItem
 {
     [CmdletBinding()]
     param(
-        [System.String]$ServerURL = 'https://localhost:6443', 
-        [System.String]$SiteName = 'arcgis', 
-        [System.String]$Token, 
-        [System.String]$Referer = 'http://localhost',
+        [System.String]
+        $ServerURL = 'https://localhost:6443', 
+        
+        [System.String]
+        $SiteName = 'arcgis', 
+        
+        [System.String]
+        $Token, 
+        
+        [System.String]
+        $Referer = 'http://localhost',
+
         [parameter(Mandatory = $true)]
-        [System.String]$ItemName,
+        [System.String]
+        $ItemName,
+
         [parameter(Mandatory = $true)]
-        [System.String]$AzureStorageConnectionString,
+        [System.String]
+        $AzureStorageConnectionString,
+
         [parameter(Mandatory = $true)]
-        [System.String]$AzureStorageAccountEndpoint,
+        [System.String]
+        $AzureStorageAccountEndpoint,
+
         [parameter(Mandatory = $true)]
-        [System.String]$AzureContainerName
+        [System.String]
+        $AzureContainerName,
+        
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $AzureTableName
     )
 
     $ConnStringObj = ConvertFrom-StringData $AzureStorageConnectionString.Replace(";","`n")    
@@ -357,11 +433,14 @@ function Register-AzureCloudDataStoreItem
                                                accountEndpoint = $AzureStorageAccountEndpoint; 
                                                credentialType = 'accessKey'
                                              }; 
-                         objectStore = $AzureContainerName
+                         objectStore = $AzureContainerName;
                       }; 
                path = "/cloudStores/$ItemName"; 
                provider= 'azure'
              }
+    if(-not([string]::IsNullOrEmpty($AzureTableName))){
+        $item.info.Add('tableStore', $AzureTableName);
+    }
     Invoke-ArcGISWebRequest -Url $RegisterDataItemUrl -HttpFormParameters  @{ f = 'json'; token = $Token; item = (ConvertTo-Json -InputObject $item -Depth 5 -Compress) } -Referer $Referer 
 }
 

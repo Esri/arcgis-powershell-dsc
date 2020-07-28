@@ -372,7 +372,15 @@
                     EnableDebugLogging                    = $IsDebugMode
                     LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
                     ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
-		            ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                    ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                    EnableEmailSettings                   = $False
+                    EmailSettingsSMTPServerAddress        = $null
+                    EmailSettingsFrom                     = $null
+                    EmailSettingsLabel                    = $null
+                    EmailSettingsAuthenticationRequired   = $false
+                    EmailSettingsCredential               = $null
+                    EmailSettingsSMTPPort                 = $null
+                    EmailSettingsEncryptionMethod         = "NONE"
 		        } 
 		
 		        ArcGIS_Portal_TLS ArcGIS_Portal_TLS

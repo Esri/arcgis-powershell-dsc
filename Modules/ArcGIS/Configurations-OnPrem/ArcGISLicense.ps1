@@ -6,7 +6,7 @@ Configuration ArcGISLicense
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.0.2"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
     Import-DscResource -Name ArcGIS_License
 
     Node $AllNodes.NodeName 
@@ -78,17 +78,6 @@ Configuration ArcGISLicense
                             LicensePassword = $null
                             Ensure = "Present"
                             Component = 'LicenseManager'
-                            Version = $Node.LicenseManagerVersion #Ignored, will default to 10.6 in ArcGIS_License.psm1
-                            Force = $ForceLicenseUpdate
-                        }
-                    }
-                    if($Node.LicenseManagerVersion -and $Node.LicenseFilePath){ #standalone license manager server role
-                        ArcGIS_License "LMLicense$($Node.NodeName)"
-                        {
-                            LicenseFilePath = $Node.LicenseFilePath
-                            LicensePassword = $null
-                            Ensure = "Present"
-                            Component = 'LM'
                             Version = $Node.LicenseManagerVersion #Ignored, will default to 10.6 in ArcGIS_License.psm1
                             Force = $ForceLicenseUpdate
                         }

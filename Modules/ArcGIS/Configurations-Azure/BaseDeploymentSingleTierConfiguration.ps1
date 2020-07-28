@@ -68,6 +68,10 @@
         $DataStoreTypes = 'Relational'
 
         ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered = $False
+
+        ,[Parameter(Mandatory=$false)]
         [System.Int32]
         $OSDiskSize = 0
 
@@ -535,7 +539,15 @@
                 EnableDebugLogging                    = $IsDebugMode
                 LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
                 ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
-		        ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                EnableEmailSettings                   = $False
+                EmailSettingsSMTPServerAddress        = $null
+                EmailSettingsFrom                     = $null
+                EmailSettingsLabel                    = $null
+                EmailSettingsAuthenticationRequired   = $false
+                EmailSettingsCredential               = $null
+                EmailSettingsSMTPPort                 = $null
+                EmailSettingsEncryptionMethod         = "NONE"
             } 
             
             ArcGIS_WindowsService ArcGIS_DataStore_Service
@@ -651,7 +663,7 @@
                 }
             }
 
-            if($IsDualMachineDeployment -and ($DataStoreTypes.split(",") -iContains "SpatioTemporal")){
+            if($DataStoreTypes.split(",") -iContains "SpatioTemporal"){
                 ArcGIS_xFirewall SpatioTemporalDataStore_FirewallRules
                 {
                     Name                  = "ArcGISSpatioTemporalDataStore" 
@@ -665,6 +677,22 @@
                     Protocol              = "TCP" 
                 } 
                 $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules')
+
+                if($IsDualMachineDeployment){
+                    ArcGIS_xFirewall SpatioTemporalDataStore_MultiMachine_FirewallRules
+                    {
+                        Name                  = "ArcGISSpatioTemporalMultiMachineDataStore" 
+                        DisplayName           = "ArcGIS SpatioTemporal Multi Machine Data Store" 
+                        DisplayGroup          = "ArcGIS SpatioTemporal Multi Machine Data Store" 
+                        Ensure                = 'Present'
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("9320")                        
+                        Protocol              = "TCP" 
+                    } 
+                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_MultiMachine_FirewallRules')
+                }   
             }
             
             $DataStoreDependsOn += @('[ArcGIS_Server]Server')
@@ -680,6 +708,7 @@
                 RunAsAccount               = $ServiceCredential 
                 DataStoreTypes             = $DataStoreTypes.split(",")
                 IsEnvAzure                 = $true
+                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
                 DependsOn                  = $DataStoreDependsOn
 		    } 
         
@@ -734,7 +763,7 @@
                 ServerEndPointContext = 'arcgis' #443
                 ExternalDNSName     = $ExternalDNSHostName
                 SiteAdministrator   = $SiteAdministratorCredential
-                DependsOn = @('[ArcGIS_Server]Server','[ArcGIS_ReverseProxy_ARR]WebProxy')
+                DependsOn = if($HasValidServiceCredential) { @('[ArcGIS_Server]Server','[ArcGIS_ReverseProxy_ARR]WebProxy') }else{ @('[ArcGIS_ReverseProxy_ARR]WebProxy') }
             }
 
             ArcGIS_PortalSettings PortalSettings
@@ -746,7 +775,7 @@
                 PortalEndPointPort    = 7443
                 PortalEndPointContext = 'arcgis'
                 PortalAdministrator = $SiteAdministratorCredential
-                DependsOn = @('[ArcGIS_Portal]Portal','[ArcGIS_ReverseProxy_ARR]WebProxy')
+                DependsOn = if($HasValidServiceCredential) {@('[ArcGIS_Portal]Portal','[ArcGIS_ReverseProxy_ARR]WebProxy')}else{@('[ArcGIS_ReverseProxy_ARR]WebProxy')}
             }
 
             ArcGIS_Federation Federate

@@ -72,7 +72,7 @@ function Set-TargetResource
 
     $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
 
-    $expectedHostIdentifierType = 'hostname'
+    $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
 	$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
 	$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
 	if(($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
@@ -85,6 +85,7 @@ function Set-TargetResource
             $RestartRequired = $true 
         }
     }
+    
     if($RestartRequired) {             
 		Restart-PortalService -ServiceName $ServiceName
         Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
@@ -118,6 +119,21 @@ function Set-TargetResource
             }
 
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
+            $Attempts = 0
+            while(-not($PrimaryReady) -and ($Attempts -lt 10)) {
+                $HealthCheckUrl = "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json"
+                Write-Verbose "Making request to health check URL '$HealthCheckUrl'" 
+                try {
+                    Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -Verbose -HttpFormParameters @{ f='json' } -Referer 'http://localhost' -HttpMethod 'POST'
+                    Write-Verbose "Health check succeeded"
+                    $PrimaryReady = $true
+                }catch {
+                    Write-Verbose "Health check did not suceed. Error:- $_"
+                    Start-Sleep -Seconds 30
+                    $Attempts = $Attempts + 1
+                }        
+            }
+
             Write-Verbose "Waiting for portal to start."
             try {
                 $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
@@ -214,7 +230,7 @@ function Test-TargetResource
     if ($result) {
         $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
 
-        $expectedHostIdentifierType = 'hostname'
+        $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
 		$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
 		$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
 		if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        

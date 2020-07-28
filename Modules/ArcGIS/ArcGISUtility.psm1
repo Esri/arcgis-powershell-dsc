@@ -435,7 +435,7 @@ function Invoke-LicenseSoftware
     )
 
     $SoftwareAuthExePath = "$env:SystemDrive\Program Files\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
-	$LMReloadUtilityPath = ""
+    $LMReloadUtilityPath = ""
     if(@('Desktop','Pro','LicenseManager') -icontains $Product) {
         $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\SoftwareAuthorization.exe"
         if($IsSingleUse -or ($Product -ne 'LicenseManager')){
@@ -449,13 +449,8 @@ function Invoke-LicenseSoftware
             $LMInstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "License Manager" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
             if($LMInstallLocation){
                 $SoftwareAuthExePath = "$($LMInstallLocation)bin\SoftwareAuthorizationLS.exe"
-				$LMReloadUtilityPath = "$($LMInstallLocation)bin\lmutil.exe"
+                $LMReloadUtilityPath = "$($LMInstallLocation)bin\lmutil.exe"
             }
-        }
-    } elseif ($Product -ieq 'LM') { # add standalone license manager as a server role
-        $LMInstallLocation = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "License Manager" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
-        if($LMInstallLocation){
-            $SoftwareAuthExePath = "$($LMInstallLocation)bin\SoftwareAuthorizationLS.exe"
         }
     }else{
         if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($Version.Split('.')[1] -ge 8)){
@@ -503,13 +498,13 @@ function Invoke-LicenseSoftware
         }
 	}
     else {
-        Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params -Verbose -Wait -NoNewWindow -PassThru
+        Start-Process -FilePath $SoftwareAuthExePath -ArgumentList $Params
     }
     if($Product -ieq 'Desktop' -or $Product -ieq 'Pro') {
         Write-Verbose "Sleeping for 2 Minutes to finish Licensing"
         Start-Sleep -Seconds 120
     }
-	if($Product -ieq 'LicenseManager'){
+    if($Product -ieq 'LicenseManager'){
 		Write-Verbose "Re-readings Licenses"
 		Start-Process -FilePath $LMReloadUtilityPath -ArgumentList 'lmreread -c @localhost'
 	}
@@ -915,7 +910,7 @@ function Get-ComponentCode
         [System.String]
         $ComponentName,
 
-        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0")]
+        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","2.6","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","10.8.1","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0")]
         [parameter(Mandatory = $true)]
         [System.String]
         $Version
@@ -932,6 +927,7 @@ function Get-ComponentCode
             '10.7' = '98D5572E-C435-4841-A747-B4C72A8F76BB'
             '10.7.1' = '08E03E6F-95D3-4D33-A171-E0DC996E08E3'
             '10.8' = '458BF5FF-2DF8-426B-AEBC-BE4C47DB6B54'
+            '10.8.1' = 'E9B85E31-4C31-4528-996B-F06E213F8BB3'
         }
         Portal = @{      
             '10.4' = 'FA6FCD2D-114C-4C04-A8DF-C2E43979560E'
@@ -943,10 +939,12 @@ function Get-ComponentCode
             '10.7' = '6A640642-4D74-4A2F-8350-92B6371378C5'
             '10.7.1' = '7FDEEE00-6641-4E27-A54E-82ACCCE14D00'
             '10.8' = '7D432555-69F9-4945-8EE7-FC4503A94D6A'
+            '10.8.1' = '0803DE56-BAE9-49F5-A120-BA249BD924E2'
         }
         WebStyles = @{ 
             '10.7.1' = 'B2E42A8D-1EE9-4610-9932-D0FCFD06D2AF'
             '10.8' = 'EF31CB36-2EB4-4FD3-A451-AC12FD22A582'
+            '10.8.1' = '7748EA55-04FF-45E2-98EC-C78095AC25AA'
         }
         DataStore = @{             
             '10.4' = 'C351BC6D-BF25-487D-99AB-C963D590A8E8'
@@ -958,6 +956,7 @@ function Get-ComponentCode
             '10.7' = '2B19AB45-1A17-45CD-8001-0608E8D72447'
             '10.7.1' = '112E5FD0-9DD2-45DA-ACD5-A21AA45F67E2'
             '10.8' = '2018A7D8-CBE8-4BCF-AF0E-C9AAFB4C9B6D'
+            '10.8.1' = '45E1C306-B1AB-4AE5-8435-818F0F9F8821'
         }        
         GeoEvent = @{             
             '10.4' = '188191AE-5A83-49E8-88CB-1F1DB05F030D'
@@ -969,19 +968,23 @@ function Get-ComponentCode
             '10.7' = '7430C9C3-7D96-429E-9F47-04938A1DC37E'
             '10.7.1' = '3AE4EE62-B5ED-45CB-8917-F761B9335F33'
             '10.8' = '10F38ED5-B9A1-4F0C-B8E2-06AD1365814C'
+            '10.8.1' = 'C98F8E6F-A6D0-479A-B80E-C173996DD70B'
         }
         NotebookServer = @{
             '10.7' = '3721E3C6-6302-4C74-ACA4-5F50B1E1FE3A'
             '10.7.1' = 'F6DF77B9-F35E-4877-A7B1-63E1918B4E19'
             '10.8' = 'B1DB581E-E66C-4E58-B9E3-50A4D6CB5982'
+            '10.8.1' = '55DE1B3D-DDFB-4906-81F2-B573BAC25018'
         }
         MissionServer = @{
             '10.8' = 'A1A58B32-2ADF-4EAD-AC84-BE97318CA569'
+            '10.8.1' = '26F574C6-C9F8-487C-977A-A906AAA60136'
         }
         Monitor = @{
             '10.7' = '0497042F-0CBB-40C0-8F62-F1922B90E12E'
             '10.7.1' = 'FF811F17-42F9-4539-A879-FC8EDB9D6C46'
             '10.8' = '98AA3E79-18C5-4D51-9477-C844C6EBC6F3'
+            '10.8.1' = 'F2E2767F-B7FB-43DD-A682-31544DF29D48'
         }
         Desktop = @{
             '10.4' = '72E7DF0D-FFEE-43CE-A5FA-43DFC25DC087'
@@ -993,6 +996,7 @@ function Get-ComponentCode
             '10.7' = 'BFB4F32E-38DF-4E8F-8180-C99FC9A14BBE'
             '10.7.1' = '69262D87-3697-492B-ABED-765DDC15118B'
             '10.8' = '3DB5C522-636F-4FC2-9C38-298DBEBFD0BC'
+            '10.8.1' = '7C4FF945-CE6A-415E-8EB9-2B61B0B35DCD'
         }
         LicenseManager = @{
             '2018.0' = '1914B5D6-02C2-4CA3-9CAB-EE76358228CF'
@@ -1000,7 +1004,7 @@ function Get-ComponentCode
             '2019.0' = '23696ED6-78BA-44A8-B4C7-1BC979131533'
             '2019.1' = 'BA3C546E-6FAC-405C-B2C9-30BC6E26A7A9'
             '2019.2' = '77F1D4EB-0225-4626-BB9E-7FCB4B0309E5'
-            '2020.0' = 'F89EA66A-6AC2-401C-B8A0-E3ABDB5EDC10'
+            '2020.0' = 'EEE800C6-930D-4DA4-A61A-0B1735AF2478'
         }
         Pro = @{
             '2.0' = '28A4967F-DE0D-4076-B62D-A1A9EA62FF0A'
@@ -1008,7 +1012,8 @@ function Get-ComponentCode
             '2.2' = 'A23CF244-D194-4471-97B4-37D448D2DE76'
             '2.3' = '9CB8A8C5-202D-4580-AF55-E09803BA1959'
             '2.4' = 'E3B1CE52-A1E6-4386-95C4-5AB450EF57BD'
-            '2.5' = '0D695F82-EB12-4430-A241-20226042FD40'
+            '2.5' = '0D695F82-EB12-4430-A241-20226042FD40'	
+            '2.6' = '612674FE-4B64-4254-A9AD-C31568C89EA4'
         }
     }
     $ProductCodes[$ComponentName][$Version]    

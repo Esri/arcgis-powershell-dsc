@@ -62,7 +62,7 @@ Configuration PortalPostUpgrade{
         {
             PortalAdministrator = $SiteAdministratorCredential 
             PortalHostName = Get-FQDN $env:ComputerName
-            LicenseFilePath =  (Join-Path $(Get-Location).Path $PortalLicenseFileName) 
+            LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName) 
             SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
         }    
     }

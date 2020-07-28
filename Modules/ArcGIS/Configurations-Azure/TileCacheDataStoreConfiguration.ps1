@@ -33,6 +33,10 @@ Configuration TileCacheDataStoreConfiguration{
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DataStoreTypes = 'TileCache'
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered = $False
         
         ,[Parameter(Mandatory=$false)]
         [System.Int32]
@@ -200,7 +204,8 @@ Configuration TileCacheDataStoreConfiguration{
 			    ContentDirectory	= $DataStoreContentDirectory
                 DataStoreTypes		= $DataStoreTypes
                 IsEnvAzure          = $true
-			    DependsOn			= $DataStoreDependsOn
+                DependsOn			= $DataStoreDependsOn
+                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
 		    }
             
             foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))

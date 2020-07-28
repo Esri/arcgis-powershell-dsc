@@ -22,6 +22,10 @@ Configuration TileCacheDataStoreConfiguration{
         [System.String]
         $TileCacheDataStoreMachineNames
 
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered = $False
+
         ,[Parameter(Mandatory=$true)]
         [System.String]
         $ServerMachineNames
@@ -199,6 +203,7 @@ Configuration TileCacheDataStoreConfiguration{
                 ContentDirectory	= $DataStoreContentDirectory
                 DataStoreTypes		= $DataStoreTypes
                 IsEnvAzure          = $true
+                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
                 DependsOn			= $DataStoreDependsOn
             }
             

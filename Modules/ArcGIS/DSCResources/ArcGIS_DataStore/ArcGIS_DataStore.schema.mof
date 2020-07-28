@@ -12,6 +12,7 @@ class ArcGIS_DataStore : OMI_BaseResource
 	[Write] String FileShareRoot;
 	[Write] String DataStoreTypes[];
 	[Write, Description("Is Standby instance")] Boolean IsStandby;
+	[Write, Description("Is Tile Cache DataStore Clustered")] Boolean IsTileCacheDataStoreClustered;
 	[Write, Description("Is Environment Azure")] Boolean IsEnvAzure;
 };
 

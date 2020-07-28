@@ -332,14 +332,17 @@
             
 			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway'))
 			{
-				Service "$($ServiceToStop.Replace(' ','_'))_Service"
-				{
-					Name			= $ServiceToStop
-					Credential		= $ServiceCredential
-					StartupType		= 'Manual'
-					State			= 'Stopped'
-					DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
-				}
+                if(Get-Service $ServiceToStop -ErrorAction Ignore) 
+			    {
+                    Service "$($ServiceToStop.Replace(' ','_'))_Service"
+                    {
+                        Name			= $ServiceToStop
+                        Credential		= $ServiceCredential
+                        StartupType		= 'Manual'
+                        State			= 'Stopped'
+                        DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+                    }
+                }
 			}
 			
 			ArcGIS_NotebookServer NotebookServer

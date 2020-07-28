@@ -98,7 +98,8 @@ function Convert-PSObjectToHashtable
 }
 
 Filter timestamp {
-    "$(Get-Date -Format G): $_"}
+    "$(Get-Date -Format G): $_"
+}
 
 Function Trace-DSCJob{
     [CmdletBinding()]
@@ -156,6 +157,7 @@ Function Trace-DSCJob{
                     if($i -ge $Pos) {
                         if($DebugMode){
                             Write-Host ($item | timestamp) -foregroundcolor yellow
+                            Write-Host $item -foregroundcolor yellow
                         }else{
                             if(($item.Message -match "Start  Test") -or ($item.Message -match "Start  Set") -or ($item.Message -match "End    Test") -or ($item.Message -match "End    Set")){
                                 Write-Host ($item | timestamp) -foregroundcolor yellow
@@ -488,14 +490,14 @@ function Invoke-BuildArcGISAzureImage
         $JobFlag = $True
     }
     
-    if($JobFlag -eq $True){
+    if($JobFlag[$JobFlag.Count - 1] -eq $True){
         $JobFlag = $False
         $SetupConfigArgs = @{
             Installers = $InstallersConfig.Installers
             WindowsFeatures = $InstallersConfig.WindowsFeatures
         }
         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISSetupConfiguration" -ConfigurationFolderPath "Configurations-AzureImageBuild" -Arguments $SetupConfigArgs -Credential $Credential -DebugMode $DebugMode
-        if($JobFlag -eq $True) {
+        if($JobFlag[$JobFlag.Count - 1] -eq $True) {
             Write-Information -InformationAction Continue "Installed ArcGIS Setups Successfully. Removing Setup Configuration File."
         }
     }
@@ -545,7 +547,7 @@ function Invoke-CreateNodeToAdd
     }    
 
     if($TargetComponent -ieq "DataStore"){ 
-		$NodeToAdd.add("DataStoreTypes", @($DataStoreType))
+        $NodeToAdd.add("DataStoreTypes", @($DataStoreType))
     }
 
     if($TargetComponent -ieq "WebAdaptor"){
@@ -589,7 +591,7 @@ function Invoke-ArcGISConfiguration
     )
     
     $DebugMode = if($DebugSwitch){ $True }else{ $False } 
-    
+
     if(@("Install","InstallLicense","InstallLicenseConfigure","Uninstall") -icontains $Mode){
         $ConfigurationParamsJSON = $null
         Foreach($cf in $ConfigurationParametersFile){
@@ -642,7 +644,7 @@ function Invoke-ArcGISConfiguration
             $InstallCD.ConfigData.Remove("FileShareLocalPath")
         }
         if($InstallCD.ConfigData.FileShareName -and ($Mode -ne "Uninstall")){
-            $InstallCD.ConfigData.Remove("FileShareName")                
+            $InstallCD.ConfigData.Remove("FileShareName")
         }
         if($InstallCD.ConfigData.Server){
             if($InstallCD.ConfigData.Server.LicenseFilePath){
@@ -705,7 +707,7 @@ function Invoke-ArcGISConfiguration
         
         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $InstallArgs -Credential $Credential -DebugMode $DebugMode
 
-        if($JobFlag -eq $True -and ($Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure")){
+        if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($Mode -ieq "InstallLicense" -or $Mode -ieq "InstallLicenseConfigure")){
             $JobFlag = $False
             
             $ServerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' } | Measure-Object).Count -gt 0)
@@ -741,22 +743,20 @@ function Invoke-ArcGISConfiguration
                     $ProSkipLicenseStep = $true
                 }
             }
-
             $LicenseManagerSkipLicenseStep = $true
             if($ConfigurationParamsHashtable.ConfigData.LicenseManagerVersion -and $LicenseManagerCheck -and $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath){
                 $LicenseManagerSkipLicenseStep = $false
             }
 
             if(-not($EnterpriseSkipLicenseStep -and $DesktopSkipLicenseStep -and $ProSkipLicenseStep -and $LicenseManagerSkipLicenseStep)){
-
                 $LicenseCD = @{
                     AllNodes = @() 
                 }
-                
+
                 for ( $i = 0; $i -lt $ConfigurationParamsHashtable.AllNodes.count; $i++ ){
                     $Node = $ConfigurationParamsHashtable.AllNodes[$i]
-                    $NodeToAdd = @{ 
-                        NodeName = $Node.NodeName; 
+                    $NodeToAdd = @{
+                        NodeName = $Node.NodeName;
                         Role = @()
                     }
                     
@@ -775,7 +775,7 @@ function Invoke-ArcGISConfiguration
                         
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole)
                         {   
-                            $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole 
+                            $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             if($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "ImageHosting"){
                                 $ServerRole = "ImageServer"
                             }
@@ -879,7 +879,7 @@ function Invoke-ArcGISConfiguration
                 $SkipConfigureStep = $True
             }
 
-            if($JobFlag -eq $True -and ($Mode -ieq "InstallLicenseConfigure") -and -not($SkipConfigureStep)){
+            if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($Mode -ieq "InstallLicenseConfigure") -and -not($SkipConfigureStep)){
                 $ValidatePortalFileShare = $false
                 if($ConfigurationParamsHashtable.ConfigData.Portal){
                     $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
@@ -892,10 +892,6 @@ function Invoke-ArcGISConfiguration
                             } else {
                                 throw "Config Directory Location path is not a fileshare path"
                             }
-                            if($ConfigurationParamsHashtable.ConfigData.LicenseManager){
-                                $NodeToAdd["LicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath
-                                $NodeToAdd["LicenseManagerVersion"] = $ConfigurationParamsHashtable.ConfigData.LicenseManagerVersion
-                            }
                         }
                     } else {
                         $ValidatePortalFileShare = $True 
@@ -903,7 +899,7 @@ function Invoke-ArcGISConfiguration
                 } else {
                     $ValidatePortalFileShare = $True   
                 }
-        
+
                 $ValidateServerFileShare = $false
                 $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
                 if($IsHAServer) {
@@ -926,7 +922,7 @@ function Invoke-ArcGISConfiguration
                 } else {
                     $ValidateServerFileShare = $True 
                 }
-        
+
                 if($ValidateServerFileShare -and $ValidatePortalFileShare){
                     $FileShareCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'FileShare'} | Measure-Object).Count -gt 0)
                     $DataStoreCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore' } | Measure-Object).Count -gt 0)
@@ -1062,7 +1058,7 @@ function Invoke-ArcGISConfiguration
                             $SQLServerCD.AllNodes += $SQLServerNode
                         }
                     }
-                    if(($JobFlag -eq $True) -and $FileShareCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $FileShareCheck){
                         $JobFlag = $False
                         $FilePathsArray = @()
                         if($ConfigurationParamsHashtable.ConfigData.Server){
@@ -1091,7 +1087,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISFileShare" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $FileShareArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    if(($JobFlag -eq $True) -and $ServerCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
                         $JobFlag = $False
                         $ServerArgs = @{
                             ConfigurationData = $ServerCD
@@ -1136,9 +1132,9 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    if(($JobFlag -eq $True) -and $ConfigurationParamsHashtable.ConfigData.Server.Databases){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.Server.Databases){
                         foreach($DB in $ConfigurationParamsHashtable.ConfigData.Server.Databases){
-                            if($JobFlag -eq $True){
+                            if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                 $DatabaseServerAdministratorCredential = $null
                                 if($DB.DatabaseAdminUser){
                                     $DatabaseAdminUserPassword = if( $DB.DatabaseAdminUser.PasswordFilePath ){ Get-Content $DB.DatabaseAdminUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseAdminUser.Password -AsPlainText -Force }
@@ -1167,7 +1163,7 @@ function Invoke-ArcGISConfiguration
                                     $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISSQLServer" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $SQLServerArgs -Credential $Credential -DebugMode $DebugMode
                                 }
 
-                                if($JobFlag -eq $True){
+                                if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                     $DBArgs = @{
                                         ConfigurationData = $ServerCD
                                         PrimaryServiceMachine = $PrimaryServerMachine.NodeName
@@ -1197,7 +1193,7 @@ function Invoke-ArcGISConfiguration
                         }
                     }
 
-                    if(($JobFlag -eq $True) -and $ServerCheck -and -not(($null -eq $ServerExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer))){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck -and -not(($null -eq $ServerExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer))){
                         $ServerSettingsArgs = @{
                             ConfigurationData = $ServerCD
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
@@ -1220,9 +1216,10 @@ function Invoke-ArcGISConfiguration
 
                     
                     $Version = $ConfigurationParamsHashtable.ConfigData.Version
-                    if(($JobFlag -eq $True) -and $PortalCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $PortalCheck){
                         $JobFlag = $False
                         $MajorVersion = $Version.Split(".")[1]
+                        $MinorVersion = $Version.Split(".")[2]
                         $PortalArgs = @{
                             ConfigurationData = $PortalCD
                             ServiceCredential = $ServiceCredential
@@ -1252,6 +1249,25 @@ function Invoke-ArcGISConfiguration
                             $PortalArgs["CloudStorageCredentials"] = $CloudStorageCredentials
                         }
 
+                        if($MajorVersion -gt 8 -or ($MajorVersion -eq 8 -and $MinorVersion -eq 1)){
+                            if($ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings){
+                                $PortalArgs["EnableEmailSettings"] = $True
+                                $PortalArgs["EmailSettingsSMTPServerAddress"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.SMTPServerAddress
+                                $PortalArgs["EmailSettingsFrom"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.From
+                                $PortalArgs["EmailSettingsLabel"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.Label
+                                $PortalArgs["EmailSettingsAuthenticationRequired"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.AuthenticationRequired
+                                if($ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.AuthenticationRequired){
+                                    $EmailSettingsPassword = if( $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.Password -AsPlainText -Force }
+                                    $EmailSettingsCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.UserName, $EmailSettingsPassword )
+                                    $PortalArgs["EmailSettingsCredential"] = $EmailSettingsCredential
+                                }
+                                $PortalArgs["EmailSettingsSMTPPort"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.SMTPPort
+                                $PortalArgs["EmailSettingsEncryptionMethod"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.EncryptionMethod
+                            }else{
+                                $PortalArgs["EnableEmailSettings"] = $False
+                            }
+                        }
+
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISPortal" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $PortalArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
@@ -1266,7 +1282,7 @@ function Invoke-ArcGISConfiguration
                         }
                     }
 
-                    if(($JobFlag -eq $True) -and $PortalCheck -and -not(($null -eq $PortalExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer))){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $PortalCheck -and -not(($null -eq $PortalExternalDNSHostName) -and -not($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer))){
                         $PortalSettingsArgs = @{
                             ConfigurationData = $PortalCD
                             PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
@@ -1278,7 +1294,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISPortalSettings" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $PortalSettingsArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    if(($JobFlag -eq $True) -and $WebAdaptorCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $WebAdaptorCheck){
                         $JobFlag = $False
                         $WebAdaptorArgs = @{
                             ConfigurationData           = $WebAdaptorCD
@@ -1294,7 +1310,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
                     }
                     
-                    if(($JobFlag -eq $True) -and $RelationalDataStoreCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $RelationalDataStoreCheck){
                         $JobFlag = $False
                         $RelationalDataStoreArgs = @{
                             Version = $Version
@@ -1312,7 +1328,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $RelationalDataStoreArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    if(($JobFlag -eq $True) -and $BigDataStoreCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $BigDataStoreCheck){
                         $JobFlag = $False
                         $BigDataStoreArgs = @{
                             Version = $Version
@@ -1330,7 +1346,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $BigDataStoreArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    if(($JobFlag -eq $True) -and $TileCacheDataStoreCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $TileCacheDataStoreCheck){
                         $JobFlag = $False
                         $TileCacheDataStoreArgs = @{
                             Version = $Version
@@ -1348,7 +1364,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $TileCacheDataStoreArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    if(($JobFlag -eq $True) -and $RasterDataStoreItemCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $RasterDataStoreItemCheck){
                         $JobFlag = $False
                         $ArcGISRasterDataStoreItemArgs = @{
                             ConfigurationData = $RasterDataStoreItemCD
@@ -1366,7 +1382,7 @@ function Invoke-ArcGISConfiguration
                     }
                     
 
-                    if(($JobFlag -eq $True) -and $ServerCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
                         $RemoteFederation = $PortalServerFederation = $False
                         $RemoteSiteAdministrator = $null
                         if($PortalCheck){
@@ -1436,7 +1452,7 @@ function Invoke-ArcGISConfiguration
                         }
                     }
                 
-                    if($JobFlag -eq $True){ 
+                    if($JobFlag[$JobFlag.Count - 1] -eq $True){ 
                         if($PortalCheck){
                             $PrimaryPortalCName = if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryPortalMachine.NodeName}
                             $PortalUrl = "$($PrimaryPortalCName):7443/arcgis" 
@@ -1499,8 +1515,8 @@ function Invoke-ArcGISConfiguration
         }
 
         $JobFlag = $True
-        if($JobFlag -eq $True){
-            if($HostingConfig -or (-not($HostingConfig) -and (($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0))){
+        if($JobFlag[$JobFlag.Count - 1] -eq $True){
+            if($HostingConfig -or (-not($HostingConfig) -and (($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0))){ 
                 if(-not($HostingConfig)){
                     $PortalConfig = $OtherConfigs[0]
                 }else{
@@ -1594,7 +1610,7 @@ function Invoke-ArcGISConfiguration
                         }
                     }
 
-                    if($JobFlag -eq $True){
+                    if($JobFlag[$JobFlag.Count - 1] -eq $True){
                         $PortalUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
                         if($IsMultiMachinePortal){
                             $PortalUpgradeCD.AllNodes += $StandbyNodeToAdd
@@ -1619,15 +1635,28 @@ function Invoke-ArcGISConfiguration
 
                             $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeArgs -Credential $Credential -DebugMode $DebugMode
 
-                            if($JobFlag -eq $True){
-                                $PortalPostUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
-
-                                $PortalPostUpgradeArgs = @{
-                                    ConfigurationData = $PortalPostUpgradeCD
-                                    PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                            if($JobFlag[$JobFlag.Count - 1] -eq $True){
+                                if($IsMultiMachinePortal){
+                                    $StandbyPortalPostUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
+                                    $StandbyPortalPostUpgradeArgs = @{
+                                        ConfigurationData = $StandbyPortalPostUpgradeCD
+                                        PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                        SetOnlyHostNamePropertiesFile = $true
+                                    }
+                                    $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $StandbyPortalPostUpgradeArgs -Credential $Credential -DebugMode $DebugMode
                                 }
+                                
+                                if($JobFlag[$JobFlag.Count - 1] -eq $True){
+                                    $PortalPostUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
 
-                                $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalPostUpgradeArgs -Credential $Credential -DebugMode $DebugMode
+                                    $PortalPostUpgradeArgs = @{
+                                        ConfigurationData = $PortalPostUpgradeCD
+                                        PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
+                                        SetOnlyHostNamePropertiesFile = $false
+                                    }
+
+                                    $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgradeV2" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalPostUpgradeArgs -Credential $Credential -DebugMode $DebugMode
+                                }
                             }
                         }else{       
                             $PortalExternalDNSHostName = $null
@@ -1672,7 +1701,7 @@ function Invoke-ArcGISConfiguration
                             
                             $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgradeV1" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeArgs -Credential $Credential -DebugMode $DebugMode
 
-                            if($IsMultiMachinePortal -and ($JobFlag -eq $True)){
+                            if($IsMultiMachinePortal -and ($JobFlag[$JobFlag.Count - 1] -eq $True)){
                                 $PortalUpgradeStandbyArgs = @{
                                     ConfigurationData = @{ AllNodes = @( $StandbyNodeToAdd ); }
                                     PrimaryPortalMachine = $PrimaryNodeToAdd.NodeName
@@ -1703,7 +1732,7 @@ function Invoke-ArcGISConfiguration
                             }
                         }
 
-                        if(($JobFlag -eq $True) -and $HasPortalWANodes){
+                        if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $HasPortalWANodes){
                             Write-Information -InformationAction Continue "WebAdaptor Upgrade"
                             ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'})){
                                 $WAExternalHostName = if(($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor'}  | Measure-Object).Count -gt 0){($WANode.SslCertificates | Where-Object { $_.Target -icontains 'WebAdaptor' }  | Select-Object -First 1).CNameFQDN }else{ Get-FQDN $WANode.NodeName }
@@ -1736,7 +1765,7 @@ function Invoke-ArcGISConfiguration
                 }
             }
 
-            if($JobFlag -eq $True){
+            if($JobFlag[$JobFlag.Count - 1] -eq $True){
                 if($HostingConfig){
                     Write-Information -InformationAction Continue "Hosting Server Upgrade"
                     if($Credential){
@@ -1747,7 +1776,7 @@ function Invoke-ArcGISConfiguration
                 }
             }
 
-            if($JobFlag -eq $True){
+            if($JobFlag[$JobFlag.Count - 1] -eq $True){
                 if($OtherConfigs){
                     for ( $i = 0; $i -lt $OtherConfigs.count; $i++ ){
                         if(($OtherConfigs[$i].AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
@@ -1762,7 +1791,7 @@ function Invoke-ArcGISConfiguration
                 }
             }
             
-            if($JobFlag -eq $True){
+            if($JobFlag[$JobFlag.Count - 1] -eq $True){
                 if($HostingConfig -or (-not($HostingConfig) -and (($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0 -and ($OtherConfigs[0].AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0))){
                     $DSConfig = if(-not($HostingConfig)){ $OtherConfigs[0] }else{ $HostingConfig }
                     $PrimaryServerMachine = ""
@@ -1772,7 +1801,7 @@ function Invoke-ArcGISConfiguration
                             $PrimaryServerMachine  = $DSConfig.AllNodes[$i].NodeName
                         }
                     }
-                    
+
                     $DSServiceAccountIsDomainAccount = $DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount
                     $DSServiceAccountIsMSA = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsMSA){$DSConfig.ConfigData.Credentials.ServiceAccount.IsMSA}else{ $false}  
                     $DSSAPassword = if( $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
@@ -1801,7 +1830,7 @@ function Invoke-ArcGISConfiguration
                                 if($DSNode.Role -icontains 'DataStore'){
                                     $DsTypes = $DSNode.DataStoreTypes
                                     $DSNodeName = $DSNode.NodeName
-
+                                    
                                     $NodeToAdd = @{
                                         NodeName = $DSNodeName
                                     }
@@ -1861,7 +1890,7 @@ function Invoke-ArcGISConfiguration
                                 $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
 
-                            if(($JobFlag -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryTileCache)) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName)){
+                            if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryTileCache)) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryTileCacheCD
                                     ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -1873,7 +1902,7 @@ function Invoke-ArcGISConfiguration
                                 $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -DebugMode $DebugMode
                             }
 
-                            if(($JobFlag -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryBigDataStore)) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName) -and ($PrimaryDataStore.NodeName -ne $PrimaryBigDataStore.NodeName)){
+                            if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryBigDataStore)) -and ($PrimaryDataStore.NodeName -ne $PrimaryTileCache.NodeName) -and ($PrimaryDataStore.NodeName -ne $PrimaryBigDataStore.NodeName)){
                                 $DataStoreUpgradeConfigureArgs = @{
                                     ConfigurationData = $PrimaryBigDataStoreCD
                                     ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -1916,7 +1945,7 @@ function Invoke-ArcGISConfiguration
         
                                     $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeInstallArgs -Credential $Credential -DebugMode $DebugMode
                                     
-                                    if($JobFlag -eq $True){
+                                    if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                         $DataStoreUpgradeConfigureArgs = @{
                                             ConfigurationData = @{ AllNodes = @($NodeToAdd) }
                                             ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -1931,13 +1960,13 @@ function Invoke-ArcGISConfiguration
                                         if($DSNode.DataStoreTypes -icontains "SpatioTemporal"){
                                             $BigDataStoreCD.AllNodes += $NodeToAdd
                                         }
-                                        if($JobFlag -eq $True){
+                                        if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                             break
                                         }
                                     }
                                 }
                             }
-                            if(($JobFlag -eq $True) -and ($BigDataStoreCD.AllNodes.Count -gt 0)){
+                            if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and ($BigDataStoreCD.AllNodes.Count -gt 0)){
                                 Write-Information -InformationAction Continue "BigDataStore Upgrade"
                                 Foreach($nd in $BigDataStoreMachinesArray){
                                     $SpatioTemporalDatastoreStartArgs = @{
@@ -1948,7 +1977,7 @@ function Invoke-ArcGISConfiguration
 
                                     $JobFlag = Invoke-DSCJob -ConfigurationName "SpatioTemporalDatastoreStart" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $SpatioTemporalDatastoreStartArgs -Credential $Credential -DebugMode $DebugMode
 
-                                    if($JobFlag -eq $True){
+                                    if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                         break
                                     }
                                 }

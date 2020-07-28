@@ -84,6 +84,8 @@ function Set-TargetResource
                         $currentversion = "10.6.1"
                     }elseif($currentversion -ieq "10.71"){
                         $currentversion = "10.7.1"
+                    }elseif($currentversion -ieq "10.81"){
+                        $currentversion = "10.8.1"
                     }
                     
                     if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){
