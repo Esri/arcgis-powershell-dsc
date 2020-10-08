@@ -70,6 +70,8 @@ Configuration ArcGISMissionServer
         $DebugMode = $False
     )
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_MissionServer
     Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
@@ -89,7 +91,7 @@ Configuration ArcGISMissionServer
         }
 
         if($CloudStorageType -ieq 'AzureFiles') {
-            $AzureFilesEndpoint = if($Pos -gt -1){$StorageAccountCredential.UserName.Replace('.blob.','.file.')}else{$StorageAccountCredential.UserName}                   
+            $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}                   
             $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\missionserver\config-store"
             $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\missionserver\server-dirs" 

@@ -195,14 +195,44 @@ function Set-TargetResource
     if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
         Write-Verbose "Ensure the Publishing GP Service (Tool) is started on Server"
         $PublishingToolsPath = 'System/PublishingTools.GPServer'
-        $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-        Write-Verbose "Service Status :- $serviceStatus"
-        if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
-            Write-Verbose "Starting Service $PublishingToolsPath"
-            Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-        
+        $Attempts  = 1
+        $startTime = Get-Date
+        $MaxAttempts = 5
+        $SleepTimeInSeconds = 20
+        while ($true)
+        {
+            Write-Verbose "Checking state of Service '$PublishingToolsPath'. Attempt # $Attempts"    
             $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-            Write-Verbose "Verifying Service Status :- $serviceStatus"
+            Write-Verbose "Service Status :- $serviceStatus"
+            
+            if($serviceStatus.configuredState -ieq 'STARTED' -and $serviceStatus.realTimeState -ieq 'STARTED'){
+                Write-Verbose "State of Service '$PublishingToolsPath' is STARTED"
+                break
+            }else{
+                if(($serviceStatus.configuredState -ieq 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') -or ($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ieq 'STARTED')){
+                    Write-Verbose "Waiting $SleepTimeInSeconds seconds for Service '$PublishingToolsPath' to be started"
+                    Start-Sleep -Seconds $SleepTimeInSeconds
+                }else{
+                    Write-Verbose "Trying to Start Service $PublishingToolsPath"
+                    Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+                    Start-Sleep -Seconds $SleepTimeInSeconds
+                }
+            }
+            
+            $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+            if($serviceStatus.configuredState -ieq 'STARTED' -and $serviceStatus.realTimeState -ieq 'STARTED'){
+                Write-Verbose "State of Service '$PublishingToolsPath' is STARTED. Service Status :- $serviceStatus"
+                break
+            }else{
+                if($Attempts -le $MaxAttempts){
+                    $Attempts += 1
+                    Write-Verbose "Waiting $SleepTimeInSeconds seconds. Current  Service Status :- $serviceStatus"
+                    Start-Sleep -Seconds $SleepTimeInSeconds
+                }else{
+                    Write-Verbose "Unable to get $PublishingToolsPath started successfully. Service Status :- $serviceStatus"
+                    break
+                }
+            }
         }
     }
 

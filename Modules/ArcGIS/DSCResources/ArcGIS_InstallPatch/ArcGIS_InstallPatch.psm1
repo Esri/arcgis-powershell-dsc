@@ -175,7 +175,7 @@ function Test-TargetResource
             $trueName = 'ArcGIS Geoevent Server'
         }
 
-        $ver = Get-CimInstance Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
+        $ver = (Get-ArcGISProductDetails -ProductName $trueName)
         Write-Verbose "Installed Version $($ver.Version)"
 
         $result = Test-Install -Name $ComponentName -Version $Version

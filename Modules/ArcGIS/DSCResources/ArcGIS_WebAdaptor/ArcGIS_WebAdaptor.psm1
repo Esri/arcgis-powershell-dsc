@@ -102,7 +102,7 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') {
-        $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+        $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
         $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
 		$Version = ""
         foreach($wa in $WAInstalls){
@@ -204,7 +204,7 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
-    $WAInstalls = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match 'Web Adaptor' -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
     $result = $false
     foreach($wa in $WAInstalls){
         if($wa.InstallLocation -match "\\$($Context)\\"){

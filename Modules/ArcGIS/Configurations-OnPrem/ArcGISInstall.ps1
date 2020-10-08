@@ -14,9 +14,8 @@ Configuration ArcGISInstall{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_Install
-    Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
 
@@ -83,6 +82,10 @@ Configuration ArcGISInstall{
             $NodeRoleArray += "SQLServerClient"
         }
 
+        $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+        $MajorVersion = $VersionArray[1]
+        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
+
         for ( $i = 0; $i -lt $NodeRoleArray.Count; $i++ )
         {
             $NodeRole = $NodeRoleArray[$i]
@@ -135,9 +138,6 @@ Configuration ArcGISInstall{
                         Ensure = "Present"
                     }
 
-                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    $MajorVersion = $VersionArray[1]
-                    $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
                     if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_Install "WebStylesInstall$($Node.NodeName)"
                         { 
@@ -193,27 +193,38 @@ Configuration ArcGISInstall{
                     
                     if(-not($PortalWebAdaptorSkip))
                     {
+                        $WebsiteId = if($ConfigurationData.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationData.ConfigData.WebAdaptor.WebSiteId }else{ 1 } 
                         if(($Node.Role -icontains 'PortalWebAdaptor') -and $ConfigurationData.ConfigData.PortalContext)
                         {
-                            ArcGIS_WebAdaptorInstall WebAdaptorInstallPortal
+                            $PortalWAArguments = "/qn VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=$($WebSiteId)"
+                            if($MajorVersion -gt 5){
+                                $PortalWAArguments += " CONFIGUREIIS=TRUE"
+                            }
+                            ArcGIS_Install WebAdaptorInstallPortal
                             { 
-                                Context = $ConfigurationData.ConfigData.PortalContext 
-                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
-                                Arguments = "/qn VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=1";
-                                Ensure = "Present"
+                                Name = "PortalWebAdaptor"
                                 Version = $ConfigurationData.ConfigData.Version
+                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
+                                Arguments = $PortalWAArguments
+                                WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
+                                Ensure = "Present"
                             } 
                         }
 
                         if(($Node.Role -icontains 'ServerWebAdaptor') -and $Node.ServerContext)
                         {
-                            ArcGIS_WebAdaptorInstall WebAdaptorInstallServer
+                            $ServerWAArguments = "/qn VDIRNAME=$($Node.ServerContext) WEBSITE_ID=$($WebSiteId)"
+                            if($MajorVersion -gt 5){
+                                $ServerWAArguments += " CONFIGUREIIS=TRUE"
+                            }
+                            ArcGIS_Install WebAdaptorInstallServer
                             { 
-                                Context = $Node.ServerContext 
-                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
-                                Arguments = "/qn VDIRNAME=$($ConfigurationData.ConfigData.ServerContext) WEBSITE_ID=1";
-                                Ensure = "Present"
+                                Name = "ServerWebAdaptor"
                                 Version = $ConfigurationData.ConfigData.Version
+                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
+                                Arguments = $ServerWAArguments
+                                WebAdaptorContext = $Node.ServerContext
+                                Ensure = "Present"
                             } 
                         }
                     }

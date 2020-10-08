@@ -119,28 +119,24 @@ Function Trace-DSCJob{
     $PosVerboseMap = @{}
     $PosErrorMap = @{}
     $LogsPath = "$((Get-Item -Path '.\' -Verbose).FullName)\Logs"
+    if(!(Test-Path -Path $LogsPath )){
+        New-Item -ItemType directory -Path $LogsPath
+    }
     while(-not($Done)) {
         if(-Not(($Job.ChildJobs).state -imatch "Running")){
             $Done = $True
         }
         ForEach($j in $Job.ChildJobs){
-            if(($j.state -imatch "Completed" -or $j.state -imatch "Failed" ) -and -not($CompletedJobs.Contains($j.Name)) ){
-                $timestamp = (($j.PSBeginTime).toString()).Replace(':','-').Replace('/','-').Replace(' ','-')
-                
-                if(!(Test-Path -Path $LogsPath )){
-                    New-Item -ItemType directory -Path $LogsPath
-                }
-                
-                $MachineLogPath = Join-Path $LogsPath $j.Location
-                if(!(Test-Path -Path $MachineLogPath)){
-                    New-Item -ItemType directory -Path $MachineLogPath
-                }
+            $timestamp = (($j.PSBeginTime).toString()).Replace(':','-').Replace('/','-').Replace(' ','-')
+            $MachineLogPath = Join-Path $LogsPath $j.Location
+            if(!(Test-Path -Path $MachineLogPath)){
+                New-Item -ItemType directory -Path $MachineLogPath
+            }
+            $VerboseLogPath = "$MachineLogPath\$($JobName)-$($timestamp)-Verbose.txt"
+            $ErrorLogPath = "$MachineLogPath\$($JobName)-$($timestamp)-Error.txt"
 
-                Add-content "$MachineLogPath\$($JobName)-$($timestamp)-Verbose.txt" -value $j.Verbose
+            if(($j.state -imatch "Completed" -or $j.state -imatch "Failed" ) -and -not($CompletedJobs.Contains($j.Name)) ){
                 
-                if($j.Error){
-                    Add-content "$MachineLogPath\$($JobName)-$($timestamp)-Error.txt" -value $j.Error
-                }
                 
                 $CompletedJobs.add($j.Name)
             }
@@ -155,16 +151,15 @@ Function Trace-DSCJob{
                 $i = 0  
                 foreach($item in $j.Verbose) {
                     if($i -ge $Pos) {
-                        if($DebugMode){
-                            Write-Host ($item | timestamp) -foregroundcolor yellow
-                            Write-Host $item -foregroundcolor yellow
+                        $AugmentedVerboseItemWithTimestamp = ($item | timestamp) 
+                        if(($item.Message -match "Start  Resource") -or ($item.Message -match "End    Resource")){
+                            Write-Host $AugmentedVerboseItemWithTimestamp -foregroundcolor green
                         }else{
-                            if(($item.Message -match "Start  Test") -or ($item.Message -match "Start  Set") -or ($item.Message -match "End    Test") -or ($item.Message -match "End    Set")){
-                                Write-Host ($item | timestamp) -foregroundcolor yellow
-                            }elseif(($item.Message -match "Start  Resource") -or ($item.Message -match "End    Resource")){
-                                Write-Host ($item | timestamp) -foregroundcolor green
+                            if($DebugMode -or ($item.Message -match "Start  Test") -or ($item.Message -match "Start  Set") -or ($item.Message -match "End    Test") -or ($item.Message -match "End    Set")){
+                                Write-Host $AugmentedVerboseItemWithTimestamp -foregroundcolor yellow
                             }
                         }
+                        Add-content $VerboseLogPath -value $AugmentedVerboseItemWithTimestamp
                     }
                     $i++
                 }  
@@ -182,8 +177,9 @@ Function Trace-DSCJob{
                 $i = 0  
                 foreach($item in $j.Error) {
                     if($i -ge $PosError) {
-                        Write-Error $item
-                        #Write-Host "[]$item" -foregroundcolor red
+                        $AugmentedErrorItemWithTimestamp = ($item | timestamp)
+                        Write-Error $AugmentedErrorItemWithTimestamp
+                        Add-content $ErrorLogPath -value $AugmentedErrorItemWithTimestamp
                     }
                     $i++
                 }  
@@ -287,9 +283,10 @@ function Invoke-ServerUpgradeScript {
        
         $WebAdaptorUninstallArgs = @{
             ConfigurationData = @{ AllNodes = @( $NodeToAdd ) }
-            Version = $cf.ConfigData.Version 
-            InstallerPath = $cf.ConfigData.WebAdaptor.Installer.Path 
+            Version = $cf.ConfigData.OldVersion 
             Context = $cf.ConfigData.ServerContext
+            WebAdaptorRole = "ServerWebAdaptor"
+            WebSiteId = if($cf.ConfigData.WebAdaptor.WebSiteId){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
         }
 
         $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUninstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUninstallArgs -Credential $Credential -DebugMode $DebugMode
@@ -409,6 +406,7 @@ function Invoke-ServerUpgradeScript {
                     Context = $cf.ConfigData.ServerContext
                     ComponentHostName = $cfPrimaryServerMachine
                     SiteAdministratorCredential = $cfSiteAdministratorCredential
+                    WebSiteId = if($cf.ConfigData.WebAdaptor.WebSiteId){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
                 }
                 $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorInstallArgs -Credential $Credential -DebugMode $DebugMode
 
@@ -667,6 +665,14 @@ function Invoke-ArcGISConfiguration
             }
             if($InstallCD.ConfigData.Server.ConfigStoreLocation){
                 $InstallCD.ConfigData.Server.Remove("ConfigStoreLocation")
+            }
+        }
+        if($InstallCD.ConfigData.GeoEventServer){
+            if($InstallCD.ConfigData.GeoEventServer.LicenseFilePath){
+                $InstallCD.ConfigData.GeoEventServer.Remove("LicenseFilePath")
+            }
+            if($InstallCD.ConfigData.GeoEventServer.LicensePassword){
+                $InstallCD.ConfigData.GeoEventServer.Remove("LicensePassword")
             }
         }
         if($InstallCD.ConfigData.Portal){
@@ -1087,10 +1093,12 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISFileShare" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $FileShareArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
+                    $Version = $ConfigurationParamsHashtable.ConfigData.Version
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
                         $JobFlag = $False
                         $ServerArgs = @{
                             ConfigurationData = $ServerCD
+                            Version = $Version
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
@@ -1143,14 +1151,14 @@ function Invoke-ArcGISConfiguration
 
                                 $SDEUserCredential = $null
                                 if($DB.SDEUser){
-                                    $SDEUserPassword = if( $DB.SDEUser.PasswordFilePath ){ Get-Content $DB.SDEUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.Credentials.SDEUser.Password -AsPlainText -Force }
+                                    $SDEUserPassword = if( $DB.SDEUser.PasswordFilePath ){ Get-Content $DB.SDEUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.SDEUser.Password -AsPlainText -Force }
                                     $SDEUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.SDEUser.UserName, $SDEUserPassword )
                                 }
 
                                 $DatabaseUserCredential = $null
                                 if($DB.DatabaseUser){
-                                    $DatabaseUserPassword = if( $DB.DatabaseUserCredential.PasswordFilePath ){ Get-Content $DB.DatabaseUserCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseUserCredential.Password -AsPlainText -Force }
-                                    $DatabaseUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.DatabaseUserCredential.UserName, $DatabaseUserPassword )
+                                    $DatabaseUserPassword = if( $DB.DatabaseUser.PasswordFilePath ){ Get-Content $DB.DatabaseUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseUser.Password -AsPlainText -Force }
+                                    $DatabaseUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.DatabaseUser.UserName, $DatabaseUserPassword )
                                 }
 
                                 if((($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'SQLServer' -and $_.NodeName -ieq $DB.DatabaseServerHostName } | Measure-Object).Count -gt 0)){
@@ -1166,7 +1174,7 @@ function Invoke-ArcGISConfiguration
                                 if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                     $DBArgs = @{
                                         ConfigurationData = $ServerCD
-                                        PrimaryServiceMachine = $PrimaryServerMachine.NodeName
+                                        PrimaryServerMachine = $PrimaryServerMachine.NodeName
                                         ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                                         DatabaseType = $DB.DatabaseType
                                         DatabaseServerHostName = $DB.DatabaseServerHostName
@@ -1174,7 +1182,7 @@ function Invoke-ArcGISConfiguration
                                         DatabaseServerAdministratorCredential = $DatabaseServerAdministratorCredential
                                         SDEUserCredential = $SDEUserCredential
                                         DatabaseUserCredential = $DatabaseUserCredential
-                                        DatabaseIsManaged = $DB.DatabaseIsManaged
+                                        DatabaseIsManaged = $DB.IsManaged
                                         EnableGeodatabase = $DB.EnableGeodatabase
                                     }
 
@@ -1214,19 +1222,18 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerSettingsArgs -Credential $Credential -DebugMode $DebugMode
                     }
 
-                    
-                    $Version = $ConfigurationParamsHashtable.ConfigData.Version
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $PortalCheck){
                         $JobFlag = $False
-                        $MajorVersion = $Version.Split(".")[1]
-                        $MinorVersion = $Version.Split(".")[2]
+                        $VersionArray = $Version.Split(".")
+                        $MajorVersion = $VersionArray[1]
+                        $MinorVersion = if($VersionArray.Count -eq 3){ $VersionArray[2] }else { 0 }
+
                         $PortalArgs = @{
                             ConfigurationData = $PortalCD
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
                             PortalAdministratorCredential = $PortalAdministratorCredential
-                            Version = $Version
                             PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
                             ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation
                             AdminEmail = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Email
@@ -1302,6 +1309,7 @@ function Invoke-ArcGISConfiguration
                             PortalAdministratorCredential = $PortalAdministratorCredential
                             PrimaryServerMachine        = $PrimaryServerMachine.NodeName
                             PrimaryPortalMachine        = $PrimaryPortalMachine.NodeName
+                            WebSiteId                   = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
                         }
                         if($ServerCheck){
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
@@ -1601,9 +1609,10 @@ function Invoke-ArcGISConfiguration
                             
                             $WebAdaptorUninstallArgs = @{
                                 ConfigurationData = @{ AllNodes = @( $NodeToAdd ) }
-                                Version = $PortalConfig.ConfigData.Version 
-                                InstallerPath = $PortalConfig.ConfigData.WebAdaptor.Installer.Path 
+                                Version = $PortalConfig.ConfigData.OldVersion 
                                 Context = $PortalConfig.ConfigData.PortalContext
+                                WebAdaptorRole = "PortalWebAdaptor"
+                                WebSiteId = if($PortalConfig.ConfigData.WebAdaptor.WebSiteId){ $PortalConfig.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
                             }
                             
                             $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUninstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUninstallArgs -Credential $Credential -DebugMode $DebugMode
@@ -1756,6 +1765,7 @@ function Invoke-ArcGISConfiguration
                                     Context = $PortalConfig.ConfigData.PortalContext 
                                     ComponentHostName = $PrimaryNodeToAdd.NodeName
                                     SiteAdministratorCredential = $PortalSiteAdministratorCredential
+                                    WebSiteId = if($PortalConfig.ConfigData.WebAdaptor.WebSiteId){ $PortalConfig.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
                                 }
 
                                 $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorInstallArgs -Credential $Credential -DebugMode $DebugMode
@@ -2073,4 +2083,39 @@ function Invoke-PublishGISService
     Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ConfigData -Credential $Credential -DebugMode $DebugMode
 }
 
-Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService
+function Get-ArcGISProductDetails
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ProductName
+    )
+    #Create an instance of the Registry Object and open the HKLM base key
+    $RegistryInstance = [microsoft.win32.registrykey]::OpenRemoteBaseKey('LocalMachine',$env:computername) 
+    $ResultsArray = @()
+    foreach($UninstallKey in @("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall","SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall") ){
+        #Drill down into the Uninstall key using the OpenSubKey Method
+        $RegistryKey = $RegistryInstance.OpenSubKey($UninstallKey) 
+        #Retrieve an array of string that contain all the subkey names
+        $RegistrySubKeys = $RegistryKey.GetSubKeyNames() 
+        #Open each Subkey and use GetValue Method to return the required values for each
+        foreach($key in $RegistrySubKeys){
+            if($key.EndsWith('}')){
+                $UninstallSubKey = $RegistryInstance.OpenSubKey($UninstallKey + "\\" + $key ) 
+                $Publisher = $UninstallSubKey.GetValue("Publisher")
+                $DisplayName = $UninstallSubKey.GetValue("DisplayName")
+                if($DisplayName -imatch $ProductName -and $Publisher -ieq "Environmental Systems Research Institute, Inc." -and ($ProductName -ine "portal" -or ($ProductName -ieq "portal" -and -not($DisplayName -imatch "Web Styles")))){
+                    $ResultsArray += New-Object PSObject -Property @{
+                        Name = $DisplayName
+                        Version = $UninstallSubKey.GetValue("DisplayVersion")
+                        InstallLocation = $UninstallSubKey.GetValue("InstallLocation")
+                        IdentifyingNumber = $key
+                    }
+                }
+            }
+        } 
+    }
+    $ResultsArray
+}
+
+Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, Get-ArcGISProductDetails

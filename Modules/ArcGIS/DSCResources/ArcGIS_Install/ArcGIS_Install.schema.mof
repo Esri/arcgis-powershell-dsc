@@ -8,6 +8,7 @@ class ArcGIS_Install : OMI_BaseResource
 	[Write] String Path;
 	[Write] String Arguments;
 	[Write] String LogPath;
+	[Write] String WebAdaptorContext;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };
 

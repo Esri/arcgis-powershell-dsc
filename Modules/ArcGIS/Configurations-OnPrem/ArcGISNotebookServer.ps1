@@ -70,6 +70,8 @@ Configuration ArcGISNotebookServer
         $DebugMode = $False
     )
 
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_NotebookServer
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_NotebookServerSettings
@@ -90,7 +92,7 @@ Configuration ArcGISNotebookServer
         }
 
         if($CloudStorageType -ieq 'AzureFiles') {
-            $AzureFilesEndpoint = if($Pos -gt -1){$StorageAccountCredential.UserName.Replace('.blob.','.file.')}else{$StorageAccountCredential.UserName}                   
+            $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}                   
             $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\notebookserver\config-store"
             $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\notebookserver\server-dirs" 

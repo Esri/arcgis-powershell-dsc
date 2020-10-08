@@ -977,11 +977,11 @@ function Get-PostgresDatabaseConnectionString
         $Credential
     )
 
-    $PortalInstallationDirectory = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "Portal" -and -not($_.Name -match "Web Styles") -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+    $PortalInstallationDirectory = (Get-ArcGISProductDetails -ProductName "Portal").InstallLocation
     if($PortalInstallationDirectory){
         $InstallerPath = $PortalInstallationDirectory
     }else{
-        $DatastoreInstallationDirectory = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "Data Store" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).InstallLocation
+        $DatastoreInstallationDirectory = (Get-ArcGISProductDetails -ProductName "Data Store").InstallLocation
         if($DatastoreInstallationDirectory){
             $InstallerPath = $DatastoreInstallationDirectory
         }else{

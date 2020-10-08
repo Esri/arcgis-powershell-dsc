@@ -18,11 +18,14 @@ Configuration ArcGISWebAdaptor
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ServerRole
+        $ServerRole,
+
+        [System.Int32]
+		$WebSiteId = 1
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
@@ -57,7 +60,7 @@ Configuration ArcGISWebAdaptor
         if($Node.SSLCertificate){
             ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
             {
-                WebSiteName             = 'Default Web Site'
+                WebSiteId               = $WebSiteId
                 ExternalDNSName         = $Node.SSLCertificate.CName
                 Ensure                  = 'Present'
                 CertificateFileLocation = $Node.SSLCertificate.Path
@@ -67,7 +70,7 @@ Configuration ArcGISWebAdaptor
         }else{
             ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
             {
-                WebSiteName     = 'Default Web Site'
+                WebSiteId       = $WebSiteId
                 ExternalDNSName = $MachineFQDN 
                 Ensure          = 'Present'
                 DependsOn       = $Depends

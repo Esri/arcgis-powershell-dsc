@@ -28,7 +28,7 @@ Configuration ServerUpgrade{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_WindowsService
@@ -86,7 +86,7 @@ Configuration ServerUpgrade{
         ArcGIS_License ServerLicense
         {
             LicenseFilePath = $Node.ServerLicenseFilePath
-            LicensePassword = $Node.ServerLicensePassword
+            LicensePassword = if($Node.ServerLicensePassword){ $Node.ServerLicensePassword }else{ $null }
             Ensure = "Present"
             Component = 'Server'
             ServerRole = $Node.ServerRole 

@@ -19,10 +19,6 @@ Configuration ArcGISPortal
         [System.Management.Automation.PSCredential]
         $PortalAdministratorCredential,
 
-        [Parameter(Mandatory=$True)]
-        [System.String]
-        $Version,
-        
         [Parameter(Mandatory=$False)]
         [System.String]
         $PrimaryPortalMachine,
@@ -122,10 +118,9 @@ Configuration ArcGISPortal
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
-    Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
 
     if(($null -ne $CloudStorageType) -and $CloudStorageCredentials) 

@@ -5,8 +5,8 @@
         Indicates to make sure a SSL Certificate is Installed and Configured on the Machine. Take the values Present or Absent. 
         - "Present" ensures that a SSL Certificate is Installed if provided and Configured on the Machine, if not already done. 
         - "Absent" ensures that a SSL Certificate is uninstalled, if present and configured - Not Implemented.
-    .PARAMETER WebSiteName
-        Name of the website with which the SSL Certificate needs to be Binded with.
+    .PARAMETER WebSiteId
+        Id of the website with which the SSL Certificate needs to be Binded with.
     .PARAMETER ExternalDNSName
         Name of the ExternalDNSName with which the SSL Certificates needs to be Binded with.
     .PARAMETER CertificateFileLocation
@@ -22,8 +22,8 @@ function Get-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-		[System.String]
-		$WebSiteName,
+		[System.Int32]
+		$WebSiteId,
 
         [parameter(Mandatory = $true)]
 		[System.String]
@@ -41,8 +41,8 @@ function Set-TargetResource
 	param
 	(
         [parameter(Mandatory = $true)]
-		[System.String]
-		$WebSiteName,
+		[System.Int32]
+		$WebSiteId,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -66,7 +66,7 @@ function Set-TargetResource
 	Import-Module WebAdministration | Out-Null
 	$VerbosePreference = $CurrVerbosePreference # reset it back to previous preference
 
-    Invoke-EnsureWebBindingForHTTPS -WebSiteName $WebSiteName
+    Invoke-EnsureWebBindingForHTTPS -WebSiteId $WebSiteId
 
     $CertToInstall = $null
     if($CertificateFileLocation -and ($null -ne $CertificatePassword) -and (Test-Path $CertificateFileLocation)){
@@ -101,8 +101,8 @@ function Test-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-		[System.String]
-		$WebSiteName,
+		[System.Int32]
+		$WebSiteId,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -729,8 +729,8 @@ function Invoke-EnsureWebBindingForHTTPS
 	param
 	(
 		[parameter(Mandatory = $true)]
-		[System.String]
-		$WebSiteName,
+		[System.Int32]
+		$WebSiteId,
 
         [parameter(Mandatory = $false)]
 		[System.Int32]
@@ -741,9 +741,10 @@ function Invoke-EnsureWebBindingForHTTPS
     ###      
     $binding = Get-WebBinding -Protocol https -Port $Port    
     if($null -eq $binding) 
-    {        
+    {      
         Write-Verbose 'Setting up SSL Binding with self signed certificate'
         Write-Verbose "Creating Binding on Port $Port for https"
+        $WebSiteName = (Get-Website | Where-Object {$_.ID -eq $WebSiteId}).Name
         New-WebBinding -Name $WebSiteName -IP "*" -Port $Port -Protocol https
         Write-Verbose "Finished Creating Binding on Port $Port for https"
     }   

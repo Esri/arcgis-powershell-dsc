@@ -17,7 +17,7 @@ Configuration DataStoreUpgradeConfigure{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"} 
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     
     Node $AllNodes.NodeName {

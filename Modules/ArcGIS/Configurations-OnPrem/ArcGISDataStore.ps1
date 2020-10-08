@@ -53,7 +53,7 @@ Configuration ArcGISDataStore
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore
@@ -68,7 +68,7 @@ Configuration ArcGISDataStore
 
         $VersionArray = $Version.Split(".")
         $MajorVersion = $VersionArray[1]
-        $MinorVersion = if($Version.Count -eq 3){ $VersionArray[2] }else { 0 }
+        $MinorVersion = if($VersionArray.Count -eq 3){ $VersionArray[2] }else { 0 }
         $Depends = @()
         Service ArcGIS_DataStore_Service
         {
