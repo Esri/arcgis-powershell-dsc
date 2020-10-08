@@ -70,7 +70,7 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    $WmiComponentObject = (get-CimInstance Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $WmiComponentObject = (Get-ArcGISProductDetails -ProductName "geoevent")
     $VersionArray = $WmiComponentObject.Version.Split('.')
     $MinorVersion = [int]$VersionArray[1]
     $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")
@@ -264,7 +264,7 @@ function Test-TargetResource
 	$ServiceName = 'ArcGISGeoEvent'
     $result = $true    
     $result = (Get-Service -Name $ServiceName -ErrorAction Ignore).Status -ieq 'Running'
-    $WmiComponentObject = (get-CimInstance Win32_Product| Where-Object {$_.Name -match "geoevent" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'})
+    $WmiComponentObject = (Get-ArcGISProductDetails -ProductName "geoevent")
     $VersionArray = $WmiComponentObject.Version.Split('.')
     $MinorVersion = [int]$VersionArray[1]
     $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")

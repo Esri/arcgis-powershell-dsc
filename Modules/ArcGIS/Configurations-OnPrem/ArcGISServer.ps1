@@ -18,6 +18,10 @@ Configuration ArcGISServer
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $ServerPrimarySiteAdminCredential,
+
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $Version,
         
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -83,11 +87,12 @@ Configuration ArcGISServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
+    Import-DscResource -Name ArcGIS_GeoEvent
 
     if(($null -ne $CloudStorageType) -and $CloudStorageCredentials) 
     {
@@ -101,7 +106,7 @@ Configuration ArcGISServer
         }
 
         if($CloudStorageType -ieq 'AzureFiles') {
-            $AzureFilesEndpoint = if($Pos -gt -1){$StorageAccountCredential.UserName.Replace('.blob.','.file.')}else{$StorageAccountCredential.UserName}                   
+            $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}                   
             $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\server\config-store"
             $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\server\server-dirs" 
@@ -344,7 +349,7 @@ Configuration ArcGISServer
             }
             $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
         }else{
-            if(@("10.5.1").Contains($ConfigurationData.ConfigData.Version)){
+            if(@("10.5.1").Contains($Version)){
                 ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
                 {
                     ServerHostName = $MachineFQDN
@@ -400,7 +405,7 @@ Configuration ArcGISServer
             {
                 Name                  = "ArcGISGeoEventFirewallRules" 
                 DisplayName           = "ArcGIS GeoEvent" 
-                DisplayGroup          = "ArcGIS GeoEvent" 
+                DisplayGroup          = "ArcGIS GeoEvent Extension" 
                 Ensure                = "Present"
                 Access                = "Allow" 
                 State                 = "Enabled" 
@@ -411,20 +416,36 @@ Configuration ArcGISServer
             }
             $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
 
-            ArcGIS_GeoEvent ArcGIS_GeoEvent
-            {
-                ServerHostName            = $MachineFQDN
-                Name	                  = 'ArcGIS GeoEvent'
-                Ensure	                  =  "Present"
-                SiteAdministrator         = $ServerPrimarySiteAdminCredential
-                WebSocketContextUrl       = "wss://$($MachineFQDN):6143/arcgis" #Fix this
-                DependsOn                 = $Depends
-                #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }
-            }	
-            $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
-            
             if($IsMultiMachineServer) 
             {
+                ArcGIS_xFirewall GeoEvent_FirewallRules_Zookeeper
+				{
+					Name                  = "ArcGISGeoEventFirewallRulesClusterZookeeper" 
+					DisplayName           = "ArcGIS GeoEvent Extension Cluster Zookeeper" 
+					DisplayGroup          = "ArcGIS GeoEvent Extension" 
+					Ensure                = 'Present' 
+					Access                = "Allow" 
+					State                 = "Enabled" 
+					Profile               = ("Domain","Private","Public")
+					LocalPort             = ("4181","4182","4190")
+					Protocol              = "TCP" 
+				}
+
+				ArcGIS_xFirewall GeoEvent_FirewallRule_Zookeeper_Outbound
+				{
+					Name                  = "ArcGISGeoEventFirewallRulesClusterOutboundZookeeper" 
+					DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound Zookeeper" 
+					DisplayGroup          = "ArcGIS GeoEvent Extension" 
+					Ensure                = 'Present' 
+					Access                = "Allow" 
+					State                 = "Enabled" 
+					Profile               = ("Domain","Private","Public")
+					RemotePort            = ("4181","4182","4190")
+					Protocol              = "TCP" 
+					Direction             = "Outbound"    
+				}
+				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRule_Zookeeper_Outbound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_Zookeeper')
+
                 ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
                 {
                     Name                  = "ArcGISGeoEventFirewallRulesCluster" 
@@ -434,7 +455,7 @@ Configuration ArcGISServer
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2181","2182","2190","27271","27272","27273")										
+                    LocalPort             = ("2181","2182","2190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
                     Protocol              = "TCP" 
                     DependsOn             = $Depends
                 }
@@ -449,17 +470,18 @@ Configuration ArcGISServer
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = ("2181","2182","2190","27271","27272","27273")										
+                    RemotePort            = ("2181","2182","2190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
                     Protocol              = "TCP" 
                     Direction             = "Outbound"    
                     DependsOn             = $Depends
                 }
                 $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound"
-                ArcGIS_xFirewall GeoEventService_Firewall
+
+                ArcGIS_xFirewall GeoEventGatewayService_Firewall
                 {
                     Name                  = "ArcGISGeoEventGateway"
                     DisplayName           = "ArcGIS GeoEvent Gateway"
-                    DisplayGroup          = "ArcGIS GeoEvent Gateway"
+                    DisplayGroup          = "ArcGIS GeoEvent Extension"
                     Ensure                = 'Present'
                     Access                = "Allow"
                     State                 = "Enabled"
@@ -468,10 +490,11 @@ Configuration ArcGISServer
                     Protocol              = "TCP"
                     DependsOn             = $Depends
                 }
-                $Depends += "[ArcGIS_xFirewall]GeoEventService_Firewall"
+                $Depends += "[ArcGIS_xFirewall]GeoEventGatewayService_Firewall"
             }
 
-            if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
+            #This condition is an issue
+            if($Version.Split(".")[1] -gt 5)
             {
                 ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
                 {
@@ -482,6 +505,17 @@ Configuration ArcGISServer
                     DependsOn   = $Depends
                 }
                 $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
+            }
+
+            ArcGIS_GeoEvent ArcGIS_GeoEvent
+            {
+                ServerHostName            = $MachineFQDN
+                Name	                  = 'ArcGIS GeoEvent'
+                Ensure	                  =  "Present"
+                SiteAdministrator         = $ServerPrimarySiteAdminCredential
+                WebSocketContextUrl       = "wss://$($MachineFQDN):6143/arcgis" #Fix this
+                DependsOn                 = $Depends
+                #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }
             }
         }
     }

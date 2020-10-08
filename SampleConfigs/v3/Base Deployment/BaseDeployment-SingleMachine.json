@@ -140,7 +140,8 @@
             "AdminAccessEnabled": true,
             "Installer": {
                 "Path": "[WebAdaptor Installer Path]"
-            }
+            },
+            "WebSiteId": 1
         }
     }
 }

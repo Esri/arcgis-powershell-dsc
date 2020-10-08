@@ -14,9 +14,8 @@ Configuration ArcGISUninstall
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DscResource -Name ArcGIS_Install
-    Import-DscResource -Name ArcGIS_WebAdaptorInstall
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     
@@ -83,23 +82,27 @@ Configuration ArcGISUninstall
                 { 'ServerWebAdaptor' -or 'PortalWebAdaptor' }{
                     
                     $WebAdaptorRole = $NodeRole
-
-                   if(($WebAdaptorRole -ieq "PortalWebAdaptor") -and $ConfigurationData.ConfigData.PortalContext){
-                        ArcGIS_WebAdaptorInstall WebAdaptorUninstallPortal
+                    $WebSiteId = if($ConfigurationData.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationData.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
+                    if(($WebAdaptorRole -ieq "PortalWebAdaptor") -and $ConfigurationData.ConfigData.PortalContext){
+                        ArcGIS_Install WebAdaptorUninstallPortal
                         { 
-                            Context = $ConfigurationData.ConfigData.PortalContext 
+                            Name = "PortalWebAdaptor"
                             Version = $ConfigurationData.ConfigData.Version
+                            WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
+                            Arguments = "WEBSITE_ID=$($WebSiteId)"
                             Ensure = "Absent"
-                        } 
+                        }
                     }
 
                     if(($WebAdaptorRole -ieq "ServerWebAdaptor") -and $Node.ServerContext){
-                        ArcGIS_WebAdaptorInstall WebAdaptorUninstallServer
+                        ArcGIS_Install WebAdaptorUninstallServer
                         { 
-                            Context = $Node.ServerContext
+                            Name = "ServerWebAdaptor"
                             Version = $ConfigurationData.ConfigData.Version
+                            WebAdaptorContext = $Node.ServerContext
+                            Arguments = "WEBSITE_ID=$($WebSiteId)"
                             Ensure = "Absent"
-                        } 
+                        }
                     }
                 }
                 'FileShare'{

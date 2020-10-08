@@ -446,8 +446,8 @@ function Invoke-CreateSite
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
 
-	$VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Notebook Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
-    Write-Verbose "Notebook Server Version - $VersionObject"
+    $VersionObject = (Get-ArcGISProductDetails -ProductName "ArcGIS Notebook Server").Version
+	Write-Verbose "Notebook Server Version - $VersionObject"
     $MajorVersion = $($VersionObject.Split('.')[1])
     $MinorVersion = $($VersionObject.Split('.')[2])
 

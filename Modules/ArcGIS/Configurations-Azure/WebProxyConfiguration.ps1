@@ -252,7 +252,7 @@
 
         ArcGIS_IIS_TLS IISHTTPS
         {
-			WebSiteName             = 'Default Web Site'
+			WebSiteId               = 1
             Ensure                  = 'Present'
             ExternalDNSName         = $ExternalDNSHostName                        
             CertificateFileLocation = (Join-Path $(Get-Location).Path $SSLCertificateFileName)

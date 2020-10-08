@@ -92,7 +92,7 @@ function Set-TargetResource
                 } 
                 $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
                 $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
-                $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+                $RealVersion = (Get-ArcGISProductDetails -ProductName $ComponentName).Version
             }catch{
                 throw "Couldn't Find The Product - $Component"            
             }finally{
@@ -176,7 +176,7 @@ function Test-TargetResource
             } 
             $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
             $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
-            $RealVersion = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match $ComponentName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+            $RealVersion = (Get-ArcGISProductDetails -ProductName $ComponentName).Version
         }catch{
             throw "Couldn't Find The Product - $Component"        
         }finally{
@@ -215,7 +215,7 @@ function Test-TargetResource
 		    }
 		    elseif($ServerRole -ieq 'GeoEvent') {
 			    $searchtext = 'geoesvr'
-		    }
+            }
 		    elseif($ServerRole -ieq 'GeoAnalytics') {
 			    $searchtext = 'geoasvr'
             }

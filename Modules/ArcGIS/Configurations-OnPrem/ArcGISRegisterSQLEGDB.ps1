@@ -41,11 +41,11 @@ Configuration ArcGISRegisterSQLEGDB{
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
-        $EnableGeodatabase = $False,
+        $EnableGeodatabase = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
     Import-DSCResource -Name ArcGIS_EGDB
     
     Node $AllNodes.NodeName

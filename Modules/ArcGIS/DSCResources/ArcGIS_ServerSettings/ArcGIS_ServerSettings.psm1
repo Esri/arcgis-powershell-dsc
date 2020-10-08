@@ -78,15 +78,16 @@ function Set-TargetResource
 			$ServerEndPoint = Get-FQDN $ServerEndPoint
 		}
 
-		$ExpectedPrivateServerUrl = if($ServerEndPoint -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
+		$ExpectedPrivateServerUrl = if($ServerEndPointPort -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
 		$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
 		$ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $ExpectedPrivateServerUrl }
 		if(-not($ExistingWebAdaptor)) {
 			#Register the ServerEndpoint as a (dummy) web adaptor for server				
 			Write-Verbose 'Registering the Server Endpoint as a Web Adaptor for Server'
 			Write-Verbose "Register $ExpectedPrivateServerUrl as web adaptor"
+			$ServerEndPointHttpPort = if($ServerEndPointPort -eq 443){ 80 }else{ 6080 }
 			Register-WebAdaptorForServer -ServerUrl "https://$($ServerFQDN):6443" -Token $serverToken.token -Referer $Referer -SiteName 'arcgis' `
-											-WebAdaptorUrl $ExpectedPrivateServerUrl -MachineName $ServerEndPoint -HttpPort 80 -HttpsPort 443
+											-WebAdaptorUrl $ExpectedPrivateServerUrl -MachineName $ServerEndPoint -HttpPort $ServerEndPointHttpPort -HttpsPort $ServerEndPointPort
 			Write-Verbose 'Finished Registering the ServerEndPoint as a Web Adaptor for Server'
 
 			$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
@@ -210,7 +211,7 @@ function Test-TargetResource
 	}
 
 	if($result -and $ServerEndPoint) {
-		$ExpectedPrivateServerUrl = if($ServerEndPoint -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
+		$ExpectedPrivateServerUrl = if($ServerEndPointPort -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
 		
 		$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
 		$ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $ExpectedPrivateServerUrl }

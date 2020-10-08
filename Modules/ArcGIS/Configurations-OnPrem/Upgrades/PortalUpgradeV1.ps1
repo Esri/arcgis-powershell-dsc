@@ -87,7 +87,7 @@ Configuration PortalUpgradeV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_Service_Account
@@ -266,18 +266,18 @@ Configuration PortalUpgradeV1{
             }
             $Depends += '[ArcGIS_Install]PortalUninstallStandby'
             
-            $PortalName = (get-CimInstance Win32_Product| Where-Object {$_.Name -match "Portal" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Name
-            # This will likely fail if querying a remote machine, need to find a better solution for this.
-            if(-not($PortalName -imatch $Version)){
-                File DirectoryRemove
-                {
-                    Ensure = "Absent"  
-                    Type = "Directory" 
-                    Force = $true
-                    DestinationPath = $ContentDir  
-                    DependsOn = $Depends
+            Script PortalContentDirectoryRemove
+            {
+                SetScript = {
+                    Remove-Item $using:ContentDir -Recurse
                 }
+                TestScript = { 
+                    -not(Test-Path $using:ContentDir)
+                }
+                GetScript = { $null }
+                DependsOn = $Depends
             }
+            $Depends += "[Script]PortalContentDirectoryRemove"
 
             ArcGIS_Install PortalInstall
             { 

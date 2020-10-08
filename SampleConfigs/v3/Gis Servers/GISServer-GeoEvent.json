@@ -34,8 +34,7 @@
         "GeoEventServer": {
             "LicenseFilePath": "[License File Path - GeoEvent Server ]",
             "Installer": {
-                "Path": "[GeoEvent Server Installer Path]",
-                "InstallDir": "[Geoevent Server Install Dir - Ex. C:\\ArcGIS\\GeoEventServer]"
+                "Path": "[GeoEvent Server Installer Path]"
             },
             "EnableGeoeventSDK": "[ Optional - True | False(Default) - Enables GeoEvent SDK during installation.]"
         },

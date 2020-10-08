@@ -452,7 +452,7 @@ function Invoke-CreateSite
         
     if(($ConfigStoreCloudStorageConnectionString) -and ($ConfigStoreCloudStorageConnectionSecret) -and ($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1))
     {
-        $VersionObject = (Get-CimInstance Win32_Product| Where-Object {$_.Name -match "ArcGIS Mission Server" -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}).Version
+        $VersionObject = (Get-ArcGISProductDetails -ProductName "ArcGIS Mission Server").Version
         Write-Verbose "Mission Server Version - $VersionObject"
         $MajorVersion = $VesionObject.Split('.')[1]
 

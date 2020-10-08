@@ -13,6 +13,8 @@
         Version of the Component being Installed.
     .PARAMETER Arguments
         Additional Command Line Arguments required by the installer to complete intallation of the give component successfully.
+    .PARAMETER WebAdaptorContext
+        Context with which the Web Adaptor Needs to be Installed.
     .PARAMETER LogPath
         Optional Path where the Logs generated during the Install will be stored.
 #>
@@ -45,6 +47,9 @@ function Get-TargetResource
 
 		[System.String]
         $LogPath,
+
+        [System.String]
+        $WebAdaptorContext,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -84,6 +89,9 @@ function Set-TargetResource
 		[System.String]
         $LogPath,
 
+        [System.String]
+        $WebAdaptorContext,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -96,11 +104,43 @@ function Set-TargetResource
             throw "$Path is not found or inaccessible"
         }
 
+        if(($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor') -and ($Version.Split(".")[1] -le 5)){
+            Write-Verbose "Installing Pre-Requsites: $pr"
+            $PreRequisiteWindowsFeatures = @("IIS-ManagementConsole", "IIS-ManagementScriptingTools",
+                                        "IIS-ManagementService", "IIS-ISAPIExtensions",
+                                        "IIS-ISAPIFilter", "IIS-RequestFiltering",
+                                        "IIS-WindowsAuthentication", "IIS-StaticContent",
+                                        "IIS-ASPNET45", "IIS-NetFxExtensibility45", "IIS-WebSockets")
+
+            foreach($pr in $PreRequisiteWindowsFeatures){
+                Write-Verbose "Installing Windows Feature: $pr"
+                if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
+                {
+                    if(-not((Get-WindowsOptionalFeature -FeatureName $pr -online).State -ieq "Enabled")){
+                        Enable-WindowsOptionalFeature -Online -FeatureName $pr -All
+                    }
+                }else{
+                    Write-Verbose "Please check the Machine Operating System Compatatbilty"
+                }
+            }
+        }
+
         $ExecPath = $null
         if((Get-Item $Path).length -gt 5mb)
         {
             Write-Verbose 'Self Extracting Installer'
-			$ProdId = if(-not($ProductId)){ Get-ComponentCode -ComponentName $Name -Version $Version }else{ $ProductId}
+            $ComponentName = if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){ "WebAdaptor" }else{ $Name }
+
+            $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
+            $ProdId = $ProductId
+            if(-not($ProductId)){
+                if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+                    $ProdId =  $ProdIdObject[0] 
+                }else{
+                    $ProdId = $ProdIdObject
+                }
+            }
+
             $TempFolder = Join-Path ([System.IO.Path]::GetTempPath()) $ProdId
             if(Test-Path $TempFolder)
             {
@@ -208,8 +248,71 @@ function Set-TargetResource
                 }
             } 
         }
+        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            Write-Verbose "Giving Permissions to Folders for IIS_IUSRS"
+            foreach($p in (Get-ChildItem "$($env:SystemDrive)\Windows\Microsoft.NET\Framework*\v*\Temporary ASP.NET Files").FullName){
+                icacls $p /grant 'IIS_IUSRS:(OI)(CI)F' /T
+            }
+            icacls "$($env:SystemDrive)\Windows\TEMP\" /grant 'IIS_IUSRS:(OI)(CI)F' /T
+
+            Import-Module WebAdministration | Out-Null
+            Write-Verbose "Increasing Web Request Timeout to 1 hour"
+            $WebSiteId = 1
+            $Arguments.Split(' ') | Foreach-Object {
+                $key,$value = $_.Split('=')
+                if($key -ieq "WEBSITE_ID"){
+                    $WebSiteId = $value
+                }
+            }
+            $IISWebSiteName = (Get-Website | Where-Object {$_.ID -eq $WebSiteId}).Name
+            Set-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/$($IISWebSiteName)/$($WebAdaptorContext)"  -filter "system.web/httpRuntime" -name "executionTimeout" -value "01:00:00"
+        }
+
         Write-Verbose "Validating the $Name Installation"
-        $result = if(-not($ProductId)){  Test-Install -Name $Name -Version $Version }else{ Test-Install -Name $Name -ProductId $ProductId }
+        $result = $false
+        if(-not($ProductId)){
+            $trueName = $Name
+            if($Name -ieq 'LicenseManager'){
+                $trueName = 'License Manager'
+            }elseif($Name -ieq 'WebStyles'){
+                $trueName = 'Web Styles'
+            }elseif($Name -ieq 'DataStore'){
+                $trueName = 'Data Store'
+            }elseif($Name -ieq 'Server'){
+                $trueName = 'ArcGIS Server'
+            }elseif($Name -ieq 'MissionServer'){
+                $trueName = 'ArcGIS Mission Server'
+            }elseif($Name -ieq 'NotebookServer'){
+                $trueName = 'ArcGIS Notebook Server'
+            }elseif($Name -ieq 'Geoevent'){
+                $trueName = 'ArcGIS Geoevent Server'
+            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+                $trueName = 'ArcGIS Web Adaptor'
+            }
+            $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
+
+            if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+                if($InstallObject.Length -gt 1){
+                    Write-Verbose "Multiple Instances of Web Adaptor are already installed"
+                }
+                Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
+                foreach($wa in $InstallObject){
+                    $WAProdId = $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}")
+                    if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
+                        $result = Test-Install -Name "WebAdaptor" -Version $Version -ProductId $WAProdId
+                        break
+                    }else{
+                        Write-Verbose "Component with $($WebAdaptorContext) is not installed on this machine"
+                        $result = $false
+                    }
+                }
+            }else{
+                Write-Verbose "Installed Version $($InstallObject.Version)"
+                $result = Test-Install -Name $Name -Version $Version
+            }
+        }else{
+            $result = Test-Install -Name $Name -ProductId $ProductId
+        }
 		
 		if(-not($result)){
 			throw "Failed to Install $Name"
@@ -218,16 +321,45 @@ function Set-TargetResource
 		}
     }
     elseif($Ensure -eq 'Absent') {
-        $ProdId = if(-not($ProductId)){ Get-ComponentCode -ComponentName $Name -Version $Version }else{ $ProductId }
+        $ComponentName = if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){ "WebAdaptor" }else{ $Name }
+
+        $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
+        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
+            $prodIdSetFlag = $False
+            foreach($wa in $WAInstalls){
+				$WAProdId = $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}")
+				if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\" -and ($ProdIdObject -icontains $WAProdId)){
+                    $ProdIdObject = $WAProdId 
+                    $prodIdSetFlag = $True
+					break
+                }
+            }
+            if(-not($prodIdSetFlag)){
+                throw "Given product Id doesn't match the product id for the version specified for Component $Name"
+            }
+        }
         
-        if(-not($ProdId.StartsWith('{'))){
-            $ProdId = '{' + $ProdId
+        if(-not($ProdIdObject.StartsWith('{'))){
+            $ProdIdObject = '{' + $ProdIdObject
         }
-        if(-not($ProdId.EndsWith('}'))){
-            $ProdId = $ProdId + '}'
+        if(-not($ProdIdObject.EndsWith('}'))){
+            $ProdIdObject = $ProdIdObject + '}'
         }
-        Write-Verbose "msiexec /x ""$ProdId"" /quiet"
-		Start-Process 'msiexec' -ArgumentList "/x ""$ProdId"" /quiet" -wait
+        Write-Verbose "msiexec /x ""$ProdIdObject"" /quiet"
+        Start-Process 'msiexec' -ArgumentList "/x ""$ProdIdObject"" /quiet" -wait
+        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            Import-Module WebAdministration | Out-Null
+            $WebSiteId = 1
+            $Arguments.Split(' ') | Foreach-Object {
+                $key,$value = $_.Split('=')
+                if($key -ieq "WEBSITE_ID"){
+                    $WebSiteId = $value
+                }
+            }
+            $IISWebSiteName = (Get-Website | Where-Object {$_.ID -eq $WebSiteId}).Name
+            Remove-WebConfigurationLocation -Name "$($IISWebSiteName)/$($WebAdaptorContext)"
+        }
     }
     Write-Verbose "In Set-Resource for $Name"
 }
@@ -261,6 +393,9 @@ function Test-TargetResource
 		[System.String]
         $LogPath,
 
+        [System.String]
+        $WebAdaptorContext,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -274,6 +409,8 @@ function Test-TargetResource
         $trueName = $Name
         if($Name -ieq 'LicenseManager'){
             $trueName = 'License Manager'
+        }elseif($Name -ieq 'WebStyles'){
+            $trueName = 'Web Styles'
         }elseif($Name -ieq 'DataStore'){
             $trueName = 'Data Store'
         }elseif($Name -ieq 'Server'){
@@ -284,11 +421,29 @@ function Test-TargetResource
             $trueName = 'ArcGIS Notebook Server'
         }elseif($Name -ieq 'Geoevent'){
             $trueName = 'ArcGIS Geoevent Server'
+        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            $trueName = 'ArcGIS Web Adaptor'
         }
-        $ver = Get-CimInstance Win32_Product| Where-Object {$_.Name -match $trueName -and $_.Vendor -eq 'Environmental Systems Research Institute, Inc.'}
-        Write-Verbose "Installed Version $($ver.Version)"
-    
-        $result = Test-Install -Name $Name -Version $Version
+        $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
+        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            if($InstallObject.Length -gt 1){
+                Write-Verbose "Multiple Instances of Web Adaptor are already installed"
+            }
+            $result = $false
+            Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
+            foreach($wa in $InstallObject){
+                if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
+                    $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
+					break
+                }else{
+                    Write-Verbose "Component with $($WebAdaptorContext) is not installed on this machine"
+                    $result = $false
+                }
+            }
+        }else{
+            Write-Verbose "Installed Version $($InstallObject.Version)"
+            $result = Test-Install -Name $Name -Version $Version
+        }
     }else{
         $result = Test-Install -Name $Name -ProductId $ProductId
     }

@@ -4,15 +4,19 @@ Configuration WebAdaptorUninstall{
         $Version,
         
         [System.String]
-        $InstallerPath,
+        $Context,
         
+        [ValidateSet("ServerWebAdaptor","PortalWebAdaptor")]
         [System.String]
-        $Context
+        $WebAdaptorRole,
+
+        [System.Int32]
+        $WebSiteId
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.0"}
-    Import-DscResource -Name ArcGIS_WebAdaptorInstall
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DscResource -Name ArcGIS_Install
 
     Node $AllNodes.NodeName {
         
@@ -23,13 +27,13 @@ Configuration WebAdaptorUninstall{
             }
         }
 
-        ArcGIS_WebAdaptorInstall WebAdaptorUninstall
+        ArcGIS_Install WebAdaptorUninstall
         { 
-            Context = $Context 
-            Path = $InstallerPath
-            Arguments = "/qb VDIRNAME=$($Context) WEBSITE_ID=1";
-            Ensure = "Absent"
+            Name = $WebAdaptorRole
             Version = $Version
-        } 
+            WebAdaptorContext = $Context
+            Arguments = "WEBSITE_ID=$($WebSiteId)"
+            Ensure = "Absent"
+        }
     }
 }
