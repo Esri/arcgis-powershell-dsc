@@ -58,6 +58,11 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DebugMode
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        [ValidateSet('Enabled','Disabled','NotManaged')]
+        $PointInTimeRecovery = 'NotManaged'
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
@@ -204,8 +209,9 @@
                 RunAsAccount               = $ServiceCredential 
                 DataStoreTypes             = @('Relational')
                 IsEnvAzure                 = $true
-			    DependsOn                  = $DataStoreDependsOn
-		    } 
+                PITRState                  = $PointInTimeRecovery
+                DependsOn                  = $DataStoreDependsOn
+            }
 
 		    foreach($ServiceToStop in  @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
 		    {

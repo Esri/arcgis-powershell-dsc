@@ -18,6 +18,10 @@
          Path for the ArcGIS Data Store directory. This directory contains the data store files, plus the relational data store backup directory.
     .PARAMETER DatabaseBackupsDirectory
         ArcGIS Data Store automatically generates backup files for relational data stores. Default location for the backup files is on the same machine as ArcGIS Data Store
+        Sentinel values:
+        - [string] backuplocation path : set default backup location
+        - empty string : remove default backup location
+        - "NotManaged": (=default) do nothing
     .PARAMETER IsStandby
         Boolean to Indicate if the datastore (Relational only) being configured with a GIS Server is a Standby Server.(Only Supports 1 StandBy Server)
     .PARAMETER FileShareRoot
@@ -28,6 +32,8 @@
         A MSFT_Credential Object - Run as Account for DataStore Window Service.
     .PARAMETER IsEnvAzure
         Boolean to Indicate if the Deployment Environment is On-Prem or Azure Cloud Services
+    .PARAMETER PITRState
+        String to indicate if to enable or disable or do nothing with respect to Point In Time Recovery (Relational only).
 #>
 function Get-TargetResource
 {
@@ -55,7 +61,7 @@ function Get-TargetResource
 		$ContentDirectory,
 
         [System.String]
-		$DatabaseBackupsDirectory,
+		$DatabaseBackupsDirectory = "NotManaged",
 
 		[System.Boolean]
 		$IsStandby,
@@ -73,7 +79,11 @@ function Get-TargetResource
         $IsTileCacheDataStoreClustered = $false,
         
         [System.Boolean]
-		$IsEnvAzure = $false
+        $IsEnvAzure = $false,
+        
+        [ValidateSet("Enabled","Disabled","NotManaged")]
+        [System.String]
+		$PITRState = 'NotManaged'        
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -107,8 +117,8 @@ function Set-TargetResource
 		$ContentDirectory,
 
         [System.String]
-		$DatabaseBackupsDirectory,
-
+		$DatabaseBackupsDirectory = "NotManaged",
+               
 		[System.Boolean]
 		$IsStandby,
 
@@ -125,7 +135,11 @@ function Set-TargetResource
         $IsTileCacheDataStoreClustered = $false,
         
         [System.Boolean]
-        $IsEnvAzure = $false
+        $IsEnvAzure = $false,
+
+        [ValidateSet("Enabled","Disabled","NotManaged")]
+        [System.String]
+		$PITRState = 'NotManaged'        
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -195,44 +209,14 @@ function Set-TargetResource
     if(($DataStoreTypes -icontains "Relational") -or ($DataStoreTypes -icontains "TileCache")){ 
         Write-Verbose "Ensure the Publishing GP Service (Tool) is started on Server"
         $PublishingToolsPath = 'System/PublishingTools.GPServer'
-        $Attempts  = 1
-        $startTime = Get-Date
-        $MaxAttempts = 5
-        $SleepTimeInSeconds = 20
-        while ($true)
-        {
-            Write-Verbose "Checking state of Service '$PublishingToolsPath'. Attempt # $Attempts"    
+        $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+        Write-Verbose "Service Status :- $serviceStatus"
+        if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
+            Write-Verbose "Starting Service $PublishingToolsPath"
+            Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+        
             $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-            Write-Verbose "Service Status :- $serviceStatus"
-            
-            if($serviceStatus.configuredState -ieq 'STARTED' -and $serviceStatus.realTimeState -ieq 'STARTED'){
-                Write-Verbose "State of Service '$PublishingToolsPath' is STARTED"
-                break
-            }else{
-                if(($serviceStatus.configuredState -ieq 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') -or ($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ieq 'STARTED')){
-                    Write-Verbose "Waiting $SleepTimeInSeconds seconds for Service '$PublishingToolsPath' to be started"
-                    Start-Sleep -Seconds $SleepTimeInSeconds
-                }else{
-                    Write-Verbose "Trying to Start Service $PublishingToolsPath"
-                    Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-                    Start-Sleep -Seconds $SleepTimeInSeconds
-                }
-            }
-            
-            $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-            if($serviceStatus.configuredState -ieq 'STARTED' -and $serviceStatus.realTimeState -ieq 'STARTED'){
-                Write-Verbose "State of Service '$PublishingToolsPath' is STARTED. Service Status :- $serviceStatus"
-                break
-            }else{
-                if($Attempts -le $MaxAttempts){
-                    $Attempts += 1
-                    Write-Verbose "Waiting $SleepTimeInSeconds seconds. Current  Service Status :- $serviceStatus"
-                    Start-Sleep -Seconds $SleepTimeInSeconds
-                }else{
-                    Write-Verbose "Unable to get $PublishingToolsPath started successfully. Service Status :- $serviceStatus"
-                    break
-                }
-            }
+            Write-Verbose "Verifying Service Status :- $serviceStatus"
         }
     }
 
@@ -264,88 +248,111 @@ function Set-TargetResource
         }
     }
 
-    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and -not($IsStandby) -and $DatabaseBackupsDirectory){
+    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and -not($IsStandby) -and $DatabaseBackupsDirectory -and ($DatabaseBackupsDirectory -ne "NotManaged")){
         $currLocation = Get-BackupLocation -Type "Relational"
         Write-Verbose "Current backup location is $currLocation. Requested $DatabaseBackupsDirectory"
+        
         if($DatabaseBackupsDirectory -ine $currLocation)
         {
+            if($DatabaseBackupsDirectory){
+                ### WORKAROUND:- Since the DSC LCM (Local Configuration Manager) runs as Local System, it cannot access network resources
+                ### The workaround is to use Mapped Drives using PS-Drive which is the only currently supported mechanism for accessing network resources
+                ### Hence map a dummy drive  
 
-            ### WORKAROUND:- Since the DSC LCM (Local Configuration Manager) runs as Local System, it cannot access network resources
-            ### The workaround is to use Mapped Drives using PS-Drive which is the only currently supported mechanism for accessing network resources
-            ### Hence map a dummy drive  
-
-            #region Map Drive Workaround   
-            $DriveLetter = 'O'    
-            Write-Verbose "About to map $FileShareRoot to $DriveLetter with Credentials $($RunAsAccount.UserName)"            
-            $DriveInfo = $null
-            try {
-                if(Get-PSDrive -Name $DriveLetter -ErrorAction Ignore) {
-                    Remove-PSDrive -Name $DriveLetter -Force
-                }
-                $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $FileShareRoot -Credential $RunAsAccount 
-                Write-Verbose "Mapped Drive $($DriveInfo.Name)"
-            }
-            catch
-            {
-                Write-Verbose "[Warning] Error mapping using network root path $FileShareRoot. Error:- $_"        
-            }
-            if(-not($DriveInfo)) 
-            {
-                Write-Verbose "Unable to map drive using Path $FileShareRoot"
-                [string[]]$Splits = $FileShareRoot.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
-                Write-Verbose "Splits $Splits"
-                $HostName = $Splits[0]
-                Write-Verbose "File Share Host Name $HostName"
-                if(-not($HostName -as [ipaddress])) {
-                    $ipaddress = (Resolve-DnsName -Name $HostName -Type A).IPAddress
-                    Write-Verbose "IP Address of $HostName is $ipaddress"
-                    $filesharePath = [System.String]::Join('\', $Splits, 1, $Splits.Length -1)
-                    $RootPath = "\\$($ipaddress)\$($filesharePath)"
-                    Write-Verbose "Root Path $RootPath"
+                #region Map Drive Workaround   
+                $DriveLetter = 'O'    
+                Write-Verbose "About to map $FileShareRoot to $DriveLetter with Credentials $($RunAsAccount.UserName)"            
+                $DriveInfo = $null
+                try {
                     if(Get-PSDrive -Name $DriveLetter -ErrorAction Ignore) {
                         Remove-PSDrive -Name $DriveLetter -Force
                     }
-                    Write-Verbose "Attempt to map drive using IP address path $RootPath"
-                    $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $RootPath -Credential $RunAsAccount
-                    if(-not($DriveInfo)){
-                        Write-Verbose "Unable to map drive using IP address either"
+                    $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $FileShareRoot -Credential $RunAsAccount 
+                    Write-Verbose "Mapped Drive $($DriveInfo.Name)"
+                }
+                catch
+                {
+                    Write-Verbose "[Warning] Error mapping using network root path $FileShareRoot. Error:- $_"        
+                }
+                if(-not($DriveInfo)) 
+                {
+                    Write-Verbose "Unable to map drive using Path $FileShareRoot"
+                    [string[]]$Splits = $FileShareRoot.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
+                    Write-Verbose "Splits $Splits"
+                    $HostName = $Splits[0]
+                    Write-Verbose "File Share Host Name $HostName"
+                    if(-not($HostName -as [ipaddress])) {
+                        $ipaddress = (Resolve-DnsName -Name $HostName -Type A).IPAddress
+                        Write-Verbose "IP Address of $HostName is $ipaddress"
+                        $filesharePath = [System.String]::Join('\', $Splits, 1, $Splits.Length -1)
+                        $RootPath = "\\$($ipaddress)\$($filesharePath)"
+                        Write-Verbose "Root Path $RootPath"
+                        if(Get-PSDrive -Name $DriveLetter -ErrorAction Ignore) {
+                            Remove-PSDrive -Name $DriveLetter -Force
+                        }
+                        Write-Verbose "Attempt to map drive using IP address path $RootPath"
+                        $DriveInfo = New-PSDrive -Name $DriveLetter -PSProvider FileSystem -Root $RootPath -Credential $RunAsAccount
+                        if(-not($DriveInfo)){
+                            Write-Verbose "Unable to map drive using IP address either"
+                        }
                     }
                 }
-            }
-            #endregion
+                #endregion
 
-            $PathOnShare = $DatabaseBackupsDirectory
-            $Pos = $DatabaseBackupsDirectory.IndexOf($FileShareRoot, [System.StringComparison]::InvariantCultureIgnoreCase)
-            if($Pos -gt -1) {
-                $PathOnShare = $DatabaseBackupsDirectory.Substring($Pos + $FileShareRoot.Length)
-            }
-            if($DriveInfo) 
-            {
-                $MappedDrivePath = "$($DriveInfo.Name):" + $PathOnShare
-                $LogsDir = Join-Path $MappedDrivePath 'deploylogs'
-                Write-Verbose "LogDir:- $LogsDir"
-                if(-not(Test-Path $LogsDir))
-                {
-                    Write-Verbose "Creating LogsDir:- $LogsDir"
-                    New-Item $LogsDir -ItemType directory
+                $PathOnShare = $DatabaseBackupsDirectory
+                $Pos = $DatabaseBackupsDirectory.IndexOf($FileShareRoot, [System.StringComparison]::InvariantCultureIgnoreCase)
+                if($Pos -gt -1) {
+                    $PathOnShare = $DatabaseBackupsDirectory.Substring($Pos + $FileShareRoot.Length)
                 }
-                Add-Content (Join-Path $LogsDir 'log.txt') -Value "$(Get-Date) Database backup directory $DatabaseBackupsDirectory" -ErrorAction Ignore
-            }
+                if($DriveInfo) 
+                {
+                    $MappedDrivePath = "$($DriveInfo.Name):" + $PathOnShare
+                    $LogsDir = Join-Path $MappedDrivePath 'deploylogs'
+                    Write-Verbose "LogDir:- $LogsDir"
+                    if(-not(Test-Path $LogsDir -ErrorAction Ignore))
+                    {
+                        Write-Verbose "Creating LogsDir:- $LogsDir"
+                        New-Item $LogsDir -ItemType directory
+                    }
+                    Add-Content (Join-Path $LogsDir 'log.txt') -Value "$(Get-Date) Database backup directory $DatabaseBackupsDirectory" -ErrorAction Ignore
+                }
 
-            if($RunAsAccount) {           
-                Write-Verbose "Grant RunAsAccount $($RunAsAccount.UserName) permissions on $DatabaseBackupsDirectory using icacls.exe"
-                Write-Verbose "icacls.exe $DatabaseBackupsDirectory /grant $($RunAsAccount.UserName):(OI)(CI)F"
-                &icacls.exe $DatabaseBackupsDirectory /grant "$($RunAsAccount.UserName):(OI)(CI)F"
-            }    
+                # Permissions can only be set on local drive. Test-Path throws exception when filepath is remote.
+                if(Test-Path $DatabaseBackupsDirectory -ErrorAction Ignore) {
+                    if($RunAsAccount) {           
+                        Write-Verbose "Grant RunAsAccount $($RunAsAccount.UserName) permissions on $DatabaseBackupsDirectory using icacls.exe"
+                        Write-Verbose "icacls.exe $DatabaseBackupsDirectory /grant $($RunAsAccount.UserName):(OI)(CI)F"
+                        &icacls.exe $DatabaseBackupsDirectory /grant "$($RunAsAccount.UserName):(OI)(CI)F"
+                    }    
+                }
 
-            Write-Verbose "Updating backup location to $DatabaseBackupsDirectory"
-            Set-BackupLocation -BackupDirectory $DatabaseBackupsDirectory
-            Write-Verbose "Updated backup location to $DatabaseBackupsDirectory"
+                if($currLocation){    
+                    Write-Verbose "Unregistering existing backup location $currLocation"
+                    Set-BackupLocation -BackupDirectory $currLocation -Register $false
+                    Write-Verbose "Existing backup location $currLocation unregistered"
+                }
 
-            if($DriveInfo) {
-                Write-Verbose "Remove Mapped Drive $($DriveInfo.Name)"
-                Remove-PSDrive -Name $DriveInfo.Name -Force
-            }   
+                Write-Verbose "Updating backup location to $DatabaseBackupsDirectory"
+                Set-BackupLocation -BackupDirectory $DatabaseBackupsDirectory -Register $true
+                Write-Verbose "Updated backup location to $DatabaseBackupsDirectory"
+
+                if($DriveInfo) {
+                    Write-Verbose "Remove Mapped Drive $($DriveInfo.Name)"
+                    Remove-PSDrive -Name $DriveInfo.Name -Force
+                }
+            }else {
+                Write-Verbose "Unregistering existing backup location $currLocation"
+                Set-BackupLocation -BackupDirectory $currLocation -Register $false
+                Write-Verbose "Existing backup location $currLocation unregistered"
+            }  
+        }         
+    }
+
+    if(($DataStoreTypes -icontains "Relational") -and ($PITRState -ne "NotManaged") -and -not($IsStandby)){
+        $CurrPITRState = Get-PITRState
+        Write-Verbose "Current PITR state is $CurrPITRState. Requested $PITRState"
+        if($PITRState -ine $CurrPITRState) {
+            Set-PITRState -PITRState $PITRState
         }
     }
 }
@@ -377,8 +384,8 @@ function Test-TargetResource
 		$ContentDirectory,
 
         [System.String]
-		$DatabaseBackupsDirectory,
-
+		$DatabaseBackupsDirectory = 'NotManaged',
+                
 		[System.Boolean]
 		$IsStandby,
 
@@ -395,7 +402,11 @@ function Test-TargetResource
         $IsTileCacheDataStoreClustered = $false,
         
         [System.Boolean]
-		$IsEnvAzure = $false
+        $IsEnvAzure = $false,
+        
+        [ValidateSet("Enabled","Disabled","NotManaged")]
+        [System.String]
+		$PITRState = 'NotManaged'        
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -462,11 +473,20 @@ function Test-TargetResource
         }
     }
 
-    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and $result -and $DatabaseBackupsDirectory) {
+    if(-not($DataStoreTypes -icontains "SpatioTemporal") -and $result -and ($DatabaseBackupsDirectory -ne "NotManaged")) {
         $currLocation = Get-BackupLocation -Type "Relational"
         Write-Verbose "Current backup location is $currLocation"
         if($DatabaseBackupsDirectory -ine $currLocation){
             Write-Verbose "Current backup location does not match $DatabaseBackupsDirectory"
+            $result = $false
+        }
+    }
+
+    if(($DataStoreTypes -icontains "Relational") -and ($PITRState -ne "NotManaged") -and $result) {
+        $CurrPITRState = Get-PITRState
+        Write-Verbose "Current PITR state is $currPITRState"
+        if($PITRState -ine $currPITRState){
+            Write-Verbose "Current PITR state does not match requested status $PITRState"
             $result = $false
         }
     }
@@ -903,10 +923,16 @@ function Get-BackupLocation
     if($location) {
         $pos = $location.LastIndexOf('.')
         if($pos -gt -1) {
-            $location = $location.Substring($pos + 1)
+            # The output of backup location is a filepath of this format //something/like/this
+            # To be able to make a comparison with the DatabaseBackupsDirectory param (\\something\like\that) replace forward slash with backslash
+            $location = ($location.Substring($pos + 1) -replace "\/", "\")
+        }
+        if($location -eq "null") {
+            $location = ""
         }
     }
     $location
+
 }
 
 function Delete-BackupLocation
@@ -962,22 +988,27 @@ function Set-BackupLocation
     param(    
         [System.String]
         $BackupDirectory
+
+        ,[System.Boolean]
+        $Register
     )
 
     $DataStoreInstallDirectory = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').InstallDir.TrimEnd('\')
 
-    $BackupToolPath = Join-Path $DataStoreInstallDirectory 'tools\changebackuplocation.bat'
+    $BackupToolPath = Join-Path $DataStoreInstallDirectory 'tools\configurebackuplocation.bat'
     
     if(-not(Test-Path $BackupToolPath -PathType Leaf)){
         throw "$BackupToolPath not found"
     }
-    if(-not(Test-Path $BackupDirectory)){
-        Write-Verbose "Creating backup location $BackupDirectory"
-        New-Item -Path $BackupDirectory -ItemType directory
+
+    $DataStoreTypesAsString = $DataStoreTypes -join ','
+    if ($Register){
+        $Arguments = "--operation register --store $DataStoreTypesAsString --location $BackupDirectory --prompt no "       
+    }else{
+        $Arguments = "--operation unregister --store $DataStoreTypesAsString --location $BackupDirectory --prompt no "    
     }
 
-    $Arguments = "$BackupDirectory --is-shared-folder true --prompt no "
-
+    
     Write-Verbose "Backup Tool:- $BackupToolPath $Arguments"
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -997,11 +1028,101 @@ function Set-BackupLocation
 
     if($p.StandardError){
         $err = $p.StandardError.ReadToEnd()
-		if($err -and $err.Length -gt 0) {
-			Write-Verbose "Error Updating Backup location. Error:- $err"
-		}
+        if($err -and $err.Length -gt 0) {
+            Write-Verbose "Error Updating Backup location. Error:- $err"
+        }
     }
 }
+
+function Get-PITRState
+{
+    [CmdletBinding()]
+    param(
+    )
+
+    $DataStoreInstallDirectory = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').InstallDir.TrimEnd('\')
+
+    $DescribeDatastoreToolPath = Join-Path $DataStoreInstallDirectory 'tools\describedatastore.bat'
+    
+    if(-not(Test-Path $DescribeDatastoreToolPath -PathType Leaf)){
+        throw "$DescribeDatastoreToolPath not found"
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $DescribeDatastoreToolPath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+
+    $p = [System.Diagnostics.Process]::Start($psi)
+
+    $op = $p.StandardOutput.ReadToEnd()
+    $PITREnabled = (($op -split [System.Environment]::NewLine) | Where-Object { $_.StartsWith('Is Point-in-time recovery enabled') } | Select-Object -First 1)
+    if($PITREnabled) {
+        $pos = $PITREnabled.LastIndexOf('.')
+        if($pos -gt -1) {
+            $PITREnabled = $PITREnabled.Substring($pos + 1)
+        }
+    }
+    if($PITREnabled -eq 'yes'){
+        $result = 'Enabled'
+    }else {
+        $result = 'Disabled'
+    }
+    $result  
+}
+
+function Set-PITRState
+{
+    [CmdletBinding()]
+    param(   
+        [System.String]
+        $PITRState
+    )
+
+    $DataStoreInstallDirectory = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Data Store').InstallDir.TrimEnd('\')
+
+    $DBPropertiesToolPath = Join-Path $DataStoreInstallDirectory 'tools\changedbproperties.bat'
+    
+    if(-not(Test-Path $DBPropertiesToolPath -PathType Leaf)){
+        throw "$DBPropertiesToolPath not found"
+    }
+
+    if($PITRState -ne "NotManaged") {
+        if ($PITRState -ieq 'Enabled') {
+            $Arguments = "--store relational --pitr enable --prompt no"
+        }    
+        else {
+            $Arguments = "--store relational --pitr disable --prompt no"
+        }
+
+        Write-Verbose "changedbproperties:- $DBPropertiesToolPath $Arguments"
+
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $DBPropertiesToolPath
+        $psi.Arguments = $Arguments
+        $psi.UseShellExecute = $false #start the process from it's own executable file    
+        $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+        $psi.RedirectStandardError = $true #enable the process to read from standard error
+
+        $p = [System.Diagnostics.Process]::Start($psi)
+
+        $op = $p.StandardOutput.ReadToEnd()
+        Write-Verbose $op
+        if($op -ccontains 'failed') {
+            throw "Setting PITR state failed. $op"
+        }
+
+        if($p.StandardError){
+            $err = $p.StandardError.ReadToEnd()
+            if($err -and $err.Length -gt 0) {
+                Write-Verbose "Error Setting PITR state. Error:- $err"
+            }
+        }
+    }
+}
+
 function Test-SpatiotemporalBigDataStoreStarted
 {
     [CmdletBinding()]

@@ -49,7 +49,11 @@ Configuration TileCacheDataStoreConfiguration{
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $FileShareName = 'fileshare' 
-        
+ 
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $DataStoreBackupLocation = 'NotManaged'
+
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DebugMode
@@ -197,14 +201,16 @@ Configuration TileCacheDataStoreConfiguration{
 
             ArcGIS_DataStore TileCacheDataStore
             {
-                Ensure				= 'Present'
-                SiteAdministrator	= $SiteAdministratorCredential 
-                ServerHostName		= $ServerMachineName
-                ContentDirectory	= $DataStoreContentDirectory
-                DataStoreTypes		= $DataStoreTypes
-                IsEnvAzure          = $true
-                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
-                DependsOn			= $DataStoreDependsOn
+                Ensure				            = 'Present'
+                SiteAdministrator	            = $SiteAdministratorCredential 
+                ServerHostName		            = $ServerMachineName
+                ContentDirectory	            = $DataStoreContentDirectory
+                DatabaseBackupsDirectory        = $DataStoreBackupLocation 
+                RunAsAccount                    = $ServiceCredential                 
+                DataStoreTypes		            = $DataStoreTypes
+                IsEnvAzure                      = $true
+                IsTileCacheDataStoreClustered   = $IsTileCacheDataStoreClustered
+                DependsOn			            = $DataStoreDependsOn
             }
             
             foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
