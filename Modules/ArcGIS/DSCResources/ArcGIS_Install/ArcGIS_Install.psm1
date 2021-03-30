@@ -291,7 +291,7 @@ function Set-TargetResource
             }
             $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
 
-            if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
                 if($InstallObject.Length -gt 1){
                     Write-Verbose "Multiple Instances of Web Adaptor are already installed"
                 }
@@ -332,7 +332,11 @@ function Set-TargetResource
             $prodIdSetFlag = $False
             foreach($wa in $WAInstalls){
 				$WAProdId = $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}")
-				if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\" -and ($ProdIdObject -icontains $WAProdId)){
+				if($wa.Name -like "*(Java PLatform)*" -and ($ProdIdObject -icontains $WAProdId)){
+					$ProdIdObject = $WAProdId 
+                    $prodIdSetFlag = $True
+					break
+				}elseif($wa.InstallLocation -match "\\$($WebAdaptorContext)\\" -and ($ProdIdObject -icontains $WAProdId)){
                     $ProdIdObject = $WAProdId 
                     $prodIdSetFlag = $True
 					break
@@ -435,7 +439,10 @@ function Test-TargetResource
             $result = $false
             Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
             foreach($wa in $InstallObject){
-                if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
+                if($wa.Name -like "*(Java PLatform)*"){
+                    $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
+					break
+                }elseif($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
                     $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
 					break
                 }else{
