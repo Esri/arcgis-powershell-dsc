@@ -200,7 +200,7 @@ Configuration ArcGISInstall{
 								$PortalWAArguments = "/qn InstallDir=$($ConfigurationData.ConfigData.WebAdaptor.Installer.InstallDir)"
 								ArcGIS_Install WebAdaptorJavaInstallPortal
 								{ 
-									Name = "PortalWebAdaptor"
+									Name = "PortalWebAdaptorJava"
 									Version = $ConfigurationData.ConfigData.Version
 									Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
 									Arguments = $PortalWAArguments
@@ -214,7 +214,7 @@ Configuration ArcGISInstall{
 								$ServerWAArguments = "/qn InstallDir=$($ConfigurationData.ConfigData.WebAdaptor.Installer.InstallDir)"
 								ArcGIS_Install WebAdaptorJavaInstallServer
 								{ 
-									Name = "ServerWebAdaptor"
+									Name = "ServerWebAdaptorJava"
 									Version = $ConfigurationData.ConfigData.Version
 									Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
 									Arguments = $ServerWAArguments

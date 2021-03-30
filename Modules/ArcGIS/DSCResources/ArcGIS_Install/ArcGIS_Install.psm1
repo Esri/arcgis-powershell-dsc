@@ -129,12 +129,12 @@ function Set-TargetResource
         if((Get-Item $Path).length -gt 5mb)
         {
             Write-Verbose 'Self Extracting Installer'
-            $ComponentName = if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){ "WebAdaptor" }else{ $Name }
+            $ComponentName = if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'ServerWebAdaptorJava' -or $Name -ieq 'PortalWebAdaptorJava'){ "WebAdaptor" }else{ $Name }
 
             $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
             $ProdId = $ProductId
             if(-not($ProductId)){
-                if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+                if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'ServerWebAdaptorJava' -or $Name -ieq 'PortalWebAdaptorJava'){
                     $ProdId =  $ProdIdObject[0] 
                 }else{
                     $ProdId = $ProdIdObject
@@ -286,7 +286,7 @@ function Set-TargetResource
                 $trueName = 'ArcGIS Notebook Server'
             }elseif($Name -ieq 'Geoevent'){
                 $trueName = 'ArcGIS Geoevent Server'
-            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
                 $trueName = 'ArcGIS Web Adaptor'
             }
             $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
@@ -298,7 +298,10 @@ function Set-TargetResource
                 Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
                 foreach($wa in $InstallObject){
                     $WAProdId = $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}")
-                    if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
+					if($wa.Name -like "*(Java PLatform)*"){
+						$result = Test-Install -Name "WebAdaptor" -Version $Version -ProductId $WAProdId
+						break
+					}elseif($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
                         $result = Test-Install -Name "WebAdaptor" -Version $Version -ProductId $WAProdId
                         break
                     }else{
@@ -421,11 +424,11 @@ function Test-TargetResource
             $trueName = 'ArcGIS Notebook Server'
         }elseif($Name -ieq 'Geoevent'){
             $trueName = 'ArcGIS Geoevent Server'
-        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
             $trueName = 'ArcGIS Web Adaptor'
         }
         $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
-        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
             if($InstallObject.Length -gt 1){
                 Write-Verbose "Multiple Instances of Web Adaptor are already installed"
             }
