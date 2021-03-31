@@ -57,7 +57,7 @@ Configuration ArcGISWebAdaptorJava
         $Depends += "[ArcGIS_xFirewall]WebAdaptorFirewallRules$($Node.NodeName)"
 
         if($Node.IsServerWebAdaptorEnabled -and $PrimaryServerMachine){
-            ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)"
+            ArcGIS_WebAdaptorJava "ConfigureServerWebAdaptor$($Node.NodeName)"
             {
                 Ensure              = "Present"
                 Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }else{ 'Server' }
@@ -73,7 +73,7 @@ Configuration ArcGISWebAdaptorJava
         }
 
         if($Node.IsPortalWebAdaptorEnabled -and $PrimaryPortalMachine){
-            ArcGIS_WebAdaptor "ConfigurePortalWebAdaptor$($Node.NodeName)"
+            ArcGIS_WebAdaptorJava "ConfigurePortalWebAdaptor$($Node.NodeName)"
             {
                 Ensure              = "Present"
                 Component           = 'Portal'

@@ -1,0 +1,15 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_WebAdaptorJava")]
+class ArcGIS_WebAdaptorJava : OMI_BaseResource
+{
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Key, ValueMap{"Server","NotebookServer","MissionServer","Portal"}, Values{"Server","NotebookServer","MissionServer","Portal"}] String Component;
+	[Write] String HostName;
+	[Key] String ComponentHostName;
+	[Write] String Context;
+	[Write] Boolean OverwriteFlag;
+	[Write] Boolean AdminAccessEnabled;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+};
+
+
