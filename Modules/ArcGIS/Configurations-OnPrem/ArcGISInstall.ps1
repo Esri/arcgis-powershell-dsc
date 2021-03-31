@@ -205,6 +205,7 @@ Configuration ArcGISInstall{
 									Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
 									Arguments = $PortalWAArguments
 									WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
+                                    TomcatDir = if($ConfigurationData.ConfigData.WebAdaptor.TomcatDir){$ConfigurationData.ConfigData.WebAdaptor.TomcatDir}else{$null}
 									Ensure = "Present"
 								} 
 							}
@@ -219,6 +220,7 @@ Configuration ArcGISInstall{
 									Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
 									Arguments = $ServerWAArguments
 									WebAdaptorContext = $Node.ServerContext
+                                    TomcatDir = if($ConfigurationData.ConfigData.WebAdaptor.TomcatDir){$ConfigurationData.ConfigData.WebAdaptor.TomcatDir}else{$null}
 									Ensure = "Present"
 								} 
 							}

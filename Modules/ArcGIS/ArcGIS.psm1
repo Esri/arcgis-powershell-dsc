@@ -1316,11 +1316,6 @@ function Invoke-ArcGISConfiguration
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                         }
                         if($Type -ieq "Java"){
-                            if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.TomcatDir){
-                                $WebAdaptorArgs["TomcatDir"] = $ConfigurationParamsHashtable.ConfigData.WebAdaptor.TomcatDir
-                            }else{
-                                throw "Tomcat Directory not specified in ConfigFile."
-                            }
                             $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptorJava" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
                         }else{
                             $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
@@ -2127,4 +2122,4 @@ function Get-ArcGISProductDetails
     $ResultsArray
 }
 
-Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, Get-ArcGISProductDetails, Convert-PSObjectToHashtable
+Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, Get-ArcGISProductDetails

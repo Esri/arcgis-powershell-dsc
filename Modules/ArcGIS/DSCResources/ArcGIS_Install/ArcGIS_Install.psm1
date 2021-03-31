@@ -15,6 +15,8 @@
         Additional Command Line Arguments required by the installer to complete intallation of the give component successfully.
     .PARAMETER WebAdaptorContext
         Context with which the Web Adaptor Needs to be Installed.
+    .PARAMETER TomcatDir
+        Path to the Tomcat Installation.
     .PARAMETER LogPath
         Optional Path where the Logs generated during the Install will be stored.
 #>
@@ -50,6 +52,9 @@ function Get-TargetResource
 
         [System.String]
         $WebAdaptorContext,
+
+        [System.String]
+        $TomcatDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -91,6 +96,9 @@ function Set-TargetResource
 
         [System.String]
         $WebAdaptorContext,
+
+        [System.String]
+        $TomcatDir,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -267,6 +275,26 @@ function Set-TargetResource
             $IISWebSiteName = (Get-Website | Where-Object {$_.ID -eq $WebSiteId}).Name
             Set-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/$($IISWebSiteName)/$($WebAdaptorContext)"  -filter "system.web/httpRuntime" -name "executionTimeout" -value "01:00:00"
         }
+        if($Name -ieq 'ServerWebAdaptorJava' -or $Name -ieq 'PortalWebAdaptorJava'){
+            Write-Verbose "Copy .war in Tomcat"
+            if(-not($TomcatDir)){
+                throw "Tomcat Directory not specified in ConfigFile."
+            }else{
+                $WaLocation = $null
+                $InstallObject = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
+                foreach($wa in $InstallObject){
+                    if($wa.Name -like "*(Java PLatform)*" -and $wa.Version -match $version){
+                        $WaLocation = $wa.InstallLocation
+                    }
+                }
+                if ($WaLocation){
+                    Write-Verbose "Copy $($WaLocation)$($WebAdaptorContext).war in $($TomcatDir)\webapps"
+                    Copy-Item -Path "$($WaLocation)arcgis.war" -Destination "$($TomcatDir)\webapps\$($WebAdaptorContext).war"
+                }else{
+                    throw "ArcGIS WebAdaptor (Java Platform) not installed"
+                }
+            }
+        }
 
         Write-Verbose "Validating the $Name Installation"
         $result = $false
@@ -403,6 +431,9 @@ function Test-TargetResource
         [System.String]
         $WebAdaptorContext,
 
+        [System.String]
+        $TomcatDir,
+
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -440,8 +471,19 @@ function Test-TargetResource
             Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
             foreach($wa in $InstallObject){
                 if($wa.Name -like "*(Java PLatform)*"){
-                    $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
-					break
+                    if ($Ensure -ieq 'Absent'){
+                        $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
+                        break
+                    }else{
+                        if (Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose){
+                            $result = Test-Path -Path "$($TomcatDir)\webapps\$($WebAdaptorContext).war" -Verbose
+                            break
+                        }else{
+                            $result = false
+                            break
+                        }
+                    }
+                    
                 }elseif($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
                     $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
 					break
