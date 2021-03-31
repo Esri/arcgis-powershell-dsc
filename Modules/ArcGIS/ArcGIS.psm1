@@ -1303,6 +1303,7 @@ function Invoke-ArcGISConfiguration
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $WebAdaptorCheck){
                         $JobFlag = $False
+                        $Type = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.Type){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.Type }else{ "IIS" }
                         $WebAdaptorArgs = @{
                             ConfigurationData           = $WebAdaptorCD
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
@@ -1314,8 +1315,16 @@ function Invoke-ArcGISConfiguration
                         if($ServerCheck){
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                         }
-
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                        if($Type -ieq "Java"){
+                            if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.TomcatDir){
+                                $WebAdaptorArgs["TomcatDir"] = $ConfigurationParamsHashtable.ConfigData.WebAdaptor.TomcatDir
+                            }else{
+                                throw "Tomcat Directory not specified in ConfigFile."
+                            }
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptorJava" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                        }else{
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                        }
                     }
                     
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $RelationalDataStoreCheck){
@@ -2118,4 +2127,4 @@ function Get-ArcGISProductDetails
     $ResultsArray
 }
 
-Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, Get-ArcGISProductDetails
+Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, Get-ArcGISProductDetails, Convert-PSObjectToHashtable
