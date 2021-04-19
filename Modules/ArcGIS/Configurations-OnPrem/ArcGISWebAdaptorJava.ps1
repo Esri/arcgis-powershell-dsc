@@ -69,7 +69,7 @@ Configuration ArcGISWebAdaptorJava
                 AdminAccessEnabled  = if($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer"){ $true }else{ if($Node.AdminAccessEnabled) { $true } else { $false } }
                 DependsOn           = $Depends
             }
-            $Depends += "[ArcGIS_WebAdaptor]ConfigureServerWebAdaptor$($Node.NodeName)"
+            $Depends += "[ArcGIS_WebAdaptorJava]ConfigureServerWebAdaptor$($Node.NodeName)"
         }
 
         if($Node.IsPortalWebAdaptorEnabled -and $PrimaryPortalMachine){

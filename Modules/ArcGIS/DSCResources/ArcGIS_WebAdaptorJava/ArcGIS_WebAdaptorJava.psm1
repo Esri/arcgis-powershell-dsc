@@ -323,7 +323,7 @@ function Start-RegisterWebAdaptorCMDLineTool{
         Write-Verbose $WAUrl
         $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
-        $Arguments = "/m server /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password) /a $AdminAccessString"
+        $Arguments = "-m server -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password) -a $AdminAccessString"
     }
     elseif($Component -ieq 'NotebookServer') {
         $SiteURL = "https://$($ComponentHostName):11443"
@@ -332,14 +332,14 @@ function Start-RegisterWebAdaptorCMDLineTool{
         $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $WAMode = if($Version.StartsWith("10.7")){ "server" }else{ "notebook" }
-        $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+        $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
 
         if($Version.StartsWith("10.7")){
             $AdminAccessString = "false"
             if($AdminAccessEnabled){
                 $AdminAccessString = "true"
             }
-            $Arguments += " /a $AdminAccessString"
+            $Arguments += " -a $AdminAccessString"
         }
     }
     elseif($Component -ieq 'MissionServer') {
@@ -349,7 +349,7 @@ function Start-RegisterWebAdaptorCMDLineTool{
         $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $WAMode = "mission"
-        $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+        $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
     }
     elseif($Component -ieq 'Portal'){
         $SiteURL = "https://$($ComponentHostName):7443"
@@ -357,7 +357,7 @@ function Start-RegisterWebAdaptorCMDLineTool{
         Write-Verbose $WAUrl
         $SiteUrlCheck = "$($SiteURL)/arcgis/sharing/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
-        $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+        $Arguments = "-m portal -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
         if(($Version.Split('.')[1] -gt 8) -or ($Version -ieq "10.8.1")){
             $Arguments += " /r false"
         }

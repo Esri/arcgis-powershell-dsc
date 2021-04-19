@@ -17,9 +17,9 @@ function Get-FQDN
             $DnsRecord = $null
             Try {
                 if(Get-Command 'Resolve-DnsName' -ErrorAction Ignore) {
-                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1
+                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore | Select-Object -First 1
                     if($null -eq $DnsRecord) {
-                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore
+                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1
                     }
                 }
                 if($null -eq $DnsRecord) {
