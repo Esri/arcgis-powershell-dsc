@@ -116,7 +116,12 @@ function Set-TargetResource
                     $Version = if($wa.Name -match "10.8.1"){ "10.8.1" }else{ "10.8" }
                     $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
 				    break
+                }elseif($wa.Version.StartsWith("10.9")){	
+                    $Version =  "10.9"
+                    $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
+				    break
                 }
+
             }        
         }
 

@@ -321,7 +321,7 @@
                         Access                = "Allow" 
                         State                 = "Enabled" 
                         Profile               = ("Domain","Private","Public")
-                        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication
+                        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication
                         Direction             = "Outbound"                       
                         Protocol              = "TCP" 
                         DependsOn             = $PortalDependsOn
@@ -337,7 +337,7 @@
                         Access                = "Allow" 
                         State                 = "Enabled" 
                         Profile               = ("Domain","Private","Public")
-                        LocalPort             = ("7120","7220", "5701", "5702")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
+                        LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701, 5702 and 5703
                         Protocol              = "TCP" 
                         DependsOn             = $PortalDependsOn
                     }  
@@ -445,11 +445,11 @@
                 }
             }
 
-            foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
+            foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
-				    ArcGIS_WindowsService "$($ServiceToStop.Replace(' ','_'))_Service"
+				    Service "$($ServiceToStop.Replace(' ','_'))_Service"
 				    {
 					    Name			= $ServiceToStop
 					    Credential		= $ServiceCredential

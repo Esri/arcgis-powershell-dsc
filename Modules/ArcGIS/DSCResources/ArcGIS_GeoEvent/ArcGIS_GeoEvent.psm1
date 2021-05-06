@@ -73,7 +73,7 @@ function Set-TargetResource
     $WmiComponentObject = (Get-ArcGISProductDetails -ProductName "geoevent")
     $VersionArray = $WmiComponentObject.Version.Split('.')
     $MinorVersion = [int]$VersionArray[1]
-    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")
+    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8" -or $WmiComponentObject.Name -match "10.9")
     
     $ServiceName = 'ArcGISGeoEvent'
     $GatewayServiceName = 'ArcGISGeoEventGateway'
@@ -267,7 +267,7 @@ function Test-TargetResource
     $WmiComponentObject = (Get-ArcGISProductDetails -ProductName "geoevent")
     $VersionArray = $WmiComponentObject.Version.Split('.')
     $MinorVersion = [int]$VersionArray[1]
-    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8")
+    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8" -or $WmiComponentObject.Name -match "10.9")
 
     if($result) {
         $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }

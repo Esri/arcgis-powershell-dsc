@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License10.8"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License10.9"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -57,16 +57,16 @@
         }
         $Depends += "[Script]SetAutomaticPageFileManagement"
 
-        $DesktopImage = $false
+        $ProImage = $false
         if($Installers.Length -eq 3){
             foreach($Installer in $Installers){
-                if($Installer.Name -ieq "ArcGIS Desktop"){
-                    $DesktopImage = $true
+                if($Installer.Name -ieq "ArcGIS Pro"){
+                    $ProImage = $true
                 }
             }
         }
         
-        if(-not($DesktopImage)){
+        if(-not($ProImage)){
             #region Windows Features
             if($WindowsFeatures -and ($WindowsFeatures.Length -gt 0)) 
             {
@@ -144,7 +144,7 @@
                         }
                     }
                 }
-                if(-not($DesktopImage)){
+                if(-not($ProImage)){
                     if(@("ArcGIS for Server","Portal for ArcGIS","DataStore","Notebook Server","Mission Server") -Contains $Installer.Name){
                         $InstallationDirectory = $ExecutionContext.InvokeCommand.ExpandString($($Installer.Arguments).Split(" ")[1].split("=")[1].Replace('\\','\').Replace('"',""))
                         $FilesToDelete += (Join-Path $InstallationDirectory "framework/etc/arcgis-framework.properties")
@@ -157,7 +157,7 @@
             }
         }
         
-        if(-not($DesktopImage)){
+        if(-not($ProImage)){
             #### Install the IIS features
             foreach($pr in @("Web-Scripting-Tools"))
             {
@@ -193,6 +193,9 @@
             } 
             if($Installers.Name -icontains "Notebook Server"){
                 $ServiceToStopList += "ArcGIS Notebook Server"
+            }
+            if($Installers.Name -icontains "Mission Server"){
+                $ServiceToStopList += "ArcGIS Mission Server"
             }
 
             $ServiceToStopList | ForEach-Object{

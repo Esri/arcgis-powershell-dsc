@@ -1,9 +1,0 @@
-
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_HostIdentifier")]
-class ArcGIS_HostIdentifier : OMI_BaseResource
-{
-	[Key, ValueMap{"ArcGIS Server","Portal for ArcGIS", "ArcGIS Data Store"}] String Name;
-	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-};
-

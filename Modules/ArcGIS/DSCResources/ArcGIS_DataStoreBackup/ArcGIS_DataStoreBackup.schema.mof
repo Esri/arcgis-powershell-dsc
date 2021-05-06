@@ -1,0 +1,12 @@
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_DataStoreBackup")]
+class ArcGIS_DataStoreBackup : OMI_BaseResource
+{
+	[Key, ValueMap{"Relational","TileCache","SpatioTemporal"}, Values{"Relational","TileCache","SpatioTemporal"}] String DataStoreType;
+	[Key, ValueMap{"fs","s3","azure"}, Values{"fs","s3","azure"}] String BackupType;
+	[Key] String BackupName;
+	[Key] String BackupLocation;
+	[Write, EmbeddedInstance("MSFT_Credential")] String CloudBackupCredential;
+	[Write] Boolean IsDefault;
+	[Write] Boolean ForceDefaultRelationalBackupUpdate;
+	[Write] Boolean ForceCloudCredentialsUpdate;
+};

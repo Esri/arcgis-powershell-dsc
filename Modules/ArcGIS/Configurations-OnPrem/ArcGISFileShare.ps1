@@ -28,8 +28,7 @@ Configuration ArcGISFileShare
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
-    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_FileShare
 
     Node $AllNodes.NodeName 
@@ -49,6 +48,7 @@ Configuration ArcGISFileShare
             Credential = $ServiceCredential
             FilePaths = if($FilePaths -and ($FilePaths -ne "")){ $FilePaths }else{ $null }
             IsDomainAccount = $ServiceCredentialIsDomainAccount
+            IsMSAAccount = $ServiceCredentialIsMSA
         }        
     }
 }

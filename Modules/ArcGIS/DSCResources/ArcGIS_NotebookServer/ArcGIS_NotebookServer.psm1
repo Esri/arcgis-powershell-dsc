@@ -458,8 +458,8 @@ function Invoke-CreateSite
                                 @{ 
                                     configPersistenceType= "AZURE";
                                     connectionString = $ConfigStoreCloudStorageConnectionString;
-                                    username = $ConfigStoreCloudStorageAccountName.TrimStart("AccountName=");
-                                    password = $ConfigStoreCloudStorageConnectionSecret.TrimStart("AccountKey=");
+                                    username = $ConfigStoreCloudStorageAccountName.Replace([regex]::escape("AccountName="),[string]::Empty);
+                                    password = $ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("AccountKey="),[string]::Empty);
                                     className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
                                 }
                             }else{
@@ -598,11 +598,13 @@ function Join-Site
 	while ((-not $Done) -and ($NumAttempts++ -lt 3)){                 
         $response = Invoke-ArcGISWebRequest -Url $JoinSiteUrl -HttpFormParameters $JoinSiteParams -Referer $Referer -TimeOutSec 360
         if($response) {
-			if ($response -and $response.status -and ($response.status -ine "success")) {
+			if ($response -and $response.status -and ($response.status -ieq "success")) {
 				$Done    = $true
                 $Success = $true
                 Write-Verbose "Join Site operation successful. Waiting for $($response.pollAfter) seconds for Notebook Server to initialize."
-                Start-Sleep -Seconds $response.pollAfter
+                if($response.pollAfter){
+                    Start-Sleep -Seconds $response.pollAfter
+                }
 				break
 			}
         }

@@ -128,6 +128,7 @@ Configuration TileCacheDataStoreConfiguration{
             {
                 Name            = 'ArcGIS Data Store'
                 RunAsAccount    = $ServiceCredential
+                ForceRunAsAccountUpdate = $True
                 IsDomainAccount = $IsServiceCredentialDomainAccount
                 Ensure          = 'Present'
                 DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
@@ -202,12 +203,12 @@ Configuration TileCacheDataStoreConfiguration{
                 ServerHostName		= $ServerMachineName
                 ContentDirectory	= $DataStoreContentDirectory
                 DataStoreTypes		= $DataStoreTypes
-                IsEnvAzure          = $true
+                EnableFailoverOnPrimaryStop = $true
                 IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
                 DependsOn			= $DataStoreDependsOn
             }
             
-            foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
+            foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 		    {
                 if(Get-Service $ServiceToStop -ErrorAction Ignore) 
                 {

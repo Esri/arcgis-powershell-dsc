@@ -10,11 +10,15 @@ Configuration ArcGISInstall{
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
-        $ServiceCredentialIsMSA = $false
+        $ServiceCredentialIsMSA = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
@@ -25,20 +29,6 @@ Configuration ArcGISInstall{
             LocalConfigurationManager
             {
                 CertificateId = $Node.Thumbprint
-            }
-        }
-
-        if($null -ne $ServiceCredential){
-            if(-not($ServiceCredentialIsDomainAccount)){
-                User ArcGIS_RunAsAccount
-                {
-                    UserName = $ServiceCredential.UserName
-                    Password = $ServiceCredential
-                    FullName = 'ArcGIS Run As Account'
-                    Ensure = "Present"
-                    PasswordChangeRequired = $false
-                    PasswordNeverExpires = $true
-                }
             }
         }
 
@@ -75,16 +65,9 @@ Configuration ArcGISInstall{
         {
             $NodeRoleArray += "LicenseManager"
         }
-        if($Node.Role -icontains "SQLServer"){
-            $NodeRoleArray += "SQLServer"
-        }
         if($Node.Role -icontains "SQLServerClient"){
             $NodeRoleArray += "SQLServerClient"
         }
-
-        $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-        $MajorVersion = $VersionArray[1]
-        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
 
         for ( $i = 0; $i -lt $NodeRoleArray.Count; $i++ )
         {
@@ -100,7 +83,11 @@ Configuration ArcGISInstall{
                         Name = $ServerTypeName
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
-                        Arguments = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer"){ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`"" }else{ "/qn InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`"" } 
+                        Arguments = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer"){ "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`"" }else{ "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`"" } 
+                        ServiceCredential = $ServiceCredential
+                        ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                        ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                        EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
 
@@ -113,7 +100,41 @@ Configuration ArcGISInstall{
                             Ensure = "Present"
                         }
                     }
+
+                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath) 
+                    {
+                        if($ConfigurationData.ConfigData.Version.Split(".")[1] -gt 8){
+                            ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
+                            { 
+                                Name = "NotebookServerSamplesData"
+                                Version = $ConfigurationData.ConfigData.Version
+                                Path = $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath
+                                Arguments = "/qn"
+                                ServiceCredential = $ServiceCredential
+                                ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                                ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                                EnableMSILogging = $EnableMSILogging
+                                Ensure = "Present"
+                            }
+                        }
+                    }
                     
+                    if($ConfigurationData.ConfigData.WorkflowManagerServer) 
+                    {
+                        ArcGIS_Install WorkflowManagerServerInstall
+                        {
+                            Name = "WorkflowManagerServer"
+                            Version = $ConfigurationData.ConfigData.Version
+                            Path = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.Path
+                            Arguments = "/qn"
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                            EnableMSILogging = $EnableMSILogging
+                            Ensure = "Present"
+                        }
+                    }
+
                     if($ConfigurationData.ConfigData.GeoEventServer) 
                     { 
                         ArcGIS_Install GeoEventServerInstall
@@ -122,21 +143,32 @@ Configuration ArcGISInstall{
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.GeoEventServer.Installer.Path
                             Arguments = if($ConfigurationData.ConfigData.GeoEventServer.EnableGeoeventSDK){ "/qn ADDLOCAL=GeoEvent,SDK"}else{ "/qn" };
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                            EnableMSILogging = $EnableMSILogging
                             Ensure = "Present"
                         }
                     }
-
                 }
                 'Portal'
-                {                    
+                {        
                     ArcGIS_Install "PortalInstall$($Node.NodeName)"
                     { 
                         Name = "Portal"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Portal.Installer.Path
-                        Arguments = "/qn INSTALLDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.InstallDir)`" CONTENTDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)`""
+                        Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.InstallDir)`" CONTENTDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)`""
+                        ServiceCredential = $ServiceCredential
+                        ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                        ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                        EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
+
+                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    $MajorVersion = $VersionArray[1]
+                    $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
 
                     if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_Install "WebStylesInstall$($Node.NodeName)"
@@ -144,7 +176,11 @@ Configuration ArcGISInstall{
                             Name = "WebStyles"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath
-                            Arguments = "/qb"
+                            Arguments = "/qn"
+                            ServiceCredential = $ServiceCredential
+                            ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                            EnableMSILogging = $EnableMSILogging
                             Ensure = "Present"
                         }
                     }
@@ -157,7 +193,7 @@ Configuration ArcGISInstall{
                             PatchesDir = $ConfigurationData.ConfigData.Portal.Installer.PatchesDir
                             Ensure = "Present"
                         }
-                    } 
+                    }
                 }
                 'DataStore'
                 {
@@ -166,7 +202,11 @@ Configuration ArcGISInstall{
                         Name = "DataStore"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
-                        Arguments = "/qn InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
+                        Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
+                        ServiceCredential = $ServiceCredential
+                        ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                        ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                        EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
 
@@ -193,11 +233,13 @@ Configuration ArcGISInstall{
                     
                     if(-not($PortalWebAdaptorSkip))
                     {
+                        $WAMajorVersion = $ConfigurationData.ConfigData.Version.Split(".")[1]
+                        
                         $WebsiteId = if($ConfigurationData.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationData.ConfigData.WebAdaptor.WebSiteId }else{ 1 } 
                         if(($Node.Role -icontains 'PortalWebAdaptor') -and $ConfigurationData.ConfigData.PortalContext)
                         {
-                            $PortalWAArguments = "/qn VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=$($WebSiteId)"
-                            if($MajorVersion -gt 5){
+                            $PortalWAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=$($WebSiteId)"
+                            if($WAMajorVersion -gt 5){
                                 $PortalWAArguments += " CONFIGUREIIS=TRUE"
                             }
                             ArcGIS_Install WebAdaptorInstallPortal
@@ -207,14 +249,15 @@ Configuration ArcGISInstall{
                                 Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
                                 Arguments = $PortalWAArguments
                                 WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
+                                EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
-                            } 
+                            }
                         }
 
                         if(($Node.Role -icontains 'ServerWebAdaptor') -and $Node.ServerContext)
                         {
-                            $ServerWAArguments = "/qn VDIRNAME=$($Node.ServerContext) WEBSITE_ID=$($WebSiteId)"
-                            if($MajorVersion -gt 5){
+                            $ServerWAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Node.ServerContext) WEBSITE_ID=$($WebSiteId)"
+                            if($WAMajorVersion -gt 5){
                                 $ServerWAArguments += " CONFIGUREIIS=TRUE"
                             }
                             ArcGIS_Install WebAdaptorInstallServer
@@ -224,8 +267,9 @@ Configuration ArcGISInstall{
                                 Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
                                 Arguments = $ServerWAArguments
                                 WebAdaptorContext = $Node.ServerContext
+                                EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
-                            } 
+                            }
                         }
                     }
                 }
@@ -261,60 +305,12 @@ Configuration ArcGISInstall{
                         if(Test-Path $TempFolder){ Remove-Item -Path $TempFolder -Recurse }
                     }
                 }
-                'SQLServer'
-                {
-                    WindowsFeature "NET"
-                    {
-                        Ensure = "Present"
-                        Name = "NET-Framework-Core"
-                    }
-                    
-                    $InstallerPath = $Node.SQLServerInstallerPath
-
-                    Script SQLServerInstall
-                    {
-                        GetScript = {
-                            $null
-                        }
-                        SetScript = {
-                            $ExtractPath = "$env:SystemDrive\temp\sql"
-                            if(Test-Path $ExtractPath)
-                            {
-                                Remove-Item -Recurse -Force $ExtractPath
-                            }
-                            & cmd.exe /c "$using:InstallerPath /q /x:$ExtractPath"
-                            Write-Verbose "Done Extracting SQL Server"
-                            Start-Sleep -Seconds 60
-                            if(Test-Path "$ExtractPath\SETUP.exe")
-                            {
-                                Write-Verbose "Starting SQL Server Install"
-                                & "$ExtractPath\SETUP.exe" /q /IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQL /INSTANCENAME=MSSQLSERVER /TCPENABLED=1 /SQLSVCACCOUNT='NT AUTHORITY\SYSTEM' /SQLSYSADMINACCOUNTS='NT AUTHORITY\SYSTEM' /AGTSVCACCOUNT="NT AUTHORITY\Network Service"
-                                Write-Verbose "Server Install Completed"
-                                Remove-Item -Recurse -Force $ExtractPath
-                            }
-                            else
-                            {
-                                Write-Verbose "Something Went Wrong"
-                            }
-                        }
-                        TestScript = {
-                            if (Test-Path "HKLM:\Software\Microsoft\Microsoft SQL Server\Instance Names\SQL")
-                            {
-                                $True
-                            } 
-                            else 
-                            {
-                                $False
-                            }
-                        }
-                    }
-                }
                 'Desktop' {
                     $Arguments =""
                     if($ConfigurationData.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
-                        $Arguments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                        $Arguments = "/qn ACCEPTEULA=YES ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
                     }else{
-                        $Arguments = "/qb ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                        $Arguments = "/qn ACCEPTEULA=YES ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
                     }
 
                     if ($ConfigurationData.ConfigData.Desktop.BlockAddIns -match '^[0-4]+$') {
@@ -331,6 +327,7 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.DesktopVersion
                         Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
                         Arguments =   $Arguments
+                        EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
 
@@ -348,7 +345,7 @@ Configuration ArcGISInstall{
                 {
                     # Installation Notes: https://pro.arcgis.com/en/pro-app/get-started/arcgis-pro-installation-administration.htm
                     $PortalList = if($ConfigurationData.ConfigData.Pro.PortalList){ $ConfigurationData.ConfigData.Pro.PortalList }else{ "https://arcgis.com" }
-                    $Arguments = "/qb Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`""
+                    $Arguments = "/qn ACCEPTEULA=YES Portal_List=`"$PortalList`" AUTHORIZATION_TYPE=`"$($ConfigurationData.ConfigData.Pro.AuthorizationType)`""
 
                     # TODO: The SOFTWARE_CLASS does not get added if not supported, should this fail? Currently it uses the default handling mechanism. 
                     if ($ConfigurationData.ConfigData.Pro.SoftwareClass){
@@ -389,6 +386,7 @@ Configuration ArcGISInstall{
                         Version = $ConfigurationData.ConfigData.ProVersion
                         Path = $ConfigurationData.ConfigData.Pro.Installer.Path
                         Arguments = $Arguments
+                        EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
 
@@ -408,7 +406,8 @@ Configuration ArcGISInstall{
                         Name = "LicenseManager"
                         Version = $ConfigurationData.ConfigData.LicenseManagerVersion
                         Path = $ConfigurationData.ConfigData.LicenseManager.Installer.Path
-                        Arguments = "/qb INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
+                        Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
+                        EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
                 }

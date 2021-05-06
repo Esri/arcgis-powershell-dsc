@@ -14,7 +14,7 @@ Configuration ArcGISUninstall
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -34,6 +34,16 @@ Configuration ArcGISUninstall
             Switch($NodeRole) 
             {
                 'Server' {
+                    if($ConfigurationData.ConfigData.WorkflowMangerServer) 
+                    {
+                        ArcGIS_Install WorkflowManagerServerUninstall
+                        {
+                            Name = "WorkflowManagerServer"
+                            Version = $ConfigurationData.ConfigData.Version
+                            Ensure = "Absent"
+                        }
+                    }
+                    
                     if($ConfigurationData.ConfigData.GeoEventServer) 
                     { 
                         ArcGIS_Install GeoEventServerUninstall{
@@ -42,6 +52,17 @@ Configuration ArcGISUninstall
                             Ensure = "Absent"
                         }
                     }
+
+                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Version.Split(".")[1] -gt 8) 
+                    {
+                        ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
+                        { 
+                            Name = "NotebookServerSamplesData"
+                            Version = $ConfigurationData.ConfigData.Version
+                            Ensure = "Absent"
+                        }
+                    }
+
                     $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
 
                     ArcGIS_Install ServerUninstall{
@@ -49,6 +70,7 @@ Configuration ArcGISUninstall
                         Version = $ConfigurationData.ConfigData.Version
                         Ensure = "Absent"
                     }
+
                 }
                 'Portal' {
                     ArcGIS_Install "PortalUninstall$($Node.NodeName)"
@@ -69,7 +91,6 @@ Configuration ArcGISUninstall
                             Ensure = "Absent"
                         }
                     }
-
                 }
                 'DataStore'{
                     ArcGIS_Install DataStoreUninstall
@@ -112,45 +133,8 @@ Configuration ArcGISUninstall
                         FileShareLocalPath = $ConfigurationData.ConfigData.FileShareLocalPath
                         Ensure = 'Absent'
                         Credential = $ServiceCredential
-                    }
-                }
-                'SqlServer'{
-                    $InstallerPath = $Node.SQLServerInstallerPath
-                    Script SQLServerUninstall
-                    {
-                        GetScript = {
-                            $null
-                        }
-                        SetScript = {
-                            if($using:InstallerPath){
-                                $ExtractPath = "$env:SystemDrive\temp\sql"
-                                if(Test-Path $ExtractPath){
-                                    Remove-Item -Recurse -Force $ExtractPath
-                                }
-                                & cmd.exe /c "$using:InstallerPath /q /x:$ExtractPath"
-                                Write-Verbose "Done Extracting SQL Server"
-                                Start-Sleep -Seconds 60
-                                if(Test-Path "$ExtractPath\SETUP.exe"){
-                                    Write-Verbose "Starting SQL Server Uninstall"
-                                    & "$ExtractPath\SETUP.exe" /q /Action=Uninstall /FEATURES=SQL /INSTANCENAME=MSSQLSERVER
-                                    Write-Verbose "Server Uninstall Completed"
-                                    Remove-Item -Recurse -Force $ExtractPath
-                                }else{
-                                    Write-Verbose "Something Went Wrong"
-                                }
-                            }else{
-                                #Very Very Crude. Needs a lot of refinement
-                                $app = Get-CimInstance -Class Win32_Product | Where-Object {$_.Name -imatch "sql"}
-                                $app.Uninstall()
-                            }
-                        }
-                        TestScript = {
-                            if (Test-Path "HKLM:\Software\Microsoft\Microsoft SQL Server\Instance Names\SQL") {
-                                $False
-                            } Else {
-                                $True
-                            }
-                        }
+                        IsDomainAccount = $ServiceCredentialIsDomainAccount
+                        IsMSAAccount = $ServiceCredentialIsMSA
                     }
                 }
                 'Desktop' {

@@ -195,8 +195,8 @@
 	$ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1
 	$ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
     if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
-    $FileShareRootPath = "\\$ipaddress\$FileShareName"
-	
+	$FileShareRootPath = "\\$ipaddress\$FileShareName"
+		
 	$FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
     $ConfigStoreLocation  = "\\$($FileShareMachineName)\$FileShareName\$FolderName\$($Context)\config-store"
     $ServerDirsLocation   = "\\$($FileShareMachineName)\$FileShareName\$FolderName\$($Context)\server-dirs" 
@@ -361,7 +361,7 @@
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
 						Protocol              = "TCP" 
 				}
 
@@ -374,7 +374,7 @@
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
 						Protocol              = "TCP" 
 						Direction             = "Outbound"    
 				}
@@ -425,7 +425,7 @@
 				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'				
 			}
 				
-			foreach($ServiceToStop in  @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server'))
+			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 			{
 				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -435,7 +435,7 @@
 						Credential		= $ServiceCredential
 						StartupType		= 'Manual'
 						State			= 'Stopped'
-						DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
+						DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
 					}
 				}
 			}			
@@ -462,59 +462,7 @@
 				}
 				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_External_Port')
 
-				if($IsMultiMachineServer) 
-				{
-					ArcGIS_xFirewall GeoEventService_Firewall
-					{
-						Name                  = "ArcGISGeoEventGateway"
-						DisplayName           = "ArcGIS GeoEvent Gateway"
-						DisplayGroup          = "ArcGIS GeoEvent Gateway"
-						Ensure                = 'Present'
-						Access                = "Allow"
-						State                 = "Enabled"
-						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("9092")
-						Protocol              = "TCP"
-					}
-
-					ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
-					{
-							Name                  = "ArcGISGeoEventFirewallRulesCluster" 
-							DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
-							DisplayGroup          = "ArcGIS GeoEvent Extension" 
-							Ensure                = 'Present' 
-							Access                = "Allow" 
-							State                 = "Enabled" 
-							Profile               = ("Domain","Private","Public")
-							LocalPort             = ("2181","2182","2190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","5565","5575")										
-							Protocol              = "TCP" 
-					}
-
-					ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
-					{
-							Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound" 
-							DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound" 
-							DisplayGroup          = "ArcGIS GeoEvent Extension" 
-							Ensure                = 'Present' 
-							Access                = "Allow" 
-							State                 = "Enabled" 
-							Profile               = ("Domain","Private","Public")
-							RemotePort            = ("2181","2182","2190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")										
-							Protocol              = "TCP" 
-							Direction             = "Outbound"    
-					}
-					$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine','[ArcGIS_xFirewall]GeoEventService_Firewall')
-				}
-				
-				$DependsOnGeoevent = @()
-				if(-Not($IsServiceCredentialDomainAccount)){
-					$DependsOnGeoevent += '[User]ArcGIS_RunAsAccount'
-				}
-				if($LastServerHostName -ieq $env:ComputerName){
-					$DependsOnGeoevent +='[ArcGIS_ServerSettings]ServerSettings'
-				}else{
-					$DependsOnGeoevent += '[ArcGIS_Server]Server'
-				}
+				$DependsOnGeoevent = @('[User]ArcGIS_RunAsAccount','[ArcGIS_ServerSettings]ServerSettings')
 
 				if(-Not($IsServiceCredentialDomainAccount)){
 					ArcGIS_Service_Account GeoEvent_RunAs_Account
@@ -561,7 +509,7 @@
 						Ensure	                  = 'Present'
 						SiteAdministrator         = $SiteAdministratorCredential
 						WebSocketContextUrl       = "wss://$($ExternalDNSHostName)/$($GeoeventContext)wss"
-						DependsOn       		  = $DependsOnGeoevent
+						DependsOn				  = $DependsOnGeoevent
 					}
 				}
 			}
@@ -745,7 +693,7 @@
 				ArcGIS_Federation Federate
 				{
 					PortalHostName = $ExternalDNSHostName
-					PortalPort =  443
+					PortalPort = 443
 					PortalContext = $PortalContext
 					ServiceUrlHostName = $ExternalDNSHostName
 					ServiceUrlContext = $Context

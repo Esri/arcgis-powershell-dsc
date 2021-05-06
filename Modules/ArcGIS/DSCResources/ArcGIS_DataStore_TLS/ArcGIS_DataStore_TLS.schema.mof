@@ -1,0 +1,11 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_DataStore_TLS")]
+class ArcGIS_DataStore_TLS : OMI_BaseResource
+{
+	[Write] String DatastoreMachineHostName;
+	[Key] String SiteName;
+	[Write, Description("Common Name for the SSL Certificate")] String CName;
+	[Write, Description("Location of the .pfx certificate file")] String CertificateFileLocation;
+	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
+};
+

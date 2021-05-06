@@ -158,6 +158,9 @@ function Test-TargetResource
     if($Name -ieq "Mission Server"){
         $ComponentName = 'MissionServer'
     }
+    if($Name -ieq "Workflow Manager Server"){
+        $ComponentName = 'WorkflowManagerServer'
+    }
 
     if(-not($ProductId)){
         $trueName = $Name
@@ -173,6 +176,8 @@ function Test-TargetResource
             $trueName = 'ArcGIS Notebook Server'
         }elseif($Name -ieq 'Geoevent'){
             $trueName = 'ArcGIS Geoevent Server'
+        }elseif($Name -ieq 'WorkflowManagerServer'){
+            $trueName = 'ArcGIS Workflow Manager Server'
         }
 
         $ver = (Get-ArcGISProductDetails -ProductName $trueName)
@@ -244,6 +249,7 @@ Function Test-PatchInstalled {
         "HKLM:\SOFTWARE\ESRI\Server10.6\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.7\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.8\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server10.9\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
@@ -290,7 +296,7 @@ Function Test-PatchInstalled {
 
 }
 
-Function Install-Patch{
+function Install-Patch{
     [OutputType([System.Boolean])]
 	param
     (
@@ -304,6 +310,40 @@ Function Install-Patch{
         Start-Process -FilePath msiexec.exe -ArgumentList $Arguments -Wait
     } catch {
         Write-Verbose "Error in Install-Patch :-$_"
+    }
+}
+
+# http://www.andreasnick.com/85-reading-out-an-msp-product-code-with-powershell.html
+<# 
+.SYNOPSIS 
+    Get the Patch Code from an Microsoft Installer Patch MSP
+.DESCRIPTION 
+    Get a Patch Code from an Microsoft Installer Patch MSP (Andreas Nick 2015)
+.NOTES 
+    $NULL for an error
+.LINK
+.RETURNVALUE
+  [String] Product Code
+.PARAMETER
+  [IO.FileInfo] Path to the msp file
+#>
+function Get-MSPqfeID {
+    param (
+        [IO.FileInfo] $patchnamepath
+          
+    )
+    try {
+        $wi = New-Object -com WindowsInstaller.Installer
+        $mspdb = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $Null, $wi, $($patchnamepath.FullName, 32))
+        $su = $mspdb.GetType().InvokeMember("SummaryInformation", "GetProperty", $Null, $mspdb, $Null)
+        #$pc = $su.GetType().InvokeMember("PropertyCount", "GetProperty", $Null, $su, $Null)
+
+        [String] $qfeID = $su.GetType().InvokeMember("Property", "GetProperty", $Null, $su, 3)
+        return $qfeID
+    }
+    catch {
+        Write-Output -InputObject $_.Exception.Message
+        return $NULL
     }
 }
 

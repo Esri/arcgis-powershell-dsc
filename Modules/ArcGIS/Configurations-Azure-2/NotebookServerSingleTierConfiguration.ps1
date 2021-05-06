@@ -115,6 +115,7 @@
 	Import-DscResource -Name ArcGIS_License
     Import-DscResource -Name ArcGIS_NotebookServer
     Import-DscResource -Name ArcGIS_NotebookServerSettings
+    Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_WindowsService
@@ -330,7 +331,7 @@
 		    }
 			$DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
             
-			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway'))
+			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Mission Server'))
 			{
                 if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -367,6 +368,15 @@
                 SiteAdministrator                       = $SiteAdministratorCredential
             }
             $DependsOn += '[ArcGIS_NotebookServerSettings]NotebookServerSettings'
+
+            ArcGIS_NotebookPostInstall NotebookPostInstallSamples {
+                SiteName            = $Context
+                ContainerImagePaths = @()
+                ExtractSamples      = $true
+                DependsOn           = $DependsOn
+                PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+            }
+            $DependsOn += '[ArcGIS_NotebookPostInstall]NotebookPostInstallSamples'
         }
         
         WindowsFeature websockets
