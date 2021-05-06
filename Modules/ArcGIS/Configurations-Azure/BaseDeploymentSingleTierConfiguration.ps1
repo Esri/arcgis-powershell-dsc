@@ -376,7 +376,22 @@
 			    LocalPort             = ("4000-4004")
 			    Protocol              = "TCP"
 		    }
-		    $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'
+            $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'
+            
+            foreach($ServiceToStop in @('ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
+			{
+				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
+			    {
+					Service "$($ServiceToStop.Replace(' ','_'))_Service"
+					{
+						Name			= $ServiceToStop
+						Credential		= $ServiceCredential
+						StartupType		= 'Manual'
+						State			= 'Stopped'
+						DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
+					}
+				}
+			}
             
             ArcGIS_LogHarvester ServerLogHarvester
             {
@@ -470,7 +485,7 @@
 				        Access                = "Allow" 
 				        State                 = "Enabled" 
 				        Profile               = ("Domain","Private","Public")
-				        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701 and 5702
+				        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses "5701", "5702" and 5702
 				        Direction             = "Outbound"                       
 				        Protocol              = "TCP" 
 		        } 
@@ -484,7 +499,7 @@
 					    Access                = "Allow" 
 					    State                 = "Enabled" 
 					    Profile               = ("Domain","Private","Public")
-					    LocalPort             = ("7120","7220", "5701", "5702")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
+					    LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701,5702 and 5703
 					    Protocol              = "TCP" 
 			    }  
 
@@ -561,7 +576,8 @@
 
             ArcGIS_Service_Account ArcGIS_DataStore_RunAs_Account
 		    {
-			    Name              = 'ArcGIS Data Store'
+                Name              = 'ArcGIS Data Store'
+                ForceRunAsAccountUpdate = $True
 			    RunAsAccount      = $ServiceCredential
 			    Ensure            = 'Present'
 			    DataDir           = $DataStoreContentDirectory
@@ -703,11 +719,8 @@
 			    ServerHostName             = $MachineName
 			    ContentDirectory           = "$($env:SystemDrive)\\arcgis\\datastore\\content"
 			    IsStandby                  = $false
-                #DatabaseBackupsDirectory   = $DataStoreBackupLocation
-                #FileShareRoot              = "\\$($FileShareHostName)\$($FileShareName)"
-                RunAsAccount               = $ServiceCredential 
                 DataStoreTypes             = $DataStoreTypes.split(",")
-                IsEnvAzure                 = $true
+                EnableFailoverOnPrimaryStop= $true
                 IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
                 DependsOn                  = $DataStoreDependsOn
 		    } 
@@ -758,7 +771,7 @@
             {
                 ServerContext       = 'server'
                 ServerHostName      = $MachineName
-                ServerEndPoint      = $MachineName #ExternalDNSHostName
+                ServerEndPoint      = (Get-FQDN $MachineName) #ExternalDNSHostName
                 ServerEndPointPort  = 6443 #443
                 ServerEndPointContext = 'arcgis' #443
                 ExternalDNSName     = $ExternalDNSHostName
@@ -771,7 +784,7 @@
                 ExternalDNSName     = $ExternalDNSHostName
                 PortalContext       = 'portal'
                 PortalHostName      = $MachineName
-                PortalEndPoint      = $MachineName
+                PortalEndPoint      = (Get-FQDN $MachineName)
                 PortalEndPointPort    = 7443
                 PortalEndPointContext = 'arcgis'
                 PortalAdministrator = $SiteAdministratorCredential
@@ -800,7 +813,7 @@
 
         if($HasValidServiceCredential) 
         {
-		    ArcGIS_WindowsService ArcGIS_GeoEvent_Service
+		    Service ArcGIS_GeoEvent_Service
 		    {
 			    Name		= 'ArcGISGeoEvent'
 			    Credential  = $ServiceCredential

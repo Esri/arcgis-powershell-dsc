@@ -75,7 +75,11 @@ Configuration PortalUpgradeV1{
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsMultiMachinePortal = $False<#,
+        $IsMultiMachinePortal = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false<#,
 
         [parameter(Mandatory = $false)]
         [System.String]
@@ -87,7 +91,7 @@ Configuration PortalUpgradeV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_Service_Account
@@ -114,20 +118,7 @@ Configuration PortalUpgradeV1{
         $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
        
         $Depends = @()
-
-        if(-not($IsServiceAccountDomainAccount)){
-            User ArcGIS_RunAsAccount
-            {
-                UserName = $ServiceAccount.UserName
-                Password = $ServiceAccount
-                FullName = 'ArcGIS Run As Account'
-                Ensure = "Present"
-            }
-            $Depends += '[User]ArcGIS_RunAsAccount'
-        }
-
         if($MachineFQDN -ieq $PrimaryPortalHostName){
-        
             if($IsMultiMachinePortal){
                 ArcGIS_PortalUnregister UnregisterStandyPortal
                 {
@@ -144,7 +135,11 @@ Configuration PortalUpgradeV1{
                 Name = "Portal"
                 Version = $Version
                 Path = $InstallerPath
-                Arguments = "/qb USER_NAME=$($ServiceAccount.UserName) PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
+                Arguments = Arguments = if($MajorVersion -gt 8){"/qn ACCEPTEULA=YES"}else{"/qn"}
+                ServiceCredential = $ServiceAccount
+                ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+                ServiceCredentialIsMSA = $IsServiceAccountMSA
+                EnableMSILogging = $EnableMSILogging
                 Ensure = "Present"
                 DependsOn = $Depends
             }
@@ -163,17 +158,6 @@ Configuration PortalUpgradeV1{
                 $Depends += '[ArcGIS_License]PortalLicense'
             }
 
-            Service Portal_for_ArcGIS_Service
-            {
-                Name = 'Portal for ArcGIS'
-                Credential = $ServiceAccount
-                StartupType = 'Automatic'
-                State = 'Running'          
-                DependsOn = $Depends
-            } 
-            
-            $Depends += '[Service]Portal_for_ArcGIS_Service'
-            
             <#$ContentDirectoryLocation = $ContentDirectoryLocation
             if($FileShareMachine -and $FileShareName) 
             {
@@ -190,6 +174,8 @@ Configuration PortalUpgradeV1{
                 DataDir = $DataDirsForPortal
                 DependsOn =  $Depends
                 IsDomainAccount = $IsServiceAccountDomainAccount
+                IsMSAAccount = $IsServiceAccountMSA
+                SetStartupToAutomatic = $True
             }
             $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'
     
@@ -234,7 +220,7 @@ Configuration PortalUpgradeV1{
                         PortalHostName          = $MachineFQDN
                         ExternalDNSName         = $ExternalDNSName
                         PortalContext           = $Context
-                        PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $MachineFQDN }}
+                        PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ (Get-FQDN $MachineFQDN) }}
                         PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $Context }
                         PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
                         PortalAdministrator     = $PortalSiteAdministratorCredential
@@ -284,8 +270,12 @@ Configuration PortalUpgradeV1{
                 Name = "Portal"
                 Version = $Version
                 Path = $InstallerPath
-                Arguments = "/qn INSTALLDIR=$($InstallDir) CONTENTDIR=$($ContentDir)"
+                Arguments = if($MajorVersion -gt 8){"/qn INSTALLDIR=$($InstallDir) CONTENTDIR=$($ContentDir) ACCEPTEULA=YES"}else{"/qn INSTALLDIR=$($InstallDir) CONTENTDIR=$($ContentDir)"}
                 Ensure = "Present"
+                EnableMSILogging = $EnableMSILogging
+                ServiceCredential = $ServiceAccount
+                ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+                ServiceCredentialIsMSA = $IsServiceAccountMSA
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]PortalInstall"
@@ -300,16 +290,6 @@ Configuration PortalUpgradeV1{
             }
             $Depends += '[ArcGIS_License]PortalLicense'
             
-            Service Portal_for_ArcGIS_Service
-            {
-                Name = 'Portal for ArcGIS'
-                Credential = $ServiceAccount
-                StartupType = 'Automatic'
-                State = 'Running'          
-                DependsOn = $Depends
-            }
-            $Depends += '[Service]Portal_for_ArcGIS_Service'
-            
             $DataDirsForPortal = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')
             
             ArcGIS_Service_Account Portal_RunAs_Account
@@ -320,6 +300,8 @@ Configuration PortalUpgradeV1{
                 DataDir = $DataDirsForPortal
                 DependsOn = $Depends
                 IsDomainAccount = $IsServiceAccountDomainAccount
+                IsMSAAccount = $IsServiceAccountMSA
+                SetStartupToAutomatic = $True
             }
             $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'           
         }        

@@ -6,6 +6,7 @@ class ArcGIS_FileShare : OMI_BaseResource
 	[Write] String FileShareLocalPath;
 	[Write, EmbeddedInstance("MSFT_Credential")] String Credential;
 	[Write] Boolean IsDomainAccount;
+	[Write] Boolean IsMSAAccount;
 	[Write] String FilePaths;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };

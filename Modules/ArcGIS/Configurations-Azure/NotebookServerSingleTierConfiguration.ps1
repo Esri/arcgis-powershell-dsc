@@ -330,7 +330,7 @@
 		    }
 			$DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
 
-            foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway'))
+            foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Mission Server'))
 			{
                 if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

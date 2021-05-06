@@ -13,6 +13,8 @@
 		UserName or Domain Account UserName which will have access to the File Share over the network.
 	.PARAMETER IsDomainAccount
 		Is Credential a Domain Account.
+	.PARAMETER IsMSAAccount
+		Is Credential a Managed Service Account.
 	.PARAMETER FilePaths
 		FileShare Paths to be created.
 	
@@ -39,9 +41,14 @@ function Get-TargetResource
 		[parameter(Mandatory = $false)]
 		[System.String]
         $FilePaths,
-        
+		
+		[parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -75,8 +82,13 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
         
+        [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -85,8 +97,8 @@ function Set-TargetResource
 		$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
 		
 		$UserName = $Credential.UserName
-		if(-not($IsDomainAccount)){
-			$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $Credential.Password )
+		if(-not($IsDomainAccount) -and -not($IsMSAAccount)){
+			$UserName = "$($env:ComputerName)\$($Credential.UserName)"
 		}
 
 		if(-not($fs)){
@@ -104,20 +116,20 @@ function Set-TargetResource
 				New-SMBShare -Name $FileShareName -Path $FileShareLocalPath -FullAccess $UserName
 			}
 		}
-		
+				
 		$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
-		if(-not(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $Credential.UserName).FileSystemRights -imatch "FullControl")){
+		if(-not(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
 			$acl = Get-Acl $FileShareLocalPath
 			$permission = "$($UserName)","FullControl","ContainerInherit,ObjectInherit","None","Allow"
 			$accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
 			$acl.SetAccessRule($accessRule)
 			$acl | Set-Acl $FileShareLocalPath
-		}
+		}			
 		if(($null -ne $FilePaths) -and ($FilePaths -ne "")){
 			$FilePathArray = $FilePaths -Split ","
 			ForEach($path in $FilePathArray){
-				if(-not(Test-FileSharePath -FilePath $path -Credential $Credential)){
-					New-FileShareFolder -FilePath $path -Credential $Credential
+				if(-not(Test-FileSharePath -FilePath $path -UserName $UserName -FileShareLocalPath $FileShareLocalPath )){
+					New-FileShareFolder -FilePath $path -UserName $UserName -FileShareLocalPath $FileShareLocalPath
 				} 
 			}
 		}
@@ -160,21 +172,27 @@ function Test-TargetResource
 		[System.String]
 		$Ensure,
         
+        [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $result = $false
 	
-	if(-not($IsDomainAccount)){
-		$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("$($env:ComputerName)\$($Credential.UserName)", $Credential.Password )
+	$UserName = $Credential.UserName
+	if(-not($IsDomainAccount) -and -not($IsMSAAccount)){
+		$UserName = "$($env:ComputerName)\$($Credential.UserName)"
 	}
 	
 	$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
 	if($fs){
-		if(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $Credential.UserName).FileSystemRights -imatch "FullControl"){
+		if(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl"){
 			$result = $True
 		}else{
             Write-Verbose "Correct Permissions are not granted."
@@ -194,7 +212,7 @@ function Test-TargetResource
 		$result = $false
 		$FilePathArray = $FilePaths -Split ","
 		ForEach($path in $FilePathArray){
-		   if(Test-FileSharePath -FilePath $path -Credential $Credential){
+		   if(Test-FileSharePath -FilePath $path -FileShareLocalPath $FileShareLocalPath -UserName $UserName){
 				$result = $True
 			} else {
 				$result = $False
@@ -219,28 +237,33 @@ Function New-FileShareFolder
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-        $FilePath,
+		$FilePath,
+		
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$FileShareLocalPath,
 
         [parameter(Mandatory = $False)]
-		[System.Management.Automation.PSCredential]
-		$Credential
+		[System.String]
+		$UserName
 	)
 	$FilePath = $FilePath.Trim()
-	$drive = Get-FreeDriveLetter
 	$SubFilePaths = $FilePath.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
-	$FilesharePath = "\"
-	$MappedFilePath = "$($drive):"
-	For ($i=0; $i -lt $SubFilePaths.Length; $i++) {
-		if($i -lt 2){
-			$FilesharePath = "$FilesharePath\$($SubFilePaths[$i])"
-		}else{
-			$MappedFilePath = "$MappedFilePath\$($SubFilePaths[$i])"
-		}
+	$MappedFilePath = $FileShareLocalPath
+	for ($i=2; $i -lt $SubFilePaths.Length; $i++) {
+		$MappedFilePath = "$MappedFilePath\$($SubFilePaths[$i])"
 	}
 	try{
-		New-PSDrive -Name $drive -PSProvider FileSystem -Root $FilesharePath -Credential $Credential -ErrorAction Stop
-		New-Item -ItemType directory -Path $MappedFilePath
-		Remove-PSDrive $drive
+		if(-not(Test-Path $MappedFilePath)){
+			New-Item -ItemType directory -Path $MappedFilePath
+		}
+		if(-not(($MappedFilePath | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
+			$acl = Get-Acl $MappedFilePath
+			$permission = "$($UserName)","FullControl","ContainerInherit,ObjectInherit","None","Allow"
+			$accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
+			$acl.SetAccessRule($accessRule)
+			$acl | Set-Acl $MappedFilePath
+		}
 	}catch{
 		Throw "Unable to create new Folder $($FilePath) - $($_)"
 	}
@@ -248,48 +271,36 @@ Function New-FileShareFolder
 
 Function Test-FileSharePath
 {
-    [CmdletBinding()]
+	[CmdletBinding()]
 	[OutputType([System.Boolean])]
 	param
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-        $FilePath,
+		$FilePath,
+		
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$FileShareLocalPath,
 
         [parameter(Mandatory = $False)]
-		[System.Management.Automation.PSCredential]
-        $Credential
-    )
-    
-    $drive = Get-FreeDriveLetter
-    try{
-        Write-Verbose $Credential.UserName
-		Write-Verbose $FilePath
-		
-		$FilePath = $FilePath.Trim()
-		$SubFilePaths = $FilePath.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
-		$FilesharePath = "\"
-		For ($i=0; $i -lt $SubFilePaths.Length; $i++) {
-			$FilesharePath = "$FilesharePath\$($SubFilePaths[$i])"
-		}
+		[System.String]
+		$UserName
+	)
 
-        New-PSDrive -Name $drive -PSProvider FileSystem -Root $FilesharePath -Credential $Credential -ErrorAction Stop
-        If (Test-Path $drive){
-            Remove-PSDrive $drive
-            $True
-        }else{
-            $False
-        }
-    }catch{
+	$FilePath = $FilePath.Trim()
+	$SubFilePaths = $FilePath.Split('\', [System.StringSplitOptions]::RemoveEmptyEntries)
+	$MappedFilePath = $FileShareLocalPath
+	for ($i=2; $i -lt $SubFilePaths.Length; $i++) {
+		$MappedFilePath = "$MappedFilePath\$($SubFilePaths[$i])"
+	}
+
+	if(-not(Test-Path $MappedFilePath) -or -not(($MappedFilePath | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
 		$False
-    }
+	}else{
+		$True
+	}
 }
 
-function Get-FreeDriveLetter {
-    $drives = [io.driveinfo]::getdrives() | ForEach-Object {$_.name[0]}
-    $alpha = 65..90 |ForEach-Object { [char]$_ }
-    $avail = Compare-Object $drives $alpha | Select-Object -ExpandProperty inputobject
-    $avail[0]
-}
 
 Export-ModuleMember -Function *-TargetResource

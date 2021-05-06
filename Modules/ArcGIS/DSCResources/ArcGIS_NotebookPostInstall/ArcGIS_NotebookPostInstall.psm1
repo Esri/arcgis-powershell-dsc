@@ -7,10 +7,13 @@ function Get-TargetResource {
 		[System.String]
         $SiteName,
 
-        [parameter(Mandatory = $true)]    
+        [parameter(Mandatory = $False)]    
         [System.Array]
-        $ContainerImagePaths
+        $ContainerImagePaths,
 
+        [parameter(Mandatory = $False)]    
+        [System.Boolean]
+        $ExtractSamples = $False
     )
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     $null
@@ -24,35 +27,39 @@ function Set-TargetResource {
 		[System.String]
         $SiteName,
 
-        [parameter(Mandatory = $true)]    
+        [parameter(Mandatory = $False)]    
         [System.Array]
-        $ContainerImagePaths
+        $ContainerImagePaths,
+
+        [parameter(Mandatory = $False)]    
+        [System.Boolean]
+        $ExtractSamples = $False
     )
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     
-    $ServiceName = 'ArcGIS Notebook Server'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-    $PostInstallUtilityToolPath = (Join-Path $InstallDir ( Join-Path 'tools' ( Join-Path 'postInstallUtility' 'PostInstallUtility.bat')))
-    foreach ($ImagePath in $ContainerImagePaths) {
-        Write-Verbose "Loading container image at path $ImagePath"
-        $StdOutLogFile = [System.IO.Path]::GetTempFileName()
-        $StdErrLogFile = [System.IO.Path]::GetTempFileName()
-        Start-Process -FilePath $PostInstallUtilityToolPath -ArgumentList "-l $ImagePath" -Wait -Verbose -RedirectStandardOutput $StdOutLogFile -RedirectStandardError $StdErrLogFile -NoNewWindow
-        $StdOut = Get-Content $StdOutLogFile -Raw
-        if($null -ne $StdOut -and $StdOut.Length -gt 0) {
-            Write-Verbose $StdOut
+    if($ContainerImagePaths.Length -gt 0){
+        foreach ($ImagePath in $ContainerImagePaths) {
+            try{
+                Write-Verbose "Loading container image at path $ImagePath"
+                Invoke-PostInstallUtility -Arguments "-l $ImagePath" -Verbose
+                Write-Verbose "Container image at path $ImagePath loaded."
+            }catch{
+                throw "[ERROR] Error Loading Container Image at path - $ImagePath - $_"
+            }
         }
-        if($StdOut -icontains 'error' -or $StdOut -icontains 'failed') { throw "Error Loading Container Image at path - $ImagePath. StdOut Error:- $StdOut"}
-        [string]$StdErr = Get-Content $StdErrLogFile -Raw
-        if($null -ne $StdErr -and $StdErr.Length -gt 0) {
-            Write-Verbose "[ERROR] $StdErr"
+    }
+    else
+    {
+        Write-Verbose "No Container Images to Load."
+    }
+    if($ExtractSamples){
+        try{
+            Write-Verbose "Extracting Notebook Server Samples Data"
+            Invoke-PostInstallUtility -Arguments "-x" -Verbose
+            Write-Verbose "Notebook Server Samples Data extracted."
+        }catch{
+            throw "[ERROR] Error extracting Notebook Server Samples Data - $_"
         }
-        if($StdErr -icontains 'error' -or $StdErr -icontains 'failed') { throw "Error Loading Container Image at path - $ImagePath. StdOut Error:- $StdOut"}
-        Remove-Item $StdOutLogFile -Force -ErrorAction Ignore
-        Remove-Item $StdErrLogFile -Force -ErrorAction Ignore  
-        Write-Verbose "Container image at path $ImagePath loaded."
     }
 }
 
@@ -66,38 +73,77 @@ function Test-TargetResource
 		[System.String]
         $SiteName,
         
-        [parameter(Mandatory = $true)]    
+        [parameter(Mandatory = $False)]    
         [System.Array]
-        $ContainerImagePaths
+        $ContainerImagePaths,
+
+        [parameter(Mandatory = $False)]    
+        [System.Boolean]
+        $ExtractSamples = $False
     )
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+    $Result = $True
+    try{
+        if($ContainerImagePaths.Length -gt 0){
+            try{
+                Invoke-PostInstallUtility -Arguments "-d" -Verbose
+            }catch{
+                throw "[ERROR] Error with Docker Configuration - $_"
+            }
+            $Result = $False
+            Write-Verbose "Trying to intall images if not already installed."
+        }
+        if($ExtractSamples){
+            $Result = $False
+            Write-Verbose "Trying to extract Notebook Server Samples Data if not already extracted."
+        }
+    }catch{
+        throw $_
+    }
+
+    $Result
+}
+
+function Invoke-PostInstallUtility
+{
+    [CmdletBinding()]
+	param
+    (
+        [System.String]
+        $Arguments
+    )
 
     $ServiceName = 'ArcGIS Notebook Server'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
     $PostInstallUtilityToolPath = (Join-Path $InstallDir ( Join-Path 'tools' ( Join-Path 'postInstallUtility' 'PostInstallUtility.bat')))
     if(Test-Path $PostInstallUtilityToolPath){
-        $StdOutLogFile = [System.IO.Path]::GetTempFileName()
-        $StdErrLogFile = [System.IO.Path]::GetTempFileName()
-        Start-Process -FilePath $PostInstallUtilityToolPath -ArgumentList "-d" -Wait -Verbose -RedirectStandardOutput $StdOutLogFile -RedirectStandardError $StdErrLogFile -NoNewWindow
-        $StdOut = Get-Content $StdOutLogFile -Raw
-        if($null -ne $StdOut -and $StdOut.Length -gt 0) {
-            Write-Verbose $StdOut
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $PostInstallUtilityToolPath
+        $psi.Arguments = $Arguments
+        $psi.UseShellExecute = $false #start the process from it's own executable file    
+        $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+        $psi.RedirectStandardError = $true #enable the process to read from standard error
+        $psi.EnvironmentVariables["AGSNOTEBOOK"] = [environment]::GetEnvironmentVariable("AGSNOTEBOOK","Machine")
+
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $p.WaitForExit()
+        $op = $p.StandardOutput.ReadToEnd()
+        if($p.ExitCode -eq 0) {
+            Write-Verbose $op
+            if($op -icontains 'error' -or $op -icontains 'failed') { throw "$op"}
+        }else{
+            $err = $p.StandardError.ReadToEnd()
+            Write-Verbose $err
+            if($err -and $err.Length -gt 0) {
+                throw "Output - $op. Error - $err"
+            }
         }
-        if($StdOut -icontains 'error' -or $StdOut -icontains 'failed') { throw "Error with Docker Configuration - $Image Path. StdOut Error:- $StdOut"}
-        [string]$StdErr = Get-Content $StdErrLogFile -Raw
-        if($null -ne $StdErr -and $StdErr.Length -gt 0) {
-            Write-Verbose "[ERROR] $StdErr"
-        }
-        if($StdErr -icontains 'error' -or $StdErr -icontains 'failed') { throw "Error with Docker Configuration - $Image Path. StdOut Error:- $StdErr"}
-        Remove-Item $StdOutLogFile -Force -ErrorAction Ignore
-        Remove-Item $StdErrLogFile -Force -ErrorAction Ignore
-        Write-Verbose "Trying to intall images if not already installed."
     }else{
         throw "Post Install Utility Tool not found."
     }
-    $false
 }
+
+
 
 Export-ModuleMember -Function *-TargetResource

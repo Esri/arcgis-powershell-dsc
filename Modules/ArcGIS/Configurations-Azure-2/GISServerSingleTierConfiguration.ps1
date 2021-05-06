@@ -138,9 +138,9 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DebugMode
-    )
+	)
+	
 
-    
     function Get-FileNameFromUrl
     {
         param(
@@ -171,9 +171,9 @@
     Import-DscResource -Name ArcGIS_xSmbShare
 	Import-DscResource -Name ArcGIS_xDisk  
 	Import-DscResource -Name ArcGIS_Disk  
-    Import-DscResource -Name ArcGIS_DataStoreItem
+	Import-DscResource -Name ArcGIS_DataStoreItem
 	Import-DscResource -Name ArcGIS_TLSCertificateImport
-	Import-DscResource -Name ArcGIS_GeoEvent
+	Import-DscResource -Name ArcGIS_GeoEvent	
     Import-DscResource -Name ArcGIS_LogHarvester
 	
     ##
@@ -278,26 +278,28 @@
 				}
 			}
 
-            File FileShareLocationPath
-		    {
-			    Type						= 'Directory'
-			    DestinationPath				= $FileShareLocalPath
-			    Ensure						= 'Present'
-			    Force						= $true
-		    }   
+			if(-not($Join)) { 
+				File FileShareLocationPath
+				{
+					Type						= 'Directory'
+					DestinationPath				= $FileShareLocalPath
+					Ensure						= 'Present'
+					Force						= $true
+				}   
+				
+				$Accounts = @('NT AUTHORITY\SYSTEM')
+				if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
+				if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
+				ArcGIS_xSmbShare FileShare 
+				{ 
+					Ensure						= 'Present' 
+					Name						= $FileShareName
+					Path						= $FileShareLocalPath
+					FullAccess					= $Accounts
+					DependsOn					= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[File]FileShareLocationPath')}else{ @('[File]FileShareLocationPath')}     
+				}
+			}
 
-			$Accounts = @('NT AUTHORITY\SYSTEM')
-			if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
-			if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-            ArcGIS_xSmbShare FileShare 
-		    { 
-			    Ensure						= 'Present' 
-			    Name						= $FileShareName
-			    Path						= $FileShareLocalPath
-			    FullAccess					= $Accounts
-				DependsOn					= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[File]FileShareLocationPath')}else{ @('[File]FileShareLocationPath')}     
-		    }
-    
             ArcGIS_WindowsService ArcGIS_for_Server_Service
             {
                 Name            = 'ArcGIS Server'
@@ -383,7 +385,7 @@
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
 						Protocol              = "TCP" 
 				}
 
@@ -396,7 +398,7 @@
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
 						Protocol              = "TCP" 
 						Direction             = "Outbound"    
 				}
@@ -447,7 +449,7 @@
 				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'			
             }
 			
-			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server'))
+			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 			{
 				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -511,60 +513,7 @@
 				}
 				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRule_Zookeeper_Outbound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_Zookeeper')
 
-				if($IsMultiMachineServer) 
-				{
-					ArcGIS_xFirewall GeoEventService_Firewall
-					{
-						Name                  = "ArcGISGeoEventGateway"
-						DisplayName           = "ArcGIS GeoEvent Gateway"
-						DisplayGroup          = "ArcGIS GeoEvent Gateway"
-						Ensure                = 'Present'
-						Access                = "Allow"
-						State                 = "Enabled"
-						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("9092")
-						Protocol              = "TCP"
-					}
-
-					ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
-					{
-						Name                  = "ArcGISGeoEventFirewallRulesCluster" 
-						DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
-						DisplayGroup          = "ArcGIS GeoEvent Extension" 
-						Ensure                = 'Present' 
-						Access                = "Allow" 
-						State                 = "Enabled" 
-						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
-						Protocol              = "TCP" 
-					}
-
-					ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
-					{
-						Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound" 
-						DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound" 
-						DisplayGroup          = "ArcGIS GeoEvent Extension" 
-						Ensure                = 'Present' 
-						Access                = "Allow" 
-						State                 = "Enabled" 
-						Profile               = ("Domain","Private","Public")
-						RemotePort            = ("2181","2182","2190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
-						Protocol              = "TCP" 
-						Direction             = "Outbound"    
-					}
-
-					$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine','[ArcGIS_xFirewall]GeoEventService_Firewall')					
-				}
-				
-				$DependsOnGeoevent = @()
-				if(-Not($IsServiceCredentialDomainAccount)){
-					$DependsOnGeoevent += '[User]ArcGIS_RunAsAccount'
-				}
-				if($LastServerHostName -ieq $env:ComputerName){
-					$DependsOnGeoevent +='[ArcGIS_ServerSettings]ServerSettings'
-				}else{
-					$DependsOnGeoevent += '[ArcGIS_Server]Server'
-				}
+				$DependsOnGeoevent = @('[User]ArcGIS_RunAsAccount','[ArcGIS_ServerSettings]ServerSettings')
 				
 				if(-Not($IsServiceCredentialDomainAccount)){
 					ArcGIS_Service_Account GeoEvent_RunAs_Account
@@ -610,7 +559,7 @@
 						Ensure	                  = 'Present'
 						SiteAdministrator         = $SiteAdministratorCredential
 						WebSocketContextUrl       = "wss://$($ExternalDNSHostName)/$($GeoeventContext)wss"
-						DependsOn				  =	 $DependsOnGeoevent
+						DependsOn				  = $DependsOnGeoevent
 					}	
 				}
 			}

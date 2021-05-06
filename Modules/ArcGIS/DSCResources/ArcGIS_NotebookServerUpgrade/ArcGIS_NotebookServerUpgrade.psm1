@@ -105,7 +105,7 @@ function Test-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
-    $result = Confirm-ServerVersion -Version $Version
+    $result = Test-Install -Name "NotebookServer" -Version $Version
     
     $Referer = "http://localhost"
     $ServerUpgradeUrl = "https://$($ServerHostName):11443/arcgis/admin/upgrade"
@@ -128,39 +128,6 @@ function Test-TargetResource
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
     }
-}
-
-function Confirm-ServerVersion{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-	param(
-        [string]$Version
-    )
-
-    $result = $false
-
-    $ProdId = Get-ComponentCode -ComponentName "NotebookServer" -Version $Version
-    if(-not($ProdId.StartsWith('{'))){
-        $ProdId = '{' + $ProdId
-    }
-    if(-not($ProdId.EndsWith('}'))){
-        $ProdId = $ProdId + '}'
-    }
-    $PathToCheck = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
-    Write-Verbose "Testing Presence for Component 'NotebookServer' with Path $PathToCheck"
-    if (Test-Path $PathToCheck -ErrorAction Ignore){
-        $result = $true
-    }
-    if(-not($result)){
-        $PathToCheck = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
-        Write-Verbose "Testing Presence for Component 'NotebookServer' with Path $PathToCheck"
-        if (Test-Path $PathToCheck -ErrorAction Ignore){
-            $result = $true
-        }
-    }
-    
-    $result
-
 }
 
 Export-ModuleMember -Function *-TargetResource

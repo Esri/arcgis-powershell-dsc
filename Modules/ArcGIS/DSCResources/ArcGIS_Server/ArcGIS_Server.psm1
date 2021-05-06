@@ -1015,6 +1015,7 @@ function Wait-ForHostNameResolution
             $psi.RedirectStandardError = $true #enable the process to read from standard error
 
             $p = [System.Diagnostics.Process]::Start($psi)
+            $p.WaitForExit()
             $op = $p.StandardOutput.ReadToEnd().Trim()
             if($op -ieq $FQDN) {
                 Write-Verbose "Name Resolution output '$op' matches expected '$FQDN'"

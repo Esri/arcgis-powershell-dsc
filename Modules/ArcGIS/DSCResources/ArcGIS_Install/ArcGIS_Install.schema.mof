@@ -7,8 +7,11 @@ class ArcGIS_Install : OMI_BaseResource
 	[Write] String ProductId;
 	[Write] String Path;
 	[Write] String Arguments;
-	[Write] String LogPath;
 	[Write] String WebAdaptorContext;
+	[Write, EmbeddedInstance("MSFT_Credential")] String ServiceCredential;
+	[Write] Boolean ServiceCredentialIsDomainAccount;
+	[Write] Boolean ServiceCredentialIsMSA;
+	[Write] Boolean EnableMSILogging;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };
 

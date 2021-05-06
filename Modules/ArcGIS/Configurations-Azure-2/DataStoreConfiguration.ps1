@@ -151,7 +151,8 @@
             ArcGIS_Service_Account DataStore_Service_Account
 		    {
 			    Name            = 'ArcGIS Data Store'
-			    RunAsAccount    = $ServiceCredential
+                RunAsAccount    = $ServiceCredential
+                ForceRunAsAccountUpdate = $True
 			    Ensure          = 'Present'
 			    DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
                 DataDir         = $DataStoreContentDirectory  
@@ -199,19 +200,16 @@
 			    ServerHostName             = $ServerMachineName
 			    ContentDirectory           = $DataStoreContentDirectory
 			    IsStandby                  = $IsStandBy
-                #DatabaseBackupsDirectory   = $DataStoreBackupLocation
-                #FileShareRoot              = "\\$($FileShareMachineName)\$($FileShareName)"
-                RunAsAccount               = $ServiceCredential 
                 DataStoreTypes             = @('Relational')
-                IsEnvAzure                 = $true
+                EnableFailoverOnPrimaryStop= $true
 			    DependsOn                  = $DataStoreDependsOn
 		    } 
 
-		    foreach($ServiceToStop in  @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
+		    foreach($ServiceToStop in  @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
-				    ArcGIS_WindowsService "$($ServiceToStop.Replace(' ','_'))_Service"
+				    Service "$($ServiceToStop.Replace(' ','_'))_Service"
 				    {
 					    Name			= $ServiceToStop
 					    Credential		= $ServiceCredential
