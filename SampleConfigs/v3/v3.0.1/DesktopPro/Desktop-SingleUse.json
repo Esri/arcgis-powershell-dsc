@@ -1,0 +1,27 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name 1]",
+            "Role": [
+                "Desktop"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "DesktopVersion": "[Version of ArcGIS Dektop ]",
+        "Desktop": {
+            "LicenseFilePath": "[License File Path - Desktop ]",
+            "SeatPreference": "Fixed",
+            "InstallFeatures": "[ALL | <feature1>,<feature2>,]",
+            "ModifyFlexdAcl": "[TRUE | FALSE (Default)]",
+            "DesktopConfig": "TRUE",
+            "EnableEUEI": "[ True (Default enables participation of Esri User Experience Improvement Program) | False ]",
+            "Installer": {
+                "Path": "[Desktop Installer Path]",
+                "InstallDir": "[Desktop Install Dir - Ex. C:\\ArcGIS\\Desktop]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "PatchesDir": ""
+            }
+        }
+    }
+}

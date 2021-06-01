@@ -18,11 +18,15 @@ Configuration DataStoreUpgradeInstall{
         $InstallerPath,
         
         [System.String]
-        $InstallDir
+        $InstallDir,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     Import-DscResource -Name ArcGIS_xFirewall
@@ -47,40 +51,62 @@ Configuration DataStoreUpgradeInstall{
             Name = "DataStore"
             Version = $Version
             Path = $InstallerPath
-            Arguments = "/qb USER_NAME=$($ServiceAccount.UserName) PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
+            Arguments = if($MajorVersion -gt 8){ "/qn ACCEPTEULA=YES"}else{ "/qn" }
+            ServiceCredential = $ServiceAccount
+            ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+            ServiceCredentialIsMSA = $IsServiceAccountMSA
+            EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
         }
         
         # Fix for BDS Not Upgrading Bug - Setup needs to run as local account system
         # But in that case it cannot access (C:\Windows\System32\config\systemprofile\AppData\Local)
-        if(($MajorVersion -lt 8) -and -not(($MajorVersion -eq 7) -and ($MinorVersion -eq 1))){
-            ArcGIS_WindowsService ArcGIS_DataStore_Service_Stop
+        if(($MajorVersion -lt 8) -and -not(($MajorVersion -eq 7) -and ($MinorVersion -eq 1)))
+        {
+            Script CreateUpgradeFile
             {
-                Name = 'ArcGIS Data Store'
-                Credential = $ServiceAccount
-                StartupType = 'Manual'
-                State = 'Stopped'
+                GetScript = {
+                    $null
+                }
+                SetScript = {
+                    $ChangeObject = @{StartMode="Manual";}
+                    $DataStoreServiceStop = Get-CimInstance CIM_Service -filter "name='ArcGIS Data Store'" 
+                    $DataStoreStopServiceChangeModeReturnValue = ($DataStoreServiceStop | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+                    if($DataStoreStopServiceChangeModeReturnValue -eq 0){
+                        $DataStoreServiceStopReturnValue = $DataStoreServiceStop | Invoke-CimMethod -Name StopService
+                        if($DataStoreServiceStopReturnValue -eq 0){
+                            Write-Verbose "Service Stop Operation successful."
+                            if (!(Test-Path "$($using:InstallDir)\etc\upgrade.txt"))
+                            {
+                                New-Item -path "$($using:InstallDir)\etc\" -name "upgrade.txt" -type "file" -value ""
+                                Write-Verbose "Created new file "
+                            }
+                            $DataStoreServiceStart = Get-CimInstance CIM_Service -filter "name='ArcGIS Data Store'" 
+                            $DataStoreStartServiceChangeModeReturnValue = ($DataStoreServiceStart | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+                            if( $DataStoreStartServiceChangeModeReturnValue -eq 0){
+                                $DataStoreServiceStartReturnValue = $DataStoreServiceStart | Invoke-CimMethod -Name StartService
+                                if($DataStoreServiceStartReturnValue -eq 0){
+                                    Write-Verbose "Service Start Operation successful."
+                                }else{
+                                    throw "Service ArcGIS Data Store failed to start. Return value - $DataStoreServiceStartReturnValue"
+                                }
+                            }else{
+                                throw "Service ArcGIS Data Store Mode Change Failed. Return value - $DataStoreStartServiceChangeModeReturnValue"
+                            }
+                        }else{
+                            throw "Service ArcGIS Data Store failed to stop. Return value - $DataStoreServiceStopReturnValue"    
+                        }
+                    }else{
+                        throw "Service ArcGIS Data Store Mode Change Failed. Return value - $DataStoreStopServiceChangeModeReturnValue"
+                    }
+                }
+                TestScript = {
+                    $False
+                }
                 DependsOn = @('[ArcGIS_Install]DataStoreUpgrade')
             }
-
-            File CreateUpgradeFile
-            {
-            Ensure          = "Present"
-            DestinationPath = "$($InstallDir)\etc\upgrade.txt"
-            Contents        = ""
-            Type            = "File"
-            DependsOn = @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service_Stop')
-            }  
-
-            ArcGIS_WindowsService ArcGIS_DataStore_Service_Start
-            {
-                Name = 'ArcGIS Data Store'
-                Credential = $ServiceAccount
-                StartupType = 'Automatic'
-                State = 'Running'
-                DependsOn = @('[File]CreateUpgradeFile')
-            }
         }
+        
 
         if($MajorVersion -gt 7 -and $Node.HasMultiMachineTileCache){
             ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules

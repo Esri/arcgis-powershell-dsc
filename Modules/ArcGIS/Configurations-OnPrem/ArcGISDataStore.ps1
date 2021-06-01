@@ -12,11 +12,15 @@ Configuration ArcGISDataStore
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
-        $ServiceCredentialIsDomainAccount = $false,
+        $ForceServiceCredentialUpdate = $False,
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
-        $ServiceCredentialIsMSA = $false,
+        $ServiceCredentialIsDomainAccount = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $False,
 
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -47,16 +51,21 @@ Configuration ArcGISDataStore
         [System.Boolean]
         $EnableFailoverOnPrimaryStop = $False,
         
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnablePointInTimeRecovery = $False,
+
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore
+
     Node $AllNodes.NodeName 
     {
         if($Node.Thumbprint){
@@ -70,15 +79,6 @@ Configuration ArcGISDataStore
         $MajorVersion = $VersionArray[1]
         $MinorVersion = if($VersionArray.Count -eq 3){ $VersionArray[2] }else { 0 }
         $Depends = @()
-        Service ArcGIS_DataStore_Service
-        {
-            Name = 'ArcGIS Data Store'
-            Credential = $ServiceCredential
-            StartupType = 'Automatic'
-            State = 'Running'
-            DependsOn = $Depends
-        }  
-        $Depends += '[Service]ArcGIS_DataStore_Service'
 
         ArcGIS_xFirewall DataStore_FirewallRules
         {
@@ -226,9 +226,13 @@ Configuration ArcGISDataStore
             DependsOn = $Depends
             DataDir = $ContentDirectoryLocation #DataStoreSpatioTemporalDataDirectory <- Needs to be checked if network location
             IsDomainAccount = $ServiceCredentialIsDomainAccount
+            IsMSAAccount = $ServiceCredentialIsMSA
+            ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
+            SetStartupToAutomatic = $True
         }
         $Depends += '[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account'
 
+        
         $IsStandByRelational = (($Node.NodeName -ine $PrimaryDataStore) -and $Node.DataStoreTypes -icontains 'Relational')
         if($IsStandByRelational)
         {
@@ -277,11 +281,9 @@ Configuration ArcGISDataStore
             DependsOn = $Depends
             IsStandby = $IsStandByRelational
             DataStoreTypes = $Node.DataStoreTypes
-            IsEnvAzure = $EnableFailoverOnPrimaryStop
-            IsTileCacheDataStoreClustered = ((($MajorVersion -gt 7) -and -not($MajorVersion -eq 8 -and $MinorVersion -eq 0)) -and ($TileCacheMachineCount -gt 2))
-            #RunAsAccount = $ConfigData.RunAsAccount 
-            #DatabaseBackupsDirectory = $ConfigData.DataStoreBackupsDirectory
-            #FileShareRoot = $ConfigData.FileShareRoot
-        }
+            EnableFailoverOnPrimaryStop = $EnableFailoverOnPrimaryStop
+            IsTileCacheDataStoreClustered = (($TileCacheMachineCount -gt 2) -or ($MajorVersion -eq 8 -and $MinorVersion -eq 0))
+            PITRState = if($EnablePointInTimeRecovery){ "Enabled" }else{ "Disabled" }
+        }     
     }
 }

@@ -14,8 +14,7 @@ Configuration DataStoreUpgradePreInstall{
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
-	Import-DscResource -Name ArcGIS_WindowsService
-    
+	
     Node localhost {
         LocalConfigurationManager
         {
@@ -24,7 +23,7 @@ Configuration DataStoreUpgradePreInstall{
             RebootNodeIfNeeded = $true
         }
         
-        ArcGIS_WindowsService ArcGIS_DataStore_Service_Stop
+        Service ArcGIS_DataStore_Service_Stop
         {
             Name = 'ArcGIS Data Store'
             Credential = $ServiceCredential

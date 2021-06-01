@@ -32,7 +32,7 @@ Configuration ArcGISRasterDataStoreItem
         $FileShareLocalPath
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_FileShare
     Import-DSCResource -Name ArcGIS_DataStoreItem
 
@@ -53,6 +53,7 @@ Configuration ArcGISRasterDataStoreItem
                 Ensure = 'Present'
                 Credential = $ServiceCredential
                 IsDomainAccount = $ServiceCredentialIsDomainAccount
+                IsMSAAccount = $ServiceCredentialIsMSA
             }
         }
         

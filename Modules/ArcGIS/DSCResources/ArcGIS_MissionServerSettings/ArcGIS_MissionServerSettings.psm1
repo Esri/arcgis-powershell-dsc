@@ -93,12 +93,12 @@ function Set-TargetResource
         }
         $AdminSettingsModified = $True
     }
-    if($WebSocketContextUrl -and (-not($systemProperties.WebSocketContextUrl) -or $systemProperties.WebSocketContextUrl -ine $WebSocketContextUrl)){
-        Write-Verbose "Web Socket Context URL '$($systemProperties.WebSocketContextUrl)' doesn't match expected value '$WebSocketContextUrl'"
-        if(-not($systemProperties.WebSocketContextUrl)){
-            Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name "WebSocketContextUrl" -Value $WebSocketContextUrl
+    if($WebSocketContextUrl -and (-not($systemProperties.WebSocketContextURL) -or $systemProperties.WebSocketContextURL -ine $WebSocketContextUrl)){
+        Write-Verbose "Web Socket Context URL '$($systemProperties.WebSocketContextURL)' doesn't match expected value '$WebSocketContextUrl'"
+        if(-not($systemProperties.WebSocketContextURL)){
+            Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name "WebSocketContextURL" -Value $WebSocketContextUrl
         }else{
-            $systemProperties.WebSocketContextUrl = $WebSocketContextUrl
+            $systemProperties.WebSocketContextURL = $WebSocketContextUrl
         }
         $AdminSettingsModified = $True
     }
@@ -157,8 +157,8 @@ function Test-TargetResource
             }
         }
         if($result -and $WebSocketContextUrl){
-            if(-not($systemProperties.WebSocketContextUrl) -or $systemProperties.WebSocketContextUrl -ine $WebContextURL){
-                Write-Verbose "Web Socket Context URL '$($systemProperties.WebSocketContextUrl)' doesn't match expected value '$WebSocketContextUrl'"
+            if(-not($systemProperties.WebSocketContextURL) -or $systemProperties.WebSocketContextURL -ine $WebContextURL){
+                Write-Verbose "Web Socket Context URL '$($systemProperties.WebSocketContextURL)' doesn't match expected value '$WebSocketContextUrl'"
                 $result = $false
             }
         }

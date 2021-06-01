@@ -98,7 +98,10 @@ Configuration PortalUpgrade{
             Name = "Portal"
             Version = $Version
             Path = $InstallerPathOnMachine
-            Arguments = "/qb USER_NAME=$($ServiceCredential.UserName) PASSWORD=$($ServiceCredential.GetNetworkCredential().Password)";
+            Arguments = "/qn ACCEPTEULA=YES";
+            ServiceCredential = $ServiceCredential
+            ServiceCredentialIsDomainAccount = $IsServiceCredentialDomainAccount
+            ServiceCredentialIsMSA = $False
             Ensure = "Present"
             DependsOn = $Depends
         }
@@ -129,13 +132,14 @@ Configuration PortalUpgrade{
                 Credential = $FileshareMachineCredential     
                 DependsOn = $Depends  
             }
+            $Depends += '[File]DownloadWebStylesInstallerFromFileShare'
             
             ArcGIS_Install "WebStylesInstall"
             { 
                 Name = "WebStyles"
                 Version = $Version
                 Path = $WebStylesInstallerPathOnMachine
-                Arguments = "/qb"
+                Arguments = "/qn"
                 Ensure = "Present"
                 DependsOn = $Depends
             }

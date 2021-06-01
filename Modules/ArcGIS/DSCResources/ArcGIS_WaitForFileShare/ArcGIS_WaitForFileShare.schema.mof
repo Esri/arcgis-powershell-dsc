@@ -1,9 +1,0 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_WaitForFileShare")]
-class ArcGIS_WaitForFileShare : OMI_BaseResource
-{
-	[Key] String FilePaths;
-	[Write, EmbeddedInstance("MSFT_Credential")] String Credential;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;    
-	[Write,Description("Interval in seconds for retries.")] Uint32 RetryIntervalSec;
-	[Write,Description("Number of times to retry.")] Uint32 RetryCount;
-};

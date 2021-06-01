@@ -61,7 +61,7 @@ Configuration ArcGISFederation
         
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName
@@ -74,6 +74,9 @@ Configuration ArcGISFederation
         }
         
         if($Node.NodeName -ieq $PrimaryServerMachine){
+            if($ServerRole -ieq "WorkflowManagerServer"){
+                $ServerRole = "WorkflowManager"
+            }
             ArcGIS_Federation Federate
             {
                 PortalHostName = $PortalHostName

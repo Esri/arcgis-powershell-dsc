@@ -208,8 +208,8 @@ function Set-TargetResource
         catch {
             Write-Verbose "[WARNING] GetToken returned:- $_"
         }
-        if(-not($siteExists)) {
-
+        if(-not($siteExists)) 
+        {
             if($Join){
                 Write-Verbose 'Joining Site'
                 Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer
@@ -449,20 +449,20 @@ function Invoke-CreateSite
   
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
-        
+    $VersionObject = (Get-ArcGISProductDetails -ProductName "ArcGIS Mission Server").Version
+    Write-Verbose "Mission Server Version - $VersionObject"
+    $MajorVersion = $VersionObject.Split('.')[1]
+    $MinorVersion = $VersionObject.Split('.')[2]
+
     if(($ConfigStoreCloudStorageConnectionString) -and ($ConfigStoreCloudStorageConnectionSecret) -and ($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1))
     {
-        $VersionObject = (Get-ArcGISProductDetails -ProductName "ArcGIS Mission Server").Version
-        Write-Verbose "Mission Server Version - $VersionObject"
-        $MajorVersion = $VesionObject.Split('.')[1]
-
         Write-Verbose "Using Azure Cloud Storage for the config store"
         $configStoreConnection = if($MajorVersion -ge 8){
                                 @{ 
                                     configPersistenceType= "AZURE";
                                     connectionString = $ConfigStoreCloudStorageConnectionString;
-                                    username = $ConfigStoreCloudStorageAccountName;
-                                    password = $ConfigStoreCloudStorageConnectionSecret
+                                    username = $ConfigStoreCloudStorageAccountName.Replace([regex]::escape("AccountName="),[string]::Empty);
+                                    password = $ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("AccountKey="),[string]::Empty);
                                     className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
                                 }
                             }else{
@@ -488,13 +488,15 @@ function Invoke-CreateSite
 
     $ServerDirectoriesObject = (ConvertFrom-Json $ServerDirectories)
 
-    $directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"}| Measure-Object).Count -gt 0){
-        ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"})
-    }else{
-        @{
-            name = "arcgisworkspace"
-            path = "$ServerDirectoriesRootLocation\arcgisworkspace"
-            type = "WORKSPACE"
+    if($MajorVersion -eq 8 -and $MinorVersion -eq 12790){
+        $directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"}| Measure-Object).Count -gt 0){
+            ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"})
+        }else{
+            @{
+                name = "arcgisworkspace"
+                path = "$ServerDirectoriesRootLocation\arcgisworkspace"
+                type = "WORKSPACE"
+            }
         }
     }
 
@@ -600,11 +602,13 @@ function Join-Site
 	while ((-not $Done) -and ($NumAttempts++ -lt 3)){                 
         $response = Invoke-ArcGISWebRequest -Url $JoinSiteUrl -HttpFormParameters $JoinSiteParams -Referer $Referer -TimeOutSec 360
         if($response) {
-			if ($response -and $response.status -and ($response.status -ine "success")) {
+			if ($response -and $response.status -and ($response.status -ieq "success")) {
 				$Done    = $true
                 $Success = $true
                 Write-Verbose "Join Site operation successful. Waiting for $($response.pollAfter) seconds for Mission Server to initialize."
-                Start-Sleep -Seconds $response.pollAfter
+                if($response.pollAfter){
+                    Start-Sleep -Seconds $response.pollAfter
+                }
 				break
 			}
         }

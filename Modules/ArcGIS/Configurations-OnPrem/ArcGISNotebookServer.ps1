@@ -8,6 +8,10 @@ Configuration ArcGISNotebookServer
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
+        $ForceServiceCredentialUpdate = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
         $ServiceCredentialIsDomainAccount = $false,
 
         [Parameter(Mandatory=$false)]
@@ -18,6 +22,10 @@ Configuration ArcGISNotebookServer
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $ServerPrimarySiteAdminCredential,
+
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $Version,
         
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -47,19 +55,37 @@ Configuration ArcGISNotebookServer
         [ValidateSet("AzureFiles","AzureBlob")]
         [AllowNull()] 
         [System.String]
-        $CloudStorageType,
+        $ConfigStoreCloudStorageType,
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $AzureFileShareName,
+        $ConfigStoreAzureFileShareName,
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $CloudNamespace,
+        $ConfigStoreCloudNamespace,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $CloudStorageCredentials,
+        $ConfigStoreCloudStorageCredentials,
+
+        [Parameter(Mandatory=$False)]
+        [ValidateSet("AzureFiles")]
+        [AllowNull()] 
+        [System.String]
+        $ServerDirectoriesCloudStorageType,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ServerDirectoriesAzureFileShareName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ServerDirectoriesCloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ServerDirectoriesCloudStorageCredentials,
 
         [Parameter(Mandatory=$False)]
         [System.Array]
@@ -67,41 +93,51 @@ Configuration ArcGISNotebookServer
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
+        $ExtractNotebookServerSamplesData = $False,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_NotebookServer
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_NotebookServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
-    Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_xFirewall
 
-    if(($null -ne $CloudStorageType) -and $CloudStorageCredentials) 
+    if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials)
     {
-        $AccountName = $CloudStorageCredentials.UserName
-		$EndpointSuffix = ''
-        $Pos = $CloudStorageCredentials.UserName.IndexOf('.blob.')
-        if($Pos -gt -1) {
-            $AccountName = $CloudStorageCredentials.UserName.Substring(0, $Pos)
-			$EndpointSuffix = $CloudStorageCredentials.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
+        $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
+		$ConfigStoreEndpointSuffix = ''
+        $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
+        if($ConfigStorePos -gt -1) {
+            $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
+			$ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+			$ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
         }
 
-        if($CloudStorageType -ieq 'AzureFiles') {
-            $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}                   
-            $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
-            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\notebookserver\config-store"
-            $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\notebookserver\server-dirs" 
+        if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
+            $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
+            $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
+            $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\notebookserver\config-store"
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($CloudNamespace)notebookserver$($EndpointSuffix);DefaultEndpointsProtocol=https;"
-            $ConfigStoreCloudStorageAccountName = "AccountName=$AccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($CloudStorageCredentials.GetNetworkCredential().Password)"
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)notebookserver$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
+            $ConfigStoreCloudStorageAccountName = "AccountName=$ConfigStoreAccountName"
+            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
         }
+    }
+    
+    if(($null -ne $ServerDirectoriesCloudStorageType) -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles') -and $ServerDirectoriesCloudStorageCredentials)
+    {
+        $ServerDirectoriesPos = $ServerDirectoriesCloudStorageCredentials.UserName.IndexOf('.blob.')
+        $ServerDirectoriesAzureFilesEndpoint = if($ServerDirectoriesPos -gt -1){$ServerDirectoriesCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{ $ServerDirectoriesCloudStorageCredentials.UserName }                   
+        $ServerDirectoriesAzureFileShareName = $ServerDirectoriesAzureFileShareName.ToLower() # Azure file shares need to be lower case
+        $ServerDirectoriesRootLocation   = "\\$($ServerDirectoriesAzureFilesEndpoint)\$ServerDirectoriesAzureFileShareName\$($ServerDirectoriesCloudNamespace)\notebookserver\server-dirs" 
     }
 
     Node $AllNodes.NodeName
@@ -132,16 +168,6 @@ Configuration ArcGISNotebookServer
         }
         $DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
 
-        ArcGIS_WindowsService ArcGIS_for_NotebookServer_Service
-        {
-            Name            = 'ArcGIS Notebook Server'
-            Credential      = $ServiceCredential
-            StartupType     = 'Automatic'
-            State           = 'Running' 
-            DependsOn       = $DependsOn
-        }
-        $DependsOn += '[ArcGIS_WindowsService]ArcGIS_for_NotebookServer_Service'
-
         $DataDirs = @()
         if($null -ne $CloudStorageType){
             if(-not($CloudStorageType -ieq 'AzureFiles')){
@@ -169,39 +195,70 @@ Configuration ArcGISNotebookServer
         {
             Name            = 'ArcGIS Notebook Server'
             RunAsAccount    = $ServiceCredential
+            ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
             IsDomainAccount = $ServiceCredentialIsDomainAccount
+            IsMSAAccount    = $ServiceCredentialIsMSA
+            SetStartupToAutomatic = $True
             Ensure          = 'Present'
             DataDir         = $DataDirs
             DependsOn       = $DependsOn
         }
         $DependsOn += '[ArcGIS_Service_Account]NotebookServer_Service_Account'
 
-        if($AzureFilesEndpoint -and $CloudStorageCredentials -and ($CloudStorageType -ieq 'AzureFiles')) 
+        if(-not($ServiceCredentialIsMSA)) 
         {
-            $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
-            $storageAccountKey       = $CloudStorageCredentials.GetNetworkCredential().Password
-    
-            Script PersistStorageCredentials
-            {
-                TestScript = { 
-                                $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                                if($result -like '*none*')
-                                {
-                                    return $false
+            if($ConfigStoreAzureFilesEndpoint -and $ConfigStoreCloudStorageCredentials -and ($ConfigStoreCloudStorageType -ieq 'AzureFiles')){
+                $ConfigStoreFilesStorageAccountName = $ConfigStoreAzureFilesEndpoint.Substring(0, $ConfigStoreAzureFilesEndpoint.IndexOf('.'))
+                $ConfigStoreStorageAccountKey       = $ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password
+
+                Script PersistConfigStoreCloudStorageCredentials
+                {
+                    TestScript = { 
+                                    $result = cmdkey "/list:$using:ConfigStoreAzureFilesEndpoint"
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                    if($result -like '*none*')
+                                    {
+                                        return $false
+                                    }
+                                    return $true
                                 }
-                                return $true
-                        }
-                SetScript = { 
-                            $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                        }
-                GetScript            = { return @{} }                  
-                DependsOn            = $Depends
-                PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                    SetScript = { 
+                                    $result = cmdkey "/add:$using:ConfigStoreAzureFilesEndpoint" "/user:$using:ConfigStoreFilesStorageAccountName" "/pass:$using:ConfigStoreStorageAccountKey" 
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                }
+                    GetScript            = { return @{} }                  
+                    DependsOn            = $Depends
+                    PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                }              
+                $Depends += '[Script]PersistConfigStoreCloudStorageCredentials'
             }
-            $DependsOn += '[Script]PersistStorageCredentials'
-        } 
+
+            if($ServerDirectoriesAzureFilesEndpoint -and $ServerDirectoriesCloudStorageCredentials -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles')){
+                $ServerDirectoriesFilesStorageAccountName = $ServerDirectoriesAzureFilesEndpoint.Substring(0, $ServerDirectoriesAzureFilesEndpoint.IndexOf('.'))
+                $ServerDirectoriesStorageAccountKey       = $ServerDirectoriesCloudStorageCredentials.GetNetworkCredential().Password
+
+                Script PersistServerDirectoriesCloudStorageCredentials
+                {
+                    TestScript = { 
+                                    $result = cmdkey "/list:$using:ServerDirectoriesAzureFilesEndpoint"
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                    if($result -like '*none*')
+                                    {
+                                        return $false
+                                    }
+                                    return $true
+                                }
+                    SetScript = { 
+                                    $result = cmdkey "/add:$using:ServerDirectoriesAzureFilesEndpoint" "/user:$using:ServerDirectoriesFilesStorageAccountName" "/pass:$using:ServerDirectoriesStorageAccountKey" 
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                }
+                    GetScript            = { return @{} }                  
+                    DependsOn            = $Depends
+                    PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                }              
+                $Depends += '[Script]PersistServerDirectoriesCloudStorageCredentials'
+            }
+        }
 
         if($Node.NodeName -ine $PrimaryServerMachine)
         {
@@ -210,7 +267,7 @@ Configuration ArcGISNotebookServer
                 NodeName = $PrimaryServerMachine
                 RetryIntervalSec = 60
                 RetryCount = 100
-                DependsOn = $Depends
+                DependsOn = $DependsOn
             }
             $DependsOn += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
         }
@@ -252,12 +309,25 @@ Configuration ArcGISNotebookServer
             $DependsOn += "[ArcGIS_Server_TLS]NotebookServer_TLS_$($Node.NodeName)"
         }
 
-        if($ContainerImagePaths.Count -gt 0){
-            ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                SiteName            = 'arcgis' 
-                ContainerImagePaths = $ContainerImagePaths
-                DependsOn           = $DependsOn
-            }
+        $MajorVersion = $Version.Split('.')[1]
+
+        if($ContainerImagePaths.Count -gt 0 -or (($MajorVersion -gt 8) -and $ExtractNotebookServerSamplesData)){
+            if($ServiceCredentialIsMSA){
+                ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
+                    SiteName            = 'arcgis' 
+                    ContainerImagePaths = $ContainerImagePaths
+                    ExtractSamples      = $false
+                    DependsOn           = $DependsOn
+                }
+            }else{
+                ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
+                    SiteName            = 'arcgis' 
+                    ContainerImagePaths = $ContainerImagePaths
+                    ExtractSamples      = (($MajorVersion -gt 8) -and $ExtractNotebookServerSamplesData)
+                    DependsOn           = $DependsOn
+                    PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+                }
+            }            
         }
     }
 }
