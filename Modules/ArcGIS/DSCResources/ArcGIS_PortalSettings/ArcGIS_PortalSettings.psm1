@@ -79,10 +79,6 @@ function Set-TargetResource
 	}
     Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
 
-	if($PortalEndPoint -and -not($PortalEndPoint -as [ipaddress])) {
-		$PortalEndPoint = Get-FQDN $PortalEndPoint
-    }
-    
 	$sysProps = Get-PortalSystemProperties -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $PortalToken.token -Referer $Referer
 	if (-not($sysProps)) {
 		$sysProps = @{ }
@@ -104,9 +100,6 @@ function Set-TargetResource
         }
     }
 
-    if (-not($PortalEndPoint -as [ipaddress])) {
-        $PortalEndPoint = Get-FQDN $PortalEndPoint
-    }
     # Check if private portal URL is set correctly
     $ExpectedPrivatePortalUrl = if($PortalEndPointPort -ieq 443){ "https://$($PortalEndPoint)/$($PortalEndPointContext)" }else{ "https://$($PortalEndPoint):$($PortalEndPointPort)/$($PortalEndPointContext)" }
     
@@ -159,8 +152,9 @@ function Set-TargetResource
             Write-Verbose "Registering the ExternalDNSName Endpoint with Url $WebAdaptorUrl and MachineName $PortalEndPoint as a Web Adaptor for Portal"
             try{
                 Wait-ForUrl -Url "https://$($PortalFQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET'
-                $registerResponse = Register-WebAdaptorForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $PortalToken.token -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl `
-                                                                -MachineName $PortalEndPoint -HttpPort 80 -HttpsPort 443
+                $registerResponse = Register-WebAdaptorForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $PortalToken.token `
+                                                                    -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl `
+                                                                    -MachineName $PortalEndPoint -HttpPort 80 -HttpsPort 443
             } catch {
                 Write-Verbose "Error registering Webadaptor for Portal :- $_"    
                 Write-Verbose "Request: Register-WebAdaptorForPortal -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token XXX -Referer $Referer -WebAdaptorUrl $WebAdaptorUrl -MachineName $PortalEndPoint -HttpPort 80 -HttpsPort 443"
@@ -239,11 +233,7 @@ function Test-TargetResource
 	}
 	Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
 
-	if($PortalEndPoint -and -not($PortalEndPoint -as [ipaddress])) {
-		$PortalEndPoint = Get-FQDN $PortalEndPoint
-    }
-    
-    $result = $true
+	$result = $true
     Write-Verbose "Get System Properties"
     # Check if web context URL is set correctly							
     $sysProps = Get-PortalSystemProperties -PortalHostName $PortalFQDN -SiteName 'arcgis' -Token $PortalToken.token -Referer $Referer
@@ -260,9 +250,6 @@ function Test-TargetResource
         }
 
         if ($result) {
-            if (-not($PortalEndPoint -as [ipaddress])) {
-                $PortalEndPoint = Get-FQDN $PortalEndPoint
-            }
             # Check if private portal URL is set correctly
             $ExpectedPrivatePortalUrl = if($PortalEndPointPort -ieq 443){ "https://$($PortalEndPoint)/$($PortalEndPointContext)" }else{ "https://$($PortalEndPoint):$($PortalEndPointPort)/$($PortalEndPointContext)" }
             if ($sysProps.privatePortalURL -ieq $ExpectedPrivatePortalUrl) {						
@@ -341,6 +328,110 @@ function Set-PortalSystemProperties {
     catch {
         Write-Verbose "[WARNING] Request to Set-PortalSystemProperties returned error:- $_"
     }
+}
+
+function Get-WebAdaptorsForPortal {
+    [CmdletBinding()]
+    param(
+		[System.String]
+		$PortalHostName = 'localhost', 
+
+        [System.String]
+		$SiteName = 'arcgis', 
+
+        [System.Int32]
+		$Port = 7443,
+		
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer = 'http://localhost'
+    )
+    $GetWebAdaptorsUrl = "https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors"
+    try{
+		Invoke-ArcGISWebRequest -Url $GetWebAdaptorsUrl -HttpFormParameters @{ token = $Token; f = 'json' } -Referer $Referer -TimeoutSec 240 -HttpMethod 'GET'    
+	}catch{
+		Write-Verbose "[WARNING] Get-WebAdaptorsForPortal request to $($GetWebAdaptorsUrl) did not succeed. Error:- $_"
+		$null
+	}   
+}
+
+function Register-WebAdaptorForPortal {
+    [CmdletBinding()]
+    param(
+        [System.String]
+		$PortalHostName = 'localhost', 
+
+        [System.String]
+		$SiteName = 'arcgis', 
+
+        [System.Int32]
+		$Port = 7443,
+		
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer = 'http://localhost', 
+
+        [System.String]
+		$WebAdaptorUrl, 
+
+        [System.String]
+		$MachineName, 
+
+        [System.Int32]
+		$HttpPort = 80, 
+
+		[System.Int32]
+		$HttpsPort = 443
+    )
+    [System.String]$RegisterWebAdaptorsUrl = ("https://$($PortalHostName):$($Port)/$($SiteName)" + "/portaladmin/system/webadaptors/register")
+	Write-Verbose "Register Web Adaptor URL:- $RegisterWebAdaptorsUrl"
+    $WebParams = @{ token = $Token
+                    f = 'json'
+                    webAdaptorURL = $WebAdaptorUrl
+                    machineName = $MachineName
+                    httpPort = $HttpPort.ToString()
+                    httpsPort = $HttpsPort.ToString()
+                  }
+	try {
+		Invoke-ArcGISWebRequest -Url $RegisterWebAdaptorsUrl -HttpFormParameters $WebParams -Referer $Referer -TimeoutSec 3000 -ErrorAction Ignore
+	}
+	catch {
+		Write-Verbose "[WARNING] Register-WebAdaptorForPortal returned an error. Error:- $_"
+	}
+}
+
+function UnRegister-WebAdaptorForPortal {
+    [CmdletBinding()]
+    param(
+        [System.String]
+		$PortalHostName = 'localhost', 
+
+        [System.String]
+		$SiteName = 'arcgis', 
+
+        [System.Int32]
+		$Port = 7443,
+		
+        [System.String]
+		$Token, 
+
+        [System.String]
+		$Referer = 'http://localhost',
+		 
+        [System.String]
+		$WebAdaptorId
+    )
+    
+    $UnRegisterWebAdaptorsUrl = "https://$($PortalHostName):$($Port)/$($SiteName)/portaladmin/system/webadaptors/$WebAdaptorId/unregister"
+    try {
+        Invoke-ArcGISWebRequest -Url $UnRegisterWebAdaptorsUrl -HttpFormParameters  @{ f = 'json'; token = $Token } -Referer $Referer -TimeoutSec 300  
+    }catch{
+        Write-Verbose "[WARNING] UnRegister-WebAdaptorForPortal on $UnRegisterWebAdaptorsUrl failed with error $($_)"
+    }    
 }
 
 Export-ModuleMember -Function *-TargetResource

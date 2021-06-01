@@ -526,10 +526,7 @@ function Test-TargetResource
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
-		$Ensure,
-        
-        [System.Boolean]
-		$IsEnvAzure = $false
+		$Ensure
 	)
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false

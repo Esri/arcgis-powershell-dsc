@@ -15,10 +15,13 @@
         Additional Command Line Arguments required by the installer to complete intallation of the give component successfully.
     .PARAMETER WebAdaptorContext
         Context with which the Web Adaptor Needs to be Installed.
+<<<<<<< HEAD
     .PARAMETER TomcatDir
         Path to the Tomcat Installation.
     .PARAMETER LogPath
         Optional Path where the Logs generated during the Install will be stored.
+=======
+>>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
 #>
 
 function Get-TargetResource
@@ -48,13 +51,28 @@ function Get-TargetResource
 		$Arguments,
 
 		[System.String]
-        $LogPath,
-
-        [System.String]
         $WebAdaptorContext,
 
+<<<<<<< HEAD
         [System.String]
         $TomcatDir,
+=======
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServiceCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false,
+>>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -92,13 +110,28 @@ function Set-TargetResource
 		$Arguments,
 
 		[System.String]
-        $LogPath,
-
-        [System.String]
         $WebAdaptorContext,
 
+<<<<<<< HEAD
         [System.String]
         $TomcatDir,
+=======
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServiceCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false,
+>>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -112,7 +145,7 @@ function Set-TargetResource
             throw "$Path is not found or inaccessible"
         }
 
-        if(($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor') -and ($Version.Split(".")[1] -le 5)){
+        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
             Write-Verbose "Installing Pre-Requsites: $pr"
             $PreRequisiteWindowsFeatures = @("IIS-ManagementConsole", "IIS-ManagementScriptingTools",
                                         "IIS-ManagementService", "IIS-ISAPIExtensions",
@@ -183,79 +216,79 @@ function Set-TargetResource
                 $Arguments = "/i `"$ExecPath`" $Arguments"
                 $ExecPath = "msiexec"
             }
-            Write-Verbose "Executing $ExecPath"
-            if($LogPath) {
-                Start-Process -FilePath $ExecPath -ArgumentList $Arguments -Wait -RedirectStandardOutput $LogPath
-            }else {
-                $psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $ExecPath
-                $psi.Arguments = $Arguments
-                $psi.UseShellExecute = $false #start the process from it's own executable file    
-                $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-                $psi.RedirectStandardError = $true #enable the process to read from standard error
-                
-                $p = [System.Diagnostics.Process]::Start($psi)
-                $p.WaitForExit()
-                $op = $p.StandardOutput.ReadToEnd()
-                if($op -and $op.Length -gt 0) {
-                    Write-Verbose "Output of execution:- $op"
-                }
-                $err = $p.StandardError.ReadToEnd()
-                if($err -and $err.Length -gt 0) {
-                    Write-Verbose $err
-                }
+        }else{
+            Write-Verbose "Installing Software using installer at $Path"
+            $ExecPath = $Path
+        }
 
-                if(($Name -ieq "Portal") -and ($Name -ieq "Portal for ArcGIS")){
-                    if($Version -ieq "10.5"){
-                        $ArgsArray = $Arguments.Split('=')
-                        $Done = $False
-                        $NumCount = 0
-                        $RetryIntervalSec  = 30
-                        $RetryCount  = 15
-                        while(-not($Done) -and ($NumCount++ -le $RetryCount)){
-                            if(Test-Path "$($ArgsArray[2])\arcgisportal\content\items\portal" ){
-                                $Done = $True
-                            }else{
-                                Write-Verbose "Portal Dependencies Still being Unpacked"
-                                Start-Sleep -Seconds $RetryIntervalSec
-                            }
-                        }
-                    }
+        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","NotebookServerSamplesData") -icontains $Name)){
+            if(-not(@("WorkflowManagerServer","GeoEvent") -icontains $Name)){
+                $Arguments += " USER_NAME=$($ServiceCredential.UserName)"
+            }
+            
+            if($ServiceCredentialIsMSA){
+                $Arguments += " MSA=TRUE";
+            }else{
+                $Arguments += " PASSWORD=$($ServiceCredential.GetNetworkCredential().Password)";
+            }
+        }
 
-                    Write-Verbose "Waiting just in case for Portal to finish unpacking any additional dependecies - 120 Seconds"
-                    Start-Sleep -Seconds 120
-                    if($Version -ieq "10.5"){
-                        if(-not(Test-Path "$($ArgsArray[2])\arcgisportal\content\items\portal")){
-                            throw "Portal Dependencies Didn't Unpack!"
-                        }
+        if($EnableMSILogging){
+            $MSILogFileName = if($WebAdaptorContext){ "$($Name)_$($WebAdaptorContext)_install.log" }else{ "$($Name)_install.log" }
+            $MSILogPath = (Join-Path $env:TEMP $MSILogFileName)
+            Write-Verbose "Logs for $Name will be written to $MSILogPath" 
+            $Arguments += " /L*v $MSILogPath";
+        }
+            
+        Write-Verbose "Executing $ExecPath"
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $ExecPath
+        $psi.Arguments = $Arguments
+        $psi.UseShellExecute = $false #start the process from it's own executable file    
+        $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+        $psi.RedirectStandardError = $true #enable the process to read from standard error 
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $p.WaitForExit()
+        $op = $p.StandardOutput.ReadToEnd()
+        if($op -and $op.Length -gt 0) {
+            Write-Verbose "Output of execution:- $op"
+        }
+        $err = $p.StandardError.ReadToEnd()
+        if($err -and $err.Length -gt 0) {
+            Write-Verbose $err
+        }
+        if($p.ExitCode -eq 0) {                    
+            Write-Verbose "Install process finished successfully."
+        }else {
+            throw "Install failed. Process exit code:- $($p.ExitCode). Error - $err"
+        }
+
+        if(($Name -ieq "Portal") -or ($Name -ieq "Portal for ArcGIS")){
+            if($Version -ieq "10.5"){
+                $ArgsArray = $Arguments.Split('=')
+                $Done = $False
+                $NumCount = 0
+                $RetryIntervalSec  = 30
+                $RetryCount  = 15
+                while(-not($Done) -and ($NumCount++ -le $RetryCount)){
+                    if(Test-Path "$($ArgsArray[2])\arcgisportal\content\items\portal" ){
+                        $Done = $True
+                    }else{
+                        Write-Verbose "Portal Dependencies Still being Unpacked"
+                        Start-Sleep -Seconds $RetryIntervalSec
                     }
                 }
             }
-        }
-        else {
-			Write-Verbose "Installing Software using installer at $Path "            
-            if($LogPath) {
-                Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -RedirectStandardOutput $LogPath
-            }else {
-				$psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $Path
-                $psi.Arguments = $Arguments
-                $psi.UseShellExecute = $false #start the process from it's own executable file    
-                $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-                $psi.RedirectStandardError = $true #enable the process to read from standard error
-                
-                $p = [System.Diagnostics.Process]::Start($psi)
-                $p.WaitForExit()
-                $op = $p.StandardOutput.ReadToEnd()
-                if($op -and $op.Length -gt 0) {
-                    Write-Verbose "Output of execution:- $op"
+
+            Write-Verbose "Waiting just in case for Portal to finish unpacking any additional dependecies - 120 Seconds"
+            Start-Sleep -Seconds 120
+            if($Version -ieq "10.5"){
+                if(-not(Test-Path "$($ArgsArray[2])\arcgisportal\content\items\portal")){
+                    throw "Portal Dependencies Didn't Unpack!"
                 }
-                $err = $p.StandardError.ReadToEnd()
-                if($err -and $err.Length -gt 0) {
-                    Write-Verbose "Error:- $err"
-                }
-            } 
+            }
         }
+        
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
             Write-Verbose "Giving Permissions to Folders for IIS_IUSRS"
             foreach($p in (Get-ChildItem "$($env:SystemDrive)\Windows\Microsoft.NET\Framework*\v*\Temporary ASP.NET Files").FullName){
@@ -314,8 +347,16 @@ function Set-TargetResource
                 $trueName = 'ArcGIS Notebook Server'
             }elseif($Name -ieq 'Geoevent'){
                 $trueName = 'ArcGIS Geoevent Server'
+<<<<<<< HEAD
             }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
+=======
+            }elseif($Name -ieq 'WorkflowManagerServer'){
+                $trueName = 'ArcGIS Workflow Manager Server'
+            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+>>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
                 $trueName = 'ArcGIS Web Adaptor'
+            }elseif($Name -ieq 'NotebookServerSamplesData'){
+                $trueName = 'ArcGIS Notebook Server Samples Data'
             }
             $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
 
@@ -426,13 +467,26 @@ function Test-TargetResource
 		$Arguments,
 
 		[System.String]
-        $LogPath,
-
-        [System.String]
         $WebAdaptorContext,
 
         [System.String]
         $TomcatDir,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServiceCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ServiceCredentialIsMSA = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -459,8 +513,16 @@ function Test-TargetResource
             $trueName = 'ArcGIS Notebook Server'
         }elseif($Name -ieq 'Geoevent'){
             $trueName = 'ArcGIS Geoevent Server'
+<<<<<<< HEAD
         }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
+=======
+        }elseif($Name -ieq 'WorkflowManagerServer'){
+            $trueName = 'ArcGIS Workflow Manager Server'
+        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+>>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
             $trueName = 'ArcGIS Web Adaptor'
+        }elseif($Name -ieq 'NotebookServerSamplesData'){
+            $trueName = 'ArcGIS Notebook Server Samples Data'
         }
         $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){

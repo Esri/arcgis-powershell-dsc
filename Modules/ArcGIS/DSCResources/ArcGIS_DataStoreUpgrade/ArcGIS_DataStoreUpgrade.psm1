@@ -126,7 +126,7 @@ function Set-TargetResource
         }
         if($info.tileCache.registered) {
             if($VersionArray[1] -gt 7){
-                if($VersionArray[2] -eq 0){
+                if($VersionArray[1] -eq 8 -and $VersionArray[2] -eq 0){
                     Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
                     if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY" -or $datastoreConfigHashtable["replication.role"] -ieq "CLUSTER_MEMBER"){
                         $dstypesarray.Add('tilecache')

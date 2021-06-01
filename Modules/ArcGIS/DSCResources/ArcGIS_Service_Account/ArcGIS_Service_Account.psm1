@@ -13,6 +13,8 @@
         Data Directory paths to which the necessary permissions need to be given.
     .PARAMETER IsDomainAccount
         Is the given RunAsAccount a domain-account?
+    .PARAMETER IsMSAAccount
+        Is the given RunAsAccount a Managed Service Accounts?
 #>
 
 function Get-TargetResource
@@ -27,7 +29,11 @@ function Get-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$RunAsAccount,
+        $RunAsAccount,
+        
+        [parameter(Mandatory = $False)]
+		[System.Boolean]
+        $ForceRunAsAccountUpdate,
 
 		[System.String[]]
 		$DataDir,
@@ -38,7 +44,15 @@ function Get-TargetResource
 		
 		[parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $SetStartupToAutomatic = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -53,12 +67,16 @@ function Set-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-		[System.String]
-		$Name,
+        [System.String]
+        $Name,
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$RunAsAccount,
+        $RunAsAccount,
+        
+        [parameter(Mandatory = $False)]
+		[System.Boolean]
+        $ForceRunAsAccountUpdate,
 
 		[System.String[]]
 		$DataDir,
@@ -69,81 +87,145 @@ function Set-TargetResource
 		
 		[parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $SetStartupToAutomatic = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') {
-        $RunAsUserName = $RunAsAccount.UserName
-        $RunAsPassword = $RunAsAccount.GetNetworkCredential().Password
-		$RunAsPassword = $RunAsPassword.Replace('"', '""')
-   
-        Write-Verbose "RunAsAccount Username:- $RunAsUserName"
-        if($RunAsUserName -and $RunAsUserName.StartsWith('.\')){            
-            $RunAsUserName = $RunAsUserName.Substring(2) # Remove the current machine prefix
-            Write-Verbose "Removing the machine prefix for the RunAsAccount to $RunAsUserName"
+        
+        $ExpectedRunAsUserName = $RunAsAccount.UserName
+        Write-Verbose "RunAsAccount Username:- $ExpectedRunAsUserName"
+        if($ExpectedRunAsUserName -and $ExpectedRunAsUserName.StartsWith('.\')){
+            $ExpectedRunAsUserName = $ExpectedRunAsUserName.Substring(2) # Remove the current machine prefix
+            Write-Verbose "Removing the machine prefix for the expected RunAsAccount to $ExpectedRunAsUserName"
         }
 
 		$RegKey = Get-EsriRegistryKeyForService -ServiceName $Name
         $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
         Write-Verbose "Install Dir for $Name is $InstallDir"
+        $RestartService = $False
         if($InstallDir) 
         { 
-           $InstallDir = $InstallDir.TrimEnd('\')
-           if(Test-Path $InstallDir) 
-           {
-			   if(<#$Name -ieq 'ArcGIS Server' -OR $Name -ieq 'Portal for ArcGIS' -or#> $Name -ieq 'ArcGIS Data Store'){
-					$ExecPath = $InstallDir
-                    $Arguments = '/username ' + $($RunAsUserName) + ' /password "' + $($RunAsPassword) +'"'
-                    Write-Verbose "Running configureserviceaccount.bat for user - $($RunAsUserName)"
-                    if($Name -ieq 'ArcGIS Server'){
-                        $ExecPath = Join-Path $ExecPath '\\bin\\ServerConfigurationUtility.exe'
-                    }elseif($Name -ieq 'Portal for ArcGIS'){
-                        $ExecPath = Join-Path $ExecPath '\\tools\\ConfigUtility\\configureserviceaccount.bat'
-                    }
-                    elseif($Name -ieq 'ArcGIS Data Store'){
-                        $ExecPath = Join-Path $ExecPath '\\tools\\configureserviceaccount.bat'
-			        }
-                    Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissions to $InstallDir"
-                    Write-Verbose "configureserviceaccount $InstallDir /grant $($RunAsUserName):(OI)(CI)F"
-                    
-                    $psi = New-Object System.Diagnostics.ProcessStartInfo
-                    $psi.FileName = $ExecPath
-                    $psi.Arguments = $Arguments
-                    $psi.UseShellExecute = $false #start the process from it's own executable file    
-                    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-                    $psi.RedirectStandardError = $true #enable the process to read from standard error
-                    $psi.EnvironmentVariables["AGSPORTAL"] = [environment]::GetEnvironmentVariable("AGSPortal","Machine")
-                    $psi.EnvironmentVariables["AGSDATASTORE"] = [environment]::GetEnvironmentVariable("AGSDATASTORE","Machine")
-                    $psi.EnvironmentVariables["AGSSERVER"] = [environment]::GetEnvironmentVariable("AGSSERVER","Machine")
-                    
+            $InstallDir = $InstallDir.TrimEnd('\')
+            if(Test-Path $InstallDir){
+                Write-Verbose "Checking if RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
+                if(-not(Test-Acl $InstallDir $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
+                    Write-Verbose "Providing RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
+                    Write-Verbose "icacls.exe $InstallDir /grant $($ExpectedRunAsUserName):(OI)(CI)F"
+                    icacls.exe $InstallDir /grant "$($ExpectedRunAsUserName):(OI)(CI)F"
+                }else {
+                    Write-Verbose "RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
+                } 
+            }
 
-                    $p = [System.Diagnostics.Process]::Start($psi)
-                    $p.WaitForExit()
-                    $op = $p.StandardOutput.ReadToEnd()
-                    if($op -and $op.Length -gt 0) {
-                        Write-Verbose "Output of execution:- $op"
-                    }
-                    $err = $p.StandardError.ReadToEnd()
-                    
-		            if($p.ExitCode -eq 0) {                    
-                        Write-Verbose "Initialized correctly indicating successful desktop initialization"
-                        $result = $true
-                    }else {
-                        Write-Verbose "Initialization did not succeed. Process exit code:- $($p.ExitCode) $err"
-                    }
+            # Get Current Run as account or if Force Update run as account set
+            $WindowsService = (Get-CimInstance CIM_Service -filter "Name='$Name'" | Select-Object -First 1)
+            if($null -ne $WindowsService){
+                $CurrentRunAsAccount = $WindowsService.StartName
+                if($CurrentRunAsAccount -and $CurrentRunAsAccount.StartsWith('.\')){            
+                    $CurrentRunAsAccount = $CurrentRunAsAccount.Substring(2) # Remove the current machine prefix
+                    Write-Verbose "Removing the machine prefix for the current RunAsAccount to $CurrentRunAsAccount"
+                }
 
-			   }else{
-				   if(-not(Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
-                        Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissions to $InstallDir"
-                        Write-Verbose "icacls.exe $InstallDir /grant $($RunAsUserName):(OI)(CI)F"
-                        icacls.exe $InstallDir /grant "$($RunAsUserName):(OI)(CI)F"
-                    }else {
-                        Write-Verbose "RunAs Account '$RunAsUserName' has the required permissions to $InstallDir"
-                    }   
-			   }     
-           	}
+                if($ForceRunAsAccountUpdate -or ($CurrentRunAsAccount -ne $ExpectedRunAsUserName)){
+                    $RestartService = $True
+
+                    if(@('ArcGIS Server','Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server','ArcGIS Data Store') -icontains $Name){
+                        $psi = New-Object System.Diagnostics.ProcessStartInfo
+                        $ExecPath = $InstallDir
+                        if($Name -ieq 'ArcGIS Server'){
+                            $ExecPath = Join-Path $ExecPath '\\bin\\ServerConfigurationUtility.exe'
+                            $psi.EnvironmentVariables["AGSSERVER"] = [environment]::GetEnvironmentVariable("AGSSERVER","Machine")
+                        }
+                        elseif(@('Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server') -icontains $Name){
+                            $ExecPath = Join-Path $ExecPath '\\tools\\ConfigUtility\\configureserviceaccount.bat'
+                            if($Name -ieq 'Portal for ArcGIS'){
+                                $psi.EnvironmentVariables["AGSPORTAL"] = [environment]::GetEnvironmentVariable("AGSPortal","Machine")
+                            }elseif($Name -ieq 'ArcGIS Notebook Server'){
+                                $psi.EnvironmentVariables["AGSNOTEBOOK"] = [environment]::GetEnvironmentVariable("AGSNOTEBOOK","Machine")
+                            }elseif($Name -ieq 'ArcGIS Mission Server'){
+                                $psi.EnvironmentVariables["AGSMISSION"] = [environment]::GetEnvironmentVariable("AGSMISSION","Machine")
+                            }
+                        }
+                        elseif($Name -ieq 'ArcGIS Data Store'){
+                            $ExecPath = Join-Path $ExecPath '\\tools\\configureserviceaccount.bat'
+                            $psi.EnvironmentVariables["AGSDATASTORE"] = [environment]::GetEnvironmentVariable("AGSDATASTORE","Machine")
+                        }
+                        $psi.FileName = $ExecPath
+                        
+                        $Arguments = ""
+                        if($Name -ieq 'ArcGIS Server'){
+                            $Arguments = "/username $($ExpectedRunAsUserName)"
+                            if(-not($IsMSAAccount)){
+                                $Arguments += " /password $($RunAsAccount.GetNetworkCredential().Password)"
+                            }
+                        }else{
+                            $Arguments = "--username $($ExpectedRunAsUserName)"
+                            if(-not($IsMSAAccount)){
+                                $Arguments += " --password $($RunAsAccount.GetNetworkCredential().Password)"
+                            }
+                        }
+                        $psi.Arguments = $Arguments
+                        
+                        $psi.UseShellExecute = $false #start the process from it's own executable file    
+                        $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+                        $psi.RedirectStandardError = $true #enable the process to read from standard error
+                        $p = [System.Diagnostics.Process]::Start($psi)
+                        $p.WaitForExit()
+                        $op = $p.StandardOutput.ReadToEnd()
+                        if($op -and $op.Length -gt 0) {
+                            Write-Verbose "Output of execution:- $op"
+                        }
+                        $err = $p.StandardError.ReadToEnd()
+                        
+                        if($p.ExitCode -eq 0) {                    
+                            Write-Verbose "Initialized correctly indicating successful desktop initialization"
+                        }else {
+                            throw "Service Account Update did not succeed. Process exit code:- $($p.ExitCode). Error - $err"
+                        }
+                    }else{
+                        $StartName = if(-not($IsMSAAccount) -and -not($IsDomainAccount)){ ".\$($ExpectedRunAsUserName)" }else{ $ExpectedRunAsUserName }
+                        $ChangeObject = @{StartName=$StartName;}
+                        if(-not($IsMSAAccount)){
+                            $ChangeObject += @{StartPassword=$RunAsAccount.GetNetworkCredential().Password;}
+                        }
+
+                        Write-Verbose "Updating Service Account for service $Name."
+                        $ReturnValue = ($WindowsService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+                        if($ReturnValue -eq 0){
+                            Write-Verbose "Service Account Change Operation for Service $Name successful."
+                            if($Name -ieq "ArcGISGeoEvent"){
+                                $GeoeventGatewayService = Get-CimInstance CIM_Service -filter "name='ArcGISGeoEventGateway'" 
+                                if($null -ne $GeoeventGatewayService){
+                                    Write-Verbose "Updating Service Account for service ArcGISGeoEventGateway."
+                                    $GeoeventGatewayReturnValue = ($GeoeventGatewayService | Invoke-CimMethod -Name Change -Arguments $ChangeObject)
+                                    if($GeoeventGatewayReturnValue -eq 0){
+                                        Write-Verbose "Service Account Change Operation for Service ArcGISGeoEventGateway successful."
+                                    }else{
+                                        throw "Service Account Change Operation for Service ArcGISGeoEventGateway failed. Return value - $ReturnValue"
+                                    }
+                                }
+                            }
+                        }else{
+                            throw "Service Account Change Operation for Service $Name failed. Return value - $ReturnValue"
+                        }
+                    }
+                }else{
+                    Write-Verbose "Service Account needs no updates."
+                }
+            }
+            else{
+                throw "$Name service not found. Please check and try again."
+            }
         }
 
         if($DataDir) 
@@ -160,13 +242,13 @@ function Set-TargetResource
                     if($LocalPath -and (Test-Path $LocalPath)) 
                     {
                         Write-Verbose "Checking Permissions on $LocalPath"
-                        if(-not(Test-Acl $LocalPath $RunAsUserName $IsDomainAccount)) {
+                        if(-not(Test-Acl $LocalPath $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
                             Write-Verbose "Permissions are not set for $LocalPath"
-                            Write-Verbose "Providing RunAs Account '$RunAsUserName' the required permissions to $LocalPath"
-                            Write-Verbose "icacls.exe $LocalPath /grant $($RunAsUserName):(OI)(CI)F"
-                            icacls.exe $LocalPath /grant "$($RunAsUserName):(OI)(CI)F"
+                            Write-Verbose "Providing RunAs Account '$ExpectedRunAsUserName' the required permissions to $LocalPath"
+                            Write-Verbose "icacls.exe $LocalPath /grant $($ExpectedRunAsUserName):(OI)(CI)F"
+                            icacls.exe $LocalPath /grant "$($ExpectedRunAsUserName):(OI)(CI)F"
                         }  else {
-                            Write-Verbose "RunAs Account '$RunAsUserName' has the required permissions to $LocalPath"
+                            Write-Verbose "RunAs Account '$ExpectedRunAsUserName' has the required permissions to $LocalPath"
                         }             
                     }                
                 }
@@ -250,87 +332,57 @@ function Set-TargetResource
             }
         }
 
-
-        <#
-        if(-not($DataDir) -and ($Name -ieq 'Portal for ArcGIS')) {
-            $DataDir = (Get-Item ((Get-ItemProperty ("HKLM:\SOFTWARE\ESRI\$Name")).ContentDir))
-        }
-        if($DataDir) 
-        {
-            $DataDir = $DataDir.TrimEnd('\')
-            if(Test-Path $DataDir) 
-            {
-                $acl = Get-Acl $DataDir | Select-Object -ExpandProperty Access | Where-Object {$_.IdentityReference -ieq "$env:ComputerName\$RunAsUserName"}
-                if((-not($acl)) -or ($acl.FileSystemRights -ine 'FullControl') -or ($acl.AccessControlType -ine 'Allow')) {
-                    Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissiones to $DataDir"
-                    Write-Verbose "icacls.exe $DataDir /grant $($RunAsUserName):(OI)(CI)F"
-                    icacls.exe $DataDir /grant "$($RunAsUserName):(OI)(CI)F"
-
-					## TEMPORARY
-					if($Name -ieq 'Portal for ArcGIS') {
-						$DataDirParent = Split-Path -Path $DataDir -Parent
-						Write-Verbose "Providing RunAs Account '$RunAsUserName' has the required permissiones to $DataDirParent"
-						Write-Verbose "icacls.exe $DataDirParent /grant $($RunAsUserName):(OI)(CI)F"
-						icacls.exe $DataDirParent /grant "$($RunAsUserName):(OI)(CI)F"
-					}
-                }else {
-                    Write-Verbose "RunAs Account '$RunAsUserName' has the required permissiones to $DataDir"
-                }   
+        if($SetStartupToAutomatic){
+            $WindowsService = (Get-CimInstance CIM_Service -filter "Name='$Name'")
+            $StartName = if(-not($IsMSAAccount) -and -not($IsDomainAccount)){ ".\$($ExpectedRunAsUserName)" }else{ $ExpectedRunAsUserName }
+            $ChangeObject = @{StartName=$StartName;StartMode="Automatic";}
+            if(-not($IsMSAAccount)){
+                $ChangeObject += @{StartPassword=$RunAsAccount.GetNetworkCredential().Password;}
+            }
+            $ReturnValue = ($WindowsService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+            if($ReturnValue -eq 0){
+                Write-Verbose "Service Startup Type change to automatic successful."
+                if($Name -ieq 'ArcGISGeoEvent') {
+                    $GeoeventGatewayService = Get-CimInstance CIM_Service -filter "name='ArcGISGeoEventGateway'" 
+                    $GeoeventGatewayReturnValue = ($GeoeventGatewayService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+                    if($GeoeventGatewayReturnValue -eq 0){
+                        Write-Verbose "Service Startup Type change to automatic successful."
+                    }else{
+                        throw "Service Startup Type change to automatic failed. Return value - $GeoeventGatewayReturnValue"
+                    }
+                }
+            }else{
+                throw "Service Startup Type change to automatic failed. Return value - $ReturnValue"
             }
         }
 
-		if($Name -ieq 'ArcGISGeoEvent') {
-			###
-			### GeoEvent needs additional permissions set and delete zookeeper folder
-			###
-			$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'			
-			if(Test-Path $GeoEventProgramData) {
-				Write-Verbose "Program Data Dir for $Name is $GeoEventProgramData"
-				$acl = Get-Acl $GeoEventProgramData | Select-Object -ExpandProperty Access | Where-Object {$_.IdentityReference -ieq "$env:ComputerName\$RunAsUserName"}
-				if((-not($acl)) -or ($acl.FileSystemRights -ine 'FullControl') -or ($acl.AccessControlType -ine 'Allow')) {
-                    Write-Verbose "Providing Required Permissions to Program Data Folder for RunAs Account"
-                    Write-Verbose "icacls.exe $GeoEventProgramData /grant $($RunAsUserName):(OI)(CI)F"
-					icacls.exe $GeoEventProgramData /grant "$($RunAsUserName):(OI)(CI)F"
-
-                    $ZooKeeperFolder = Join-Path $GeoEventProgramData 'zookeeper'
-                    if(Test-Path $ZooKeeperFolder) {
-                        Write-Verbose "Deleting ZooKeeper folder $ZooKeeperFolder"
-                        Remove-Item -Path $ZooKeeperFolder -Recurse -Force 
-                    }
-				} else {
-					Write-Verbose 'Permissions to Program Data Folder for RunAs Account are already correct'
-				}				
-			}
-		}
-        #>
-
-		if($Name -ine 'ArcGIS Data Store')  # No need to restart DataStore - the mandatory property change for 'failover_on_primary_stop' will take care of it
-		{
-			###
-			### If the Service Credentials are changed. Restart the Service (just in case) TODO:- Revisit if this is needed
-			###
-			try {			    
-				Write-Verbose "Restarting Service $Name"
-				Stop-Service -Name $Name -Force -ErrorAction Ignore
-				Write-Verbose 'Stopping the service' 
-				Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Stopped'	
-				Write-Verbose 'Stopped the service'		    
-			}catch {
-				Write-Verbose "[WARNING] Stopping Service $_"
-			}
-			try {				
-				Write-Verbose 'Starting the service'
-				Start-Service -Name $Name -ErrorAction Ignore       
-				Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Running'
+        ###
+        ### If the Service Credentials are changed. Restart the Service (just in case) TODO:- Revisit if this is needed
+        ###
+        if($RestartService){
+            try {  
+                Write-Verbose "Restarting Service $Name"
+                Stop-Service -Name $Name -Force -ErrorAction Ignore
+                Write-Verbose 'Stopping the service' 
+                Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Stopped'	
+                Write-Verbose 'Stopped the service'		    
+            }catch {
+                Write-Verbose "[WARNING] Stopping Service $_"
+            }
+            try {				
+                Write-Verbose 'Starting the service'
+                Start-Service -Name $Name -ErrorAction Ignore       
+                Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Running'
                 Write-Verbose "Restarted Service $Name"
                 if($Name -ieq 'ArcGISGeoEvent'){
                     Start-Sleep -Seconds 180
+                }elseif( $Name -ieq 'ArcGIS Data Store'){
+                    Wait-ForUrl -Url "https://localhost:2443/arcgis/datastoreadmin/configure?f=json" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 10 -HttpMethod 'GET' -Verbose
                 }
-			}catch {
-				Write-Verbose "[WARNING] Starting Service $_"
-			}
-		}
-
+            }catch {
+                Write-Verbose "[WARNING] Starting Service $_"
+            }
+        }
     }else{
         Write-Warning 'Absent not implemented'
     }
@@ -348,7 +400,11 @@ function Test-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$RunAsAccount,
+        $RunAsAccount,
+        
+        [parameter(Mandatory = $False)]
+		[System.Boolean]
+        $ForceRunAsAccountUpdate,
 
 		[System.String[]]
 		$DataDir,
@@ -359,30 +415,64 @@ function Test-TargetResource
 		
 		[parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $SetStartupToAutomatic = $false
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $result = $true
-    $RunAsUserName = $RunAsAccount.UserName
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $Name
-    $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir    
-
+    $ExpectedRunAsUserName = $RunAsAccount.UserName
     Write-Verbose "RunAsAccount Username:- $RunAsUserName"
-    if($RunAsUserName -and $RunAsUserName.StartsWith('.\')){            
-        $RunAsUserName = $RunAsUserName.Substring(2) # Remove the current machine prefix
-        Write-Verbose "Removing the machine prefix for the RunAsAccount to $RunAsUserName"
+    if($ExpectedRunAsUserName -and $ExpectedRunAsUserName.StartsWith('.\')){            
+        $ExpectedRunAsUserName = $ExpectedRunAsUserName.Substring(2) # Remove the current machine prefix
+        Write-Verbose "Removing the machine prefix for the RunAsAccount to $ExpectedRunAsUserName"
     }
 
+    $RegKey = Get-EsriRegistryKeyForService -ServiceName $Name
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
     if($InstallDir -and (Test-Path $InstallDir)) {
         Write-Verbose "Install Dir for $Name is $InstallDir"
-        if(-not(Test-Acl $InstallDir $RunAsUserName $IsDomainAccount)) {
+        if(-not(Test-Acl $InstallDir $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
 			Write-Verbose "Permissions are not set for $InstallDir"
             $result = $false
         }
     }
 
+    # Get Current Run as account or if Force Update run as account set
+    $CurrentRunAsAccount = (Get-CimInstance CIM_Service -filter "Name='$Name'" | Select-Object -First 1 ).StartName
+    if($CurrentRunAsAccount -and $CurrentRunAsAccount.StartsWith('.\')){            
+        $CurrentRunAsAccount = $CurrentRunAsAccount.Substring(2) # Remove the current machine prefix
+        Write-Verbose "Removing the machine prefix for the current RunAsAccount to $CurrentRunAsAccount"
+    }
+
+    if($ForceRunAsAccountUpdate -or ($CurrentRunAsAccount -ne $ExpectedRunAsUserName)){
+        $result = $false
+    }
+
+    if($SetStartupToAutomatic){
+        $WindowsService = (Get-CimInstance CIM_Service -filter "Name='$Name'")
+        Write-Verbose "$Name Service Startup Type is $($WindowsService.StartMode)."
+        if($WindowsService.StartMode -ne "Auto"){
+            $result = $false
+        }else{
+            if($Name -ieq 'ArcGISGeoEvent') {
+                $GeoeventGatewayService = Get-CimInstance CIM_Service -filter "name='ArcGISGeoEventGateway'" 
+                Write-Verbose "ArcGISGeoEventGateway Service Startup Type is $($GeoeventGatewayService.StartMode)."
+                if($GeoeventGatewayService.StartMode -ne "Auto"){
+                    $result = $false
+                }
+            }
+        }
+    }
+    
     if($result) {
         if($DataDir) {
             foreach($DataDirectory in $DataDir) {
@@ -396,7 +486,7 @@ function Test-TargetResource
                     if($LocalPath -and (Test-Path $LocalPath)) 
                     {
                         Write-Verbose "Checking Permissions on $LocalPath"
-                        if(-not(Test-Acl $LocalPath $RunAsUserName $IsDomainAccount)) {
+                        if(-not(Test-Acl $LocalPath $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
 				            Write-Verbose "Permissions are not set for $LocalPath"
                             $result = $false
                         }
@@ -427,12 +517,17 @@ function Test-Acl {
 		[System.String]
 		$RunAsUsername,
 
+        [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsDomainAccount = $false
+        $IsDomainAccount = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $IsMSAAccount = $false
     )
 
     $result = $true
-    if(-not($IsDomainAccount))
+    if(-not($IsDomainAccount) -and -not($IsMSAAccount))
     {
         $RunAsUserName = "$env:ComputerName\$RunAsUsername"
     }

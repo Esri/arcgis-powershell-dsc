@@ -22,11 +22,15 @@ Configuration PortalUpgradeV2{
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $IsServiceAccountMSA = $False
+        $IsServiceAccountMSA = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnableMSILogging = $false
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_PortalUpgrade 
@@ -46,24 +50,16 @@ Configuration PortalUpgradeV2{
         $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
 
         $Depends = @()
-
-        if(-not($IsServiceAccountDomainAccount)){
-            User ArcGIS_RunAsAccount
-            {
-                UserName = $ServiceAccount.UserName
-                Password = $ServiceAccount
-                FullName = 'ArcGIS Run As Account'
-                Ensure = "Present"
-            }
-            $Depends += '[User]ArcGIS_RunAsAccount'
-        }
-
         ArcGIS_Install PortalUpgrade
         { 
             Name = "Portal"
             Version = $Version
             Path = $InstallerPath
-            Arguments = "/qb USER_NAME=$($ServiceAccount.UserName) PASSWORD=$($ServiceAccount.GetNetworkCredential().Password)";
+            Arguments = if($MajorVersion -gt 8){"/qn ACCEPTEULA=YES"}else{"/qn"}
+            ServiceCredential = $ServiceAccount
+            ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+            ServiceCredentialIsMSA = $IsServiceAccountMSA
+            EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
             DependsOn = $Depends
         }
@@ -75,23 +71,17 @@ Configuration PortalUpgradeV2{
                 Name = "WebStyles"
                 Version = $Version
                 Path = $WebStylesInstallerPath
-                Arguments = "/qb"
+                Arguments = "/qn"
+                ServiceCredential = $ServiceAccount
+                ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+                ServiceCredentialIsMSA = $IsServiceAccountMSA
+                EnableMSILogging = $EnableMSILogging
                 Ensure = "Present"
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_Install]WebStylesInstall'
         }
 
-        Service Portal_for_ArcGIS_Service
-        {
-            Name = 'Portal for ArcGIS'
-            Credential = $ServiceAccount
-            StartupType = 'Automatic'
-            State = 'Running'          
-            DependsOn = $Depends
-        } 
-        $Depends += '[Service]Portal_for_ArcGIS_Service'
-        
         $DataDirsForPortal = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')
         ArcGIS_Service_Account Portal_RunAs_Account
         {
@@ -101,6 +91,8 @@ Configuration PortalUpgradeV2{
             DataDir = $DataDirsForPortal
             DependsOn =  $Depends
             IsDomainAccount = $IsServiceAccountDomainAccount
+            IsMSAAccount = $IsServiceAccountMSA
+            SetStartupToAutomatic = $True
         }
         $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'
     }

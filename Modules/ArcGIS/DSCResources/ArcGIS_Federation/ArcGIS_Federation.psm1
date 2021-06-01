@@ -340,8 +340,6 @@ function Set-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     
-    $PortalFQDN = Get-FQDN $PortalHostName
-    
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
     if($ServiceUrlPort -eq 443){
         $ServiceUrl = "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
@@ -387,7 +385,7 @@ function Set-TargetResource
                     if($existingFedServer.url -ine $ServiceUrl) {
                         Write-Verbose "Server with admin URL $ServerSiteAdminUrl already exits, but its public URL '$($existingFedServer.url)' does match expected '$ServiceUrl'"					
                         try {
-                            $resp = Invoke-UnFederateServer -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -ServerID $existingFedServer.id -Token $token.token -Referer $Referer
+                            $resp = Invoke-UnFederateServer -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -ServerID $existingFedServer.id -Token $token.token -Referer $Referer
                             if($resp.error) {			
                                 Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
                             }else {
@@ -397,7 +395,7 @@ function Set-TargetResource
                             Write-Verbose "Error during unfederate operation. Error:- $_"
                         }
                         Write-Verbose "Unfederate Operation causes a web server restart. Waiting for portaladmin endpoint to come back up"
-                        Wait-ForUrl -Url "https://$($PortalEndPoint):7443/$($PortalSiteName)/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
+                        Wait-ForUrl -Url "https://$($PortalHostName):$($PortalPort)/$($PortalContext)/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
                     }
                 }
             }
@@ -577,7 +575,7 @@ function Set-TargetResource
                 Write-Verbose "Error during unfederate operation. Error:- $_"
             }
             Write-Verbose "Unfederate Operation causes a web server restart. Waiting for portaladmin endpoint to come back up"
-            Wait-ForUrl -Url "https://$($PortalEndPoint):$($PortalPort)/$($PortalContext)/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
+            Wait-ForUrl -Url "https://$($PortalHostName):$($PortalPort)/$($PortalContext)/portaladmin/" -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
         }else{
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl doesn't exists"
         }   

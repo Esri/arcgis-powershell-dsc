@@ -74,10 +74,6 @@ function Set-TargetResource
     }
 	Write-Verbose "Connected to Server successfully and retrieved token for '$($SiteAdministrator.UserName)'"
 	if($ServerEndPoint){
-		if(-not($ServerEndPoint -as [ipaddress])) {
-			$ServerEndPoint = Get-FQDN $ServerEndPoint
-		}
-
 		$ExpectedPrivateServerUrl = if($ServerEndPointPort -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
 		$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
 		$ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $ExpectedPrivateServerUrl }
@@ -187,10 +183,7 @@ function Test-TargetResource
         throw "Unable to retrieve Server Token for '$($SiteAdministrator.UserName)'"
     }
     Write-Verbose "Connected to Server successfully and retrieved token for '$($SiteAdministrator.UserName)'"
-    if(-not($ServerEndPoint -as [ipaddress])) {
-		$ServerEndPoint = Get-FQDN $ServerEndPoint
-	}
-
+    
 	$result = $true
 	if($result){
 		$serverSysProps = Get-ServerSystemProperties -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer	

@@ -119,6 +119,7 @@
 		    {
 			    Name            = 'ArcGIS Data Store'
                 RunAsAccount    = $ServiceCredential
+                ForceRunAsAccountUpdate = $True
                 IsDomainAccount = $IsServiceCredentialDomainAccount
 			    Ensure          = 'Present'
 			    DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
@@ -145,11 +146,11 @@
 			    ServerHostName		= $ServerMachineName
 			    ContentDirectory	= $DataStoreContentDirectory
                 DataStoreTypes		= $DataStoreTypes
-                IsEnvAzure          = $true
+                EnableFailoverOnPrimaryStop= $true
 			    DependsOn			= @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules', '[ArcGIS_Service_Account]DataStore_Service_Account') 
 		    }
 
-            foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server'))
+            foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

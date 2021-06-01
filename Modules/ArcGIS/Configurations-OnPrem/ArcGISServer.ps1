@@ -8,6 +8,10 @@ Configuration ArcGISServer
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
+        $ForceServiceCredentialUpdate = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
         $ServiceCredentialIsDomainAccount = $false,
 
         [Parameter(Mandatory=$false)]
@@ -67,19 +71,37 @@ Configuration ArcGISServer
         [ValidateSet("AzureFiles","AzureBlob")]
         [AllowNull()] 
         [System.String]
-        $CloudStorageType,
+        $ConfigStoreCloudStorageType,
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $AzureFileShareName,
+        $ConfigStoreAzureFileShareName,
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $CloudNamespace,
+        $ConfigStoreCloudNamespace,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $CloudStorageCredentials,
+        $ConfigStoreCloudStorageCredentials,
+
+        [Parameter(Mandatory=$False)]
+        [ValidateSet("AzureFiles")]
+        [AllowNull()] 
+        [System.String]
+        $ServerDirectoriesCloudStorageType,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ServerDirectoriesAzureFileShareName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ServerDirectoriesCloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ServerDirectoriesCloudStorageCredentials,
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -87,34 +109,40 @@ Configuration ArcGISServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
-    Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_GeoEvent
 
-    if(($null -ne $CloudStorageType) -and $CloudStorageCredentials) 
+    if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials) 
     {
-        $AccountName = $CloudStorageCredentials.UserName
-		$EndpointSuffix = ''
-        $Pos = $CloudStorageCredentials.UserName.IndexOf('.blob.')
-        if($Pos -gt -1) {
-            $AccountName = $CloudStorageCredentials.UserName.Substring(0, $Pos)
-			$EndpointSuffix = $CloudStorageCredentials.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
+        $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
+		$ConfigStoreEndpointSuffix = ''
+        $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
+        if($ConfigStorePos -gt -1) {
+            $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
+			$ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+			$ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
         }
 
-        if($CloudStorageType -ieq 'AzureFiles') {
-            $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}                   
-            $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
-            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\server\config-store"
-            $ServerDirectoriesRootLocation   = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\server\server-dirs" 
+        if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
+            $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
+            $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
+            $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\server\config-store"
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($CloudNamespace)server$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($CloudStorageCredentials.GetNetworkCredential().Password)"
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$ConfigStoreAccountName"
+            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
         }
+    }
+
+    if(($null -ne $ServerDirectoriesCloudStorageType) -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles') -and $ServerDirectoriesCloudStorageCredentials) 
+    {
+        $ServerDirectoriesPos = $ServerDirectoriesCloudStorageCredentials.UserName.IndexOf('.blob.')
+        $ServerDirectoriesAzureFilesEndpoint = if($ServerDirectoriesPos -gt -1){$ServerDirectoriesCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{ $ServerDirectoriesCloudStorageCredentials.UserName }                   
+        $ServerDirectoriesAzureFileShareName = $ServerDirectoriesAzureFileShareName.ToLower() # Azure file shares need to be lower case
+        $ServerDirectoriesRootLocation   = "\\$($ServerDirectoriesAzureFilesEndpoint)\$ServerDirectoriesAzureFileShareName\$($ServerDirectoriesCloudNamespace)\server\server-dirs" 
     }
 
     Node $AllNodes.NodeName
@@ -128,6 +156,10 @@ Configuration ArcGISServer
         
         $MachineFQDN = Get-FQDN $Node.NodeName
         $IsMultiMachineServer = (($AllNodes | Measure-Object).Count -gt 1)
+
+        $VersionArray = $Version.Split(".")
+        $MajorVersion = $VersionArray[1]
+        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
 
         $Depends = @()
         if($OpenFirewallPorts -or $IsMultiMachineServer ) # Server only deployment or behind an ILB or has DataStore nodes that need to register using admin			
@@ -168,6 +200,13 @@ Configuration ArcGISServer
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules' 
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules' 
 
+                $GeoAnalyticsPorts = @("7077")
+                if($MajorVersion -gt 8){
+                    $GeoAnalyticsPorts += @("12181","12182","12190")
+                }else{
+                    $GeoAnalyticsPorts += @("2181","2182","2190")
+                }
+
                 ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
                 {
                     Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
@@ -177,7 +216,7 @@ Configuration ArcGISServer
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+                    LocalPort             = $GeoAnalyticsPorts	# Spark and Zookeeper
                     Protocol              = "TCP" 
                 }
 
@@ -190,7 +229,7 @@ Configuration ArcGISServer
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+                    LocalPort             = $GeoAnalyticsPorts	# Spark and Zookeeper
                     Protocol              = "TCP" 
                     Direction             = "Outbound"    
                 }
@@ -224,16 +263,6 @@ Configuration ArcGISServer
             }
         }
 
-        ArcGIS_WindowsService ArcGIS_for_Server_Service
-        {
-            Name = 'ArcGIS Server'
-            Credential = $ServiceCredential
-            StartupType = 'Automatic'
-            State = 'Running'
-            DependsOn = $Depends
-        }
-        $Depends += '[ArcGIS_WindowsService]ArcGIS_for_Server_Service' 
-
         $DataDirs = @()
         if($null -ne $CloudStorageType){
             if(-not($CloudStorageType -ieq 'AzureFiles')){
@@ -265,40 +294,71 @@ Configuration ArcGISServer
         {
             Name = 'ArcGIS Server'
             RunAsAccount = $ServiceCredential
+            ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
             Ensure = 'Present'
             DependsOn = $Depends
             DataDir = $DataDirs
             IsDomainAccount = $ServiceCredentialIsDomainAccount
+            IsMSAAccount = $ServiceCredentialIsMSA
+            SetStartupToAutomatic = $True
         }
 
         $Depends += '[ArcGIS_Service_Account]Server_RunAs_Account' 
 
-        if($AzureFilesEndpoint -and $CloudStorageCredentials -and ($CloudStorageType -ieq 'AzureFiles')) 
+        if(-not($ServiceCredentialIsMSA)) 
         {
-            $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
-            $storageAccountKey       = $CloudStorageCredentials.GetNetworkCredential().Password
-    
-            Script PersistStorageCredentials
-            {
-                TestScript = { 
-                                $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                                if($result -like '*none*')
-                                {
-                                    return $false
+            if($ConfigStoreAzureFilesEndpoint -and $ConfigStoreCloudStorageCredentials -and ($ConfigStoreCloudStorageType -ieq 'AzureFiles')){
+                $ConfigStoreFilesStorageAccountName = $ConfigStoreAzureFilesEndpoint.Substring(0, $ConfigStoreAzureFilesEndpoint.IndexOf('.'))
+                $ConfigStoreStorageAccountKey       = $ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password
+
+                Script PersistConfigStoreCloudStorageCredentials
+                {
+                    TestScript = { 
+                                    $result = cmdkey "/list:$using:ConfigStoreAzureFilesEndpoint"
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                    if($result -like '*none*')
+                                    {
+                                        return $false
+                                    }
+                                    return $true
                                 }
-                                return $true
-                        }
-                SetScript = { 
-                            $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                        }
-                GetScript            = { return @{} }                  
-                DependsOn            = $Depends
-                PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                    SetScript = { 
+                                    $result = cmdkey "/add:$using:ConfigStoreAzureFilesEndpoint" "/user:$using:ConfigStoreFilesStorageAccountName" "/pass:$using:ConfigStoreStorageAccountKey" 
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                }
+                    GetScript            = { return @{} }                  
+                    DependsOn            = $Depends
+                    PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                }              
+                $Depends += '[Script]PersistConfigStoreCloudStorageCredentials'
             }
-            $Depends += '[Script]PersistStorageCredentials'
-        } 
+
+            if($ServerDirectoriesAzureFilesEndpoint -and $ServerDirectoriesCloudStorageCredentials -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles')){
+                $ServerDirectoriesFilesStorageAccountName = $ServerDirectoriesAzureFilesEndpoint.Substring(0, $ServerDirectoriesAzureFilesEndpoint.IndexOf('.'))
+                $ServerDirectoriesStorageAccountKey       = $ServerDirectoriesCloudStorageCredentials.GetNetworkCredential().Password
+
+                Script PersistServerDirectoriesCloudStorageCredentials
+                {
+                    TestScript = { 
+                                    $result = cmdkey "/list:$using:ServerDirectoriesAzureFilesEndpoint"
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                    if($result -like '*none*')
+                                    {
+                                        return $false
+                                    }
+                                    return $true
+                                }
+                    SetScript = { 
+                                    $result = cmdkey "/add:$using:ServerDirectoriesAzureFilesEndpoint" "/user:$using:ServerDirectoriesFilesStorageAccountName" "/pass:$using:ServerDirectoriesStorageAccountKey" 
+                                    $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                }
+                    GetScript            = { return @{} }                  
+                    DependsOn            = $Depends
+                    PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                }              
+                $Depends += '[Script]PersistServerDirectoriesCloudStorageCredentials'
+            }
+        }
 
         if($Node.NodeName -ine $PrimaryServerMachine)
         {
@@ -379,27 +439,20 @@ Configuration ArcGISServer
 
         if($ServerRole -ieq "GeoEvent") 
         { 
+            #This condition is an issue
             ArcGIS_Service_Account GeoEvent_RunAs_Account
             {
                 Name = 'ArcGISGeoEvent'
                 RunAsAccount = $ServiceCredential
+                ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
                 Ensure =  "Present"
                 DependsOn = $Depends
                 DataDir = "$env:ProgramData\Esri\GeoEvent"
                 IsDomainAccount = $ServiceCredentialIsDomainAccount
+                IsMSAAccount = $ServiceCredentialIsMSA
+                SetStartupToAutomatic = $True
             }
-
             $Depends += "[ArcGIS_Service_Account]GeoEvent_RunAs_Account"
-
-            ArcGIS_WindowsService ArcGIS_GeoEvent_Service
-            {
-                Name = 'ArcGISGeoEvent'
-                Credential = $ServiceCredential
-                StartupType = 'Automatic'
-                State = 'Running'
-                DependsOn = $Depends
-            }
-            $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service"
 
             ArcGIS_xFirewall GeoEvent_FirewallRules
             {
@@ -415,8 +468,8 @@ Configuration ArcGISServer
                 DependsOn             = $Depends
             }
             $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
-
-            if($IsMultiMachineServer) 
+            
+            if($IsMultiMachineServer -and ($MajorVersion -lt 9))
             {
                 ArcGIS_xFirewall GeoEvent_FirewallRules_Zookeeper
 				{
@@ -446,16 +499,23 @@ Configuration ArcGISServer
 				}
 				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRule_Zookeeper_Outbound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_Zookeeper')
 
+                $GeoEventPorts = ("27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
+                if($MajorVersion -gt 8){
+                    $GeoEventPorts += @("12181","12182","12190")
+                }else{
+                    $GeoEventPorts += @("2181","2182","2190")
+                }
+
                 ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
                 {
                     Name                  = "ArcGISGeoEventFirewallRulesCluster" 
                     DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
                     DisplayGroup          = "ArcGIS GeoEvent Extension" 
-                    Ensure                =  "Present"
+                    Ensure                = "Present"
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2181","2182","2190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
+                    LocalPort             = $GeoEventPorts
                     Protocol              = "TCP" 
                     DependsOn             = $Depends
                 }
@@ -470,7 +530,7 @@ Configuration ArcGISServer
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = ("2181","2182","2190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
+                    RemotePort            = $GeoEventPorts
                     Protocol              = "TCP" 
                     Direction             = "Outbound"    
                     DependsOn             = $Depends
@@ -493,20 +553,6 @@ Configuration ArcGISServer
                 $Depends += "[ArcGIS_xFirewall]GeoEventGatewayService_Firewall"
             }
 
-            #This condition is an issue
-            if($Version.Split(".")[1] -gt 5)
-            {
-                ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
-                {
-                    Name		= 'ArcGISGeoEventGateway'
-                    Credential  = $ServiceCredential
-                    StartupType = 'Automatic'
-                    State       = 'Running'
-                    DependsOn   = $Depends
-                }
-                $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
-            }
-
             ArcGIS_GeoEvent ArcGIS_GeoEvent
             {
                 ServerHostName            = $MachineFQDN
@@ -517,6 +563,39 @@ Configuration ArcGISServer
                 DependsOn                 = $Depends
                 #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }
             }
+        }
+
+        if($ServerRole -ieq "WorkflowManagerServer") 
+        {
+            #This condition is an issue
+            ArcGIS_Service_Account WorkflowManager_RunAs_Account
+            {
+                Name = 'WorkflowManager'
+                RunAsAccount = $ServiceCredential
+                ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
+                Ensure =  "Present"
+                DependsOn = $Depends
+                DataDir = "$env:ProgramData\Esri\workflowmanager"
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
+                IsMSAAccount = $ServiceCredentialIsMSA
+                SetStartupToAutomatic = $True
+            }
+            $Depends += "[ArcGIS_Service_Account]WorkflowManager_RunAs_Account"
+
+            ArcGIS_xFirewall WorkflowManagerServer_FirewallRules
+            {
+                Name                  = "ArcGISWorkflowManagerServerFirewallRules" 
+                DisplayName           = "ArcGIS Workflow Manager Server" 
+                DisplayGroup          = "ArcGIS Workflow Manager Server Extension" 
+                Ensure                = "Present"
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("13443")
+                Protocol              = "TCP" 
+                DependsOn             = $Depends
+            }
+            $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
         }
     }
 }

@@ -8,6 +8,10 @@ Configuration ArcGISPortal
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
+        $ForceServiceCredentialUpdate = $false,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
         $ServiceCredentialIsDomainAccount = $false,
 
         [Parameter(Mandatory=$false)]
@@ -118,7 +122,7 @@ Configuration ArcGISPortal
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.1.1"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
@@ -206,17 +210,6 @@ Configuration ArcGISPortal
             $Depends += @('[ArcGIS_xFirewall]Portal_Database_InBound')
         }
 
-        Service Portal_for_ArcGIS_Service
-        {
-            Name = 'Portal for ArcGIS'
-            Credential = $ServiceCredential
-            StartupType = 'Automatic'
-            State = 'Running'          
-            DependsOn = $Depends
-        } 
-
-        $Depends += @('[Service]Portal_for_ArcGIS_Service')
-
         $DataDirsForPortal = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')
         if($ContentDirectoryLocation -and (-not($ContentDirectoryLocation.StartsWith('\'))) -and ($CloudStorageType -ne 'AzureFiles'))
         {
@@ -235,37 +228,41 @@ Configuration ArcGISPortal
 
         ArcGIS_Service_Account Portal_RunAs_Account
         {
-            Name = 'Portal for ArcGIS'
-            RunAsAccount = $ServiceCredential
-            Ensure = "Present"
-            DataDir = $DataDirsForPortal
-            DependsOn = $Depends
+            Name            = 'Portal for ArcGIS'
+            RunAsAccount    = $ServiceCredential
+            ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
+            SetStartupToAutomatic = $True
+            Ensure          = "Present"
+            DataDir         = $DataDirsForPortal
+            DependsOn       = $Depends
             IsDomainAccount = $ServiceCredentialIsDomainAccount
+            IsMSAAccount    = $ServiceCredentialIsMSA
         }
         
         $Depends += @('[ArcGIS_Service_Account]Portal_RunAs_Account')
 
-        if($AzureFilesEndpoint -and $CloudStorageCredentials -and ($CloudStorageType -ieq 'AzureFiles')) 
+        if(-not($ServiceCredentialIsMSA) -and $AzureFilesEndpoint -and $CloudStorageCredentials -and ($CloudStorageType -ieq 'AzureFiles')) 
         {
-            $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
-            $storageAccountKey       = $CloudStorageCredentials.GetNetworkCredential().Password
-    
+            $FilesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
+            $StorageAccountKey       = $CloudStorageCredentials.GetNetworkCredential().Password
+      
             Script PersistStorageCredentials
             {
                 TestScript = { 
                                 $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                $result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
+                                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                                 if($result -like '*none*')
                                 {
                                     return $false
                                 }
                                 return $true
                             }
-                SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-                            $result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
+                SetScript = { 
+                                $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:FilesStorageAccountName" "/pass:$using:StorageAccountKey" 
+                                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
                             }
                 GetScript            = { return @{} }                  
-                DependsOn            = @('[ArcGIS_Service_Account]Portal_Service_Account')
+                DependsOn            = $Depends
                 PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
             }              
             $Depends += '[Script]PersistStorageCredentials'
@@ -287,10 +284,13 @@ Configuration ArcGISPortal
                                 }
                             }
                 GetScript            = { return @{} }     
+                DependsOn            = $Depends
                 PsDscRunAsCredential = $ServiceCredential # This is important, only arcgis account has access to the file share on AFS
             }             
             $Depends += '[Script]CreatePortalContentFolder'
-        } 
+        }else{
+            Write-Verbose "For MSA we assume these steps have been done independent of the module."
+        }
 
         if($Node.NodeName -ine $PrimaryPortalMachine)
         {

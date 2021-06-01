@@ -344,7 +344,7 @@
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
 						Protocol              = "TCP" 
 				}
 
@@ -357,7 +357,7 @@
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("2181","2182","2190","7077")	# Spark and Zookeeper
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
 						Protocol              = "TCP" 
 						Direction             = "Outbound"    
 				}
@@ -408,7 +408,7 @@
 				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'				
 			}
 				
-			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server'))
+			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 			{
 				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -469,7 +469,7 @@
 							Access                = "Allow" 
 							State                 = "Enabled" 
 							Profile               = ("Domain","Private","Public")
-							LocalPort             = ("2181","2182","2190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","5565","5575")										
+							LocalPort             = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","5565","5575")										
 							Protocol              = "TCP" 
 					}
 
@@ -482,7 +482,7 @@
 							Access                = "Allow" 
 							State                 = "Enabled" 
 							Profile               = ("Domain","Private","Public")
-							RemotePort            = ("2181","2182","2190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")										
+							RemotePort            = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")										
 							Protocol              = "TCP" 
 							Direction             = "Outbound"    
 					}
