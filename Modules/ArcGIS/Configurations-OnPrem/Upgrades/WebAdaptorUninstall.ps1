@@ -29,7 +29,7 @@ Configuration WebAdaptorUninstall{
 
         ArcGIS_Install WebAdaptorUninstall
         { 
-            Name = $WebAdaptorRole
+            Name = $Name
             Version = $Version
             WebAdaptorContext = $Context
             Arguments = "WEBSITE_ID=$($WebSiteId)"

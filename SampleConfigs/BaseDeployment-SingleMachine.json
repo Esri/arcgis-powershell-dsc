@@ -1,0 +1,115 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "CHEF",
+            "DataStoreTypes": [
+                "Relational"
+            ],
+            "Role": [
+                "Server",
+                "Portal",
+                "DataStore",
+                "ServerWebAdaptor",
+                "PortalWebAdaptor"
+            ],
+			"SSLCertificate":{
+				"CName": "chef.ds-esrifrance.fr"
+			}
+        }
+    ],
+    "ConfigData": {
+        "Version": "10.8.1",
+        "ServerContext": "server",
+        "PortalContext": "portal",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "UserName": "gisservices",
+                "Password": "Esri2020!",
+                "IsDomainAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "C:\\Users\\Administrateur\\Downloads\\ArcGISGISServerStandard_ArcGISServer_1012349.prvc",
+            "Installer": {
+                "Path": "C:\\Users\\Administrateur\\Downloads\\ArcGIS_Server_Windows_1081_175203.exe",
+                "InstallDir": "C:\\ArcGIS\\Server",
+                "InstallDirPython": "C:\\Python27"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "LocalRepositoryPath": "C:\\arcgisserver\\local",
+            "ServerLogsLocation": "C:\\arcgisserver\\logs",
+            "ServerDirectories": [
+                {
+                    "name": "arcgiscache",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgiscache",
+                    "directoryType": "CACHE",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                },
+                {
+                    "name": "arcgisjobs",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisjobs",
+                    "directoryType": "JOBS",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 360
+                },
+                {
+                    "name": "arcgisoutput",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisoutput",
+                    "directoryType": "OUTPUT",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 10
+                },
+                {
+                    "name": "arcgissystem",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgissystem",
+                    "directoryType": "SYSTEM",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                }
+            ],
+            "PrimarySiteAdmin": {
+                "UserName": "siteadmin",
+                "Password": "Esri2019!"
+            }
+        },
+        "Portal": {
+            "LicenseFilePath": "C:\\Users\\Administrateur\\Downloads\\ArcGIS_Enterprise_Portal_1081_326721_20210301.json",
+            "PortalLicenseUserTypeId": "creatorUT",
+            "Installer": {
+                "Path": "C:\\Users\\Administrateur\\Downloads\\Portal_for_ArcGIS_Windows_1081_175214.exe",
+                "WebStylesPath": "C:\\Users\\Administrateur\\Downloads\\Portal_for_ArcGIS_Web_Styles_Windows_1081_175215.exe",
+                "InstallDir": "C:\\ArcGIS\\Portal",
+                "ContentDir": "C:\\arcgisportal"
+            },
+            "ContentDirectoryLocation":"C:\\arcgisportal\\content",
+            "PortalAdministrator": {
+                "UserName": "portaladmin",
+                "Email": "jrascle@esrifrance.fr",
+                "Password": "Esri2019",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "Saint-Etienne"
+            }
+        },
+        "DataStore": {
+            "ContentDirectoryLocation": "C:\\arcgisdatastore",
+            "EnableFailoverOnPrimaryStop": "False",
+            "Installer": {
+                "Path": "C:\\Users\\Administrateur\\Downloads\\ArcGIS_DataStore_Windows_1081_175216.exe",
+                "InstallDir": "C:\\ArcGIS\\DataStore"
+            }
+        },
+        "WebAdaptor": {
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "C:\\Users\\Administrateur\\Downloads\\ArcGIS_Web_Adaptor_Java_Windows_1081_175228.exe",
+				"InstallDir": "C:\\ArcGIS"
+            },
+			"Type": "Java",
+			"TomcatDir":"C:\\Tomcat9",
+            "WebSiteId": 1
+        }
+    }
+}

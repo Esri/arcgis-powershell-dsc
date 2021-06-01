@@ -17,9 +17,9 @@ function Get-FQDN
             $DnsRecord = $null
             Try {
                 if(Get-Command 'Resolve-DnsName' -ErrorAction Ignore) {
-                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1
+                    $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore | Select-Object -First 1
                     if($null -eq $DnsRecord) {
-                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore
+                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1
                     }
                 }
                 if($null -eq $DnsRecord) {
@@ -1303,6 +1303,7 @@ function Invoke-ArcGISConfiguration
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $WebAdaptorCheck){
                         $JobFlag = $False
+                        $Type = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.Type){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.Type }else{ "IIS" }
                         $WebAdaptorArgs = @{
                             ConfigurationData           = $WebAdaptorCD
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
@@ -1314,8 +1315,11 @@ function Invoke-ArcGISConfiguration
                         if($ServerCheck){
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                         }
-
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                        if($Type -ieq "Java"){
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptorJava" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                        }else{
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -DebugMode $DebugMode
+                        }
                     }
                     
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $RelationalDataStoreCheck){

@@ -9,6 +9,7 @@ class ArcGIS_Install : OMI_BaseResource
 	[Write] String Arguments;
 	[Write] String LogPath;
 	[Write] String WebAdaptorContext;
+	[Write] String TomcatDir;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };
 
