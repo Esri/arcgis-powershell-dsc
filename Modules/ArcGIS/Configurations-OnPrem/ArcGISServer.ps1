@@ -112,6 +112,7 @@ Configuration ArcGISServer
     Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
+    Import-DscResource -Name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_GeoEvent
 
@@ -262,6 +263,17 @@ Configuration ArcGISServer
                 }
             }
         }
+
+        # Issue-328: Service account no longer able to "Log on as Service"
+        ArcGIS_WindowsService ArcGIS_for_Server_Service
+        {
+            Name = 'ArcGIS Server'
+            Credential = $ServiceCredential
+            StartupType = 'Automatic'
+            State = 'Running'
+            DependsOn = $Depends
+        }
+        $Depends += '[ArcGIS_WindowsService]ArcGIS_for_Server_Service'
 
         $DataDirs = @()
         if($null -ne $CloudStorageType){
