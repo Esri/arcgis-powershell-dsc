@@ -15,13 +15,10 @@
         Additional Command Line Arguments required by the installer to complete intallation of the give component successfully.
     .PARAMETER WebAdaptorContext
         Context with which the Web Adaptor Needs to be Installed.
-<<<<<<< HEAD
     .PARAMETER TomcatDir
         Path to the Tomcat Installation.
     .PARAMETER LogPath
         Optional Path where the Logs generated during the Install will be stored.
-=======
->>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
 #>
 
 function Get-TargetResource
@@ -53,10 +50,9 @@ function Get-TargetResource
 		[System.String]
         $WebAdaptorContext,
 
-<<<<<<< HEAD
         [System.String]
         $TomcatDir,
-=======
+
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -72,7 +68,6 @@ function Get-TargetResource
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $EnableMSILogging = $false,
->>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -112,10 +107,9 @@ function Set-TargetResource
 		[System.String]
         $WebAdaptorContext,
 
-<<<<<<< HEAD
         [System.String]
         $TomcatDir,
-=======
+
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -131,7 +125,6 @@ function Set-TargetResource
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $EnableMSILogging = $false,
->>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -347,13 +340,9 @@ function Set-TargetResource
                 $trueName = 'ArcGIS Notebook Server'
             }elseif($Name -ieq 'Geoevent'){
                 $trueName = 'ArcGIS Geoevent Server'
-<<<<<<< HEAD
-            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
-=======
             }elseif($Name -ieq 'WorkflowManagerServer'){
                 $trueName = 'ArcGIS Workflow Manager Server'
-            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
->>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
+            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
                 $trueName = 'ArcGIS Web Adaptor'
             }elseif($Name -ieq 'NotebookServerSamplesData'){
                 $trueName = 'ArcGIS Notebook Server Samples Data'
@@ -513,13 +502,9 @@ function Test-TargetResource
             $trueName = 'ArcGIS Notebook Server'
         }elseif($Name -ieq 'Geoevent'){
             $trueName = 'ArcGIS Geoevent Server'
-<<<<<<< HEAD
-        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
-=======
         }elseif($Name -ieq 'WorkflowManagerServer'){
             $trueName = 'ArcGIS Workflow Manager Server'
-        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
->>>>>>> 78e488fc0aac6f8f4cdf574e1bdb50a7d39ed350
+        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor' -or $Name -ieq 'PortalWebAdaptorJava' -or $Name -ieq 'ServerWebAdaptorJava'){
             $trueName = 'ArcGIS Web Adaptor'
         }elseif($Name -ieq 'NotebookServerSamplesData'){
             $trueName = 'ArcGIS Notebook Server Samples Data'
