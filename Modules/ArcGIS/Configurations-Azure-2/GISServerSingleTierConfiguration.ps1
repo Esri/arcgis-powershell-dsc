@@ -619,10 +619,10 @@
 				CName                      = "ApplicationGateway"
 				CertificateFileLocation    = $CertificateLocalFilePath
 				CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
-				EnableSSL                  = -not($Join)
+				EnableSSL                  = $True
 				ServerType                 = $ServerFunctions
 				DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') 
-				SslRootOrIntermediate	   = if($IsGeoEventServer){ [string]::Concat('[{"Alias":"GES-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+				SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
 			}
 
 			$RemoteFederationDependsOn += @('[ArcGIS_Server_TLS]Server_TLS') 

@@ -102,6 +102,10 @@ Configuration ArcGISServer
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
         $ServerDirectoriesCloudStorageCredentials,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $UsesSSL = $False,
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -109,11 +113,12 @@ Configuration ArcGISServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_GeoEvent
+    Import-DscResource -Name ArcGIS_WaitForComponent
 
     if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials) 
     {
@@ -362,14 +367,28 @@ Configuration ArcGISServer
 
         if($Node.NodeName -ine $PrimaryServerMachine)
         {
-            WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
-                ResourceName = "[ArcGIS_Server]Server$($PrimaryServerMachine)"
-                NodeName = $PrimaryServerMachine
-                RetryIntervalSec = 60
-                RetryCount = 100
-                DependsOn = $Depends
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForServer$($PrimaryServerMachine)"{
+                    Component = "Server"
+                    InvokingComponent = "Server"
+                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $Depends += "[ArcGIS_WaitForComponent]WaitForServer$($PrimaryServerMachine)"
+            }else{
+                WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
+                    ResourceName = "[ArcGIS_Server]Server$($PrimaryServerMachine)"
+                    NodeName = $PrimaryServerMachine
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $Depends
+                }
+                $Depends += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
             }
-            $Depends += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
         }
 
         ArcGIS_Server "Server$($Node.NodeName)"
@@ -596,6 +615,42 @@ Configuration ArcGISServer
                 DependsOn             = $Depends
             }
             $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
+
+            if($IsMultiMachineServer){
+                $WfmPorts = @("9830", "9820", "9840", "9880")
+
+                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
+                {
+                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 
+                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Outbound" 
+                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension" 
+                    Ensure                =  "Present"
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = $WfmPorts
+                    Protocol              = "TCP" 
+                    Direction             = "Outbound"    
+                    DependsOn             = $Depends
+                }
+                $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_OutBound"
+
+                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_InBound
+                {
+                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterInbound"
+                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Inbound"
+                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension"
+                    Ensure                = 'Present'
+                    Access                = "Allow"
+                    State                 = "Enabled"
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = $WfmPorts
+                    Protocol              = "TCP"
+                    Direction             = "Inbound"
+                    DependsOn             = $Depends
+                }
+                $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
+            }
         }
     }
 }

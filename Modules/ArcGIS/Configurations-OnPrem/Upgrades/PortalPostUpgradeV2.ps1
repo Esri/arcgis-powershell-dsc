@@ -7,11 +7,15 @@ Configuration PortalPostUpgradeV2 {
         
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $SetOnlyHostNamePropertiesFile = $False
+        $SetOnlyHostNamePropertiesFile = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $Version
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
     Import-DscResource -Name ArcGIS_PortalUpgrade 
 
     Node $AllNodes.NodeName {
@@ -32,6 +36,7 @@ Configuration PortalPostUpgradeV2 {
             PortalHostName = $MachineFQDN
             LicenseFilePath = $Node.PortalLicenseFilePath
             SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
+            Version = $Version
         }
     }
 }

@@ -19,12 +19,16 @@ Configuration ArcGISServerSettings{
 
         [Parameter(Mandatory=$false)]
         [System.String]
-        $InternalLoadBalancer
+        $InternalLoadBalancer,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsWorkflowManagerDeployment = $False
     )
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_ServerSettings
 
     Node $AllNodes.NodeName
@@ -35,7 +39,7 @@ Configuration ArcGISServerSettings{
                 CertificateId = $Node.Thumbprint
             }
         }
-        
+        $Depends = @()
         if($Node.NodeName -ieq $PrimaryServerMachine){
             ArcGIS_ServerSettings ServerSettings
             {
@@ -46,6 +50,7 @@ Configuration ArcGISServerSettings{
                 ServerEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $null } }
                 ServerEndPointPort      = if($InternalLoadBalancer){ 6443 }else{ 443 }
                 ServerEndPointContext   = if($InternalLoadBalancer){ 'arcgis' }else{ $ServerContext }
+                IsWorkflowManagerDeployment = if($IsWorkflowManagerDeployment){ $True }else{ $False }
             }
         }
     }

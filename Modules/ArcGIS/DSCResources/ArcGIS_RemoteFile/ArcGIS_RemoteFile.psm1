@@ -1,44 +1,21 @@
-
-function Invoke-DownloadFile($url, $targetFile)
-{
-   try {
-        Start-BitsTransfer -Source $url -Destination $targetFile
-   }
-   catch {
-       # Exception could happen if the bits service is not running 
-       $uri = New-Object "System.Uri" "$url"
-       $request = [System.Net.HttpWebRequest]::Create($uri)
-       $request.set_Timeout(15000) #15 second timeout
-       $response = $request.GetResponse()
-       if(-not ($responseContentLength -lt 1024))
-       {
-          $totalLength = [System.Math]::Floor($response.get_ContentLength()/1024)
-       }
-       else
-       {
-          $totalLength = [System.Math]::Floor(1024/1024)
-       }
-
-       $responseStream = $response.GetResponseStream()
-       $targetStream = New-Object -TypeName System.IO.FileStream -ArgumentList $targetFile, Create
-       $buffer = new-object byte[] 10KB
-       $count = $responseStream.Read($buffer,0,$buffer.length)
-       $downloadedBytes = $count
-       while ($count -gt 0)
-       {
-           $targetStream.Write($buffer, 0, $count)
-           $count = $responseStream.Read($buffer,0,$buffer.length)
-           $downloadedBytes = $downloadedBytes + $count
-       }
-
-       #Write-Progress -activity "Finished downloading file '$($url.split('/') | Select-Object -Last 1)'"
-
-       $targetStream.Flush()
-       $targetStream.Close()
-       $targetStream.Dispose()
-       $responseStream.Dispose()
-   }
-}
+<#
+    .SYNOPSIS
+        Makes a request to the download a file from remote file storage server.
+    .PARAMETER Url
+        Fully qualified url of the remote file to be downloaded.
+    .PARAMETER DestinationPath
+        File path on the Local machine where the image will be downloaded too.
+    .PARAMETER FileSourceType
+        Remote file storage Authentication type. Supported values - AzureFiles, AzureBlobsManagedIdentity, Default
+    .PARAMETER AFSCredential
+        Credential to use when Azure Files if being used as remote file storage server
+    .PARAMETER AFSEndpoint
+        End point of Azure Files if being used as remote file storage server
+    .PARAMETER Ensure
+        Ensure makes sure that a remote file exists on the local machine. Take the values Present or Absent. 
+        - "Present" ensures that a remote file exists on the local machine.
+        - "Absent" ensures that a remote file doesn't exists on the local machine.
+#>
 
 function Get-TargetResource
 {
@@ -48,14 +25,15 @@ function Get-TargetResource
 	(
 		[parameter(Mandatory = $true)]
 		[System.String]
-		$Url
+		$Url,
+        
+        [Parameter(Mandatory=$true)]
+        [ValidateSet("AzureFiles","AzureBlobsManagedIdentity","Default")]
+		[System.String]
+        $FileSourceType
 	)
 	
-	$returnValue = @{
-		Url = $Url
-	}
-
-	$returnValue	
+	$null	
 }
 
 
@@ -72,8 +50,9 @@ function Set-TargetResource
         $DestinationPath,
         
         [Parameter(Mandatory=$true)]
-        [System.Boolean]
-        $UseAzureFiles,
+        [ValidateSet("AzureFiles","AzureBlobsManagedIdentity","Default")]
+		[System.String]
+        $FileSourceType,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -82,9 +61,6 @@ function Set-TargetResource
         [Parameter(Mandatory=$false)]
         [System.String]
         $AFSEndpoint,
-
-		[System.Boolean]
-		$Force,
 
 		[ValidateSet("Present","Absent")]
 		[System.String]
@@ -96,38 +72,38 @@ function Set-TargetResource
     }
 
     if($Ensure -ieq 'Present') {
-          $DestinationFolder = Split-Path $DestinationPath -Parent	
-          if(-not(Test-Path $DestinationFolder)){
+        $DestinationFolder = Split-Path $DestinationPath -Parent	
+        if(-not(Test-Path $DestinationFolder)){
             Write-Verbose "Creating Directory $DestinationFolder"
             New-Item $DestinationFolder -ItemType directory
-          }	      
-          if($url.StartsWith('http', [System.StringComparison]::InvariantCultureIgnoreCase)) {
-              Write-Verbose "Downloading file $url to $DestinationPath"
-              Invoke-DownloadFile -url $url -targetFile $DestinationPath
-          }else {
-                if($UseAzureFiles){
-                    $AvailableDriveLetter = AvailableDriveLetter
-                    New-PSDrive -Name $AvailableDriveLetter -PSProvider FileSystem -Root $AFSEndpoint -Credential $AFSCredential -Persist
-                    $FileSharePath = "$($AvailableDriveLetter):\\$($url)"
-                    Write-Verbose "Copying file $FileSharePath to $DestinationPath"
-                    Copy-Item -Path $FileSharePath -Destination $DestinationPath -Force
-                    Remove-PSDrive -Name $AvailableDriveLetter
-                }else{
-                    Write-Verbose "Copying file $url to $DestinationPath"
-                    Copy-Item -Path $url -Destination $DestinationPath -Force
-                }
-          }
+        }	      
+          
+        if($FileSourceType -ieq "AzureFiles"){
+            $AvailableDriveLetter = AvailableDriveLetter
+            New-PSDrive -Name $AvailableDriveLetter -PSProvider FileSystem -Root $AFSEndpoint -Credential $AFSCredential -Persist
+            $FileSharePath = "$($AvailableDriveLetter):\\$($url)"
+            Write-Verbose "Copying file $FileSharePath to $DestinationPath"
+            Copy-Item -Path $FileSharePath -Destination $DestinationPath -Force
+            Remove-PSDrive -Name $AvailableDriveLetter
+        }else{
+            if($url.StartsWith('http', [System.StringComparison]::InvariantCultureIgnoreCase)) {
+                Write-Verbose "Downloading file $url to $DestinationPath"
+                Invoke-DownloadFile -RemoteFileUrl $url -DestinationFilePath $DestinationPath `
+                                    -IsUsingAzureBlobManagedIndentity ($FileSourceType -ieq "AzureBlobsManagedIdentity") -Verbose
+            }else{
+                Write-Verbose "Copying file $url to $DestinationPath"
+                Copy-Item -Path $url -Destination $DestinationPath -Force
+            }
+        }
     }
     elseif($Ensure -ieq 'Absent') {        
         if($DestinationPath  -and  (Test-Path $DestinationPath))
         {
-            Remove-Item -Path $DestinationPath -Force:$Force
+            Remove-Item -Path $DestinationPath -Force
         }
     }	
 
 }
-
-
 function Test-TargetResource
 {
 	[CmdletBinding()]
@@ -142,8 +118,9 @@ function Test-TargetResource
         $DestinationPath,
         
         [Parameter(Mandatory=$true)]
-        [System.Boolean]
-        $UseAzureFiles,
+        [ValidateSet("AzureFiles","AzureBlobsManagedIdentity","Default")]
+		[System.String]
+        $FileSourceType,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -153,9 +130,6 @@ function Test-TargetResource
         [System.String]
         $AFSEndpoint,
 
-		[System.Boolean]
-		$Force,
-
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -163,54 +137,66 @@ function Test-TargetResource
 
 	
 	$result = $false
-	if($DestinationPath  -and  (Test-Path $DestinationPath))
+	if($DestinationPath -and (Test-Path $DestinationPath))
     {
         $result = $true
     }    
 	if($Ensure -ieq 'Present') {
-           if($result) {
-               if($url.StartsWith('http', [System.StringComparison]::InvariantCultureIgnoreCase)) {
-                   # File Exists locally. Check the remote location
-                   Write-Verbose 'File Exists locally. Check if the remote URL has Changed using Last-Modified Header'
-                   $HasRemoteFileChanged = $true
-                   $response = $null
-                   try { 
-                        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -UseDefaultCredentials -TimeoutSec 15 -Method Head -ErrorAction Ignore 
-                   }
-                   catch{ 
-                       $HasRemoteFileChanged = $false 
-                   }
-                   if($response) {
-                        [DateTime]$RemoteFileLastModTime = $response.Headers['Last-Modified']                    
-                        if($RemoteFileLastModTime -le (Get-Item -Path $DestinationPath).CreationTime) {
-                            $HasRemoteFileChanged = $false
-                        }                    
-                   }
-                   if($HasRemoteFileChanged) {
-                     # File has changed - needs to be downloaded again
-                     $result = $false
-                   }
-               } else {
-                    if(-not($UseAzureFiles)){
-                        if((Get-Item -Path $Url).LastWriteTime -gt (Get-Item -Path $DestinationPath).CreationTime) {
-                            # File has changed - needs to be copied again
-                            $result = $false
-                        }
+        if($result) {
+            if($url.StartsWith('http', [System.StringComparison]::InvariantCultureIgnoreCase)) {
+                # File Exists locally. Check the remote location
+                Write-Verbose 'File Exists locally. Check if the remote URL has Changed using Last-Modified Header'
+                $HasRemoteFileChanged = $true
+                $response = $null
+                try { 
+                    if($FileSourceType -ieq "AzureBlobsManagedIdentity"){
+                        $ManagedIdentityAccessToken = Get-ManagedIdentityAccessToken -Verbose
+                        $Headers = @{
+                                Authorization = "Bearer $ManagedIdentityAccessToken"
+                                "x-ms-version" = "2017-11-09"
+                            }
+                        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -Headers $Headers -TimeoutSec 15 -Method Head -ErrorAction Ignore
                     }else{
+                        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -UseDefaultCredentials -TimeoutSec 15 -Method Head -ErrorAction Ignore 
+                    }
+                }
+                catch{ 
+                    $HasRemoteFileChanged = $false 
+                }
+                if($response) {
+                    [DateTime]$RemoteFileLastModTime = $response.Headers['Last-Modified']                    
+                    if($RemoteFileLastModTime -le (Get-Item -Path $DestinationPath).CreationTime) {
+                        $HasRemoteFileChanged = $false
+                    }                    
+                }
+                if($HasRemoteFileChanged) {
+                    # File has changed - needs to be downloaded again
+                    $result = $false
+                }
+            } else {
+                if($FileSourceType -eq "Default"){
+                    if((Get-Item -Path $Url).LastWriteTime -gt (Get-Item -Path $DestinationPath).CreationTime) {
+                        # File has changed - needs to be copied again
                         $result = $false
                     }
-               }
-           }
-	       $result   
+                }else{
+                    $result = $false
+                }
+            }
+        }
+        $result   
     }
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
     }	
 }
 
-Function AvailableDriveLetter ()
+function AvailableDriveLetter
 {
-    param ([char]$ExcludedLetter)
+    param (
+        [char]
+        $ExcludedLetter
+    )
     $Letter = [int][char]'C'
     $i = @()
     #getting all the used Drive letters reported by the Operating System
@@ -218,9 +204,42 @@ Function AvailableDriveLetter ()
     #Adding the excluded letter
     $i+=$ExcludedLetter
     while($i -contains $([char]$Letter)){$Letter++}
-    Return $([char]$Letter)
+    return $([char]$Letter)
 }
 
+function Get-ManagedIdentityAccessToken
+{
+    $response = Invoke-WebRequest -Uri 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F' -UseBasicParsing -Method GET -Headers @{Metadata="true"}
+    $content = $response.Content | ConvertFrom-Json
+    $ArmToken = $content.access_token
+    return $ArmToken
+}
+
+function Invoke-DownloadFile
+{
+    param (
+        [System.String]
+        $RemoteFileUrl,
+        
+        [System.String]
+        $DestinationFilePath,
+
+        [System.Boolean]
+        $IsUsingAzureBlobManagedIndentity
+    )
+    try {
+        $wc = New-Object System.Net.WebClient;
+        if($IsUsingAzureBlobManagedIndentity){
+            $ManagedIdentityAccessToken = Get-ManagedIdentityAccessToken -Verbose
+            $wc.Headers.Add('Authorization', "Bearer $ManagedIdentityAccessToken")
+            $wc.Headers.Add("x-ms-version", "2017-11-09")
+        }
+        $wc.DownloadFile($RemoteFileUrl, $DestinationFilePath)        
+    }
+    catch {
+        throw "Error downloading remote file. Error - $_"
+    }
+}
 
 Export-ModuleMember -Function *-TargetResource
 

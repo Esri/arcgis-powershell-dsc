@@ -46,6 +46,10 @@ Configuration MissionServerSingleTierConfiguration{
         $StorageAccountCredential
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $PublicKeySSLCertificateFileUrl
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $SelfSignedSSLCertificatePassword
                 
@@ -129,7 +133,12 @@ Configuration MissionServerSingleTierConfiguration{
     if($ServerLicenseFileUrl) {
         $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-    }    
+    }  
+    
+    if($PublicKeySSLCertificateFileUrl){
+		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
+		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+	}
         
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1
     $FileShareHostName = $ServerHostName
@@ -405,6 +414,7 @@ Configuration MissionServerSingleTierConfiguration{
                 CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
                 ServerType                 = $ServerFunctions
                 DependsOn                  = @('[ArcGIS_MissionServer]MissionServer','[ArcGIS_MissionServerSettings]MissionServerSettings','[Script]CopyCertificateFileToLocalMachine') 
+                SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
             }
             $DependsOn += @('[ArcGIS_Server_TLS]Server_TLS')
         }

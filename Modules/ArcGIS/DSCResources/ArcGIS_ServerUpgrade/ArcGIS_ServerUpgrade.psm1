@@ -63,15 +63,16 @@ function Set-TargetResource
         $Referer = "http://localhost"
         $ServerSiteURL = "https://$($ServerHostName):6443"
         [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
+        
+        Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
         $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json';runAsync='true'} -Referer $Referer -Verbose
                     
-        Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
-        if($Response.upgradeStatus -ieq 'IN_PROGRESS') {
+        if($Response.upgradeStatus -ieq 'IN_PROGRESS' -or ($Response.status -ieq "error" -and $Response.code -ieq 403 -and ($Response.messages -imatch "Upgrade in progress."))) {
             Write-Verbose "Upgrade in Progress"
 			$ServerReady = $false
 			$Attempts = 0
 
-            while(-not($ServerReady) -and ($Attempts -lt 60)){
+            while(-not($ServerReady) -and ($Attempts -lt 120)){
                 $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
                 if(($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error')){
                     Write-Verbose "Server Upgrade is likely done!"
@@ -86,6 +87,8 @@ function Set-TargetResource
                         $currentversion = "10.7.1"
                     }elseif($currentversion -ieq "10.81"){
                         $currentversion = "10.8.1"
+                    }elseif($currentversion -ieq "10.91"){
+                        $currentversion = "10.9.1"
                     }
                     
                     if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){

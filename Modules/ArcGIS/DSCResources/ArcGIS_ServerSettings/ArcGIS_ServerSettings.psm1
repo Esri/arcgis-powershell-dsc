@@ -20,7 +20,10 @@ function Get-TargetResource
 		$ServerEndPoint,
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator
+		$SiteAdministrator,
+
+		[System.Boolean]
+		$IsWorkflowManagerDeployment = $False
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -56,7 +59,10 @@ function Set-TargetResource
 		$ServerEndPointContext = 'arcgis',
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator
+		$SiteAdministrator,
+
+		[System.Boolean]
+		$IsWorkflowManagerDeployment = $False
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -131,7 +137,13 @@ function Set-TargetResource
 		Start-Service -Name $ServiceName         
 		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
 		Write-Verbose "Restarted Service $ServiceName"
-    }    
+    }
+	
+	if($IsWorkflowManagerDeployment){
+		Start-Service -Name "WorkflowManager"
+		Wait-ForServiceToReachDesiredState -ServiceName "WorkflowManager" -DesiredState 'Running'
+		Write-Verbose "Started Service WorkflowManager"
+	}
     
     Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
 	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
@@ -166,7 +178,10 @@ function Test-TargetResource
 		$ServerEndPointContext = 'arcgis',
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator
+		$SiteAdministrator,
+
+		[System.Boolean]
+		$IsWorkflowManagerDeployment = $False
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false

@@ -343,7 +343,8 @@ Configuration ServerUpgrade{
                     Access                = "Allow"
                     State                 = "Enabled"
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")                    Protocol              = "TCP" 
+                    RemotePort            = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")
+                    Protocol              = "TCP" 
                     Direction             = "Outbound"
                 }
                 $Depends += '[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound'

@@ -86,6 +86,10 @@ Configuration ArcGISMissionServer
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
         $ServerDirectoriesCloudStorageCredentials,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $UsesSSL = $False,
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -93,12 +97,13 @@ Configuration ArcGISMissionServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_MissionServer
     Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_WaitForComponent
 
     if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials)
     {
@@ -253,14 +258,28 @@ Configuration ArcGISMissionServer
 
         if($Node.NodeName -ine $PrimaryServerMachine)
         {
-            WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
-                ResourceName = "[ArcGIS_MissionServer]MissionServer$($PrimaryServerMachine)"
-                NodeName = $PrimaryServerMachine
-                RetryIntervalSec = 60
-                RetryCount = 100
-                DependsOn = $DependsOn
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForServer$($PrimaryServerMachine)"{
+                    Component = "MissionServer"
+                    InvokingComponent = "MissionServer"
+                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $DependsOn += "[ArcGIS_WaitForComponent]WaitForServer$($PrimaryServerMachine)"
+            }else{
+                WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
+                    ResourceName = "[ArcGIS_MissionServer]MissionServer$($PrimaryServerMachine)"
+                    NodeName = $PrimaryServerMachine
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $DependsOn
+                }
+                $DependsOn += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
             }
-            $DependsOn += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
         }
 
         ArcGIS_MissionServer "MissionServer$($Node.NodeName)"

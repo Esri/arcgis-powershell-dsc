@@ -57,14 +57,19 @@ Configuration ArcGISDataStore
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
+        $UsesSSL = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore
+    Import-DscResource -Name ArcGIS_WaitForComponent
 
     Node $AllNodes.NodeName 
     {
@@ -236,39 +241,81 @@ Configuration ArcGISDataStore
         $IsStandByRelational = (($Node.NodeName -ine $PrimaryDataStore) -and $Node.DataStoreTypes -icontains 'Relational')
         if($IsStandByRelational)
         {
-            WaitForAll "WaitForAllRelationalDataStore$($PrimaryDataStore)"
-            {
-                ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
-                NodeName = $PrimaryDataStore
-                RetryIntervalSec = 60
-                RetryCount = 100
-                DependsOn = $Depends
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForRelationalDataStore$($PrimaryDataStore)"{
+                    Component = "DataStore"
+                    InvokingComponent = "DataStore"
+                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $DependsOn += "[ArcGIS_WaitForComponent]WaitForRelationalDataStore$($PrimaryDataStore)"
+            }else{
+                WaitForAll "WaitForAllRelationalDataStore$($PrimaryDataStore)"
+                {
+                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
+                    NodeName = $PrimaryDataStore
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $Depends
+                }
+                $Depends += "[WaitForAll]WaitForAllRelationalDataStore$($PrimaryDataStore)"
             }
-            $Depends += "[WaitForAll]WaitForAllRelationalDataStore$($PrimaryDataStore)"
         }
 
         if(($PrimaryBigDataStore -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'SpatioTemporal'))
         {
-            WaitForAll "WaitForAllBigDataStore$($PrimaryBigDataStore)"{
-                ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryBigDataStore)"
-                NodeName = $PrimaryBigDataStore
-                RetryIntervalSec = 60
-                RetryCount = 100
-                DependsOn = $Depends
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForBigDataStore$($PrimaryBigDataStore)"{
+                    Component = "SpatioTemporal"
+                    InvokingComponent = "DataStore"
+                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $DependsOn += "[ArcGIS_WaitForComponent]WaitForBigDataStore$($PrimaryBigDataStore)"
+            }else{
+                WaitForAll "WaitForAllBigDataStore$($PrimaryBigDataStore)"{
+                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryBigDataStore)"
+                    NodeName = $PrimaryBigDataStore
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $Depends
+                }
+                $Depends += "[WaitForAll]WaitForAllBigDataStore$($PrimaryBigDataStore)"
             }
-            $Depends += "[WaitForAll]WaitForAllBigDataStore$($PrimaryBigDataStore)"
         }
 
         if(($PrimaryTileCache -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'TileCache'))
         {
-            WaitForAll "WaitForAllTileCache$($PrimaryTileCache)"{
-                ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryTileCache)"
-                NodeName = $PrimaryTileCache
-                RetryIntervalSec = 60
-                RetryCount = 100
-                DependsOn = $Depends
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForTileCache$($PrimaryTileCache)"{
+                    Component = "TileCache"
+                    InvokingComponent = "DataStore"
+                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $DependsOn += "[ArcGIS_WaitForComponent]WaitForTileCache$($PrimaryTileCache)"
+            }else{
+                WaitForAll "WaitForAllTileCache$($PrimaryTileCache)"{
+                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryTileCache)"
+                    NodeName = $PrimaryTileCache
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $Depends
+                }
+                $Depends += "[WaitForAll]WaitForAllTileCache$($PrimaryTileCache)"
             }
-            $Depends += "[WaitForAll]WaitForAllTileCache$($PrimaryTileCache)"
         }
 
         ArcGIS_DataStore "DataStore$($Node.NodeName)"

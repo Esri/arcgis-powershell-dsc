@@ -129,67 +129,57 @@ function Test-TargetResource
     $ComponentName = $Name
     if($Name -ieq "ArcGIS Pro"){
         $ComponentName = 'Pro'
-    }
-    if($Name -ieq "ArcGIS Desktop"){
+    }elseif($Name -ieq "ArcGIS Desktop"){
         $ComponentName = 'Desktop'
-    }
-    if($Name -ieq "ArcGIS License Manager"){
+    }elseif($Name -ieq "ArcGIS License Manager"){
         $ComponentName = 'LicenseManager'
-    }
-
-    if($Name -ieq "ArcGIS for Server"){
+    }elseif($Name -ieq "ArcGIS for Server"){
         $ComponentName = 'Server'
-    }
-    if($Name -ieq "Portal for ArcGIS"){
-        $ComponentName = 'Portal'
-    }
-    if($Name -ieq "Web Styles"){
+    }elseif($Name -ieq "Web Styles"){
         $ComponentName = 'WebStyles'
-    }
-    if($Name -ieq "DataStore"){
+    }elseif($Name -ieq "DataStore"){
         $ComponentName = 'DataStore'
-    }
-    if($Name -ieq "GeoEvent"){
+    }elseif($Name -ieq "GeoEvent"){
         $ComponentName = 'GeoEvent'
-    }
-    if($Name -ieq "Notebook Server"){
+    }elseif($Name -ieq "Notebook Server"){
         $ComponentName = 'NotebookServer'
-    }
-    if($Name -ieq "Mission Server"){
+    }elseif($Name -ieq "Mission Server"){
         $ComponentName = 'MissionServer'
-    }
-    if($Name -ieq "Workflow Manager Server"){
+    }elseif($Name -ieq "Workflow Manager Server"){
         $ComponentName = 'WorkflowManagerServer'
+    }elseif($Name -ieq "Workflow Manager WebApp"){
+        $ComponentName = 'WorkflowManagerWebApp'
+    }elseif($Name -ieq "Insights"){
+        $ComponentName = 'Insights'
+    }elseif($Name -ieq "WebAdaptor"){
+        $ComponentName = 'WebAdaptor'
     }
 
     if(-not($ProductId)){
-        $trueName = $Name
-        if($Name -ieq 'LicenseManager'){
-            $trueName = 'License Manager'
-        }elseif($Name -ieq 'DataStore'){
-            $trueName = 'Data Store'
-        }elseif($Name -ieq 'Server'){
-            $trueName = 'ArcGIS Server'
-        }elseif($Name -ieq 'MissionServer'){
-            $trueName = 'ArcGIS Mission Server'
-        }elseif($Name -ieq 'NotebookServer'){
-            $trueName = 'ArcGIS Notebook Server'
-        }elseif($Name -ieq 'Geoevent'){
-            $trueName = 'ArcGIS Geoevent Server'
-        }elseif($Name -ieq 'WorkflowManagerServer'){
-            $trueName = 'ArcGIS Workflow Manager Server'
+        $trueName = Get-ArcGISProductName -Name $ComponentName -Version $Version
+        
+        $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
+        if($Name -ieq 'WebAdaptor'){
+            if($InstallObject.Length -gt 1){
+                Write-Verbose "Multiple Instances of Web Adaptor are already installed - $($InstallObject.Version)"
+            }
+            foreach($wa in $InstallObject){
+                $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
+                if($result -ieq $True){
+                    Write-Verbose "Found Web Adaptor Installed for Version $Version"
+                    break
+                }else{
+                    $result = $False
+                }
+            }
+        }else{
+            Write-Verbose "Installed Version $($InstallObject.Version)"
+            $result = Test-Install -Name $ComponentName -Version $Version
         }
-
-        $ver = (Get-ArcGISProductDetails -ProductName $trueName)
-        Write-Verbose "Installed Version $($ver.Version)"
-
-        $result = Test-Install -Name $ComponentName -Version $Version
-
     }else{
         $result = Test-Install -Name $ComponentName -ProductId $ProductId
     }
    
-
     #test for installed patches
     if($result -and $PatchesDir) {
         $files = Get-ChildItem "$PatchesDir"        
@@ -243,6 +233,7 @@ Function Test-PatchInstalled {
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" ,
         "HKLM:\SOFTWARE\ESRI\Portal for ArcGIS\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\ArcGIS Data Store\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Insights\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.3\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.4\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.5\Updates\*" ,
@@ -250,12 +241,17 @@ Function Test-PatchInstalled {
         "HKLM:\SOFTWARE\ESRI\Server10.7\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.8\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.9\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\GeoEvent10.6\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent10.7\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent10.8\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent10.9\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.6\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.7\Updates\*",
-        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.8\Updates\*"
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.8\Updates\*",
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.8.1\Updates\*"
     )
     
     ForEach ( $RegPath in $RegPaths ) {

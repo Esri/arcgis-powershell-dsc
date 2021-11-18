@@ -86,11 +86,6 @@ function Set-TargetResource
         if(-not($Version)){
             try{
                 $ErrorActionPreference = "Stop"; #Make all errors terminating
-                <#$RegistryPath = 'HKLM:\SOFTWARE\ESRI\ArcGIS'
-                if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
-                    $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
-                } 
-                $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
                 $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "ArcGIS Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "ArcGIS Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
                 $RealVersion = (Get-ArcGISProductDetails -ProductName $ComponentName).Version
             }catch{
@@ -166,11 +161,6 @@ function Test-TargetResource
     if(-not($Version)){
         try{
             $ErrorActionPreference = "Stop"; #Make all errors terminating
-            <#$RegistryPath = 'HKLM:\SOFTWARE\ESRI\ArcGIS'
-            if($Component -ieq 'Desktop' -or $Component -ieq 'Pro') {
-                $RegistryPath = 'HKLM:\SOFTWARE\WoW6432Node\esri\ArcGIS'
-            } 
-            $RealVersion = (Get-ItemProperty -Path $RegistryPath).RealVersion#>
             $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "ArcGIS Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "ArcGIS Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
             $RealVersion = (Get-ArcGISProductDetails -ProductName $ComponentName).Version
         }catch{
@@ -284,7 +274,7 @@ function Invoke-LicenseSoftware
             if($Product -ieq 'Desktop'){
                 $SoftwareAuthExePath = "$env:SystemDrive\Program Files (x86)\Common Files\ArcGIS\bin\softwareauthorization.exe"
             }elseif($Product -ieq 'Pro'){
-                $InstallLocation = (Get-ArcGISProductDetails -ProductName "Pro").InstallLocation
+                $InstallLocation = (Get-ArcGISProductDetails -ProductName "ArcGIS Pro" | Where-Object {$_.Name -ieq "ArcGIS Pro"}).InstallLocation
                 $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorizationPro.exe"
             }
         }else{

@@ -122,6 +122,11 @@ function Set-TargetResource
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+    
+    $ComponentName = $Name
+    if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        $ComponentName = "WebAdaptor"
+    }
 
     if($Ensure -eq 'Present') {
         if(-not(Test-Path $Path)){
@@ -137,11 +142,13 @@ function Set-TargetResource
                                         "IIS-ASPNET45", "IIS-NetFxExtensibility45", "IIS-WebSockets")
 
             foreach($pr in $PreRequisiteWindowsFeatures){
-                Write-Verbose "Installing Windows Feature: $pr"
                 if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
                 {
                     if(-not((Get-WindowsOptionalFeature -FeatureName $pr -online).State -ieq "Enabled")){
+                        Write-Verbose "Installing Windows Feature: $pr"
                         Enable-WindowsOptionalFeature -Online -FeatureName $pr -All
+                    }else{
+                        Write-Verbose "Windows Feature: $pr already exists."
                     }
                 }else{
                     Write-Verbose "Please check the Machine Operating System Compatatbilty"
@@ -153,7 +160,6 @@ function Set-TargetResource
         if((Get-Item $Path).length -gt 5mb)
         {
             Write-Verbose 'Self Extracting Installer'
-            $ComponentName = if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){ "WebAdaptor" }else{ $Name }
 
             $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
             $ProdId = $ProductId
@@ -204,15 +210,15 @@ function Set-TargetResource
             $ExecPath = $Path
         }
 
-        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","NotebookServerSamplesData") -icontains $Name)){
-            if(-not(@("WorkflowManagerServer","GeoEvent") -icontains $Name)){
+        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","WorkflowManagerWebApp","NotebookServerSamplesData", "Insights") -icontains $ComponentName)){
+            if(-not(@("WorkflowManagerServer","WorkflowManagerWebApp","GeoEvent","Insights") -icontains $ComponentName)){
                 $Arguments += " USER_NAME=$($ServiceCredential.UserName)"
             }
             
             if($ServiceCredentialIsMSA){
                 $Arguments += " MSA=TRUE";
             }else{
-                $Arguments += " PASSWORD=$($ServiceCredential.GetNetworkCredential().Password)";
+                $Arguments += " PASSWORD=`"$($ServiceCredential.GetNetworkCredential().Password)`"";
             }
         }
 
@@ -295,28 +301,8 @@ function Set-TargetResource
         Write-Verbose "Validating the $Name Installation"
         $result = $false
         if(-not($ProductId)){
-            $trueName = $Name
-            if($Name -ieq 'LicenseManager'){
-                $trueName = 'License Manager'
-            }elseif($Name -ieq 'WebStyles'){
-                $trueName = 'Web Styles'
-            }elseif($Name -ieq 'DataStore'){
-                $trueName = 'Data Store'
-            }elseif($Name -ieq 'Server'){
-                $trueName = 'ArcGIS Server'
-            }elseif($Name -ieq 'MissionServer'){
-                $trueName = 'ArcGIS Mission Server'
-            }elseif($Name -ieq 'NotebookServer'){
-                $trueName = 'ArcGIS Notebook Server'
-            }elseif($Name -ieq 'Geoevent'){
-                $trueName = 'ArcGIS Geoevent Server'
-            }elseif($Name -ieq 'WorkflowManagerServer'){
-                $trueName = 'ArcGIS Workflow Manager Server'
-            }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
-                $trueName = 'ArcGIS Web Adaptor'
-            }elseif($Name -ieq 'NotebookServerSamplesData'){
-                $trueName = 'ArcGIS Notebook Server Samples Data'
-            }
+            $trueName = Get-ArcGISProductName -Name $Name -Version $Version
+            
             $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
 
             if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
@@ -349,8 +335,6 @@ function Set-TargetResource
 		}
     }
     elseif($Ensure -eq 'Absent') {
-        $ComponentName = if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){ "WebAdaptor" }else{ $Name }
-
         $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
             $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
@@ -447,28 +431,8 @@ function Test-TargetResource
 	$result = $false
     
     if(-not($ProductId)){
-        $trueName = $Name
-        if($Name -ieq 'LicenseManager'){
-            $trueName = 'License Manager'
-        }elseif($Name -ieq 'WebStyles'){
-            $trueName = 'Web Styles'
-        }elseif($Name -ieq 'DataStore'){
-            $trueName = 'Data Store'
-        }elseif($Name -ieq 'Server'){
-            $trueName = 'ArcGIS Server'
-        }elseif($Name -ieq 'MissionServer'){
-            $trueName = 'ArcGIS Mission Server'
-        }elseif($Name -ieq 'NotebookServer'){
-            $trueName = 'ArcGIS Notebook Server'
-        }elseif($Name -ieq 'Geoevent'){
-            $trueName = 'ArcGIS Geoevent Server'
-        }elseif($Name -ieq 'WorkflowManagerServer'){
-            $trueName = 'ArcGIS Workflow Manager Server'
-        }elseif($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
-            $trueName = 'ArcGIS Web Adaptor'
-        }elseif($Name -ieq 'NotebookServerSamplesData'){
-            $trueName = 'ArcGIS Notebook Server Samples Data'
-        }
+        $trueName = Get-ArcGISProductName -Name $Name -Version $Version        
+        
         $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
             if($InstallObject.Length -gt 1){

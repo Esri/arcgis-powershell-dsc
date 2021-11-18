@@ -476,7 +476,7 @@ function Import-ExistingCertificate
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
     if($res -and $res.Content) {
         $response = $res | ConvertFrom-Json
-        Confirm-ResponseStatus $response -Url $ImportCACertUrl
+        Confirm-ResponseStatus $response -Url $ImportCertUrl
     } else {
         Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
     }
@@ -516,7 +516,7 @@ function Import-RootOrIntermediateCertificate
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
     if($res -and $res.Content) {
         $response = $res | ConvertFrom-Json
-        Confirm-ResponseStatus $response -Url $ImportCACertUrl
+        Confirm-ResponseStatus $response -Url $ImportCertUrl
     } else {
         Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
     }

@@ -114,23 +114,21 @@ function Set-TargetResource
 
         Write-Verbose "Ensure the Publishing GP Service (Tool) is started on Server"
         $PublishingToolsPath = 'System/PublishingTools.GPServer'
-        if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
-            [int]$NumAttempts = 0
-            [bool]$Done = $False
-            while(-not($Done) -and ($NumAttempts -lt 10)) {
-                Write-Verbose "Sleeping for 1 minutes for the Publishing Service To Come up"
-                Start-Sleep -Seconds 60
-                $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-                Write-Verbose "Service Status :- $serviceStatus"
-                if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
-                    Write-Verbose "Starting Service $PublishingToolsPath"
-                    Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
-                }else{
-                    Write-Verbose "Service $PublishingToolsPath are started."
-                    break;
-                }
-                $NumAttempts++
+        [int]$NumAttempts = 0
+        [bool]$Done = $False
+        while(-not($Done) -and ($NumAttempts -lt 10)) {
+            Write-Verbose "Sleeping for 1 minutes for the Publishing Service To Come up"
+            Start-Sleep -Seconds 60
+            $serviceStatus = Get-ServiceStatus -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+            Write-Verbose "Service Status :- $serviceStatus"
+            if($serviceStatus.configuredState -ine 'STARTED' -or $serviceStatus.realTimeState -ine 'STARTED') {
+                Write-Verbose "Starting Service $PublishingToolsPath"
+                Start-ServerService -ServerURL $ServerUrl -Token $token.token -Referer $Referer -ServicePath $PublishingToolsPath
+            }else{
+                Write-Verbose "Service $PublishingToolsPath are started."
+                break;
             }
+            $NumAttempts++
         }
 
         [bool]$IsPostgres = $DatabaseType -ieq 'AzurePostgreSQLDatabase'
@@ -314,8 +312,8 @@ function Set-TargetResource
         }
         
         try {
-			[string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS').RealVersion
-            Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
+            [string]$RealVersion = (Get-ArcGISProductDetails -ProductName "ArcGIS Server").Version
+			Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
             $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
             Write-Verbose "Product Version of ArcGIS Software Installed:- $Version"
 

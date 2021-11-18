@@ -40,6 +40,10 @@
         $ServerMachineNames
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $PublicKeySSLCertificateFileUrl
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $SelfSignedSSLCertificatePassword
 
@@ -102,12 +106,17 @@
     Import-DscResource -Name ArcGIS_ServerSettings
     
     ##
-    ## Download license file
+    ## Download license file and certificate files
     ##
     if($ServerLicenseFileUrl -and ($ServerLicenseFileUrl.Trim().Length -gt 0)) {
         $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-    }    
+    }
+
+    if($PublicKeySSLCertificateFileUrl){
+		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
+		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+	}
         
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1    
     $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
@@ -335,9 +344,10 @@
                     CName                      = "ApplicationGateway"
                     CertificateFileLocation    = $CertificateLocalFilePath
                     CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
-                    EnableSSL                  = -not($Join)
+                    EnableSSL                  = $True
                     ServerType                 = "GeneralPurposeServer"
 			        DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') 
+                    SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
                 }
 
                 if($env:ComputerName -ieq $ServerHostName) # Perform on First machine

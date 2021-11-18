@@ -32,7 +32,7 @@ Configuration ArcGISRasterDataStoreItem
         $FileShareLocalPath
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_FileShare
     Import-DSCResource -Name ArcGIS_DataStoreItem
 
@@ -64,7 +64,7 @@ Configuration ArcGISRasterDataStoreItem
             Ensure = "Present"
             SiteAdministrator = $ServerPrimarySiteAdminCredential
             DataStoreType = "RasterStore"
-            DataStorePath = if($ExternalFileSharePath){ $ExternalFileSharePath }else{ "\\$($env:ComputerName)\$($FileShareName)" }
+            DataStorePath = if($ExternalFileSharePath){ $ExternalFileSharePath }else{ "\\$($Node.NodeName)\$($FileShareName)" }
         }
     }
 }

@@ -28,7 +28,7 @@ Configuration ArcGISFileShare
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_FileShare
 
     Node $AllNodes.NodeName 
@@ -37,6 +37,22 @@ Configuration ArcGISFileShare
             LocalConfigurationManager
             {
                 CertificateId = $Node.Thumbprint
+            }
+        }
+
+        $DependsOn = @()
+        if($null -ne $ServiceCredential){
+            if(-not($ServiceCredentialIsDomainAccount) -and -not($ServiceCredentialIsMSA)){
+                User ArcGIS_RunAsAccount
+                {
+                    UserName = $ServiceCredential.UserName
+                    Password = $ServiceCredential
+                    FullName = 'ArcGIS Run As Account'
+                    Ensure = "Present"
+                    PasswordChangeRequired = $false
+                    PasswordNeverExpires = $true
+                }
+                $DependsOn += '[User]ArcGIS_RunAsAccount'
             }
         }
         
@@ -49,6 +65,7 @@ Configuration ArcGISFileShare
             FilePaths = if($FilePaths -and ($FilePaths -ne "")){ $FilePaths }else{ $null }
             IsDomainAccount = $ServiceCredentialIsDomainAccount
             IsMSAAccount = $ServiceCredentialIsMSA
+            DependsOn = $DependsOn
         }        
     }
 }

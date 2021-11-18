@@ -220,9 +220,22 @@ function Join-PortalSite {
         $HealthCheckUrl = "https://$($PeerMachineHostName):7443/arcgis/portaladmin/healthCheck/?f=json"
         Write-Verbose "Making request to health check URL '$HealthCheckUrl'" 
         try {
-            Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -Verbose -HttpFormParameters @{ f='json' } -Referer 'http://localhost' -HttpMethod 'POST'
-            Write-Verbose "Health check succeeded"
-            $PrimaryReady = $true
+            $Response = Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+            if ($Response.status){
+                if($Response.status -ieq "success"){
+                    Write-Verbose "Health check succeeded"
+                    $PrimaryReady = $true
+                }elseif ($Response.status -ieq "error") { 
+                    throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
+                }else{
+                    throw "Unknow Error"
+                }
+            }elseif ($Response.error) { 
+                throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
+                throw "ERROR: $($Response.error.messages)"
+            }else{
+                throw "Unknow Error"
+            }
         }catch {
             Write-Verbose "Health check did not suceed. Error:- $_"
             Start-Sleep -Seconds 30
@@ -263,9 +276,22 @@ function Join-PortalSite {
 			$HealthCheckUrl = "https://$($PeerMachineHostName):7443/arcgis/portaladmin/healthCheck/?f=json"
 			Write-Verbose "Making request to health check URL '$HealthCheckUrl'" 
 			try {
-				Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -Verbose -HttpFormParameters @{ f='json' } -Referer 'http://localhost' -HttpMethod 'POST'
-				Write-Verbose "Health check succeeded"
-				$PrimaryReady = $true
+				$Response = Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+                if ($Response.status){
+                    if($Response.status -ieq "success"){
+                        Write-Verbose "Health check succeeded"
+                        $PrimaryReady = $true
+                    }elseif ($Response.status -ieq "error") { 
+                        throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
+                    }else{
+                        throw "Unknow Error"
+                    }
+                }elseif ($Response.error) { 
+                    throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
+                    throw "ERROR: $($Response.error.messages)"
+                }else{
+                    throw "Unknow Error"
+                }
 			}catch {
 				Write-Verbose "Health check did not suceed. Error:- $_"
 				Start-Sleep -Seconds 30
@@ -445,6 +471,14 @@ function Set-TargetResource {
 			Write-Verbose "hostname.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
             $RestartRequired = $true 
         }
+    }
+
+    if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+        Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
+        if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
+             # Need to restart the service to pick up the EC2
+             $RestartRequired = $true
+         }  
     }
 
     $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
@@ -893,6 +927,13 @@ function Test-TargetResource {
     else {
         Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'"
         $result = $false
+    }
+
+    if($result) {
+        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+            Write-Verbose "Amazon Elements present in NodeAgentExt.xml. Will be removed in Set Method"
+            $result = $false
+        }         
     }
 
     if ($result) {
@@ -1583,6 +1624,65 @@ function Delete-PortalEmailSettings
     if($resp.error -and $resp.error.message){
         throw "[Error] - Delete-PortalEmailSettings Response:- $($resp.error.message)"
     }
+}
+
+function Get-NodeAgentAmazonElementsPresent
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [System.String]
+        $InstallDir       
+    )
+
+    $Enabled = $false
+    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
+    if(Test-Path $File){
+        [xml]$xml = Get-Content $File
+        if((($xml.NodeAgent.Observers.Observer | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
+                ($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon') -or `
+                (($xml.NodeAgent.Plugins.Plugin | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
+                ($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon'))
+        {
+            Write-Verbose "Amazon elements exist in $File"
+            $Enabled = $true
+        }
+    }
+
+    $Enabled
+}
+
+function Remove-NodeAgentAmazonElements
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [System.String]
+        $InstallDir  
+    )
+
+    $Changed = $false
+    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
+    if(Test-Path $File){
+        [xml]$xml = Get-Content $File
+        if($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon')
+        {
+            $xml.NodeAgent.Observers.RemoveChild($xml.NodeAgent.Observers.Observer)
+            Write-Verbose "Amazon Observer exists in $File. Removing it"
+            $Changed = $true
+        }
+        if($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon')
+        {
+            $xml.NodeAgent.Plugins.RemoveChild($xml.NodeAgent.Plugins.Plugin)
+            Write-Verbose "Amazon plugin exists in $File. Removing it"
+            $Changed = $true
+        }
+        if($Changed) {
+            $xml.Save($File)
+        }
+    }
+
+    $Changed
 }
 
 Export-ModuleMember -Function *-TargetResource
