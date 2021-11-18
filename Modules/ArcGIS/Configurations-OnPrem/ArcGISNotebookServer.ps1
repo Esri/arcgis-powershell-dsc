@@ -97,17 +97,22 @@ Configuration ArcGISNotebookServer
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
+        $UsesSSL = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_NotebookServer
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_NotebookServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_WaitForComponent
 
     if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials)
     {
@@ -262,14 +267,28 @@ Configuration ArcGISNotebookServer
 
         if($Node.NodeName -ine $PrimaryServerMachine)
         {
-            WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
-                ResourceName = "[ArcGIS_NotebookServer]NotebookServer$($PrimaryServerMachine)"
-                NodeName = $PrimaryServerMachine
-                RetryIntervalSec = 60
-                RetryCount = 100
-                DependsOn = $DependsOn
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForServer$($PrimaryServerMachine)"{
+                    Component = "NotebookServer"
+                    InvokingComponent = "NotebookServer"
+                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $DependsOn += "[ArcGIS_WaitForComponent]WaitForServer$($PrimaryServerMachine)"
+            }else{
+                WaitForAll "WaitForAllServer$($PrimaryServerMachine)"{
+                    ResourceName = "[ArcGIS_NotebookServer]NotebookServer$($PrimaryServerMachine)"
+                    NodeName = $PrimaryServerMachine
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $DependsOn
+                }
+                $DependsOn += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
             }
-            $DependsOn += "[WaitForAll]WaitForAllServer$($PrimaryServerMachine)"
         }
 
         ArcGIS_NotebookServer "NotebookServer$($Node.NodeName)"

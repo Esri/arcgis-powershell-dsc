@@ -6,8 +6,9 @@
         $Installers,
 
         [Parameter(Mandatory=$true)]
-        [System.Boolean]
-        $UseAzureFiles,
+        [ValidateSet("AzureFiles","AzureBlobsManagedIdentity","Default")]
+		[System.String]
+        $FileSourceType,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -42,9 +43,9 @@
                 {
                     Url = $Installer.RemotePath
                     DestinationPath = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) 
-                    UseAzureFiles = if($UseAzureFiles){ $true }else{ $false }
-                    AFSEndpoint = if($UseAzureFiles){ $AFSEndpoint }else{ $null }
-                    AFSCredential = if($UseAzureFiles){ $AFSCredential }else{ $null }         
+                    FileSourceType = $FileSourceType
+                    AFSEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
+                    AFSCredential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }         
                     Ensure = $Ensure
                 }
 
@@ -55,9 +56,9 @@
                         {
                             Url = $PatchFileName
                             DestinationPath = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir) $PatchFileName)
-                            UseAzureFiles = if($UseAzureFiles){ $true }else{ $false }
-                            AFSEndpoint = if($UseAzureFiles){ $AFSEndpoint }else{ $null }
-                            AFSCredential = if($UseAzureFiles){ $AFSCredential }else{ $null }         
+                            FileSourceType = $FileSourceType
+                            AFSEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
+                            AFSCredential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }         
                             Ensure = $Ensure
                         }
                     }

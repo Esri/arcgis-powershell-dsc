@@ -115,6 +115,10 @@ Configuration ArcGISPortal
         [ValidateSet("SSL", "TLS", "NONE")]
         [System.String]
         $EmailSettingsEncryptionMethod = "NONE",
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $UsesSSL = $False,
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -122,10 +126,11 @@ Configuration ArcGISPortal
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
+    Import-DscResource -Name ArcGIS_WaitForComponent
 
     if(($null -ne $CloudStorageType) -and $CloudStorageCredentials) 
     {
@@ -294,14 +299,28 @@ Configuration ArcGISPortal
 
         if($Node.NodeName -ine $PrimaryPortalMachine)
         {
-            WaitForAll "WaitForAllPortal$($PrimaryPortalMachine)"{
-                ResourceName = "[ArcGIS_Portal]Portal$($PrimaryPortalMachine)"
-                NodeName = $PrimaryPortalMachine
-                RetryIntervalSec = 60
-                RetryCount = 90
-                DependsOn = $Depends
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForPortal$($PrimaryPortalMachine)"{
+                    Component = "Portal"
+                    InvokingComponent = "Portal"
+                    ComponentHostName = (Get-FQDN $PrimaryPortalMachine)
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $Depends += "[ArcGIS_WaitForComponent]WaitForPortal$($PrimaryPortalMachine)"
+            }else{
+                WaitForAll "WaitForAllPortal$($PrimaryPortalMachine)"{
+                    ResourceName = "[ArcGIS_Portal]Portal$($PrimaryPortalMachine)"
+                    NodeName = $PrimaryPortalMachine
+                    RetryIntervalSec = 60
+                    RetryCount = 90
+                    DependsOn = $Depends
+                }
+                $Depends += "[WaitForAll]WaitForAllPortal$($PrimaryPortalMachine)"
             }
-            $Depends += "[WaitForAll]WaitForAllPortal$($PrimaryPortalMachine)"
         }   
         
         ArcGIS_Portal "Portal$($Node.NodeName)"
@@ -320,6 +339,7 @@ Configuration ArcGISPortal
             IsHAPortal = if($IsMultiMachinePortal){ $true } else { $false }
             PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { (Get-FQDN $PrimaryPortalMachine) } else { "" } #add peer machine name
             EnableDebugLogging = if($DebugMode) { $true } else { $false }
+            LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
             ADServiceUser = $ADServiceCredential
             EnableAutomaticAccountCreation = if($EnableAutomaticAccountCreation) { $true } else { $false }
             DefaultRoleForUser = $DefaultRoleForUser

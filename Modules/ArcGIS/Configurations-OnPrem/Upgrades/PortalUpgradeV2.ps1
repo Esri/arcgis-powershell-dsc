@@ -2,6 +2,10 @@ Configuration PortalUpgradeV2{
     param(
         [parameter(Mandatory = $true)]
         [System.String]
+        $OldVersion,
+
+        [parameter(Mandatory = $true)]
+        [System.String]
         $Version,
 
         [parameter(Mandatory = $true)]        
@@ -30,11 +34,9 @@ Configuration PortalUpgradeV2{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_Service_Account
-    Import-DscResource -Name ArcGIS_PortalUpgrade 
-    Import-DscResource -Name ArcGIS_PortalSettings
 
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -50,6 +52,16 @@ Configuration PortalUpgradeV2{
         $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
 
         $Depends = @()
+        if($MajorVersion -eq 9 -and $MinorVersion -eq 1){
+            ArcGIS_Install WFMExtensionUninstall
+            {
+                Name = "WorkflowManagerWebApp"
+                Version = $OldVersion
+                Ensure = "Absent"
+            }
+            $Depends += '[ArcGIS_Install]WFMExtensionUninstall'
+        }
+
         ArcGIS_Install PortalUpgrade
         { 
             Name = "Portal"

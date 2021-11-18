@@ -34,6 +34,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $PublicKeySSLCertificateFileUrl
         
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -110,12 +114,17 @@
     Import-DscResource -Name ArcGIS_Federation
     
     ##
-    ## Download license file
+    ## Download license file and certificate files
     ##
     if($PortalLicenseFileUrl -and ($PortalLicenseFileUrl.Trim().Length -gt 0)) {
         $PortalLicenseFileName = Get-FileNameFromUrl $PortalLicenseFileUrl
         Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-    }    
+    }   
+    
+    if($PublicKeySSLCertificateFileUrl){
+		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
+		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+	}
 
 	$ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1
@@ -405,9 +414,9 @@
 			        CertificateFileLocation = $CertificateLocalFilePath 
                     CertificatePassword     = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
                     DependsOn               = $PortalDependsOn
+                    SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
                 }
                 $PortalDependsOn += '[ArcGIS_Portal_TLS]ArcGIS_Portal_TLS'
-
 
                 if($env:ComputerName -ieq $LastPortalHostName) # Perform on Last machine
                 {

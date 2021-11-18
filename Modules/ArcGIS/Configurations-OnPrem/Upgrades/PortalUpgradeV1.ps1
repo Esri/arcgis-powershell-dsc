@@ -91,7 +91,7 @@ Configuration PortalUpgradeV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_Service_Account
@@ -185,6 +185,7 @@ Configuration PortalUpgradeV1{
                     PortalAdministrator = $PortalSiteAdministratorCredential 
                     PortalHostName = $MachineFQDN
                     LicenseFilePath = $null
+                    Version = $Version
                     DependsOn = $Depends
                 }
                 $Depends += '[ArcGIS_PortalUpgrade]PortalUpgrade'

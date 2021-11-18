@@ -45,7 +45,7 @@ Configuration ArcGISRegisterSQLEGDB{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DSCResource -Name ArcGIS_EGDB
     
     Node $AllNodes.NodeName

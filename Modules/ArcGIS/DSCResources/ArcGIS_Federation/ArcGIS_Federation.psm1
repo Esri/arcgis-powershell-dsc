@@ -182,23 +182,6 @@ function Test-TargetResource
                 }
             }
         }
-    
-        # if($result) {
-        #     $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
-        #     if(-not($serverToken.token)) {
-        #         Write-Verbose "Get Server Token Response:- $serverToken"
-        #         throw "Unable to retrieve Server Token for '$($SiteAdministrator.UserName)'"
-        #     }else{
-        #         Write-Verbose "Retrieved Server Token"
-        #     }
-
-        #     Write-Verbose 'Retrieve Current Security Config:'
-        #     $CurrentSecurityConfig = Get-SecurityConfig -ServerURL "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -SiteName $ServerContext -Token $serverToken.token -Referer $Referer
-        #     Write-Verbose "Current Security Config:- $($CurrentSecurityConfig.authenticationTier)"
-        #     Write-Verbose "Current Portal Url:- $($CurrentSecurityConfig.portalProperties.portalUrl)"
-        #     $ExpectedUrl = "https://$($PortalHostName):$($PortalPort)/$PortalContext"
-        #     $result = (('ARCGIS_PORTAL' -ieq $CurrentSecurityConfig.authenticationTier) -and ($ExpectedUrl -ieq $CurrentSecurityConfig.portalProperties.portalUrl))
-        # }
     }
 
     if($result) {
@@ -214,52 +197,22 @@ function Test-TargetResource
     }    
 
     if($result -and ($ServerFunctions -or $ServerRole)) {
-        Write-Verbose "Get Server Functions Configuration for https://$($ServerHostName)"
-        $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
-        $securityConfig = Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config" -HttpFormParameters @{ f= 'json'; token = $serverToken.token } -Referer $Referer -HttpMethod 'GET' 
-        $serverId = $securityConfig.portalProperties.serverId  
-        
-        if($securityConfig.serverRole -ine $ServerRole) {
-            Write-Verbose "Server Role '$($securityConfig.serverRole)' does not match desired value '$ServerRole'"
+        Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverRole)"
+        if($fedServer.serverRole -ine $ServerRole) {
+            Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerRole'"
             $result = $false
-        }else {
-            Write-Verbose "Server Role '$($securityConfig.serverRole)' matches desired value '$ServerRole'"
+        }
+        else {
+            Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
         }
         
-        if($result -and $ServerFunctions){
-            if($securityConfig.serverFunction -ine $ServerFunctions) {
-                Write-Verbose "Server Function '$($securityConfig.serverFunction)' does not match desired value '$ServerFunctions'"
-                $result = $false
-            }else {
-                Write-Verbose "Server Function '$($securityConfig.serverFunction)' matches desired value '$ServerFunctions'"
-            }
-        }else{
-            if($result -and $securityConfig.serverFunction){
-                Write-Verbose "Server Function '$($securityConfig.serverFunction)' does not match desired value '$ServerFunctions'"
-                $result = $false
-            }else{
-                Write-Verbose "Server Function '$($securityConfig.serverFunction)' matches desired value '$ServerFunctions'"
-            }
+        Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverFunction)"
+        if($fedServer.serverFunction -ine $ServerFunctions) {
+            Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerFunctions'"
+            $result = $false
         }
-
-        if($result) {
-            Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverRole)"
-            if($fedServer.serverRole -ine $ServerRole) {
-                Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerRole'"
-                $result = $false
-            }
-            else {
-                Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
-            }
-            
-            Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverFunction)"
-            if($fedServer.serverFunction -ine $ServerFunctions) {
-                Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerFunctions'"
-                $result = $false
-            }
-            else {
-                Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' matches desired value '$ServerFunctions'"
-            }
+        else {
+            Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' matches desired value '$ServerFunctions'"
         }
     }    
 
@@ -422,7 +375,7 @@ function Set-TargetResource
                     Start-Sleep -Seconds 30
                     $NumOfAttempts++
                 }else {
-                    Write-Verbose 'Federation succeeded. Now updating server as the Hosted Server'
+                    Write-Verbose 'Federation succeeded. Now updating server role and function.'
                     $Done = $true
                 }
             }   
@@ -445,50 +398,6 @@ function Set-TargetResource
         }
 
         if($ServerFunctions -or $ServerRole) {
-            $ServerFunctionOrig = $ServerFunctions
-            $ServerRoleOrig = $ServerRole
-
-            Write-Verbose "Get Server Functions Configuration for https://$($ServerHostName)"
-            $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName):$($ServerSiteAdminUrlPort)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
-            $securityConfig = Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config" -HttpFormParameters @{ f= 'json'; token = $serverToken.token } -Referer $Referer -HttpMethod 'GET' 
-            $ServerFunctionFlag = $false
-            if($securityConfig.serverFunction -ine $ServerFunctions) {
-                Write-Verbose "Server Function '$($securityConfig.serverFunctions)' does not match desired value '$ServerFunctions'"
-                $ServerFunctionFlag = $true
-                if(-not($ServerFunctions)){
-                    $ServerFunctions = $securityConfig.serverFunction
-                }
-            }else {
-                Write-Verbose "Server Function '$($securityConfig.serverFunction)' matches desired value '$ServerFunctions'"
-            }
-
-            $ServerRoleFlag = $false
-            if($securityConfig.serverRole -ine $ServerRole) {
-                Write-Verbose "Server Role '$($securityConfig.serverRole)' does not match desired value '$ServerRole'"
-                $ServerRoleFlag = $true
-                if(-not($ServerRole)){
-                    $ServerRole = $securityConfig.serverRole
-                }
-            }else {
-                Write-Verbose "Server Role '$($securityConfig.serverRole)' matches desired value '$ServerRole'"
-                
-            }
-            
-            if($ServerRoleFlag -or $ServerFunctionFlag){
-                Write-Verbose "Updating Server Role and Function"
-                try {
-                    Write-Verbose "Making a request to $ServerSiteAdminUrl/admin/security/config/changeServerRole"
-                    Invoke-ArcGISWebRequest -Url "$ServerSiteAdminUrl/admin/security/config/changeServerRole" -HttpFormParameters @{ serverRole = $ServerRole; serverFunction = $ServerFunctions; f= 'json'; token = $token.token } -Referer $Referer -HttpMethod 'POST' -Verbose -TimeOutSec 150
-                    Write-Verbose "Updated Server Role to '$($ServerRole)' and Function to '$($ServerFunctions)'"
-                }
-                catch{
-                    Write-Verbose "[WARNING]:- Update operation did not succeed. Error:- $_"
-                }
-            }
-            
-            $ServerFunctions = $ServerFunctionOrig 
-            $ServerRole = $ServerRoleOrig  
-
             if(-not($fedServer)) {  
                 $fedServers = Get-FederatedServers -PortalHostName $PortalHostName -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
                 $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }  

@@ -14,7 +14,7 @@ Configuration ArcGISUninstall
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"}
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -28,32 +28,58 @@ Configuration ArcGISUninstall
             }
         }
         
+        if(($Node.Role -icontains "Server" -or $Node.Role -icontains "Portal") -and $ConfigurationData.ConfigData.Insights){
+            ArcGIS_Install InsightsUninstall
+            {
+                Name = "Insights"
+                Version = $ConfigurationData.ConfigData.InsightsVersion
+                Ensure = "Absent"
+            }
+        }
+
         for ( $i = 0; $i -lt $Node.Role.Count; $i++ )
         {        
             $NodeRole = $Node.Role[$i]
             Switch($NodeRole) 
             {
                 'Server' {
-                    if($ConfigurationData.ConfigData.WorkflowMangerServer) 
-                    {
-                        ArcGIS_Install WorkflowManagerServerUninstall
+                    
+                    $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+                    
+                    if($ServerTypeName -ieq "Server"){
+                        if($ConfigurationData.ConfigData.WorkflowMangerServer) 
                         {
-                            Name = "WorkflowManagerServer"
-                            Version = $ConfigurationData.ConfigData.Version
-                            Ensure = "Absent"
+                            ArcGIS_Install WorkflowManagerServerUninstall
+                            {
+                                Name = "WorkflowManagerServer"
+                                Version = $ConfigurationData.ConfigData.Version
+                                Ensure = "Absent"
+                            }
+                        }
+                        
+                        if($ConfigurationData.ConfigData.GeoEventServer) 
+                        { 
+                            ArcGIS_Install GeoEventServerUninstall{
+                                Name = "GeoEvent"
+                                Version = $ConfigurationData.ConfigData.Version
+                                Ensure = "Absent"
+                            }
+                        }
+
+                        if($ConfigurationData.ConfigData.Server.Extensions){
+                            foreach ($Extension in $ConfigurationData.ConfigData.Server.Extensions.GetEnumerator())
+                            {
+                                ArcGIS_Install "Server$($Extension.Key)UninstallExtension"
+                                {
+                                    Name = "Server$($Extension.Key)"
+                                    Version = $ConfigurationData.ConfigData.Version
+                                    Ensure = "Absent"
+                                }
+                            }
                         }
                     }
                     
-                    if($ConfigurationData.ConfigData.GeoEventServer) 
-                    { 
-                        ArcGIS_Install GeoEventServerUninstall{
-                            Name = "GeoEvent"
-                            Version = $ConfigurationData.ConfigData.Version
-                            Ensure = "Absent"
-                        }
-                    }
-
-                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Version.Split(".")[1] -gt 8) 
+                    if($ServerTypeName -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Version.Split(".")[1] -gt 8) 
                     {
                         ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
                         { 
@@ -62,9 +88,7 @@ Configuration ArcGISUninstall
                             Ensure = "Absent"
                         }
                     }
-
-                    $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
-
+                    
                     ArcGIS_Install ServerUninstall{
                         Name = $ServerTypeName
                         Version = $ConfigurationData.ConfigData.Version
@@ -73,6 +97,16 @@ Configuration ArcGISUninstall
 
                 }
                 'Portal' {
+                    if($ConfigurationData.ConfigData.WorkflowMangerWebApp) 
+                    {
+                        ArcGIS_Install WorkflowManagerWebAppUninstall
+                        {
+                            Name = "WorkflowMangerWebApp"
+                            Version = $ConfigurationData.ConfigData.Version
+                            Ensure = "Absent"
+                        }
+                    }
+
                     ArcGIS_Install "PortalUninstall$($Node.NodeName)"
                     { 
                         Name = "Portal"
@@ -138,6 +172,18 @@ Configuration ArcGISUninstall
                     }
                 }
                 'Desktop' {
+                    if($ConfigurationData.ConfigData.Desktop.Extensions){
+                        foreach ($Extension in $ConfigurationData.ConfigData.Desktop.Extensions.GetEnumerator())
+                        {
+                            ArcGIS_Install "Desktop$($Extension.Key)UninstallExtension"
+                            {
+                                Name = "Desktop$($Extension.Key)"
+                                Version = $ConfigurationData.ConfigData.DesktopVersion
+                                Ensure = "Absent"
+                            }
+                        }
+                    }
+
                     ArcGIS_Install DesktopUninstall
                     { 
                         Name = "Desktop"
@@ -146,6 +192,18 @@ Configuration ArcGISUninstall
                     }
                 }
                 'Pro' {
+                    if($ConfigurationData.ConfigData.Pro.Extensions){
+                        foreach ($Extension in $ConfigurationData.ConfigData.Pro.Extensions.GetEnumerator())
+                        {
+                            ArcGIS_Install "Pro$($Extension.Key)UninstallExtension"
+                            {
+                                Name = "Pro$($Extension.Key)"
+                                Version = $ConfigurationData.ConfigData.ProVersion
+                                Ensure = "Absent"
+                            }
+                        }
+                    }
+
                     ArcGIS_Install ProUninstall{
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion

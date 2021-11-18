@@ -16,6 +16,10 @@ Configuration PortalPostUpgrade{
         [parameter(Mandatory = $false)]
         [System.Boolean]
         $SetOnlyHostNamePropertiesFile,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $Version,
 		
 		[Parameter(Mandatory=$false)]
         [System.String]
@@ -64,6 +68,7 @@ Configuration PortalPostUpgrade{
             PortalHostName = Get-FQDN $env:ComputerName
             LicenseFilePath =  (Join-Path $(Get-Location).Path $PortalLicenseFileName) 
             SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
+            Version = $Version
         }    
     }
 }

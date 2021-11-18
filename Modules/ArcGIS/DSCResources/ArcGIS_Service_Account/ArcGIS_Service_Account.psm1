@@ -128,7 +128,7 @@ function Set-TargetResource
             }
 
             # Get Current Run as account or if Force Update run as account set
-            $WindowsService = (Get-CimInstance CIM_Service -filter "Name='$Name'" | Select-Object -First 1)
+            $WindowsService = (Get-CimInstance Win32_Service -filter "Name='$Name'" | Select-Object -First 1)
             if($null -ne $WindowsService){
                 $CurrentRunAsAccount = $WindowsService.StartName
                 if($CurrentRunAsAccount -and $CurrentRunAsAccount.StartsWith('.\')){            
@@ -166,12 +166,12 @@ function Set-TargetResource
                         if($Name -ieq 'ArcGIS Server'){
                             $Arguments = "/username $($ExpectedRunAsUserName)"
                             if(-not($IsMSAAccount)){
-                                $Arguments += " /password $($RunAsAccount.GetNetworkCredential().Password)"
+                                $Arguments += " /password `"$($RunAsAccount.GetNetworkCredential().Password)`""
                             }
                         }else{
                             $Arguments = "--username $($ExpectedRunAsUserName)"
                             if(-not($IsMSAAccount)){
-                                $Arguments += " --password $($RunAsAccount.GetNetworkCredential().Password)"
+                                $Arguments += " --password `"$($RunAsAccount.GetNetworkCredential().Password)`""
                             }
                         }
                         $psi.Arguments = $Arguments
@@ -204,7 +204,7 @@ function Set-TargetResource
                         if($ReturnValue -eq 0){
                             Write-Verbose "Service Account Change Operation for Service $Name successful."
                             if($Name -ieq "ArcGISGeoEvent"){
-                                $GeoeventGatewayService = Get-CimInstance CIM_Service -filter "name='ArcGISGeoEventGateway'" 
+                                $GeoeventGatewayService = Get-CimInstance Win32_Service -filter "name='ArcGISGeoEventGateway'" 
                                 if($null -ne $GeoeventGatewayService){
                                     Write-Verbose "Updating Service Account for service ArcGISGeoEventGateway."
                                     $GeoeventGatewayReturnValue = ($GeoeventGatewayService | Invoke-CimMethod -Name Change -Arguments $ChangeObject)
@@ -256,6 +256,7 @@ function Set-TargetResource
         }
 
         if($Name -ieq 'ArcGISGeoEvent') {
+            $RestartService = $True
 			###
 			### GeoEvent needs additional permissions set and delete zookeeper folder
 			###
@@ -291,7 +292,7 @@ function Set-TargetResource
 					Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
 					Write-Verbose 'Stopping the service' 
 					Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'	
-					Write-Verbose 'Stopped the service'		    
+					Write-Verbose 'Stopped the service'
 				}catch {
 					Write-Verbose "[WARNING] Stopping Service $_"
 				}
@@ -333,26 +334,27 @@ function Set-TargetResource
         }
 
         if($SetStartupToAutomatic){
-            $WindowsService = (Get-CimInstance CIM_Service -filter "Name='$Name'")
-            $StartName = if(-not($IsMSAAccount) -and -not($IsDomainAccount)){ ".\$($ExpectedRunAsUserName)" }else{ $ExpectedRunAsUserName }
-            $ChangeObject = @{StartName=$StartName;StartMode="Automatic";}
-            if(-not($IsMSAAccount)){
-                $ChangeObject += @{StartPassword=$RunAsAccount.GetNetworkCredential().Password;}
-            }
-            $ReturnValue = ($WindowsService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
-            if($ReturnValue -eq 0){
-                Write-Verbose "Service Startup Type change to automatic successful."
-                if($Name -ieq 'ArcGISGeoEvent') {
-                    $GeoeventGatewayService = Get-CimInstance CIM_Service -filter "name='ArcGISGeoEventGateway'" 
-                    $GeoeventGatewayReturnValue = ($GeoeventGatewayService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
-                    if($GeoeventGatewayReturnValue -eq 0){
-                        Write-Verbose "Service Startup Type change to automatic successful."
-                    }else{
-                        throw "Service Startup Type change to automatic failed. Return value - $GeoeventGatewayReturnValue"
+            try{
+                if($Name -ieq 'ArcGISGeoEvent'){
+                    $GeoeventStartupTypeIsAutoDelayed = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "AutomaticDelayedStart" -Verbose)
+                    if(-not($GeoeventStartupTypeIsAutoDelayed)){
+                        Write-Verbose "Setting Startup Type for ArcGIS GeoEvent to AutomaticDelayedStart"
+                        Set-ServiceStartupType -ServiceName $Name -StartupType "AutomaticDelayedStart" -Verbose
+                    }
+                    $GeoeventGatewayStartupTypeIsAutoDelayed = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -ExpectedStartupType "Automatic" -Verbose)
+                    if(-not($GeoeventGatewayStartupTypeIsAutoDelayed)){
+                        Write-Verbose "Setting Startup Type for ArcGIS GeoEvent Gateway to Automatic"
+                        Set-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -StartupType "Automatic" -Verbose
+                    }
+                }else{
+                    $ServiceStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "Automatic" -Verbose)
+                    if(-not($ServiceStartupTypeIsAuto)){
+                        Write-Verbose "Setting Startup Type for $Name to Automatic"
+                        Set-ServiceStartupType -ServiceName $Name -StartupType "Automatic" -Verbose
                     }
                 }
-            }else{
-                throw "Service Startup Type change to automatic failed. Return value - $ReturnValue"
+            }catch{
+                throw "Service Startup Type change failed. Error - $_"
             }
         }
 
@@ -447,7 +449,7 @@ function Test-TargetResource
     }
 
     # Get Current Run as account or if Force Update run as account set
-    $CurrentRunAsAccount = (Get-CimInstance CIM_Service -filter "Name='$Name'" | Select-Object -First 1 ).StartName
+    $CurrentRunAsAccount = (Get-CimInstance Win32_Service -filter "Name='$Name'" | Select-Object -First 1 ).StartName
     if($CurrentRunAsAccount -and $CurrentRunAsAccount.StartsWith('.\')){            
         $CurrentRunAsAccount = $CurrentRunAsAccount.Substring(2) # Remove the current machine prefix
         Write-Verbose "Removing the machine prefix for the current RunAsAccount to $CurrentRunAsAccount"
@@ -458,18 +460,14 @@ function Test-TargetResource
     }
 
     if($SetStartupToAutomatic){
-        $WindowsService = (Get-CimInstance CIM_Service -filter "Name='$Name'")
-        Write-Verbose "$Name Service Startup Type is $($WindowsService.StartMode)."
-        if($WindowsService.StartMode -ne "Auto"){
-            $result = $false
-        }else{
-            if($Name -ieq 'ArcGISGeoEvent') {
-                $GeoeventGatewayService = Get-CimInstance CIM_Service -filter "name='ArcGISGeoEventGateway'" 
-                Write-Verbose "ArcGISGeoEventGateway Service Startup Type is $($GeoeventGatewayService.StartMode)."
-                if($GeoeventGatewayService.StartMode -ne "Auto"){
-                    $result = $false
-                }
+        if($Name -ieq 'ArcGISGeoEvent') {
+            $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEvent' -ExpectedStartupType "AutomaticDelayedStart" -Verbose)
+            if($result){
+                $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -ExpectedStartupType "Automatic" -Verbose)
             }
+        }else{
+            Write-Verbose "Checking Service Startup Type $Name."
+            $result = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "Automatic" -Verbose)
         }
     }
     
@@ -504,6 +502,99 @@ function Test-TargetResource
     }
 }
 
+function Test-ServiceStartupType
+{
+    [CmdletBinding()]
+	[OutputType([System.Boolean])]
+	param
+	(
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$ServiceName,
+
+        [parameter(Mandatory = $true)]
+		[System.String]
+        [ValidateSet("Automatic", "AutomaticDelayedStart", "Manual", "Disabled")]
+		$ExpectedStartupType
+    )
+
+    Write-Verbose "Checking if StartupType is $ExpectedStartupType for service $ServiceName."
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "sc.exe"
+    $psi.Arguments = "qc `"$ServiceName`""
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+    
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    $op = $p.StandardOutput.ReadToEnd()
+    $result = $False
+    if($p.ExitCode -eq 0) {
+        Write-Verbose "Output - $op"
+        $StartupType = $($op | Select-String "START_TYPE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 })
+        if($StartupType -ieq "DEMAND_START"){
+            $result = $ExpectedStartupType -ieq "Manual"
+        }elseif($StartupType -ieq "AUTO_START"){
+            $result = $ExpectedStartupType -ieq "Automatic"
+        }elseif($StartupType -ieq "(DELAYED)"){
+            $result = $ExpectedStartupType -ieq "AutomaticDelayedStart"
+        }elseif($StartupType -ieq "DISABLED"){
+            $result = $ExpectedStartupType -ieq "Disabled"
+        }
+    }else{
+        $err = $p.StandardError.ReadToEnd()
+        Write-Verbose $err
+    }
+    $result
+}
+
+function Set-ServiceStartupType
+{
+    [CmdletBinding()]
+	param
+	(
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$ServiceName,
+
+        [parameter(Mandatory = $true)]
+		[System.String]
+        [ValidateSet("Automatic", "AutomaticDelayedStart", "Manual", "Disabled")]
+		$StartupType
+    )
+
+    $st = "auto"
+    if($StartupType -ieq "Automatic"){
+        $st ="auto"
+    }elseif($StartupType -ieq "AutomaticDelayedStart"){
+        $st = "delayed-auto"
+    }elseif($StartupType -ieq "Manual"){
+        $st ="demand"
+    }elseif($StartupType -ieq "Disabled"){
+        $st ="disabled"
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "sc.exe"
+    $psi.Arguments = "config `"$ServiceName`" start= $st"
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error
+    
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    $op = $p.StandardOutput.ReadToEnd()
+    if($p.ExitCode -eq 0) {
+        Write-Verbose "Successfully changed StartupType to $StartupType for service $ServiceName. Output - $op"
+    }else{
+        $err = $p.StandardError.ReadToEnd()
+        Write-Verbose $err
+        if($err -and $err.Length -gt 0) {
+            throw "Failed to set StartupType to $StartupType for service $ServiceName. Error - $err"
+        }
+    }
+}
 function Test-Acl {
     [CmdletBinding()]
 	[OutputType([System.Boolean])]

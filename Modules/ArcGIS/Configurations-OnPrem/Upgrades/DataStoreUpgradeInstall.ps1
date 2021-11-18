@@ -26,7 +26,7 @@ Configuration DataStoreUpgradeInstall{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     Import-DscResource -Name ArcGIS_xFirewall
@@ -43,7 +43,7 @@ Configuration DataStoreUpgradeInstall{
         $VersionArray = $Version.Split(".")
         $MajorVersion = $VersionArray[1]
         $MinorVersion = $VersionArray[2]
-
+        $Depends = @()
         #$NodeName = $Node.NodeName
         #ArcGIS Data Store 10.3 or 10.3.1, you must manually provide this account full control to your ArcGIS Data Store content directory 
         ArcGIS_Install DataStoreUpgrade
@@ -58,7 +58,8 @@ Configuration DataStoreUpgradeInstall{
             EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
         }
-        
+        $Depends += '[ArcGIS_Install]DataStoreUpgrade'
+
         # Fix for BDS Not Upgrading Bug - Setup needs to run as local account system
         # But in that case it cannot access (C:\Windows\System32\config\systemprofile\AppData\Local)
         if(($MajorVersion -lt 8) -and -not(($MajorVersion -eq 7) -and ($MinorVersion -eq 1)))
@@ -70,7 +71,7 @@ Configuration DataStoreUpgradeInstall{
                 }
                 SetScript = {
                     $ChangeObject = @{StartMode="Manual";}
-                    $DataStoreServiceStop = Get-CimInstance CIM_Service -filter "name='ArcGIS Data Store'" 
+                    $DataStoreServiceStop = Get-CimInstance Win32_Service -filter "name='ArcGIS Data Store'" 
                     $DataStoreStopServiceChangeModeReturnValue = ($DataStoreServiceStop | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
                     if($DataStoreStopServiceChangeModeReturnValue -eq 0){
                         $DataStoreServiceStopReturnValue = $DataStoreServiceStop | Invoke-CimMethod -Name StopService
@@ -81,7 +82,7 @@ Configuration DataStoreUpgradeInstall{
                                 New-Item -path "$($using:InstallDir)\etc\" -name "upgrade.txt" -type "file" -value ""
                                 Write-Verbose "Created new file "
                             }
-                            $DataStoreServiceStart = Get-CimInstance CIM_Service -filter "name='ArcGIS Data Store'" 
+                            $DataStoreServiceStart = Get-CimInstance Win32_Service -filter "name='ArcGIS Data Store'" 
                             $DataStoreStartServiceChangeModeReturnValue = ($DataStoreServiceStart | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
                             if( $DataStoreStartServiceChangeModeReturnValue -eq 0){
                                 $DataStoreServiceStartReturnValue = $DataStoreServiceStart | Invoke-CimMethod -Name StartService
@@ -103,10 +104,18 @@ Configuration DataStoreUpgradeInstall{
                 TestScript = {
                     $False
                 }
-                DependsOn = @('[ArcGIS_Install]DataStoreUpgrade')
+                DependsOn = $Depends
             }
+            $Depends += '[Script]CreateUpgradeFile'
         }
-        
+
+        Service ArcGIS_DataStore_Service_Start
+        {
+            Name = 'ArcGIS Data Store'
+            StartupType = "Automatic"
+            State = "Running"
+            DependsOn = $Depends
+        }
 
         if($MajorVersion -gt 7 -and $Node.HasMultiMachineTileCache){
             ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules

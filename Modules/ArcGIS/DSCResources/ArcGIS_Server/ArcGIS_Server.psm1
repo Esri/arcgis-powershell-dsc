@@ -31,8 +31,6 @@
         Enables Single Cluster Mode for Machine 
     .PARAMETER LogLevel
         Defines the Logging Level of Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
-    .PARAMETER  Platform
--        Define the platform on which the Server is being installed - (Not Used)
     .PARAMETER DisableServiceDirectory
         Boolean to indicate whether to disable the service directory for ArcGIS Server
     .PARAMETER DisableServiceDirectory
@@ -95,9 +93,6 @@ function Get-TargetResource
 
         [System.Boolean]
         $SingleClusterMode,
-
-        [System.String]
-        $Platform,
 
         [System.Boolean]
         $DisableServiceDirectory,
@@ -169,9 +164,6 @@ function Set-TargetResource
         [System.Boolean]
         $SingleClusterMode,
         
-        [System.String]
-		$Platform,
-
         [System.Boolean]
         $DisableServiceDirectory,
 
@@ -215,23 +207,15 @@ function Set-TargetResource
             }
         }        
 
-		$RemoveEC2ObserverFromNodeAdentXml = $false
-		[string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS').RealVersion
+        [string]$RealVersion = (Get-ArcGISProductDetails -ProductName "ArcGIS Server").Version
 		$DeploymentImageVersion = New-Object 'System.Version' -ArgumentList $RealVersion
 		Write-Verbose "Version of ArcGIS Server is $DeploymentImageVersion"
-		if($DeploymentImageVersion.Major -le 10 -and $DeploymentImageVersion.Minor -le 5 -and $DeploymentImageVersion.Build -le 6491) {
-			Write-Verbose "Version of ArcGIS Server requires removal of EC2 Listener from NodeAgent xml file"
-			$RemoveEC2ObserverFromNodeAdentXml = $true
-		}else {
-			Write-Verbose "Version of ArcGIS Server does not require removal of EC2 Listener from NodeAgent xml file"
-		}
-        if($RemoveEC2ObserverFromNodeAdentXml -and $Platform -ine 'amazon') {			
-            if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-               if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
-                    # Need to restart the service to pick up the EC2 
-                    $RestartRequired = $true                    
-                }                
-            }
+        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+            Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
+            if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
+                 # Need to restart the service to pick up the EC2
+                 $RestartRequired = $true
+             }  
         }
 
         if($RestartRequired) {
@@ -475,9 +459,6 @@ function Test-TargetResource
         [System.Boolean]
         $SingleClusterMode,
 
-        [System.String]
-		$Platform,
-
         [System.Boolean]
         $DisableServiceDirectory,
 
@@ -573,18 +554,10 @@ function Test-TargetResource
         }
 
 		if($result) {
-			$RemoveEC2ObserverFromNodeAdentXml = $false
-			[string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS').RealVersion
-			$DeploymentImageVersion = New-Object 'System.Version' -ArgumentList $RealVersion
-			if($DeploymentImageVersion.Major -le 10 -and $DeploymentImageVersion.Minor -le 5 -and $DeploymentImageVersion.Build -le 6491) {
-				$RemoveEC2ObserverFromNodeAdentXml = $true
-			}
-			if($RemoveEC2ObserverFromNodeAdentXml -and ($Platform -ine 'amazon')) {
-				if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-					Write-Verbose "Amazon Elements present in NodeAgentExt.xml"
-					$result = $false
-				}
-            }
+            if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+                Write-Verbose "Amazon Elements present in NodeAgentExt.xml. Will be removed in Set Method"
+                $result = $false
+            }         
         }
     }
 

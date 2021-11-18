@@ -28,7 +28,7 @@ try:
 	(options, args) = parser.parse_args()
 
 	
-#Check if no system arguments (options) entered
+	#Check if no system arguments (options) entered
 	if len(sys.argv) == 1:
 		print "%s: error: %s\n" % (sys.argv[0], "No command options given")
 		parser.print_help()

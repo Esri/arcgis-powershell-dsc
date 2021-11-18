@@ -9,5 +9,6 @@ class ArcGIS_ServerSettings : OMI_BaseResource
 	[Write] String ServerEndPoint;
 	[Write] String ServerEndPointPort;
 	[Write] String ServerEndPointContext;
+	[Write, Description("IsWorkflowManagerDeployment")] Boolean IsWorkflowManagerDeployment;
 };
 

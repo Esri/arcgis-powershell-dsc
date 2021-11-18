@@ -1,5 +1,9 @@
 Configuration ServerUpgrade{
     param(
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $OldVersion,
+
         [System.String]
         $Version,
 
@@ -23,6 +27,9 @@ Configuration ServerUpgrade{
         [System.String]
         $GeoEventServerInstaller,
 
+        [System.String]
+        $WorkflowManagerServerInstaller,
+
         [System.Array]
         $ContainerImagePaths,
 
@@ -35,11 +42,22 @@ Configuration ServerUpgrade{
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
-        $IsMultiMachineServerSite = $false
+        $IsMultiMachineServerSite = $false,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableArcMapRuntime = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableDotnetSupport = $False,
+
+        [Parameter(Mandatory=$false)]
+        $Extensions = $null
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.2.0"} 
+    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
@@ -47,7 +65,6 @@ Configuration ServerUpgrade{
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_MissionServerUpgrade 
     Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_WindowsService
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -65,6 +82,8 @@ Configuration ServerUpgrade{
         
         $Depends = @()
         
+        $ServerTypeName = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($Node.ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" }
+
         if($Node.ServerRole -ieq "GeoEvent"){
             Service ArcGIS_GeoEvent_Service_Stop
             {
@@ -83,14 +102,27 @@ Configuration ServerUpgrade{
                 DependsOn   = $Depends
             }
             $Depends += '[Service]ArcGIS_GeoEventGateway_Service_Stop'
+        }
 
+        $ServerUpgradeInstallArguments = if($MajorVersion -gt 8){"/qn ACCEPTEULA=YES"}else{"/qn"}
+        if($ServerTypeName -ieq "Server"){
+            if($Version -ieq "10.9.1"){
+                $ServerUpgradeInstallArguments = "/qn ACCEPTEULA=YES"
+                if(-not($EnableArcMapRuntime) -and -not($EnableDotnetSupport)){
+                    $ServerUpgradeInstallArguments += " ADDLOCAL=GIS_Server"
+                }elseif($EnableArcMapRuntime -and -not($EnableDotnetSupport)){
+                    $ServerUpgradeInstallArguments += " ADDLOCAL=ArcMap"
+                }elseif(-not($EnableArcMapRuntime) -and $EnableDotnetSupport){
+                    $ServerUpgradeInstallArguments += " ADDLOCAL=DotNetSupport"
+                }
+            }
         }
 
         ArcGIS_Install ServerUpgrade{
-            Name = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($Node.ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" } 
+            Name = $ServerTypeName
             Version = $Version
             Path = $InstallerPath
-            Arguments = if($MajorVersion -gt 8){"/qn ACCEPTEULA=YES"}else{"/qn"};
+            Arguments = $ServerUpgradeInstallArguments
             ServiceCredential = $ServiceAccount
             ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
             ServiceCredentialIsMSA = $IsServiceAccountMSA
@@ -100,21 +132,66 @@ Configuration ServerUpgrade{
         }
         $Depends += '[ArcGIS_Install]ServerUpgrade'
 
+        if($ServerTypeName -ieq "Server" -and $null -ne $Extensions){
+            if($MajorVersion -gt 8){
+                ArcGIS_Install "ServerUpgradeUninstallLocationReferencingExtension"
+                {
+                    Name = "ServerLocationReferencing"
+                    Version = $OldVersion
+                    Ensure = "Absent"
+                    DependsOn = $Depends
+                }
+                $Depends += '[ArcGIS_Install]ServerUpgradeUninstallLocationReferencingExtension'
+            }
+
+            foreach ($Extension in $Extensions.GetEnumerator())
+            {
+                $Arguments = "/qn"
+                if($Extension.Value.Features -and $Extension.Value.Features.Count -gt 0){
+                    $Features = $null
+                    if($Extension.Value.Features -icontains "ALL"){
+                        $Features = "ALL"
+                    }else{
+                        $Extension.Value.Features | % {
+                            if($null -eq $Features){ 
+                                $Features = $_
+                            }else{
+                                $Features += ",$_"
+                            }
+                        }
+                    }
+
+                    $Arguments += " ADDLOCAL=$Features"
+                }
+
+                ArcGIS_Install "Server$($Extension.Key)UpgradeInstallExtension"
+                {
+                    Name = "Server$($Extension.Key)"
+                    Version = $Version
+                    Path = $Extension.Value.Installer.Path
+                    Arguments = $Arguments
+                    EnableMSILogging = $EnableMSILogging
+                    Ensure = "Present"
+                }
+                $Depends += "[ArcGIS_Install]Server$($Extension.Key)UpgradeInstallExtension"
+            }
+        }
+
         if((($MajorVersion -gt 8) -and $NotebookServerSamplesDataPath)){
-            ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
+            ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)Upgrade"
             { 
                 Name = "NotebookServerSamplesData"
                 Version = $Version
                 Path = $NotebookServerSamplesDataPath
                 Arguments = "/qn"
-                ServiceCredential = $ServiceCredential
+                ServiceCredential = $ServiceAccount
                 ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
                 ServiceCredentialIsMSA = $IsServiceAccountMSA
                 EnableMSILogging = $EnableMSILogging
                 Ensure = "Present"
                 DependsOn = $Depends
             }
-            $Depends += "[ArcGIS_Install]NotebookServerSamplesData$($Node.NodeName)"
+            $Depends += "[ArcGIS_Install]NotebookServerSamplesData$($Node.NodeName)Upgrade"
         }
         
         if(($Node.ServerRole -ieq "GeoAnalytics") -and ($MajorVersion -gt 8) -and $IsMultiMachineServerSite){
@@ -185,7 +262,7 @@ Configuration ServerUpgrade{
                         ContainerImagePaths = $ContainerImagePaths
                         ExtractSamples      = (($MajorVersion -gt 8) -and $NotebookServerSamplesDataPath)
                         DependsOn           = $Depends
-                        PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+                        PsDscRunAsCredential  = $ServiceAccount # Copy as arcgis account which has access to this share
                     }
                 }
             }
@@ -203,6 +280,26 @@ Configuration ServerUpgrade{
                 ServerHostName = $MachineFQDN
                 DependsOn = $Depends
             }
+        }
+
+        #Upgrade GeoEvents
+        if($Node.ServerRole -ieq "WorkflowManagerServer"){
+            $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
+
+            ArcGIS_Install WorkflowManagerServerUpgrade
+            {
+                Name = "WorkflowManagerServer"
+                Version = $Version
+                Path = $WorkflowManagerServerInstaller
+                Arguments = "/qn"
+                ServiceCredential = $ServiceAccount
+                ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+                ServiceCredentialIsMSA = $IsServiceAccountMSA
+                EnableMSILogging = $EnableMSILogging
+                Ensure = "Present"
+                DependsOn = $Depends
+            }
+            $Depends += "[ArcGIS_Install]WorkflowManagerServerUpgrade"
         }
 
         #Upgrade GeoEvents
@@ -272,27 +369,18 @@ Configuration ServerUpgrade{
                 $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound"
             }
 
-            ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Start
+            ArcGIS_Service_Account GeoEvent_RunAs_Account_Update
             {
                 Name = 'ArcGISGeoEvent'
-                StartupType = 'Automatic'
-                State = 'Running'
+                RunAsAccount = $ServiceAccount
+                Ensure =  "Present"
                 DependsOn = $Depends
+                DataDir = "$env:ProgramData\Esri\GeoEvent"
+                IsDomainAccount = $IsServiceAccountDomainAccount
+                IsMSAAccount = $IsServiceAccountMSA
+                SetStartupToAutomatic = $True
             }
-            $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service_Start"
-
-            if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
-            {
-                ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
-                {
-                    Name		= 'ArcGISGeoEventGateway'
-                    StartupType = 'Automatic'
-                    State       = 'Running'
-                    DependsOn   = $Depends
-                }
-                $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
-            }
-
+            $Depends += "[ArcGIS_Service_Account]GeoEvent_RunAs_Account_Update"
         }      
     }
 }

@@ -40,6 +40,10 @@
         $StorageAccountCredential
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $PublicKeySSLCertificateFileUrl
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $SelfSignedSSLCertificatePassword        
                 
@@ -143,6 +147,11 @@
         Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }
     
+    if($PublicKeySSLCertificateFileUrl){
+		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
+		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+	}
+
     $HostNames = @($MachineName)
     if($PeerMachineName) {
         $HostNames += $PeerMachineName
@@ -461,9 +470,10 @@
                 CName                      = "ApplicationGateway"
                 CertificateFileLocation    = $ServerCertificateLocalFilePath
                 CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
-                EnableSSL                  = -not($Join)
+                EnableSSL                  = $True
                 ServerType                 = "GeneralPurposeServer"
                 DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyServerCertificateFileToLocalMachine') 
+                SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
             }
 
             if($env:ComputerName -ieq $LastHostName) # Perform on Last machine
@@ -662,6 +672,7 @@
                 CertificateFileLocation = $PortalCertificateLocalFilePath 
                 CertificatePassword     = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
                 DependsOn               = @('[ArcGIS_Portal]Portal','[Script]CopyPortalCertificateFileToLocalMachine')
+                SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
             }
 
             if($env:ComputerName -ieq $LastHostName) # Perform on Last machine
