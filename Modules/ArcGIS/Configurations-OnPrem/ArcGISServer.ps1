@@ -105,6 +105,10 @@ Configuration ArcGISServer
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
+        $DisableServiceDirectory,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
         $UsesSSL = $False,
         
         [Parameter(Mandatory=$False)]
@@ -406,6 +410,7 @@ Configuration ArcGISServer
             DependsOn = $Depends
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
             SingleClusterMode = $true
+            DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
             ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
         }

@@ -994,6 +994,7 @@ function Invoke-ArcGISConfiguration
                             ServerDirectories = if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){$ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories}else{$null}
                             ServerLogsLocation = if($ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation){$ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation}else{$null}
                             SslRootOrIntermediate = ($ConfigurationParamsHashtable.ConfigData.SslRootOrIntermediate | ConvertTo-Json)
+                            DisableServiceDirectory = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
