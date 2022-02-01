@@ -1585,14 +1585,14 @@ function Invoke-ArcGISConfiguration
                         if($ServerCheck){
                             $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
                             $Port = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){ 20443 }elseif($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){$ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort}else{ 6443 }
-                            $ServerAdminURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            $ServerManagerURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
+                            $ServerAdminURL = if($Port -ieq 443){ "$($PrimaryServerCName)/arcgis" }else{ "$($PrimaryServerCName):$($Port)/arcgis" }
+                            $ServerManagerURL = if($Port -ieq 443){ "$($PrimaryServerCName)/arcgis" }else{ "$($PrimaryServerCName):$($Port)/arcgis" }
+                            $ServerURL = if($Port -ieq 443){ "$($PrimaryServerCName)/arcgis" }else{ "$($PrimaryServerCName):$($Port)/arcgis" }
                             
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerAdminURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
-                                $ServerManagerURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
+                                $ServerAdminURL = if($Port -ieq 443){ "$($ServerSiteAdminURL)/arcgis" }else{ "$($ServerSiteAdminURL):$($Port)/arcgis" }
+                                $ServerManagerURL = if($Port -ieq 443){ "$($ServerSiteAdminURL)/arcgis" }else{ "$($ServerSiteAdminURL):$($Port)/arcgis" }
                             }
                             
                             if($null -ne $ServerExternalDNSHostName){
