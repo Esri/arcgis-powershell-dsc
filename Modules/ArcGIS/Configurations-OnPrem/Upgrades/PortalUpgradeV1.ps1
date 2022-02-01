@@ -72,6 +72,10 @@ Configuration PortalUpgradeV1{
         [parameter(Mandatory = $false)]
         [System.String]
         $InternalLoadBalancer,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Int32]
+        $InternalLoadBalancerPort,
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
@@ -223,7 +227,7 @@ Configuration PortalUpgradeV1{
                         PortalContext           = $Context
                         PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ (Get-FQDN $MachineFQDN) }}
                         PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $Context }
-                        PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
+                        PortalEndPointPort      = if($InternalLoadBalancerPort) { $InternalLoadBalancerPort }elseif(!$ExternalDNSHostName) { 7443 }else { 443 }
                         PortalAdministrator     = $PortalSiteAdministratorCredential
                         DependsOn               = $Depends
                     }
