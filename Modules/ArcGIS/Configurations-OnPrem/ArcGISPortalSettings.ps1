@@ -19,7 +19,11 @@ Configuration ArcGISPortalSettings{
 
         [Parameter(Mandatory=$false)]
         [System.String]
-        $InternalLoadBalancer
+        $InternalLoadBalancer,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Int32]
+        $InternalLoadBalancerPort
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
@@ -43,7 +47,7 @@ Configuration ArcGISPortalSettings{
                 PortalContext           = $PortalContext
                 PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ Get-FQDN $PrimaryPortalMachine }}
                 PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $PortalContext }
-                PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
+                PortalEndPointPort      = if($InternalLoadBalancerPort) { $InternalLoadBalancerPort }elseif(!$ExternalDNSHostName) { 7443 }else { 443 }
                 PortalAdministrator     = $PortalAdministratorCredential
             }
         }

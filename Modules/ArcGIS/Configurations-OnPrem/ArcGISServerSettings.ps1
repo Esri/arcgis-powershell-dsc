@@ -20,6 +20,10 @@ Configuration ArcGISServerSettings{
         [Parameter(Mandatory=$false)]
         [System.String]
         $InternalLoadBalancer,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Int32]
+        $InternalLoadBalancerPort,
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -48,7 +52,7 @@ Configuration ArcGISServerSettings{
                 ExternalDNSName         = $ExternalDNSHostName
                 ServerContext           = $ServerContext
                 ServerEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $null } }
-                ServerEndPointPort      = if($InternalLoadBalancer){ 6443 }else{ 443 }
+                ServerEndPointPort      = if($InternalLoadBalancerPort) { $InternalLoadBalancerPort }elseif(!$ExternalDNSHostName) { 6443 }else { 443 }
                 ServerEndPointContext   = if($InternalLoadBalancer){ 'arcgis' }else{ $ServerContext }
                 IsWorkflowManagerDeployment = if($IsWorkflowManagerDeployment){ $True }else{ $False }
             }

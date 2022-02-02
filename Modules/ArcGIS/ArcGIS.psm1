@@ -1121,6 +1121,8 @@ function Invoke-ArcGISConfiguration
                             $ConfigurationName = "ArcGISServerSettings"
                             $ServerSettingsArgs["IsWorkflowManagerDeployment"] = if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "WorkflowManagerServer"){ $True }else{ $False }
                             $ServerSettingsArgs["InternalLoadBalancer"] = if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer }else{ $null }
+                            $ServerSettingsArgs["InternalLoadBalancerPort"] = if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort }else{ $null }
+
                         }
 
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerSettingsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -1210,6 +1212,7 @@ function Invoke-ArcGISConfiguration
                             ExternalDNSHostName = $PortalExternalDNSHostName
                             PortalContext = if($null -ne $PortalExternalDNSHostName){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ $null }
                             InternalLoadBalancer = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ $null }
+                            InternalLoadBalancerPort = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ $null }
                         }
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISPortalSettings" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $PortalSettingsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                     }
@@ -1495,15 +1498,15 @@ function Invoke-ArcGISConfiguration
                         $RemoteSiteAdministrator = $null
                         if($PortalCheck){
                             $PortalServerFederation = $True
-                            $PortalHostName = if($null -ne $PortalExternalDNSHostName){ $PortalExternalDNSHostName }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryPortalMachine.NodeName} }
-                            $PortalPort = if($null -ne $PortalExternalDNSHostName){ 443 }else{ 7443 }
-                            $PortalContext = if($null -ne $PortalExternalDNSHostName){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ 'arcgis' }
+                            $PortalHostName = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryPortalMachine.NodeName} }
+                            $PortalPort = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ 7443 }
+                            $PortalContext = 'arcgis'
                         }elseif($ConfigurationParamsHashtable.ConfigData.Federation){
                             $RemoteFederation = $True
                             $PortalHostName = $ConfigurationParamsHashtable.ConfigData.Federation.PortalHostName
                             $PortalPort = $ConfigurationParamsHashtable.ConfigData.Federation.PortalPort
                             $PortalContext = $ConfigurationParamsHashtable.ConfigData.Federation.PortalContext
-
+                            
                             $RemoteSiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.Password -AsPlainText -Force }
                             $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.UserName, $RemoteSiteAdministratorPassword )
                         }
@@ -1515,12 +1518,12 @@ function Invoke-ArcGISConfiguration
                             $ServerServiceURLContext = if($null -ne $ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ 'arcgis' }
 
                             $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
-                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
+                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){$ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort}else{ 6443 }
                             $ServerSiteAdminURLContext = 'arcgis'
 
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
+                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){$ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort}else{ 6443 }
                                 $ServerSiteAdminURLContext = 'arcgis'
                             }else{
                                 if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer')-or ($ServerRole -ieq 'MissionServer')){ 
@@ -1560,36 +1563,36 @@ function Invoke-ArcGISConfiguration
                         }
                     }
                 
-                    if($JobFlag[$JobFlag.Count - 1] -eq $True){ 
+                    if($JobFlag[$JobFlag.Count - 1] -eq $True){
                         if($PortalCheck){
                             $PrimaryPortalCName = if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryPortalMachine.NodeName}
-                            $PortalUrl = "$($PrimaryPortalCName):7443/arcgis" 
+                            $PortalUrl = "$($PrimaryPortalCName):7443/arcgis"
                             $PortalAdminUrl = "$($PrimaryPortalCName):7443/arcgis"
-
+                            
                             if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){
-                                $PortalUrl = "$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):7443/arcgis"
-                                $PortalAdminUrl = "$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):7443/arcgis"
+                                $PortalUrl = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){"$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort)/arcgis"}else{"$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):7443/arcgis"}
+                                $PortalAdminUrl = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){"$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort)/arcgis"}else{"$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):7443/arcgis"}
                             }
-
+                            
                             if($null -ne $PortalExternalDNSHostName){
                                 $PortalUrl = "$($PortalExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.PortalContext)"
                                 $PortalAdminUrl = "$($PortalExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.PortalContext)"
                             }
-
+                            
                             Write-Information -InformationAction Continue "Portal Admin URL - https://$PortalAdminUrl/portaladmin"
-                            Write-Information "Portal URL - https://$PortalUrl/home"    
+                            Write-Information "Portal URL - https://$PortalUrl/home"
                         }
                         if($ServerCheck){
                             $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{Get-FQDN $PrimaryServerMachine.NodeName}
-                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){20443}else{6443}                            
-                            $ServerAdminURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            $ServerManagerURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
+                            $Port = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){ 20443 }elseif($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){$ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort}else{ 6443 }
+                            $ServerAdminURL = if($Port -ieq 443){ "$($PrimaryServerCName)/arcgis" }else{ "$($PrimaryServerCName):$($Port)/arcgis" }
+                            $ServerManagerURL = if($Port -ieq 443){ "$($PrimaryServerCName)/arcgis" }else{ "$($PrimaryServerCName):$($Port)/arcgis" }
+                            $ServerURL = if($Port -ieq 443){ "$($PrimaryServerCName)/arcgis" }else{ "$($PrimaryServerCName):$($Port)/arcgis" }
                             
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerAdminURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
-                                $ServerManagerURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
+                                $ServerAdminURL = if($Port -ieq 443){ "$($ServerSiteAdminURL)/arcgis" }else{ "$($ServerSiteAdminURL):$($Port)/arcgis" }
+                                $ServerManagerURL = if($Port -ieq 443){ "$($ServerSiteAdminURL)/arcgis" }else{ "$($ServerSiteAdminURL):$($Port)/arcgis" }
                             }
                             
                             if($null -ne $ServerExternalDNSHostName){
@@ -1599,7 +1602,7 @@ function Invoke-ArcGISConfiguration
                                     $ServerManagerURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
                                 }
                             }
-
+                            
                             Write-Information -InformationAction Continue "Server Admin URL - https://$ServerAdminURL/admin"
                             if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer'))){
                                 Write-Information -InformationAction Continue "Server Manager URL - https://$ServerManagerURL/manager"
@@ -1918,7 +1921,8 @@ function Invoke-PortalUpgradeScript {
             PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
             ContentDirectoryLocation = $PortalConfig.ConfigData.Portal.ContentDirectoryLocation
             ExternalDNSName = $PortalExternalDNSHostName 
-            InternalLoadBalancer = if($PortalConfig.ConfigData.Server.InternalLoadBalancer){ $PortalConfig.ConfigData.Server.InternalLoadBalancer }else{ $null }
+            InternalLoadBalancer = if($PortalConfig.ConfigData.Portal.InternalLoadBalancer){ $PortalConfig.ConfigData.Portal.InternalLoadBalancer }else{ $null }
+            InternalLoadBalancerPort = if($PortalConfig.ConfigData.Portal.InternalLoadBalancerPort){ $PortalConfig.ConfigData.Portal.InternalLoadBalancer }else{ $null }
             IsMultiMachinePortal = $IsMultiMachinePortal
             AdminEmail = $PortalConfig.ConfigData.Portal.PortalAdministrator.Email
             AdminSecurityQuestionIndex = $PortalConfig.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex
