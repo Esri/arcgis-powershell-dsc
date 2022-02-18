@@ -9,6 +9,8 @@
         Name of ArcGIS Enterprise Component to be installed.
     .PARAMETER PatchesDir
         Path to Installer for patches for the Component - Can be a Physical Location or Network Share Address.
+    .PARAMETER PatchInstallOrder
+        Array of Patch Installer file names to specify the Installation order of Patch and the patches to install
     .PARAMETER Version
         Version of the Component being Installed.
 #>
@@ -26,6 +28,10 @@ function Get-TargetResource
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$PatchesDir,
+
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$PatchInstallOrder,
 
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -58,6 +64,10 @@ function Set-TargetResource
 		[System.String]
 		$PatchesDir,
 
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$PatchInstallOrder,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
         $Version,
@@ -77,14 +87,36 @@ function Set-TargetResource
         # test & install patches
         Write-Verbose "Installing Patches"
         if ($PatchesDir) {
-            $files = Get-ChildItem "$PatchesDir"        
-            Foreach ($file in $files) {
-                Write-Verbose " > PatchFile : $file | Fullname : $($file.Fullname)"
-                if (Test-PatchInstalled -mspPath $($file.FullName)) {
-                    Write-Verbose " > Patch installed - no Action required"
-                } else {
-                    Write-Verbose " > Patch not installed - installing"
-                    Install-Patch -mspPath $file.FullName
+            if($PatchInstallOrder.Length -gt 0){
+                foreach ($Patch in $PatchInstallOrder) {
+                    $PatchFileName = Split-Path $Patch -leaf
+                    $PatchLocation = (Join-Path $PatchesDir $PatchFileName)
+                    Write-Verbose " > PatchFile : $PatchFileName | Fullname : $($PatchLocation)"
+                    if (Test-PatchInstalled -mspPath $PatchLocation) {
+                        Write-Verbose " > Patch installed - no Action required"
+                    }else{
+                        Write-Verbose " > Patch not installed - installing"
+                        if(Install-Patch -mspPath $PatchLocation -Verbose){
+                            Write-Verbose " > Patch installed - successfully"
+                        }else{
+                            Write-Verbose " > Patch installation failed"
+                        }
+                    }
+                }
+            }else{
+                $files = Get-ChildItem "$PatchesDir"        
+                Foreach ($file in $files) {
+                    Write-Verbose " > PatchFile : $file | Fullname : $($file.Fullname)"
+                    if (Test-PatchInstalled -mspPath $($file.FullName)) {
+                        Write-Verbose " > Patch installed - no Action required"
+                    } else {
+                        Write-Verbose " > Patch not installed - installing"
+                        if(Install-Patch -mspPath $file.FullName -Verbose){
+                            Write-Verbose " > Patch installed - successfully"
+                        }else{
+                            Write-Verbose " > Patch installation failed"
+                        }
+                    }
                 }
             }
         }
@@ -108,6 +140,10 @@ function Test-TargetResource
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$PatchesDir,
+
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$PatchInstallOrder,
 
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -182,14 +218,28 @@ function Test-TargetResource
    
     #test for installed patches
     if($result -and $PatchesDir) {
-        $files = Get-ChildItem "$PatchesDir"        
-        Foreach ($file in $files) {
-            Write-Verbose " > PatchFile : $file | Fullname : $($file.Fullname)"
-            if (Test-PatchInstalled -mspPath $($file.FullName)) {
-                Write-Verbose " > Patch installed"
-            } else {
-                Write-Verbose " > Patch not installed"
-                $result = $false
+        if($PatchInstallOrder.Length -gt 0){
+            foreach ($Patch in $PatchInstallOrder) {
+                $PatchFileName = Split-Path $Patch -leaf
+                $PatchLocation = (Join-Path $PatchesDir $PatchFileName)
+                Write-Verbose " > PatchFile : $PatchFileName | Fullname : $($PatchLocation)"
+                if (Test-PatchInstalled -mspPath $PatchLocation) {
+                    Write-Verbose " > Patch installed"
+                }else{
+                    Write-Verbose " > Patch not installed"
+                    $result = $false
+                }
+            }
+        }else{
+            $files = Get-ChildItem "$PatchesDir"        
+            Foreach ($file in $files) {
+                Write-Verbose " > PatchFile : $file | Fullname : $($file.Fullname)"
+                if (Test-PatchInstalled -mspPath $($file.FullName)) {
+                    Write-Verbose " > Patch installed"
+                } else {
+                    Write-Verbose " > Patch not installed"
+                    $result = $false
+                }
             }
         }
     }
@@ -300,12 +350,25 @@ function Install-Patch{
         $mspPath
     )
 
-    $arguments = "/update "+ '"' + $mspPath +'"' + " /quiet"
-    Write-Verbose $arguments
-    try {
-        Start-Process -FilePath msiexec.exe -ArgumentList $Arguments -Wait
-    } catch {
-        Write-Verbose "Error in Install-Patch :-$_"
+    if(Test-Path $mspPath){
+        $arguments = "/update "+ '"' + $mspPath +'"' + " /quiet"
+        Write-Verbose $arguments
+        try {
+            $PatchInstallProc = Start-Process -FilePath msiexec.exe -ArgumentList $Arguments -Wait -Verbose -PassThru
+            if($PatchInstallProc.ExitCode -ne 0){
+                Write-Verbose "Error while installing patch :- exited with status code $($PatchInstallProc.ExitCode)"
+                return $false
+            }else{
+                Write-Verbose "Patch Installation successful."
+                return $true
+            }
+        } catch {
+            Write-Verbose "Error in Install-Patch :-$_"
+            return $false
+        }
+    }else{
+        Write-Verbose "Patch '$mspPath' path doesn't exist"
+        return $false
     }
 }
 

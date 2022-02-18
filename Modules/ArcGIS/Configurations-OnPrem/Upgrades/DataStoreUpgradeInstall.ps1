@@ -16,6 +16,12 @@ Configuration DataStoreUpgradeInstall{
         
         [System.String]
         $InstallerPath,
+
+        [System.String]
+        $PatchesDir,
+
+        [System.Array]
+        $PatchInstallOrder,
         
         [System.String]
         $InstallDir,
@@ -26,8 +32,9 @@ Configuration DataStoreUpgradeInstall{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
     Import-DscResource -Name ArcGIS_Install
+    Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
     Import-DscResource -Name ArcGIS_xFirewall
     
@@ -59,6 +66,18 @@ Configuration DataStoreUpgradeInstall{
             Ensure = "Present"
         }
         $Depends += '[ArcGIS_Install]DataStoreUpgrade'
+
+        if ($PatchesDir) {
+            ArcGIS_InstallPatch DatastoreInstallPatch
+            {
+                Name = "DataStore"
+                Version = $Version
+                PatchesDir = $PatchesDir
+                PatchInstallOrder = $PatchInstallOrder
+                Ensure = "Present"
+            }
+            $Depends += "[ArcGIS_InstallPatch]DatastoreInstallPatch"
+        }
 
         # Fix for BDS Not Upgrading Bug - Setup needs to run as local account system
         # But in that case it cannot access (C:\Windows\System32\config\systemprofile\AppData\Local)

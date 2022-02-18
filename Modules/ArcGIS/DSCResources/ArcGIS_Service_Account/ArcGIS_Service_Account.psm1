@@ -109,6 +109,11 @@ function Set-TargetResource
             Write-Verbose "Removing the machine prefix for the expected RunAsAccount to $ExpectedRunAsUserName"
         }
 
+        #Add Run As account to
+        Write-Verbose "Adding Log On As a Service Policy for RunAsAccount Username:- $ExpectedRunAsUserName"
+        Set-LogOnAsServicePolicy -UserName $ExpectedRunAsUserName
+        Write-Verbose "Successfully added Log On As a Service Policy for RunAsAccount Username:- $ExpectedRunAsUserName"
+
 		$RegKey = Get-EsriRegistryKeyForService -ServiceName $Name
         $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
         Write-Verbose "Install Dir for $Name is $InstallDir"
@@ -288,7 +293,7 @@ function Set-TargetResource
 			@('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | ForEach-Object{
 				try {			    
 					$ServiceName = $_
-					Write-Verbose "Restarting Service $ServiceName"
+					Write-Verbose "Stopping Service $ServiceName"
 					Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
 					Write-Verbose 'Stopping the service' 
 					Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'	
@@ -333,6 +338,10 @@ function Set-TargetResource
             }
         }
 
+        if($Name -ieq 'WorkflowManager') {
+            $RestartService = $True
+        }
+
         if($SetStartupToAutomatic){
             try{
                 if($Name -ieq 'ArcGISGeoEvent'){
@@ -362,27 +371,12 @@ function Set-TargetResource
         ### If the Service Credentials are changed. Restart the Service (just in case) TODO:- Revisit if this is needed
         ###
         if($RestartService){
-            try {  
-                Write-Verbose "Restarting Service $Name"
-                Stop-Service -Name $Name -Force -ErrorAction Ignore
-                Write-Verbose 'Stopping the service' 
-                Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Stopped'	
-                Write-Verbose 'Stopped the service'		    
-            }catch {
-                Write-Verbose "[WARNING] Stopping Service $_"
-            }
-            try {				
-                Write-Verbose 'Starting the service'
-                Start-Service -Name $Name -ErrorAction Ignore       
-                Wait-ForServiceToReachDesiredState -ServiceName $Name -DesiredState 'Running'
-                Write-Verbose "Restarted Service $Name"
-                if($Name -ieq 'ArcGISGeoEvent'){
-                    Start-Sleep -Seconds 180
-                }elseif( $Name -ieq 'ArcGIS Data Store'){
-                    Wait-ForUrl -Url "https://localhost:2443/arcgis/datastoreadmin/configure?f=json" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 10 -HttpMethod 'GET' -Verbose
-                }
-            }catch {
-                Write-Verbose "[WARNING] Starting Service $_"
+            Restart-ArcGISService -ServiceName $Name -Verbose
+            
+            if($Name -ieq 'ArcGISGeoEvent'){
+                Start-Sleep -Seconds 180
+            }elseif( $Name -ieq 'ArcGIS Data Store'){
+                Wait-ForUrl -Url "https://localhost:2443/arcgis/datastoreadmin/configure?f=json" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 10 -HttpMethod 'GET' -Verbose
             }
         }
     }else{
@@ -630,7 +624,413 @@ function Test-Acl {
     $result
 }
 
+<#
+.Synopsis
+Grants log on as service right to the given user
+#>
+function Set-LogOnAsServicePolicy
+{
+    [CmdletBinding()]
+	param
+	(
+        [System.String]
+        $UserName
+    )
 
+    $logOnAsServiceText=@"
+        namespace LogOnAsServiceHelper
+        {
+            using Microsoft.Win32.SafeHandles;
+            using System;
+            using System.Runtime.ConstrainedExecution;
+            using System.Runtime.InteropServices;
+            using System.Security;
+
+            public class NativeMethods
+            {
+                #region constants
+                // from ntlsa.h
+                private const int POLICY_LOOKUP_NAMES = 0x00000800;
+                private const int POLICY_CREATE_ACCOUNT = 0x00000010;
+                private const uint ACCOUNT_ADJUST_SYSTEM_ACCESS = 0x00000008;
+                private const uint ACCOUNT_VIEW = 0x00000001;
+                private const uint SECURITY_ACCESS_SERVICE_LOGON = 0x00000010;
+
+                // from LsaUtils.h
+                private const uint STATUS_OBJECT_NAME_NOT_FOUND = 0xC0000034;
+
+                // from lmcons.h
+                private const int UNLEN = 256;
+                private const int DNLEN = 15;
+
+                // Extra characteres for "\","@" etc.
+                private const int EXTRA_LENGTH = 3;
+                #endregion constants
+
+                #region interop structures
+                /// <summary>
+                /// Used to open a policy, but not containing anything meaqningful
+                /// </summary>
+                [StructLayout(LayoutKind.Sequential)]
+                private struct LSA_OBJECT_ATTRIBUTES
+                {
+                    public UInt32 Length;
+                    public IntPtr RootDirectory;
+                    public IntPtr ObjectName;
+                    public UInt32 Attributes;
+                    public IntPtr SecurityDescriptor;
+                    public IntPtr SecurityQualityOfService;
+
+                    public void Initialize()
+                    {
+                        this.Length = 0;
+                        this.RootDirectory = IntPtr.Zero;
+                        this.ObjectName = IntPtr.Zero;
+                        this.Attributes = 0;
+                        this.SecurityDescriptor = IntPtr.Zero;
+                        this.SecurityQualityOfService = IntPtr.Zero;
+                    }
+                }
+
+                /// <summary>
+                /// LSA string
+                /// </summary>
+                [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+                private struct LSA_UNICODE_STRING
+                {
+                    internal ushort Length;
+                    internal ushort MaximumLength;
+                    [MarshalAs(UnmanagedType.LPWStr)]
+                    internal string Buffer;
+
+                    internal void Set(string src)
+                    {
+                        this.Buffer = src;
+                        this.Length = (ushort)(src.Length * sizeof(char));
+                        this.MaximumLength = (ushort)(this.Length + sizeof(char));
+                    }
+                }
+
+                /// <summary>
+                /// Structure used as the last parameter for LSALookupNames
+                /// </summary>
+                [StructLayout(LayoutKind.Sequential)]
+                private struct LSA_TRANSLATED_SID2
+                {
+                    public uint Use;
+                    public IntPtr SID;
+                    public int DomainIndex;
+                    public uint Flags;
+                };
+                #endregion interop structures
+
+                #region safe handles
+                /// <summary>
+                /// Handle for LSA objects including Policy and Account
+                /// </summary>
+                private class LsaSafeHandle : SafeHandleZeroOrMinusOneIsInvalid
+                {
+                    [DllImport("advapi32.dll")]
+                    private static extern uint LsaClose(IntPtr ObjectHandle);
+
+                    /// <summary>
+                    /// Prevents a default instance of the LsaPolicySafeHAndle class from being created.
+                    /// </summary>
+                    private LsaSafeHandle(): base(true)
+                    {
+                    }
+
+                    /// <summary>
+                    /// Calls NativeMethods.CloseHandle(handle)
+                    /// </summary>
+                    /// <returns>the return of NativeMethods.CloseHandle(handle)</returns>
+                    [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
+                    protected override bool ReleaseHandle()
+                    {
+                        long returnValue = LsaSafeHandle.LsaClose(this.handle);
+                        return returnValue != 0;
+                
+                    }
+                }
+
+                /// <summary>
+                /// Handle for IntPtrs returned from Lsa calls that have to be freed with
+                /// LsaFreeMemory
+                /// </summary>
+                private class SafeLsaMemoryHandle : SafeHandleZeroOrMinusOneIsInvalid
+                {
+                    [DllImport("advapi32")]
+                    internal static extern int LsaFreeMemory(IntPtr Buffer);
+
+                    private SafeLsaMemoryHandle() : base(true) { }
+
+                    private SafeLsaMemoryHandle(IntPtr handle)
+                        : base(true)
+                    {
+                        SetHandle(handle);
+                    }
+
+                    private static SafeLsaMemoryHandle InvalidHandle
+                    {
+                        get { return new SafeLsaMemoryHandle(IntPtr.Zero); }
+                    }
+
+                    override protected bool ReleaseHandle()
+                    {
+                        return SafeLsaMemoryHandle.LsaFreeMemory(handle) == 0;
+                    }
+
+                    internal IntPtr Memory
+                    {
+                        get
+                        {
+                            return this.handle;
+                        }
+                    }
+                }
+                #endregion safe handles
+
+                #region interop function declarations
+                /// <summary>
+                /// Opens LSA Policy
+                /// </summary>
+                [DllImport("advapi32.dll", SetLastError = true, PreserveSig = true)]
+                private static extern uint LsaOpenPolicy(
+                    IntPtr SystemName,
+                    ref LSA_OBJECT_ATTRIBUTES ObjectAttributes,
+                    uint DesiredAccess,
+                    out LsaSafeHandle PolicyHandle
+                );
+
+                /// <summary>
+                /// Convert the name into a SID which is used in remaining calls
+                /// </summary>
+                [DllImport("advapi32", CharSet = CharSet.Unicode, SetLastError = true), SuppressUnmanagedCodeSecurityAttribute]
+                private static extern uint LsaLookupNames2(
+                    LsaSafeHandle PolicyHandle,
+                    uint Flags,
+                    uint Count,
+                    LSA_UNICODE_STRING[] Names,
+                    out SafeLsaMemoryHandle ReferencedDomains,
+                    out SafeLsaMemoryHandle Sids
+                );
+
+                /// <summary>
+                /// Opens the LSA account corresponding to the user's SID
+                /// </summary>
+                [DllImport("advapi32.dll", SetLastError = true, PreserveSig = true)]
+                private static extern uint LsaOpenAccount(
+                    LsaSafeHandle PolicyHandle,
+                    IntPtr Sid,
+                    uint Access,
+                    out LsaSafeHandle AccountHandle);
+
+                /// <summary>
+                /// Creates an LSA account corresponding to the user's SID
+                /// </summary>
+                [DllImport("advapi32.dll", SetLastError = true, PreserveSig = true)]
+                private static extern uint LsaCreateAccount(
+                    LsaSafeHandle PolicyHandle,
+                    IntPtr Sid,
+                    uint Access,
+                    out LsaSafeHandle AccountHandle);
+
+                /// <summary>
+                /// Gets the LSA Account access
+                /// </summary>
+                [DllImport("advapi32.dll", SetLastError = true, PreserveSig = true)]
+                private static extern uint LsaGetSystemAccessAccount(
+                    LsaSafeHandle AccountHandle,
+                    out uint SystemAccess);
+
+                /// <summary>
+                /// Sets the LSA Account access
+                /// </summary>
+                [DllImport("advapi32.dll", SetLastError = true, PreserveSig = true)]
+                private static extern uint LsaSetSystemAccessAccount(
+                    LsaSafeHandle AccountHandle,
+                    uint SystemAccess);
+                #endregion interop function declarations
+
+                /// <summary>
+                /// Sets the Log On As A Service Policy for <paramref name="userName"/>, if not already set.
+                /// </summary>
+                /// <param name="userName">the user name we want to allow logging on as a service</param>
+                /// <exception cref="ArgumentNullException">If the <paramref name="userName"/> is null or empty.</exception>
+                /// <exception cref="InvalidOperationException">In the following cases:
+                ///     Failure opening the LSA Policy.
+                ///     The <paramref name="userName"/> is too large.
+                ///     Failure looking up the user name.
+                ///     Failure opening LSA account (other than account not found).
+                ///     Failure creating LSA account.
+                ///     Failure getting LSA account policy access.
+                ///     Failure setting LSA account policy access.
+                /// </exception>
+                public static void SetLogOnAsServicePolicy(string userName)
+                {
+                    if (String.IsNullOrEmpty(userName))
+                    {
+                        throw new ArgumentNullException("userName");
+                    }
+
+                    LSA_OBJECT_ATTRIBUTES objectAttributes = new LSA_OBJECT_ATTRIBUTES();
+                    objectAttributes.Initialize();
+
+                    // All handles are delcared in advance so they can be closed on finally
+                    LsaSafeHandle policyHandle = null;
+                    SafeLsaMemoryHandle referencedDomains = null;
+                    SafeLsaMemoryHandle sids = null;
+                    LsaSafeHandle accountHandle = null;
+
+                    try
+                    {
+                        uint status = LsaOpenPolicy(
+                            IntPtr.Zero,
+                            ref objectAttributes,
+                            POLICY_LOOKUP_NAMES | POLICY_CREATE_ACCOUNT,
+                            out policyHandle);
+
+                        if (status != 0)
+                        {
+                            throw new InvalidOperationException("CannotOpenPolicyErrorMessage");
+                        }
+
+                        // Unicode strings have a maximum length of 32KB. We don't want to create
+                        // LSA strings with more than that. User lengths are much smaller so this check
+                        // ensures userName's length is useful
+                        if (userName.Length > UNLEN + DNLEN + EXTRA_LENGTH)
+                        {
+                            throw new InvalidOperationException("UserNameTooLongErrorMessage");
+                        }
+
+                        LSA_UNICODE_STRING lsaUserName = new LSA_UNICODE_STRING();
+                        lsaUserName.Set(userName);
+
+                        LSA_UNICODE_STRING[] names = new LSA_UNICODE_STRING[1];
+                        names[0].Set(userName);
+
+                        status = LsaLookupNames2(
+                            policyHandle,
+                            0,
+                            1,
+                            new LSA_UNICODE_STRING[] { lsaUserName },
+                            out referencedDomains,
+                            out sids);
+
+                        if (status != 0)
+                        {
+                            throw new InvalidOperationException("CannotLookupNamesErrorMessage");
+                        }
+
+                        LSA_TRANSLATED_SID2 sid = (LSA_TRANSLATED_SID2)Marshal.PtrToStructure(sids.Memory, typeof(LSA_TRANSLATED_SID2));
+
+                        status = LsaOpenAccount(policyHandle,
+                                            sid.SID,
+                                            ACCOUNT_VIEW | ACCOUNT_ADJUST_SYSTEM_ACCESS,
+                                            out accountHandle);
+
+                        uint currentAccess = 0;
+
+                        if (status == 0)
+                        {
+                            status = LsaGetSystemAccessAccount(accountHandle, out currentAccess);
+
+                            if (status != 0)
+                            {
+                                throw new InvalidOperationException("CannotGetAccountAccessErrorMessage");
+                            }
+
+                        }
+                        else if (status == STATUS_OBJECT_NAME_NOT_FOUND)
+                        {
+                            status = LsaCreateAccount(
+                                policyHandle,
+                                sid.SID,
+                                ACCOUNT_ADJUST_SYSTEM_ACCESS,
+                                out accountHandle);
+
+                            if (status != 0)
+                            {
+                                throw new InvalidOperationException("CannotCreateAccountAccessErrorMessage");
+                            }
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("CannotOpenAccountErrorMessage");
+                        }
+
+                        if ((currentAccess & SECURITY_ACCESS_SERVICE_LOGON) == 0)
+                        {
+                            status = LsaSetSystemAccessAccount(
+                                accountHandle,
+                                currentAccess | SECURITY_ACCESS_SERVICE_LOGON);
+                            if (status != 0)
+                            {
+                                throw new InvalidOperationException("CannotSetAccountAccessErrorMessage");
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (policyHandle != null) { policyHandle.Close(); }
+                        if (referencedDomains != null) { referencedDomains.Close(); }
+                        if (sids != null) { sids.Close(); }
+                        if (accountHandle != null) { accountHandle.Close(); }
+                    }
+                }
+            }
+        }
+"@
+    
+    try
+    {
+        $existingType=[LogOnAsServiceHelper.NativeMethods]
+    }
+    catch
+    {
+        $logOnAsServiceText=$logOnAsServiceText.Replace("CannotOpenPolicyErrorMessage",$LocalizedData.CannotOpenPolicyErrorMessage)
+        $logOnAsServiceText=$logOnAsServiceText.Replace("UserNameTooLongErrorMessage",$LocalizedData.UserNameTooLongErrorMessage)
+        $logOnAsServiceText=$logOnAsServiceText.Replace("CannotLookupNamesErrorMessage",$LocalizedData.CannotLookupNamesErrorMessage)
+        $logOnAsServiceText=$logOnAsServiceText.Replace("CannotOpenAccountErrorMessage",$LocalizedData.CannotOpenAccountErrorMessage)
+        $logOnAsServiceText=$logOnAsServiceText.Replace("CannotCreateAccountAccessErrorMessage",$LocalizedData.CannotCreateAccountAccessErrorMessage)
+        $logOnAsServiceText=$logOnAsServiceText.Replace("CannotGetAccountAccessErrorMessage",$LocalizedData.CannotGetAccountAccessErrorMessage)
+        $logOnAsServiceText=$logOnAsServiceText.Replace("CannotSetAccountAccessErrorMessage",$LocalizedData.CannotSetAccountAccessErrorMessage)
+        Add-Type $logOnAsServiceText -Verbose
+    }
+
+    if($userName.StartsWith(".\"))
+    {
+        $userName = $userName.Substring(2)
+    }
+
+    try
+    {
+        [LogOnAsServiceHelper.NativeMethods]::SetLogOnAsServicePolicy($userName)
+    }
+    catch
+    {
+        $errorMessage = $LocalizedData.ErrorSetingLogOnAsServiceRightsForUser -f $userName,$_.Exception.Message
+
+        $errorCategory=[System.Management.Automation.ErrorCategory]::InvalidArgument
+        $exception = New-Object System.ArgumentException $errorMessage;
+        $errorRecord = New-Object System.Management.Automation.ErrorRecord $exception,"ErrorSetingLogOnAsServiceRightsForUser", $errorCategory, $null
+        throw $errorRecord
+    }
+}
+
+data LocalizedData
+{
+    # culture="en-US"
+    ConvertFrom-StringData @"
+ErrorSetingLogOnAsServiceRightsForUser=Error granting '{0}' the right to log on as a service. Message: '{1}'.
+CannotOpenPolicyErrorMessage=Cannot open policy manager
+UserNameTooLongErrorMessage=User name is too long
+CannotLookupNamesErrorMessage=Failed to lookup user name
+CannotOpenAccountErrorMessage=Failed to open policy for user
+CannotCreateAccountAccessErrorMessage=Failed to create policy for user
+CannotGetAccountAccessErrorMessage=Failed to get user policy rights
+CannotSetAccountAccessErrorMessage=Failed to set user policy rights
+"@
+}
 
 Export-ModuleMember -Function *-TargetResource
-

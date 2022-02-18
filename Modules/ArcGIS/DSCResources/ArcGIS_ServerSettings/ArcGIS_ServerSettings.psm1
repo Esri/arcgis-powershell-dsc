@@ -20,10 +20,7 @@ function Get-TargetResource
 		$ServerEndPoint,
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
-
-		[System.Boolean]
-		$IsWorkflowManagerDeployment = $False
+		$SiteAdministrator
 	)
 
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -59,10 +56,7 @@ function Set-TargetResource
 		$ServerEndPointContext = 'arcgis',
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
-
-		[System.Boolean]
-		$IsWorkflowManagerDeployment = $False
+		$SiteAdministrator
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
@@ -72,8 +66,7 @@ function Set-TargetResource
     $Referer = if($ExternalDNSName){"https://$($ExternalDNSName)/$($ServerContext)"}else{"https://localhost"}
     Write-Verbose "Getting Server Token for user '$($SiteAdministrator.UserName)' from 'https://$($ServerFQDN):6443'"
 
-	$RestartRequired = $False
-    $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN):6443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+	$serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN):6443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
     if(-not($serverToken.token)) {
         Write-Verbose "Get Server Token Response:- $serverToken"
         throw "Unable to retrieve Server Token for '$($SiteAdministrator.UserName)'"
@@ -124,25 +117,7 @@ function Set-TargetResource
 			Write-Verbose "Updating Server System Properties to set WebContextUrl to $ExpectedServerWebContextUrl"
 			Set-ServerSystemProperties -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer -Properties $serverSysProps
 			Write-Verbose "Updated Server System Properties to set WebContextUrl to $ExpectedServerWebContextUrl"
-			$RestartRequired = $true
 		}
-	}
-
-	if($RestartRequired)
-    {
-		$ServiceName = 'ArcGIS Server'
-        Write-Verbose "Restarting Service $ServiceName"
-		Stop-Service -Name $ServiceName  -Force		
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'		
-		Start-Service -Name $ServiceName         
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-		Write-Verbose "Restarted Service $ServiceName"
-    }
-	
-	if($IsWorkflowManagerDeployment){
-		Start-Service -Name "WorkflowManager"
-		Wait-ForServiceToReachDesiredState -ServiceName "WorkflowManager" -DesiredState 'Running'
-		Write-Verbose "Started Service WorkflowManager"
 	}
     
     Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
@@ -178,10 +153,7 @@ function Test-TargetResource
 		$ServerEndPointContext = 'arcgis',
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
-
-		[System.Boolean]
-		$IsWorkflowManagerDeployment = $False
+		$SiteAdministrator
     )
     
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false

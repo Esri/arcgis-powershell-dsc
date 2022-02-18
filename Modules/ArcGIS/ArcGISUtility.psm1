@@ -149,66 +149,6 @@ function Get-LastModifiedDateForRemoteFile
     }
 }
 
-function Wait-ForServiceToReachDesiredState
-{
- [CmdletBinding()]
- param(
-	[Parameter(Mandatory=$true)]
-    [System.String]
-	$ServiceName,
-
-	[Parameter(Mandatory=$true)]
-    [System.String]
-	$DesiredState,
-
-    [System.Int32]
-	$SleepTimeInSeconds=10,
-
-    [System.Int32]
-	$MaxSeconds=300,
-
-    [System.Int32]
-	$MaxAttempts=-1
-  )
-    
-  $Attempts  = 0
-  $Done      = $false
-  $startTime = Get-Date
-
-  while ($true)
-  {
-    if ($Attempts++ -gt 0) {  # to skip the message for first attempt
-      Write-Verbose "Checking state of Service '$ServiceName'. Attempt # $Attempts"        
-    }    
-    
-    $Service = Get-Service -Name $ServiceName -ErrorAction Ignore
-
-    $msg = "Service '$ServiceName' not ready."
-    if ($Service) {
-      $msg  = "Service '$ServiceName' is in '$($Service.Status)' state."
-      # exit if done
-      if ($Service.Status -ieq $DesiredState) {
-        Write-Verbose $msg
-        return
-      }
-    } 
-
-    Write-Verbose $msg       # not there yet, report current state
-
-    # exit on timeout
-    if (($MaxSeconds -gt 0) -and ($(Get-Date) - $startTime).TotalSeconds -ge $MaxSeconds) {
-      return
-    }  
-
-    # exit on number of attempts
-    if (($MaxAttempts -gt 0) -and ($Attempts -ge $MaxAttempts)) {
-      return
-    }
-
-    Write-Verbose "Waiting $SleepTimeInSeconds seconds."
-    Start-Sleep -Seconds $SleepTimeInSeconds
-  }
-}
 
 function Wait-ForUrl
 {
@@ -593,6 +533,65 @@ function Confirm-PropertyInPropertiesFile
     }
 }
 
+function Get-NodeAgentAmazonElementsPresent
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [System.String]
+        $InstallDir
+    )
+
+    $Enabled = $false
+    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
+    if(Test-Path $File){
+        [xml]$xml = Get-Content $File
+        if((($xml.NodeAgent.Observers.Observer | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
+                ($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon') -or `
+                (($xml.NodeAgent.Plugins.Plugin | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
+                ($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon'))
+        {
+            Write-Verbose "Amazon elements exist in $File"
+            $Enabled = $true
+        }
+    }
+
+    $Enabled
+}
+
+function Remove-NodeAgentAmazonElements
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [System.String]
+        $InstallDir  
+    )
+
+    $Changed = $false
+    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
+    if(Test-Path $File){
+        [xml]$xml = Get-Content $File
+        if($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon')
+        {
+            $xml.NodeAgent.Observers.RemoveChild($xml.NodeAgent.Observers.Observer)
+            Write-Verbose "Amazon Observer exists in $File. Removing it"
+            $Changed = $true
+        }
+        if($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon')
+        {
+            $xml.NodeAgent.Plugins.RemoveChild($xml.NodeAgent.Plugins.Plugin)
+            Write-Verbose "Amazon plugin exists in $File. Removing it"
+            $Changed = $true
+        }
+        if($Changed) {
+            $xml.Save($File)
+        }
+    }
+
+    $Changed
+}
+
 function Add-HostMapping
 {
     [CmdletBinding()]
@@ -826,6 +825,8 @@ function Get-ArcGISProductName
         $ProductName = 'ArcGIS Data Store'
     }elseif($Name -ieq "ArcGIS for Server" -or $Name -ieq 'Server'){
         $ProductName = 'ArcGIS Server'
+    }elseif($Name -ieq 'ServerDeepLearningLibraries'){
+        $ProductName = 'Deep Learning Libraries for ArcGIS Server'
     }elseif($Name -ieq "Mission Server" -or $Name -ieq 'MissionServer'){
         $ProductName = 'ArcGIS Mission Server'
     }elseif($Name -ieq "Notebook Server" -or $Name -ieq 'NotebookServer'){
@@ -985,7 +986,6 @@ function Get-ComponentCode
         WorkflowManagerWebApp = @{
             '10.8.1' = '96A58AC8-C040-4E4A-A118-BE963BF1A8CF'
             '10.9' = '28F45C9F-9581-4F82-9377-5B165D0D8580'
-            '10.9.1' = '62242EB9-BB56-4F73-9A8D-B4891A142D5A'
         }
         Monitor = @{
             '10.7' = '0497042F-0CBB-40C0-8F62-F1922B90E12E'
@@ -1241,23 +1241,27 @@ Function Test-Install{
         }
     }
     
-    if(-not($resultSetFlag)){    
-        if(-not($ProdId.StartsWith('{'))){
-            $ProdId = '{' + $ProdId
-        }
-        if(-not($ProdId.EndsWith('}'))){
-            $ProdId = $ProdId + '}'
-        }
-        $PathToCheck = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
-        Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
-        if (Test-Path $PathToCheck -ErrorAction Ignore){
-            $result = $true
-        }
-        if(-not($result)){
-            $PathToCheck = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
+    if($null -eq $ProdId){
+        $result = $false
+    }else{
+        if(-not($resultSetFlag)){    
+            if(-not($ProdId.StartsWith('{'))){
+                $ProdId = '{' + $ProdId
+            }
+            if(-not($ProdId.EndsWith('}'))){
+                $ProdId = $ProdId + '}'
+            }
+            $PathToCheck = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
             Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
             if (Test-Path $PathToCheck -ErrorAction Ignore){
                 $result = $true
+            }
+            if(-not($result)){
+                $PathToCheck = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($ProdId)"
+                Write-Verbose "Testing Presence for Component '$Name' with Path $PathToCheck"
+                if (Test-Path $PathToCheck -ErrorAction Ignore){
+                    $result = $true
+                }
             }
         }
     }
@@ -1471,13 +1475,41 @@ function Invoke-DataStoreConfigureBackupLocationTool
     $op
 }
 
+function Restart-ArcGISService
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ServiceName
+    )
 
-Export-ModuleMember -Function Invoke-ArcGISWebRequest, ConvertTo-HttpBody, Invoke-UploadFile,`
+    try {
+        Write-Verbose "Restarting Service $ServiceName"
+        Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
+        Write-Verbose 'Stopping the service' 
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+        Write-Verbose 'Stopped the service'
+    }catch {
+        Write-Verbose "[WARNING] Stopping Service $_"
+    }
+
+    try {
+        Write-Verbose 'Starting the service'
+        Start-Service -Name $ServiceName -ErrorAction Ignore        
+        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+        Write-Verbose "Restarted Service $ServiceName"
+    }catch {
+        Write-Verbose "[WARNING] Starting Service $_"
+    }
+}
+
+Export-ModuleMember -Function Invoke-ArcGISWebRequest, ConvertTo-HttpBody, Invoke-UploadFile, `
                                 Wait-ForUrl, Get-LastModifiedDateForRemoteFile, Confirm-ResponseStatus, `
-                                Get-ServerToken, Get-PortalToken, Wait-ForServiceToReachDesiredState,`
+                                Get-ServerToken, Get-PortalToken, `
                                 Get-EsriRegistryKeyForService, Confirm-PropertyInPropertiesFile, `
-                                Get-PropertyFromPropertiesFile, Set-PropertyFromPropertiesFile, Add-HostMapping,`
-                                Get-ConfiguredHostIdentifier, Set-ConfiguredHostIdentifier, Get-ConfiguredHostName,`
+                                Get-PropertyFromPropertiesFile, Set-PropertyFromPropertiesFile, `
+                                Get-NodeAgentAmazonElementsPresent, Remove-NodeAgentAmazonElements, Add-HostMapping, `
+                                Get-ConfiguredHostIdentifier, Set-ConfiguredHostIdentifier, Get-ConfiguredHostName, `
                                 Set-ConfiguredHostName, Get-ConfiguredHostIdentifierType, Get-ComponentCode, Get-ArcGISProductName, `
                                 Test-Install, Convert-PSObjectToHashtable, Get-DataStoreBackupLocation, `
-                                Invoke-DataStoreConfigureBackupLocationTool, Invoke-DescribeDataStore
+                                Invoke-DataStoreConfigureBackupLocationTool, Invoke-DescribeDataStore, Restart-ArcGISService

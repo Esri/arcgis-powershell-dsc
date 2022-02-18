@@ -6,6 +6,12 @@ Configuration InsightsUpgradeInstall{
         [System.String]
         $InstallerPath,
 
+        [System.String]
+        $PatchesDir,
+
+        [System.Array]
+        $PatchInstallOrder = $null,
+
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $ServiceAccount,
@@ -23,8 +29,9 @@ Configuration InsightsUpgradeInstall{
         $EnableMSILogging = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_Install
+    Import-DscResource -Name ArcGIS_InstallPatch
     
     Node $AllNodes.NodeName
     {   
@@ -46,6 +53,18 @@ Configuration InsightsUpgradeInstall{
             ServiceCredentialIsMSA = $IsServiceAccountMSA
             EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
+        }
+
+        if ($PatchesDir) {
+            ArcGIS_InstallPatch ServerInstallPatch
+            {
+                Name = "Insights"
+                Version = $Version
+                PatchesDir = $PatchesDir
+                PatchInstallOrder = $PatchInstallOrder
+                Ensure = "Present"
+                DependsOn = @("[ArcGIS_Install]InsightsInstall")
+            }
         }
     }
 }

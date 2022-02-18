@@ -33,7 +33,7 @@
         Defines the Logging Level of Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
     .PARAMETER DisableServiceDirectory
         Boolean to indicate whether to disable the service directory for ArcGIS Server
-    .PARAMETER DisableServiceDirectory
+    .PARAMETER EnableUsageMetering
         Boolean to indicate whether to enable the internal usage metering plugin
     .PARAMETER SharedKey
         Secret to use as the Shared Key for token generatiion
@@ -187,13 +187,16 @@ function Set-TargetResource
 
 	$ServiceName = 'ArcGIS Server'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
+    $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
+    $ArcGISServerVersion = New-Object 'System.Version' -ArgumentList $RealVersion
+	Write-Verbose "Version of ArcGIS Server is $ArcGISServerVersion"
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
     Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
 
-    if($Ensure -ieq 'Present') {        
+    if($Ensure -ieq 'Present') {
        
         $Referer = 'http://localhost' 
 
@@ -205,11 +208,7 @@ function Set-TargetResource
 				# Need to restart the service to pick up the hostname 
                 $RestartRequired = $true 
             }
-        }        
-
-        [string]$RealVersion = (Get-ArcGISProductDetails -ProductName "ArcGIS Server").Version
-		$DeploymentImageVersion = New-Object 'System.Version' -ArgumentList $RealVersion
-		Write-Verbose "Version of ArcGIS Server is $DeploymentImageVersion"
+        }
         if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
             Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
             if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
@@ -219,24 +218,7 @@ function Set-TargetResource
         }
 
         if($RestartRequired) {
-			try {
-				Write-Verbose "Restarting Service $ServiceName"
-				Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-				Write-Verbose 'Stopping the service' 
-				Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-				Write-Verbose 'Stopped the service'
-			}catch {
-                Write-Verbose "[WARNING] Stopping Service $_"
-            }
-
-			try {
-				Write-Verbose 'Starting the service'
-				Start-Service -Name $ServiceName -ErrorAction Ignore        
-				Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-				Write-Verbose "Restarted Service $ServiceName"
-			}catch {
-                Write-Verbose "[WARNING] Starting Service $_"
-            }
+			Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
 			Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
             Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
@@ -257,7 +239,7 @@ function Set-TargetResource
         if($Join) {
             if(-not($siteExists)) {
                 Write-Verbose 'Joining to Server Site'
-                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer -CurrentMachineServerHostName $FQDN -DeploymentMajorVersion $DeploymentImageVersion.Minor
+                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer -CurrentMachineServerHostName $FQDN -DeploymentMajorVersion $ArcGISServerVersion.Minor
                 Write-Verbose 'Joined to Server Site'
             }else{
                 Write-Verbose "Skipping Join site operation. $FQDN already belongs to a site."
@@ -287,14 +269,7 @@ function Set-TargetResource
                         Write-Verbose "[WARNING] Error while creating site on attempt $Attempt Error:- $_"
                         if($Attempt -lt 1) {
                             # If the site failed to create because of permissions. Restart the service and try again
-                            Write-Verbose "Restarting Service $ServiceName"
-                            Stop-Service -Name $ServiceName  -Force
-                            Write-Verbose 'Stopping the service' 
-                            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'                            
-                            Write-Verbose 'Starting the service'
-                            Start-Service -Name $ServiceName         
-                            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-                            Write-Verbose "Restarted Service $ServiceName"
+                            Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
 							Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
                             Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
@@ -630,13 +605,26 @@ function Invoke-CreateSite
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
 
-    if(($ConfigStoreCloudStorageConnectionString) -and ($ConfigStoreCloudStorageConnectionSecret) -and ($ConfigStoreCloudStorageConnectionString.IndexOf('AccountName=') -gt -1)){
-        Write-Verbose "Using Azure Cloud Storage for the config store"
-        $configStoreConnection = @{ type= "AZURE"; 
-                                    connectionString = $ConfigStoreCloudStorageConnectionString;    
-                                    connectionSecret = $ConfigStoreCloudStorageConnectionSecret
-                                }
-	    $Timeout = 2 * $Timeout # Double the timeout if using cloud storage for the config store
+    if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0){
+        if($ConfigStoreCloudStorageConnectionString.IndexOf('AccountName=') -gt -1){
+            Write-Verbose "Using Azure Cloud Storage for the config store"
+            $configStoreConnection = @{ 
+                                        type= "AZURE"; 
+                                        connectionString = $ConfigStoreCloudStorageConnectionString;
+                                        connectionSecret = $ConfigStoreCloudStorageConnectionSecret
+                                    }
+        }else{
+            Write-Verbose "Using AWS Cloud Storage for the config store"
+            $configStoreConnection = @{ 
+                type= "AMAZON"; 
+                connectionString = $ConfigStoreCloudStorageConnectionString;
+            }
+
+            if($ConfigStoreCloudStorageConnectionSecret -and $ConfigStoreCloudStorageConnectionSecret.Length -gt 0){
+                $configStoreConnection.Add("connectionSecret",$ConfigStoreCloudStorageConnectionSecret)
+            }
+        }
+        $Timeout = 2 * $Timeout # Double the timeout if using cloud storage for the config store        
     }else{
         Write-Verbose "Using File System Based Storage for the config store"
         $configStoreConnection = @{ type= "FILESYSTEM"; connectionString = $ConfigurationStoreLocation }
@@ -969,7 +957,7 @@ function Wait-ForHostNameResolution
     if(-not(Test-Path $JavaExe)){
         throw "java.exe not found at $JavaExe"
     } 
-    $JavaClassFilePath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_Server\FQDN.class'
+    $JavaClassFilePath = Join-Path $PSScriptRoot 'FQDN.class'
     if(-not(Test-Path $JavaClassFilePath)) {
         Write-Warning "Java Test Class not found at $JavaClassFilePath"
     }
@@ -982,7 +970,7 @@ function Wait-ForHostNameResolution
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $JavaExe
             $psi.Arguments = 'FQDN'
-            $psi.WorkingDirectory = (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_Server')
+            $psi.WorkingDirectory = $PSScriptRoot
             $psi.UseShellExecute = $false #start the process from it's own executable file    
             $psi.RedirectStandardOutput = $true #enable the process to read from standard output
             $psi.RedirectStandardError = $true #enable the process to read from standard error
@@ -1001,65 +989,6 @@ function Wait-ForHostNameResolution
             }
         }
     }
-}
-
-function Get-NodeAgentAmazonElementsPresent
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param(
-        [System.String]
-        $InstallDir       
-    )
-
-    $Enabled = $false
-    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
-    if(Test-Path $File){
-        [xml]$xml = Get-Content $File
-        if((($xml.NodeAgent.Observers.Observer | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon') -or `
-                (($xml.NodeAgent.Plugins.Plugin | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon'))
-        {
-            Write-Verbose "Amazon elements exist in $File"
-            $Enabled = $true
-        }
-    }
-
-    $Enabled
-}
-
-function Remove-NodeAgentAmazonElements
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param(
-        [System.String]
-        $InstallDir  
-    )
-
-    $Changed = $false
-    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
-    if(Test-Path $File){
-        [xml]$xml = Get-Content $File
-        if($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Observers.RemoveChild($xml.NodeAgent.Observers.Observer)
-            Write-Verbose "Amazon Observer exists in $File. Removing it"
-            $Changed = $true
-        }
-        if($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Plugins.RemoveChild($xml.NodeAgent.Plugins.Plugin)
-            Write-Verbose "Amazon plugin exists in $File. Removing it"
-            $Changed = $true
-        }
-        if($Changed) {
-            $xml.Save($File)
-        }
-    }
-
-    $Changed
 }
 
 function Get-SingleClusterModeOnServer

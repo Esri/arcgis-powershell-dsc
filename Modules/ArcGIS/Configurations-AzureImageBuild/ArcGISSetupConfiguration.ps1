@@ -140,6 +140,7 @@
                             Version = "00"
                             ProductId = $Installer.ProductId
                             PatchesDir = $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir)
+                            PatchInstallOrder = $Installer.Patches
                             Ensure = "Present"
                         }
                     }

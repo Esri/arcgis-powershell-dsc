@@ -71,7 +71,7 @@ function Set-TargetResource
         $NodeAgentFilePath = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
         if($EnableLogHarvesterPlugin){
             #Create Log4j-XML.jar Archive
-            $LogXMLFilePath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_LogHarvester\LogHarvesterSample.xml'
+            $LogXMLFilePath = Join-Path $PSScriptRoot 'LogHarvesterSample.xml'
             [xml]$xml = Get-Content $LogXMLFilePath
             $ServerObserverFolderPath = Join-Path $InstallDir 'framework\lib\server\observers'
             $Log4jxmlFilePath = Join-Path $ServerObserverFolderPath 'log4j.xml'
@@ -129,24 +129,7 @@ function Set-TargetResource
     }
 
     #Restart Component
-    try {
-        Write-Verbose "Restarting Service $ServiceName"
-        Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-        Write-Verbose 'Stopping the service' 
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-        Write-Verbose 'Stopped the service'
-    }catch {
-        Write-Verbose "[WARNING] Stopping Service $_"
-    }
-
-    try {
-        Write-Verbose 'Starting the service'
-        Start-Service -Name $ServiceName -ErrorAction Ignore        
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-        Write-Verbose "Restarted Service $ServiceName"
-    }catch {
-        Write-Verbose "[WARNING] Starting Service $_"
-    }
+    Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
     if($ComponentType -eq "Server"){
         $FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }

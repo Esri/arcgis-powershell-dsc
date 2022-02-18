@@ -193,7 +193,7 @@ function Set-TargetResource
             $Certs = Get-SSLCertificatesForPortal -PortalURL $PortalURL -SiteName $SiteName -Token $token.token -Referer $Referer -MachineName $FQDN -Version $Version -ErrorAction SilentlyContinue
             if($CName -ine $Certs.webServerCertificateAlias) {
 				Write-Verbose "Unable to retrive current alias to verify. Restarting Portal Service"
-				Restart-PortalService -ServiceName 'Portal for ArcGIS'
+				Restart-ArcGISService -ServiceName 'Portal for ArcGIS' -Verbose
 				Start-Sleep -Seconds 120
 				Write-Verbose "Waiting for '$PortalAdminUrl' to initialize after waiting 150 seconds"
 				Wait-ForUrl -Url $PortalAdminUrl
@@ -220,37 +220,6 @@ function Set-TargetResource
                 Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
             }
         }
-    }
-}
-
-function Restart-PortalService
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param
-    (
-        [System.String]
-        $ServiceName = 'Portal for ArcGIS'
-    )
-
-    try 
-    {
-		Write-Verbose "Restarting Service $ServiceName"
-		Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-		Write-Verbose 'Stopping the service' 
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-		Write-Verbose 'Stopped the service'
-	}catch {
-        Write-Verbose "[WARNING] Stopping Service $_"
-    }
-
-	try {
-		Write-Verbose 'Starting the service'
-		Start-Service -Name $ServiceName -ErrorAction Ignore        
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-		Write-Verbose "Restarted Service '$ServiceName'"
-	}catch {
-        Write-Verbose "[WARNING] Starting Service $_"
     }
 }
 
@@ -307,7 +276,7 @@ function Test-TargetResource
         $token = Get-PortalToken -PortalHostName $FQDN -SiteName $SiteName -Credential $SiteAdministrator -Referer $Referer -MaxAttempts 30
     } catch {
         Write-Verbose "[WARNING] Unable to get token:- $_. Restarting portal service and retrying to get the token."
-        Restart-PortalService -ServiceName 'Portal for ArcGIS'
+        Restart-ArcGISService -ServiceName 'Portal for ArcGIS' -Verbose
         Start-Sleep -Seconds 150
         Write-Verbose "Waiting for '$PortalAdminUrl' to initialize after waiting 150 seconds"
         Wait-ForUrl -Url $PortalAdminUrl -Verbose

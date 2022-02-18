@@ -260,24 +260,11 @@ function Set-TargetResource
 			###
 			### If the SSL Certificate is changed. Restart the GeoEvent Service so that it will pick up the new certificate 
 			###
-			try {			    
-				Write-Verbose "Restarting Service $GeoEventServiceName"
-				Stop-Service -Name $GeoEventServiceName -Force -ErrorAction Ignore
-				Write-Verbose 'Stopping the service' 
-				Wait-ForServiceToReachDesiredState -ServiceName $GeoEventServiceName -DesiredState 'Stopped'	
-				Write-Verbose 'Stopped the service'		    
-			}catch {
-				Write-Verbose "[WARNING] While Stopping Service $_"
-			}
-			try {				
-				Write-Verbose 'Starting the service'
-				Start-Service -Name $GeoEventServiceName -ErrorAction Ignore       
-                Wait-ForServiceToReachDesiredState -ServiceName $GeoEventServiceName -DesiredState 'Running'
-                Wait-ForUrl -Url "$GeoEventServerHttpsUrl/geoevent/rest" -SleepTimeInSeconds 20 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
-				Write-Verbose "Restarted Service $GeoEventServiceName"
-			}catch {
-				Write-Verbose "[WARNING] While Starting Service $_"
-			}
+            Restart-ArcGISService -ServiceName $GeoEventServiceName -Verbose
+
+            Write-Verbose "Waiting for Url '$GeoEventServerHttpsUrl/geoevent/rest' to respond"
+            Wait-ForUrl -Url "$GeoEventServerHttpsUrl/geoevent/rest" -SleepTimeInSeconds 20 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
+            Write-Verbose "Restarted Service $GeoEventServiceName"
 		}
     }
 
@@ -298,12 +285,7 @@ function Set-TargetResource
 
     if($RestartRequired)
     {
-        Write-Verbose "Restarting Service $ServiceName"
-		Stop-Service -Name $ServiceName  -Force		
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'		
-		Start-Service -Name $ServiceName         
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-		Write-Verbose "Restarted Service $ServiceName"
+        Restart-ArcGISService -ServiceName $ServiceName -Verbose
     }    
     
     Write-Verbose "Waiting for Url '$ServerURL/$SiteName/admin' to respond"

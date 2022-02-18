@@ -57,11 +57,11 @@ Configuration ArcGISFederation
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ServerRole
+        $ServerFunctions
         
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName
@@ -74,9 +74,6 @@ Configuration ArcGISFederation
         }
         
         if($Node.NodeName -ieq $PrimaryServerMachine){
-            if($ServerRole -ieq "WorkflowManagerServer"){
-                $ServerRole = "WorkflowManager"
-            }
             ArcGIS_Federation Federate
             {
                 PortalHostName = $PortalHostName
@@ -92,7 +89,7 @@ Configuration ArcGISFederation
                 RemoteSiteAdministrator = $RemoteSiteAdministrator
                 SiteAdministrator = $ServerPrimarySiteAdminCredential
                 ServerRole = if($IsHostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
-                ServerFunctions = $ServerRole
+                ServerFunctions = $ServerFunctions
             }  
         }     
     }

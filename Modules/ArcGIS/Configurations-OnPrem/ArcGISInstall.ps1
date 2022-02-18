@@ -18,7 +18,7 @@ Configuration ArcGISInstall{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
@@ -152,6 +152,7 @@ Configuration ArcGISInstall{
                             Name = $ServerTypeName
                             Version = $ConfigurationData.ConfigData.Version
                             PatchesDir = $ConfigurationData.ConfigData.Server.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.Server.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     }
@@ -188,6 +189,17 @@ Configuration ArcGISInstall{
                             EnableMSILogging = $EnableMSILogging
                             Ensure = "Present"
                         }
+
+                        if ($ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir) {
+                            ArcGIS_InstallPatch ServerInstallPatch
+                            {
+                                Name = $ServerTypeName
+                                Version = $ConfigurationData.ConfigData.Version
+                                PatchesDir = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir
+                                PatchInstallOrder = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchInstallOrder
+                                Ensure = "Present"
+                            }
+                        }
                     }
 
                     if($ConfigurationData.ConfigData.GeoEventServer) 
@@ -211,6 +223,7 @@ Configuration ArcGISInstall{
                                 Name = "GeoEvent"
                                 Version = $ConfigurationData.ConfigData.Version
                                 PatchesDir = $ConfigurationData.ConfigData.GeoEventServer.Installer.PatchesDir
+                                PatchInstallOrder = $ConfigurationData.ConfigData.GeoEventServer.Installer.PatchInstallOrder
                                 Ensure = "Present"
                             }
                         }
@@ -256,6 +269,7 @@ Configuration ArcGISInstall{
                             Name = "Portal"
                             Version = $ConfigurationData.ConfigData.Version
                             PatchesDir = $ConfigurationData.ConfigData.Portal.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.Portal.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     }
@@ -297,6 +311,7 @@ Configuration ArcGISInstall{
                             Name = "Insights"
                             Version = $ConfigurationData.ConfigData.InsightsVersion
                             PatchesDir = $ConfigurationData.ConfigData.Insights.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.Insights.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     }
@@ -322,6 +337,7 @@ Configuration ArcGISInstall{
                             Name = "DataStore"
                             Version = $ConfigurationData.ConfigData.Version
                             PatchesDir = $ConfigurationData.ConfigData.DataStore.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.DataStore.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     } 
@@ -385,6 +401,7 @@ Configuration ArcGISInstall{
                             Name = "WebAdaptor"
                             Version = $ConfigurationData.ConfigData.Version
                             PatchesDir = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     }
@@ -486,6 +503,7 @@ Configuration ArcGISInstall{
                             Name = "Desktop"
                             Version = $ConfigurationData.ConfigData.DesktopVersion
                             PatchesDir = $ConfigurationData.ConfigData.Desktop.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.Desktop.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     }
@@ -578,6 +596,7 @@ Configuration ArcGISInstall{
                             Name = "Pro"
                             Version = $ConfigurationData.ConfigData.ProVersion
                             PatchesDir = $ConfigurationData.ConfigData.Pro.Installer.PatchesDir
+                            PatchInstallOrder = $ConfigurationData.ConfigData.Pro.Installer.PatchInstallOrder
                             Ensure = "Present"
                         }
                     }

@@ -14,7 +14,7 @@ Configuration ArcGISUninstall
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -47,7 +47,7 @@ Configuration ArcGISUninstall
                     $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
                     
                     if($ServerTypeName -ieq "Server"){
-                        if($ConfigurationData.ConfigData.WorkflowMangerServer) 
+                        if($ConfigurationData.ConfigData.WorkflowManagerServer) 
                         {
                             ArcGIS_Install WorkflowManagerServerUninstall
                             {

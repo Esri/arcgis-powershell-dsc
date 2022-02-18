@@ -8,6 +8,7 @@ class ArcGIS_License : OMI_BaseResource
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write, ValueMap{"Server","Portal","Desktop","Pro","LicenseManager"}, Values{"Server","Portal","Desktop","Pro","LicenseManager"}] String Component;
 	[Write, ValueMap{"ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer", "NotebookServer","MissionServer","WorkflowManagerServer"}, Values{"ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer"}] String ServerRole;
+	[Write] String AdditionalServerRoles[];
 	[Write, Description("Is Pro or Desktop using Single Use License")] Boolean IsSingleUse;
 	[Write, Description("Forcing to License")] Boolean Force;
 };

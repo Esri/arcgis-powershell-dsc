@@ -53,15 +53,54 @@ function Set-TargetResource
     Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     #$MachineFQDN = Get-FQDN $env:COMPUTERNAME    
-    Write-Verbose "Fully Qualified Domain Name :- $ServerHostName"
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
+    Write-Verbose "Fully Qualified Domain Name :- $FQDN"
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-	Write-Verbose "Waiting for Server 'https://$($ServerHostName):6443/arcgis/admin'"
-    Wait-ForUrl "https://$($ServerHostName):6443/arcgis/admin" -HttpMethod 'GET'
+	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin'"
+    Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
 
-    if($Ensure -ieq 'Present') {        
+    if($Ensure -ieq 'Present') {
+
+        $ServiceName = 'ArcGIS Server'
+        $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+        $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
+
+        $RestartRequired = $false
+        $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
+        if($configuredHostName -ine $FQDN){
+            Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
+            if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
+				# Need to restart the service to pick up the hostname 
+                $RestartRequired = $true 
+            }
+        }
+
+        if(Test-Install -Name "Server" -Version $Version){
+            Write-Verbose "Installed Version of ArcGIS Server is $Version"
+        }else{
+            throw "ArcGIS Server version $Version not installed"
+        }
+
+        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+            Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
+            if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
+                 # Need to restart the service to pick up the EC2
+                 $RestartRequired = $true
+             }  
+        }
+
+        if($RestartRequired) {
+			Restart-ArcGISService -ServiceName $ServiceName -Verbose
+
+			Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
+            Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
+            Start-Sleep -Seconds 30
+        }
+
+
         $Referer = "http://localhost"
-        $ServerSiteURL = "https://$($ServerHostName):6443"
+        $ServerSiteURL = "https://$($FQDN):6443"
         [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
         
         Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
@@ -150,9 +189,9 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $result = Test-Install -Name "Server" -Version $Version
-    
+    $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     $Referer = "http://localhost"
-    $ServerUpgradeUrl = "https://$($ServerHostName):6443/arcgis/admin/upgrade"
+    $ServerUpgradeUrl = "https://$($FQDN):6443/arcgis/admin/upgrade"
     $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
     
     if($result) {

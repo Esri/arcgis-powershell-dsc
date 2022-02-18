@@ -4,6 +4,7 @@ class ArcGIS_InstallPatch : OMI_BaseResource
 {
 	[Key] String Name;
 	[Write] String PatchesDir;
+	[Write] String PatchInstallOrder[];
 	[Key] String Version;
 	[Write] String ProductId;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;

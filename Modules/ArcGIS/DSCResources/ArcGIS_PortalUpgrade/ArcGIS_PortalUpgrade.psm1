@@ -86,6 +86,14 @@ function Set-TargetResource
         }
     }
 
+    if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+        Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
+        if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
+             # Need to restart the service to pick up the EC2
+             $RestartRequired = $true
+         }  
+    }
+
     $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
 
     $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
@@ -102,9 +110,9 @@ function Set-TargetResource
         }
     }
     
-    if($RestartRequired) {             
-		Restart-PortalService -ServiceName $ServiceName
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
+    if($RestartRequired) {    
+        Restart-ArcGISService -ServiceName $ServiceName -Verbose
+		Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
     }
 
     if(-not($SetOnlyHostNamePropertiesFile)){
@@ -341,6 +349,13 @@ function Test-TargetResource
     else {
         Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'"
         $result = $false
+    }
+
+    if($result) {
+        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+            Write-Verbose "Amazon Elements present in NodeAgentExt.xml. Will be removed in Set Method"
+            $result = $false
+        }         
     }
 
     if ($result) {
@@ -589,38 +604,6 @@ function Test-IfLivingAtlasUpgraded
         }
     }
     $Result
-}
-
-
-function Restart-PortalService
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param
-    (
-        [System.String]
-        $ServiceName = 'Portal for ArcGIS'
-    )
-
-    try 
-    {
-		Write-Verbose "Restarting Service $ServiceName"
-		Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-		Write-Verbose 'Stopping the service' 
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-		Write-Verbose 'Stopped the service'
-	}catch {
-        Write-Verbose "[WARNING] Stopping Service $_"
-    }
-
-	try {
-		Write-Verbose 'Starting the service'
-		Start-Service -Name $ServiceName -ErrorAction Ignore        
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-		Write-Verbose "Restarted Service '$ServiceName'"
-	}catch {
-        Write-Verbose "[WARNING] Starting Service $_"
-    }
 }
 
 Export-ModuleMember -Function *-TargetResource

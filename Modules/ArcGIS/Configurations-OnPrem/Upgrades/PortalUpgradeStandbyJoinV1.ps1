@@ -29,7 +29,7 @@ Configuration PortalUpgradeStandbyJoinV1{
         $AdminSecurityAnswer,
 
         [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles","AzureBlob")]
+        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
         [AllowNull()] 
         [System.String]
         $CloudStorageType,
@@ -40,35 +40,47 @@ Configuration PortalUpgradeStandbyJoinV1{
         [System.String]
         $CloudNamespace,
 
+        [System.String]
+        $AWSRegion,
+
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
         $CloudStorageCredentials
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
     Import-DscResource -Name ArcGIS_Portal
     
-    if(($null -ne $CloudStorageType) -and $CloudStorageCredentials) 
+    if($null -ne $CloudStorageType)
     {
-        $AccountName = $StorageAccountCredential.UserName
-		$EndpointSuffix = ''
-        $Pos = $StorageAccountCredential.UserName.IndexOf('.blob.')
-        if($Pos -gt -1) {
-            $AccountName = $StorageAccountCredential.UserName.Substring(0, $Pos)
-			$EndpointSuffix = $StorageAccountCredential.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
-        }
-
-        if($CloudStorageType -ieq 'AzureFiles') {
-            $AzureFilesEndpoint = if($Pos -gt -1){$StorageAccountCredential.UserName.Replace('.blob.','.file.')}else{$StorageAccountCredential.UserName}
-            $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
-            $ContentDirectoryLocation = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\portal\content"    
-        }
-        else {
-            $AccountKey = $StorageAccountCredential.GetNetworkCredential().Password
-            $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName);AccountKey=$($AccountKey)$($EndpointSuffix)"
-		    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($CloudNamespace)-portal"
+        if($CloudStorageType -ieq 'AWSS3DynamoDB') {
+            $ContentDirectoryCloudConnectionString = "NAMESPACE=$($CloudNamespace);REGION=$($AWSRegion);"
+            if($null -ne $CloudStorageCredentials){
+                $ContentDirectoryCloudConnectionString += "ACCESS_KEY_ID=$($CloudStorageCredentials.UserName);SECRET_KEY=$($CloudStorageCredentials.UserName)"
+            }
+        }else{
+            if($null -ne $CloudStorageCredentials){
+                $AccountName = $CloudStorageCredentials.UserName
+                $EndpointSuffix = ''
+                $Pos = $CloudStorageCredentials.UserName.IndexOf('.blob.')
+                if($Pos -gt -1) {
+                    $AccountName = $CloudStorageCredentials.UserName.Substring(0, $Pos)
+                    $EndpointSuffix = $CloudStorageCredentials.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+                    $EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
+                }
+        
+                if($CloudStorageType -ieq 'AzureFiles') {
+                    $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}
+                    $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
+                    $ContentDirectoryLocation = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\portal\content"    
+                }
+                else {
+                    $AccountKey = $CloudStorageCredentials.GetNetworkCredential().Password
+                    $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName);AccountKey=$($AccountKey)$($EndpointSuffix)"
+                    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($CloudNamespace)portal"
+                }
+            }
         }
     }
 
