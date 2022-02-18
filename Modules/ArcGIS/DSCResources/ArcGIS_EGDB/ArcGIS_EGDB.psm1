@@ -312,27 +312,34 @@ function Set-TargetResource
         }
         
         try {
-            [string]$RealVersion = (Get-ArcGISProductDetails -ProductName "ArcGIS Server").Version
-			Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
-            $Version = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-            Write-Verbose "Product Version of ArcGIS Software Installed:- $Version"
+            $DBType =  if($IsPostgres){ "POSTGRESQL" }else{ "SQLSERVER" } 
 
-			$DBType =  if($IsPostgres){ "POSTGRESQL" }else{ "SQLSERVER" } 
-
-			$PythonScriptFileName = 'enable_enterprise_gdb.py'   
-            $PythonScriptPath = Join-Path "$env:ProgramFiles\WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_EGDB" $PythonScriptFileName
-            if(-not(Test-Path $PythonScriptPath)){
-                throw "$PythonScriptPath not found"
+            $ServiceName = 'ArcGIS Server'
+            $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+            $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
+            $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
+            Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
+            $RealVersionArr = $RealVersion.Split(".")
+            $Version = $RealVersionArr[0] + '.' + $RealVersionArr[1] 
+            $UsePython3 = ($RealVersion -eq "10.9.1")
+            if($UsePython3){
+                $PythonInstallDir = Join-Path $InstallDir "\\framework\\runtime\\ArcGIS\\bin\\Python\\envs\\arcgispro-py3"
+            }else{
+                $PythonInstallDir = (Get-ItemProperty -Path "HKLM:\SOFTWARE\ESRI\Python$($Version)").PythonDir    
             }
-            $PythonInstallDir = (Get-ItemProperty -Path "HKLM:\SOFTWARE\ESRI\Python$($Version)").PythonDir
             $PythonPath = ((Get-ChildItem -Path $PythonInstallDir -Filter 'python.exe' -Recurse -File) | Select-Object -First 1 -ErrorAction Ignore)
             if($null -eq $PythonPath) {
-                throw "Python27 not found on machine. Please install Python."
+                throw "Python not found on machine. Please install Python."
             }
             $PythonInterpreterPath = $PythonPath.FullName
 
             if($EnableGeodatabase) 
             {
+                $PythonScriptFileName = if($UsePython3){'enable_enterprise_gdb_3x.py'}else{'enable_enterprise_gdb.py'}
+                $PythonScriptPath = Join-Path $PSScriptRoot $PythonScriptFileName
+                if(-not(Test-Path $PythonScriptPath)){
+                    throw "$PythonScriptPath not found"
+                }
 
                 $LicenseFilePath = "$env:SystemDrive\Program Files\ESRI\License$($Version)\sysgen\keycodes"
                 if(-not (Test-Path $LicenseFilePath)) {
@@ -389,8 +396,8 @@ function Set-TargetResource
             $OpFolder = $env:TEMP
             $OpFile = "$($DatabaseServer)_$($DatabaseName)_$($DatabaseUserName).sde"
             $SDEFile = Join-Path $OpFolder $OpFile 
-            $PythonScriptFileName = 'create_connection_file.py'
-            $PythonScriptPath = Join-Path "$env:ProgramFiles\WindowsPowerShell\Modules\ArcGIS\DSCResources\ArcGIS_EGDB" $PythonScriptFileName
+            $PythonScriptFileName = if($UsePython3){'create_connection_file_3x.py'}else{'create_connection_file.py'}
+            $PythonScriptPath = Join-Path $PSScriptRoot $PythonScriptFileName
             if(-not(Test-Path $PythonScriptPath)){
                 throw "$PythonScriptPath not found"
             }

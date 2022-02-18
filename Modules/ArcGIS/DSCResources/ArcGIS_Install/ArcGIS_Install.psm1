@@ -182,8 +182,12 @@ function Set-TargetResource
             }  
 
             Write-Verbose "Extracting $Path to $TempFolder"
-            Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait -NoNewWindow
-            Write-Verbose 'Done Extracting. Waiting 15 seconds to allow the extractor to close files'
+            $SetupExtractProc = (Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait -NoNewWindow  -Verbose -PassThru)
+            if($SetupExtractProc.ExitCode -ne 0){
+                throw "Error while extracting setup for '$ComponentName' at Path '$Path' :- exited with status code $($SetupExtractProc.ExitCode)"
+            }else{
+                Write-Verbose 'Done Extracting. Waiting 15 seconds to allow the extractor to close files'
+            }
             Start-Sleep -Seconds 15
 
             $SetupExe = Get-ChildItem -Path $TempFolder -Filter 'Setup.exe' -Recurse | Select-Object -First 1
@@ -359,7 +363,13 @@ function Set-TargetResource
             $ProdIdObject = $ProdIdObject + '}'
         }
         Write-Verbose "msiexec /x ""$ProdIdObject"" /quiet"
-        Start-Process 'msiexec' -ArgumentList "/x ""$ProdIdObject"" /quiet" -wait
+        $UninstallProc = (Start-Process -FilePath msiexec.exe -ArgumentList "/x ""$ProdIdObject"" /quiet" -Wait -Verbose -PassThru)
+        if($UninstallProc.ExitCode -ne 0){
+            throw "Error while uninstalling '$ComponentName' :- exited with status code $($UninstallProc.ExitCode)"
+        }else{
+            Write-Verbose "Uninstallation successful."
+        }
+
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
             Import-Module WebAdministration | Out-Null
             $WebSiteId = 1
@@ -371,6 +381,20 @@ function Set-TargetResource
             }
             $IISWebSiteName = (Get-Website | Where-Object {$_.ID -eq $WebSiteId}).Name
             Remove-WebConfigurationLocation -Name "$($IISWebSiteName)/$($WebAdaptorContext)"
+        }
+
+        if($ComponentName -ieq "Server"){
+            $ServerComponenetsInstalled = Get-ArcGISProductDetails -ProductName "ArcGIS Server"
+            foreach($ServerComponent in $ServerComponenetsInstalled){
+                Write-Verbose "Uninstalling '$($ServerComponent.Name)' with Product Id '$($ServerComponent.IdentifyingNumber)' "
+                Write-Verbose "msiexec /x ""$($ServerComponent.IdentifyingNumber)"" /quiet"
+                $UninstallServerCompProc = (Start-Process -FilePath msiexec.exe -ArgumentList "/x ""$($ServerComponent.IdentifyingNumber)"" /quiet" -Wait -Verbose -PassThru)
+                if($UninstallServerCompProc.ExitCode -ne 0){
+                    throw "Error while uninstalling Server Component '$($ServerComponent.Name)' :- exited with status code $($UninstallServerCompProc.ExitCode)"
+                }else{
+                    Write-Verbose "Uninstallation successful."
+                }
+            }
         }
     }
     Write-Verbose "In Set-Resource for $Name"

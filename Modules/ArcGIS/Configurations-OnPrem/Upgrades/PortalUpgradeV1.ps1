@@ -22,6 +22,14 @@ Configuration PortalUpgradeV1{
 
         [parameter(Mandatory = $false)]
         [System.String]
+        $PatchesDir,
+
+        [parameter(Mandatory = $false)]
+        [System.Array]
+        $PatchInstallOrder,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
         $InstallDir,
 
         [parameter(Mandatory = $false)]
@@ -91,8 +99,9 @@ Configuration PortalUpgradeV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
-    Import-DscResource -Name ArcGIS_Install 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
+    Import-DscResource -Name ArcGIS_Install
+    Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_Portal 
@@ -144,6 +153,18 @@ Configuration PortalUpgradeV1{
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_Install]PortalUpgrade'
+
+            if ($PatchesDir) {
+                ArcGIS_InstallPatch PortalInstallPatch
+                {
+                    Name = "Portal"
+                    Version = $Version
+                    PatchesDir = $PatchesDir
+                    PatchInstallOrder = $PatchInstallOrder
+                    Ensure = "Present"
+                }
+                $Depends += "[ArcGIS_InstallPatch]PortalInstallPatch"
+            }
 
             if($PortalLicenseFilePath) 
             {
@@ -280,6 +301,18 @@ Configuration PortalUpgradeV1{
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]PortalInstall"
+
+            if ($PatchesDir) {
+                ArcGIS_InstallPatch PortalInstallPatch
+                {
+                    Name = "Portal"
+                    Version = $Version
+                    PatchesDir = $PatchesDir
+                    PatchInstallOrder = $PatchInstallOrder
+                    Ensure = "Present"
+                }
+                $Depends += "[ArcGIS_InstallPatch]PortalInstallPatch"
+            }
 
             ArcGIS_License PortalLicense
             {

@@ -27,7 +27,7 @@ Configuration ArcGISDataStoreBackup
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_DataStoreBackup
 
     Node $AllNodes.NodeName 

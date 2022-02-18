@@ -12,6 +12,14 @@ Configuration PortalUpgradeV2{
         [System.String]
         $InstallerPath,
 
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $PatchesDir,
+
+        [parameter(Mandatory = $false)]
+        [System.Array]
+        $PatchInstallOrder,
+
         [parameter(Mandatory = $false)]        
         [System.String]
         $WebStylesInstallerPath,
@@ -34,9 +42,10 @@ Configuration PortalUpgradeV2{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_Service_Account
+    Import-DscResource -Name ArcGIS_InstallPatch
 
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -92,6 +101,18 @@ Configuration PortalUpgradeV2{
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_Install]WebStylesInstall'
+        }
+
+        if ($PatchesDir) {
+            ArcGIS_InstallPatch PortalInstallPatch
+            {
+                Name = "Portal"
+                Version = $Version
+                PatchesDir = $PatchesDir
+                PatchInstallOrder = $PatchInstallOrder
+                Ensure = "Present"
+            }
+            $Depends += "[ArcGIS_InstallPatch]PortalInstallPatch"
         }
 
         $DataDirsForPortal = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')

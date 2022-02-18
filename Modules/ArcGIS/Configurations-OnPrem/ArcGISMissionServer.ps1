@@ -48,11 +48,7 @@ Configuration ArcGISMissionServer
         $ServerLogsLocation = $null,
 
         [Parameter(Mandatory=$False)]
-        [System.Object]
-        $SslRootOrIntermediate,
-
-        [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles","AzureBlob")]
+        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
         [AllowNull()] 
         [System.String]
         $ConfigStoreCloudStorageType,
@@ -64,6 +60,10 @@ Configuration ArcGISMissionServer
         [Parameter(Mandatory=$False)]
         [System.String]
         $ConfigStoreCloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAWSRegion,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -97,7 +97,7 @@ Configuration ArcGISMissionServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_MissionServer
     Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
@@ -105,26 +105,35 @@ Configuration ArcGISMissionServer
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_WaitForComponent
 
-    if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials)
-    {
-        $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
-		$ConfigStoreEndpointSuffix = ''
-        $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
-        if($ConfigStorePos -gt -1) {
-            $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
-			$ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
-        }
-
-        if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
-            $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
-            $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
-            $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\missionserver\config-store"
-        }
-        else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)missionserver$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
-            $ConfigStoreCloudStorageAccountName = "AccountName=$ConfigStoreAccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+    if($null -ne $ConfigStoreCloudStorageType) {
+        if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){
+            $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($ConfigStoreCloudNamespace);REGION=$($ConfigStoreAWSRegion);"
+            if($ConfigStoreCloudStorageCredentials){
+                $ConfigStoreCloudStorageAccountName = "ACCESS_KEY_ID=$($ConfigStoreCloudStorageCredentials.UserName)"
+                $ConfigStoreCloudStorageConnectionSecret="SECRET_KEY=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password);"
+            }
+        }else{
+            if($ConfigStoreCloudStorageCredentials){
+                $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
+                $ConfigStoreEndpointSuffix = ''
+                $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
+                if($ConfigStorePos -gt -1) {
+                    $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
+                    $ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+                    $ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
+                }
+        
+                if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
+                    $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
+                    $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
+                    $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\missionserver\config-store"
+                }
+                else {
+                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)missionserver$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
+                    $ConfigStoreCloudStorageAccountName = "AccountName=$ConfigStoreAccountName"
+                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                }
+            }
         }
     }
     
@@ -312,7 +321,7 @@ Configuration ArcGISMissionServer
                 CertificateFileLocation = $Node.SSLCertificate.Path
                 CertificatePassword = $Node.SSLCertificate.Password
                 EnableSSL = $True
-                SslRootOrIntermediate = $SslRootOrIntermediate
+                SslRootOrIntermediate = $Node.SSLCertificate.SslRootOrIntermediate
                 ServerType = "MissionServer"
                 DependsOn = $DependsOn
             }

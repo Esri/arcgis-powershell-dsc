@@ -176,26 +176,10 @@ function Set-TargetResource
         }
 
         if($RestartRequired) {
-			try {
-				Write-Verbose "Restarting Service $ServiceName"
-				Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-				Write-Verbose 'Stopping the service' 
-				Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-				Write-Verbose 'Stopped the service'
-			}catch {
-                Write-Verbose "[WARNING] Stopping Service $_"
-            }
-
-			try {
-				Write-Verbose 'Starting the service'
-				Start-Service -Name $ServiceName -ErrorAction Ignore        
-				Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-				Write-Verbose "Restarted Service $ServiceName"
-			}catch {
-                Write-Verbose "[WARNING] Starting Service $_"
-            }
+			Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
 			Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
+            Wait-ForUrl "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET' -Verbose
         }
 
         $ServerUrl = "https://$($FQDN):20443"
@@ -233,14 +217,7 @@ function Set-TargetResource
                     }catch{
                         Write-Verbose "[WARNING] Error while creating site on attempt $Attempt Error:- $_"
                         if($Attempt -lt 1) {
-                            Write-Verbose "Restarting Service $ServiceName"
-                            Stop-Service -Name $ServiceName  -Force
-                            Write-Verbose 'Stopping the service' 
-                            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'                            
-                            Write-Verbose 'Starting the service'
-                            Start-Service -Name $ServiceName         
-                            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-                            Write-Verbose "Restarted Service $ServiceName"
+                            Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
                             Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
                             Wait-ForUrl -Url "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET'
@@ -449,46 +426,51 @@ function Invoke-CreateSite
   
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
-    $VersionObject = (Get-ArcGISProductDetails -ProductName "ArcGIS Mission Server").Version
-    Write-Verbose "Mission Server Version - $VersionObject"
-    $MajorVersion = $VersionObject.Split('.')[1]
-    $MinorVersion = $VersionObject.Split('.')[2]
 
-    if(($ConfigStoreCloudStorageConnectionString) -and ($ConfigStoreCloudStorageConnectionSecret) -and ($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1))
+    $ServiceName = "ArcGIS Mission Server"
+    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+    $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
+    $BuildNumber = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).BuildNumber
+    Write-Verbose "Mission Server Version - $RealVersion, Build Number - $BuildNumber"
+    
+    $configStoreConnection = $null
+    if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0)
     {
-        Write-Verbose "Using Azure Cloud Storage for the config store"
-        $configStoreConnection = if($MajorVersion -ge 8){
-                                @{ 
-                                    configPersistenceType= "AZURE";
-                                    connectionString = $ConfigStoreCloudStorageConnectionString;
-                                    username = $ConfigStoreCloudStorageAccountName.Replace([regex]::escape("AccountName="),[string]::Empty);
-                                    password = $ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("AccountKey="),[string]::Empty);
-                                    className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
-                                }
-                            }else{
-                                @{ 
-                                    configPersistenceType= "AZURE";
-                                    connectionString = "$($ConfigStoreCloudStorageConnectionString)$($ConfigStoreCloudStorageAccountName);$($ConfigStoreCloudStorageConnectionSecret)";
-                                    className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
-                                }
-                            }
+        if(($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1)){
+            Write-Verbose "Using Azure Cloud Storage for the config store"
+            $configStoreConnection = @{ 
+                    configPersistenceType = "AZURE";
+                    connectionString = $ConfigStoreCloudStorageConnectionString;
+                    username = $ConfigStoreCloudStorageAccountName.Replace([regex]::escape("AccountName="),[string]::Empty);
+                    password = $ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("AccountKey="),[string]::Empty);
+                    className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
+                }
+        } else {
+            Write-Verbose "Using AWS Cloud Storage S3 for the config store"
+            $configStoreConnection = @{ 
+                configPersistenceType = "AMAZON";
+                connectionString = $ConfigStoreCloudStorageConnectionString;
+                className = "com.esri.arcgis.carbon.persistence.impl.amazon.AmazonConfigPersistence"
+            }
 
+            if($ConfigStoreCloudStorageAccountName -and $ConfigStoreCloudStorageAccountName.Length -gt 0){
+                $configStoreConnection.Add("username",$ConfigStoreCloudStorageAccountName.Replace([regex]::escape("ACCESS_KEY_ID="),[string]::Empty))
+                $configStoreConnection.Add("password",$ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("SECRET_KEY="),[string]::Empty))
+            }
+        }
         $Timeout = 2 * $Timeout # Double the timeout if using cloud storage for the config store
-    }
-    else {
+    } else {
         Write-Verbose "Using File System Based Storage for the config store"
         $configStoreConnection = @{ 
                                     configPersistenceType= "FILESYSTEM"
                                     connectionString = $ConfigurationStoreLocation
                                     className = "com.esri.arcgis.carbon.persistence.impl.filesystem.FSConfigPersistence"
                                 }
-    }  
-    
+    }
+
     $directories =  @()
-
     $ServerDirectoriesObject = (ConvertFrom-Json $ServerDirectories)
-
-    if($MajorVersion -eq 8 -and $MinorVersion -eq 12790){
+    if($BuildNumber -eq 12790){
         $directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"}| Measure-Object).Count -gt 0){
             ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"})
         }else{

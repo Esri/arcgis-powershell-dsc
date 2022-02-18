@@ -15,6 +15,8 @@
         Product being Licensed (Server or Portal)
     .PARAMETER ServerRole
         (Optional - Required only for Server) Server Role for which the product is being Licensed
+    .PARAMETER AdditionalServerRole
+        (Optional - Only valid for General Purpose Server) Additional Server Role for which the product is being Licensed
     .PARAMETER IsSingleUse
         Boolean to tell if Pro or Desktop is using Single Use License.
     .PARAMETER Force
@@ -65,6 +67,10 @@ function Set-TargetResource
 		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
+
+        [parameter(Mandatory = $False)]    
+        [System.Array]
+        $AdditionalServerRoles,
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
@@ -145,6 +151,10 @@ function Test-TargetResource
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
+        [parameter(Mandatory = $False)]    
+        [System.Array]
+        $AdditionalServerRoles,
+
         [parameter(Mandatory = $false)]
         [System.Boolean]
         $IsSingleUse,
@@ -186,56 +196,61 @@ function Test-TargetResource
         Write-Verbose "TODO:- Check for License Manger license. For now forcing Software Authorization Tool to License."
     }
     else {
-        Write-Verbose "License Check Component:- $Component ServerRole:- $ServerRole"
+        Write-Verbose "License Check Component:- $Component"
         $file = "$env:SystemDrive\Program Files\ESRI\License$($LicenseVersion)\sysgen\keycodes"
-        if(Test-Path $file) {        
+        if(-not($Force) -and (Test-Path $file)){
             $searchtexts = @()
-            $searchtext = if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }
             if($Component -ieq 'Portal') {
+                $searchtext += 'portal_'
                 $searchtexts += 'portal1_'
                 $searchtexts += 'portal2_'
-                $searchtext = 'portal_'
+            }elseif($Component -ieq 'Server'){
+                Write-Verbose "ServerRole:- $ServerRole"
+                $searchtexts += if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }
+                if($ServerRole -ieq 'ImageServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "ImageServer")) {
+                    $searchtexts += 'imgsvr'
+                }
+                if($ServerRole -ieq 'GeoEvent' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) {
+                    $searchtexts += 'geoesvr'
+                }
+                if($ServerRole -ieq 'WorkflowManagerServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "WorkflowManagerServer")) {
+                    $searchtexts += 'workflowsvr_4'
+                    $searchtexts += 'workflowsvr'
+                }
+                if($ServerRole -ieq 'GeoAnalytics' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoAnalytics")) {
+                    $searchtexts += 'geoasvr'
+                }
+                if($ServerRole -ieq 'NotebookServer') {
+                    $searchtexts += 'notebooksstdsvr'
+                    $searchtexts += 'notebooksadvsvr'
+                }
+                if($ServerRole -ieq 'MissionServer') {
+                    $searchtexts += 'missionsvr_4'
+                    $searchtexts += 'missionsvr'
+                }
             }
-            elseif($ServerRole -ieq 'ImageServer') {
-			    $searchtext = 'imgsvr'
-		    }
-		    elseif($ServerRole -ieq 'GeoEvent') {
-			    $searchtext = 'geoesvr'
-            }
-            elseif($ServerRole -ieq 'WorkflowManagerServer') {
-                $searchtexts += 'workflowsvr_4'
-                $searchtext = 'workflowsvr'
-		    }
-		    elseif($ServerRole -ieq 'GeoAnalytics') {
-			    $searchtext = 'geoasvr'
-            }
-            elseif($ServerRole -ieq 'NotebookServer') {
-                $searchtexts += 'notebooksstdsvr'
-			    $searchtext = 'notebooksadvsvr'
-            }
-            elseif($ServerRole -ieq 'MissionServer') {
-                $searchtexts += 'missionsvr_4'
-                $searchtext = 'missionsvr'
-		    }
-            $searchtexts += $searchtext
+            
             foreach($text in $searchtexts) {
                 Write-Verbose "Looking for text '$text' in $file"
-                Get-Content $file | ForEach-Object {             
-                    if($_ -and $_.ToString().StartsWith($text)) {
+                $result = $false
+                $KeyCodesFileContents = Get-Content $file
+                foreach($KeyCodeLine in $KeyCodesFileContents){
+                    if($KeyCodeLine -and $KeyCodeLine.ToString().StartsWith($text)) {
                         Write-Verbose "Text '$text' found"
-                        if($force){
-                            $result = $false
-                        }else{
-                            $result = $true
-                        }
+                        $result = $true
+                        break
                     }
+                }
+                if($result -ieq $False){
+                    Write-Verbose "Text '$text' not found"
+                    break
                 }
             }
         }
     }
     
     if($Ensure -ieq 'Present') {
-	       $result   
+	    $result   
     }
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
@@ -247,19 +262,19 @@ function Invoke-LicenseSoftware
     [CmdletBinding()]
     param
     (
-		[string]
+		[System.String]
         $Product, 
 
-        [string]
-        $ServerRole, 
+        [System.String]
+        $ServerRole,
         
-        [string]
+        [System.String]
 		$LicenseFilePath, 
         
         [System.Management.Automation.PSCredential]
         $LicensePassword, 
         
-		[string]
+		[System.String]
 		$Version,
         
         [System.Boolean]

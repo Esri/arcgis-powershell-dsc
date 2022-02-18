@@ -108,44 +108,93 @@ function Invoke-CreatePortalSite {
         $UserLicenseTypeId = $null
     )
 
-    [string]$CreateNewSiteUrl = "https://$($PortalHostNameFQDN):7443/$PortalSiteName/portaladmin/createNewSite"
-    
     if ($ContentDirectoryCloudConnectionString -and $ContentDirectoryCloudConnectionString.Length -gt 0) {
-        
         $Splits = $ContentDirectoryCloudConnectionString.Split(';')
-        $StorageEndpointSuffix = $null
-        $StorageAccessKey = $null
-        $StorageAccountName = $null
-        $Splits | ForEach-Object { 
-            $Pos = $_.IndexOf('=')
-            $Key = $_.Substring(0, $Pos)
-            $Value = $_.Substring($Pos + 1)
-            if ($Key -ieq 'AccountName') {                 
-                $StorageAccountName = $Value
+        
+        if($ContentDirectoryCloudConnectionString.IndexOf('AccountName=') -gt -1){
+            $StorageEndpointSuffix = $null
+            $StorageAccessKey = $null
+            $StorageAccountName = $null
+            $Splits | ForEach-Object {
+                if(-not([string]::IsNullOrEmpty($_))){
+                    $Pos = $_.IndexOf('=')
+                    $Key = $_.Substring(0, $Pos)
+                    $Value = $_.Substring($Pos + 1)
+                    if ($Key -ieq 'AccountName') {             
+                        $StorageAccountName = $Value
+                    }
+                    elseif ($Key -ieq 'EndpointSuffix') {
+                        $StorageEndpointSuffix = $Value
+                    }
+                    elseif ($Key -ieq 'AccountKey') {
+                        $StorageAccessKey = $Value
+                    }
+                }
             }
-            elseif ($Key -ieq 'EndpointSuffix') {
-                $StorageEndpointSuffix = $Value 
+    
+            $objectStoreLocation = "https://$($StorageAccountName).blob.$($StorageEndpointSuffix)/$ContentDirectoryCloudContainerName"
+            Write-Verbose "Using Content Store on Azure Cloud Storage $objectStoreLocation"
+            $contentStore = @{ 
+                type = 'cloudStore'
+                provider = 'Azure'
+                connectionString = @{
+                    accountName = $StorageAccountName
+                    accountKey = $StorageAccessKey
+                    accountEndpoint = 'blob.' + $StorageEndpointSuffix
+                    credentialType = 'accessKey'
+                }
+                objectStore = $objectStoreLocation
             }
-            elseif ($Key -ieq 'AccountKey') {
-                $StorageAccessKey = $Value
+        
+        } else {
+            $AWSRegionName = $null
+            $AWSAccessKeyId = $null
+            $AWSSecretKey = $null
+            $AWSS3BucketName = $null
+            $Splits | ForEach-Object { 
+                if(-not([string]::IsNullOrEmpty($_))){
+                    $Pos = $_.IndexOf('=')
+                    $Key = $_.Substring(0, $Pos)
+                    $Value = $_.Substring($Pos + 1)
+                    if ($Key -ieq 'REGION') {                 
+                        $AWSRegionName = $Value
+                    }
+                    elseif ($Key -ieq 'ACCESS_KEY_ID') {
+                        $AWSAccessKeyId = $Value 
+                    }
+                    elseif ($Key -ieq 'SECRET_KEY') {
+                        $AWSSecretKey = $Value
+                    }
+                    elseif ($Key -ieq 'NAMESPACE') {
+                        $AWSS3BucketName = $Value
+                    }
+                }
             }
-        }
 
-        $objectStoreLocation = "https://$($StorageAccountName).blob.$($StorageEndpointSuffix)/$ContentDirectoryCloudContainerName"
-        Write-Verbose "Using Content Store on Azure Cloud Storage $objectStoreLocation"
-        $contentStore = @{ 
-            type = 'cloudStore'
-            provider = 'Azure'
-            connectionString = @{
-                accountName = $StorageAccountName
-                accountKey = $StorageAccessKey
-                accountEndpoint = 'blob.' + $StorageEndpointSuffix
-                credentialType = 'accessKey'
+            Write-Verbose "Using Content Store in AWS S3 Storage $AWSS3BucketName"
+            $AWSConnectionString = @{}
+            if($null -ne $AWSAccessKeyId -and $null -ne $AWSSecretKey){
+                $AWSConnectionString = @{
+                    region = $AWSRegionName
+                    credentialType = "accessKey"
+                    accessKeyId = $AWSAccessKeyId
+                    secretAccessKey = $AWSSecretKey
+                }
+            }else{
+                $AWSConnectionString = @{
+                    region = $AWSRegionName
+                    credentialType = "IAMRole"
+                }
             }
-            objectStore = $objectStoreLocation
+
+            $contentStore = @{ 
+                type = 'cloudStore'
+                provider = 'Amazon'
+                connectionString = $AWSConnectionString
+                objectStore = $AWSS3BucketName
+            }
         }
-    }
-    else {        
+    }else{
         Write-Verbose "Using Content Store on File System at location $ContentDirectoryLocation"
         $contentStore = @{
             type = 'fileStore'
@@ -153,7 +202,8 @@ function Invoke-CreatePortalSite {
             connectionString = $ContentDirectoryLocation
         }
     }
-        
+    
+    $CreateNewSiteUrl = "https://$($PortalHostNameFQDN):7443/$PortalSiteName/portaladmin/createNewSite"
     $WebParams = @{ 
                     username = $Credential.UserName
                     password = $Credential.GetNetworkCredential().Password
@@ -181,7 +231,7 @@ function Invoke-CreatePortalSite {
         $Response = Invoke-ArcGISWebRequest -Url $CreateNewSiteUrl -HttpFormParameters $WebParams -Referer 'http://localhost' -TimeOutSec 5400 -Verbose 
     }
 
-    Write-Verbose "Response received from create site $( $Response |ConvertTo-Json -Depth 10 )"  
+    Write-Verbose "Response received from create site $( $Response | ConvertTo-Json -Depth 10 )"  
     if ($Response.error -and $Response.error.message) {
         throw $Response.error.message
     }
@@ -192,7 +242,7 @@ function Invoke-CreatePortalSite {
     
     Write-Verbose "Waiting for portal to start."
     try {
-        $token = Get-PortalToken -PortalHostName $PortalHostNameFQDN -SiteName $PortalSiteName  -Credential $Credential -Referer "https://$($PortalHostNameFQDN):7443" -MaxAttempts 40
+        $token = Get-PortalToken -PortalHostName $PortalHostNameFQDN -SiteName $PortalSiteName -Credential $Credential -Referer "https://$($PortalHostNameFQDN):7443" -MaxAttempts 40
         if($token.token){
             Write-Verbose "Portal Site create successful. Was able to retrieve token from Portal."
         }
@@ -263,7 +313,7 @@ function Join-PortalSite {
 		Write-Verbose "Error from Join Site:- $($Response.error.message)"
 
 		$ServiceName = 'Portal for ArcGIS'
-		Restart-PortalService -ServiceName $ServiceName
+		Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
 		Write-Verbose "Wait for endpoint 'https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/' to initialize"
         Wait-ForUrl "https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
@@ -520,9 +570,9 @@ function Set-TargetResource {
         }
     }
 
-    if ($RestartRequired) {             
-		Restart-PortalService -ServiceName $ServiceName -Verbose
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
+    if ($RestartRequired) {
+        Restart-ArcGISService -ServiceName $ServiceName -Verbose
+		Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
     }    
 
     Write-Verbose "Portal at https://$($FQDN):7443"
@@ -545,7 +595,7 @@ function Set-TargetResource {
                     $PortalReady = $true
                 }catch {
                     Write-Verbose "Sharing API rest endpoint is not available. Error:- $_. Restarting Portal."
-                    Restart-PortalService -ServiceName $ServiceName -Verbose
+                    Restart-ArcGISService -ServiceName $ServiceName -Verbose
                     Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
                     $Attempts = $Attempts + 1
                 }        
@@ -637,7 +687,7 @@ function Set-TargetResource {
             # On the secondary Portal machine, 
             # Finally set log level to user defined
             if(Set-LoggingLevel -EnableDebugLogging $EnableDebugLogging) {
-                Restart-PortalService -ServiceName $ServiceName -Verbose
+                Restart-ArcGISService -ServiceName $ServiceName -Verbose
                 Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json" -HttpMethod 'GET' -Verbose
             }
         }
@@ -1159,38 +1209,6 @@ function Test-TargetResource {
     }
 }
 
-function Restart-PortalService {
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param
-    (
-        [Parameter(Mandatory=$false)]    
-        [System.String]
-        $ServiceName = 'Portal for ArcGIS'
-    )
-
-    try {
-        Write-Verbose "Restarting Service $ServiceName"
-        Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
-        Write-Verbose 'Stopping the service' 
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-        Write-Verbose 'Stopped the service'
-    }
-    catch {
-        Write-Verbose "[WARNING] Stopping Service $_"
-    }
-
-    try {
-        Write-Verbose 'Starting the service'
-        Start-Service -Name $ServiceName -ErrorAction Ignore
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-        Write-Verbose "Restarted Service '$ServiceName'"
-    }
-    catch {
-        Write-Verbose "[WARNING] Starting Service $_"
-    }
-}
-
 function Set-LoggingLevel {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
@@ -1287,7 +1305,7 @@ function Set-PortalSecurityConfig {
     $params = @{ f = 'json'; token = $Token; securityConfig = $SecurityParameters;}
     
     $resp = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$($Port)/$SiteName/portaladmin/security/config/update") `
-                        -HttpFormParameters $params -Referer $Referer -Verbose
+                        -HttpFormParameters $params -Referer $Referer -TimeOutSec 100 -Verbose
     if($resp.error -and $resp.error.message){
         throw "[Error] - Set-PortalSecurityConfig Response:- $($resp.error.message)"
     }
@@ -1624,65 +1642,6 @@ function Delete-PortalEmailSettings
     if($resp.error -and $resp.error.message){
         throw "[Error] - Delete-PortalEmailSettings Response:- $($resp.error.message)"
     }
-}
-
-function Get-NodeAgentAmazonElementsPresent
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param(
-        [System.String]
-        $InstallDir       
-    )
-
-    $Enabled = $false
-    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
-    if(Test-Path $File){
-        [xml]$xml = Get-Content $File
-        if((($xml.NodeAgent.Observers.Observer | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon') -or `
-                (($xml.NodeAgent.Plugins.Plugin | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon'))
-        {
-            Write-Verbose "Amazon elements exist in $File"
-            $Enabled = $true
-        }
-    }
-
-    $Enabled
-}
-
-function Remove-NodeAgentAmazonElements
-{
-    [CmdletBinding()]
-    [OutputType([System.Boolean])]
-    param(
-        [System.String]
-        $InstallDir  
-    )
-
-    $Changed = $false
-    $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
-    if(Test-Path $File){
-        [xml]$xml = Get-Content $File
-        if($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Observers.RemoveChild($xml.NodeAgent.Observers.Observer)
-            Write-Verbose "Amazon Observer exists in $File. Removing it"
-            $Changed = $true
-        }
-        if($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Plugins.RemoveChild($xml.NodeAgent.Plugins.Plugin)
-            Write-Verbose "Amazon plugin exists in $File. Removing it"
-            $Changed = $true
-        }
-        if($Changed) {
-            $xml.Save($File)
-        }
-    }
-
-    $Changed
 }
 
 Export-ModuleMember -Function *-TargetResource

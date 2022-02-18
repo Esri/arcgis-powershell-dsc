@@ -15,6 +15,14 @@ Configuration WebAdaptorUpgrade{
         
         [System.String]
         $InstallerPath,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $PatchesDir,
+
+        [parameter(Mandatory = $false)]
+        [System.Array]
+        $PatchInstallOrder,
         
         [System.String]
         $ComponentHostName,
@@ -31,7 +39,7 @@ Configuration WebAdaptorUpgrade{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptor
 
@@ -52,6 +60,8 @@ Configuration WebAdaptorUpgrade{
             $Context = $Node.ServerContext
         }
 
+        $Depends = @()
+
         ArcGIS_Install WebAdaptorUninstall
         { 
             Name = $WebAdaptorRole
@@ -60,6 +70,7 @@ Configuration WebAdaptorUpgrade{
             Arguments = "WEBSITE_ID=$($WebSiteId)"
             Ensure = "Absent"
         }
+        $Depends += '[ArcGIS_Install]WebAdaptorUninstall'
 
         $MachineFQDN = (Get-FQDN $Node.NodeName)
         $WAArguments = "/qn VDIRNAME=$($Context) WEBSITE_ID=$($WebSiteId)"
@@ -79,7 +90,21 @@ Configuration WebAdaptorUpgrade{
             Arguments = $WAArguments
             EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
-            DependsOn = @('[ArcGIS_Install]WebAdaptorUninstall')
+            DependsOn = $Depends
+        }
+        $Depends += '[ArcGIS_Install]WebAdaptorInstall'
+        
+        if($PatchesDir){
+            ArcGIS_InstallPatch WebAdaptorInstallPatch
+            {
+                Name = "WebAdaptor"
+                Version = $Version
+                PatchesDir = $PatchesDir
+                PatchInstallOrder = $PatchInstallOrder
+                Ensure = "Present"
+                DependsOn = $Depends
+            }
+            $Depends += '[ArcGIS_InstallPatch]WebAdaptorInstallPatch'
         }
 
         ArcGIS_WebAdaptor "Configure$($Component)-$($MachineFQDN)"
@@ -92,7 +117,7 @@ Configuration WebAdaptorUpgrade{
             OverwriteFlag = $False
             SiteAdministrator = $SiteAdministratorCredential
             AdminAccessEnabled  = $AdminAccessEnabled
-            DependsOn = @('[ArcGIS_Install]WebAdaptorInstall')
+            DependsOn = $Depends
         }
     }
 }

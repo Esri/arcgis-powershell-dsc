@@ -36,6 +36,10 @@ Configuration ArcGISServer
         $ServerRole,
 
         [Parameter(Mandatory=$False)]
+        [System.Array]
+        $AdditionalServerRoles,
+
+        [Parameter(Mandatory=$False)]
         [System.Boolean]
         $OpenFirewallPorts = $False,
 
@@ -64,11 +68,7 @@ Configuration ArcGISServer
         $RegisteredDirectories,
 
         [Parameter(Mandatory=$False)]
-        [System.Object]
-        $SslRootOrIntermediate,
-
-        [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles","AzureBlob")]
+        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
         [AllowNull()] 
         [System.String]
         $ConfigStoreCloudStorageType,
@@ -80,6 +80,10 @@ Configuration ArcGISServer
         [Parameter(Mandatory=$False)]
         [System.String]
         $ConfigStoreCloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAWSRegion,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
@@ -105,6 +109,10 @@ Configuration ArcGISServer
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
+        $DisableServiceDirectory = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
         $UsesSSL = $False,
         
         [Parameter(Mandatory=$False)]
@@ -113,32 +121,41 @@ Configuration ArcGISServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_GeoEvent
     Import-DscResource -Name ArcGIS_WaitForComponent
 
-    if(($null -ne $ConfigStoreCloudStorageType) -and $ConfigStoreCloudStorageCredentials) 
+    if($null -ne $ConfigStoreCloudStorageType) 
     {
-        $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
-		$ConfigStoreEndpointSuffix = ''
-        $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
-        if($ConfigStorePos -gt -1) {
-            $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
-			$ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
-        }
+        if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){
+            $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($ConfigStoreCloudNamespace);REGION=$($ConfigStoreAWSRegion);"
+            if($ConfigStoreCloudStorageCredentials){
+                $ConfigStoreCloudStorageConnectionSecret="ACCESS_KEY_ID=$($ConfigStoreCloudStorageCredentials.UserName);SECRET_KEY=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password);"
+            }
+        }else{
+            if($ConfigStoreCloudStorageCredentials){
+                $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
+                $ConfigStoreEndpointSuffix = ''
+                $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
+                if($ConfigStorePos -gt -1) {
+                    $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
+                    $ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+                    $ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
+                }
 
-        if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
-            $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
-            $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
-            $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\server\config-store"
-        }
-        else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$ConfigStoreAccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
+                    $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
+                    $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
+                    $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\server\config-store"
+                }
+                else {
+                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$ConfigStoreAccountName"
+                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                }
+            }
         }
     }
 
@@ -200,7 +217,7 @@ Configuration ArcGISServer
                 Protocol              = "TCP" 
             }
 
-            if($ServerRole -ieq 'GeoAnalytics') 
+            if($ServerRole -ieq 'GeoAnalytics' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoAnalytics")) 
             {  
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules' 
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules' 
@@ -405,6 +422,7 @@ Configuration ArcGISServer
             PeerServerHostName = Get-FQDN $PrimaryServerMachine
             DependsOn = $Depends
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
+            DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
             SingleClusterMode = $true
             ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
@@ -422,7 +440,7 @@ Configuration ArcGISServer
                 CertificateFileLocation = $Node.SSLCertificate.Path
                 CertificatePassword = $Node.SSLCertificate.Password
                 EnableSSL = $True
-                SslRootOrIntermediate = $SslRootOrIntermediate
+                SslRootOrIntermediate = $Node.SSLCertificate.SslRootOrIntermediate
                 ServerType = "GeneralPurposeServer"
                 DependsOn = $Depends
             }
@@ -456,7 +474,7 @@ Configuration ArcGISServer
             $Depends += "[ArcGIS_Server_RegisterDirectories]Server$($Node.NodeName)RegisterDirectories"
         }
 
-        if($ServerRole -ieq "GeoEvent") 
+        if($ServerRole -ieq "GeoEvent" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) 
         { 
             #This condition is an issue
             ArcGIS_Service_Account GeoEvent_RunAs_Account
@@ -584,7 +602,7 @@ Configuration ArcGISServer
             }
         }
 
-        if($ServerRole -ieq "WorkflowManagerServer") 
+        if($ServerRole -ieq "WorkflowManagerServer" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "WorkflowManagerServer")) 
         {
             #This condition is an issue
             ArcGIS_Service_Account WorkflowManager_RunAs_Account

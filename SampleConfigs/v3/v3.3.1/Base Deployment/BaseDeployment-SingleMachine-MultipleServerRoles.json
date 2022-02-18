@@ -1,0 +1,188 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "DataStoreTypes": [
+                "Relational"
+            ],
+            "Role": [
+                "Server",
+                "Portal",
+                "DataStore",
+                "ServerWebAdaptor",
+                "PortalWebAdaptor"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerContext": "server",
+        "PortalContext": "portal",
+        "ServerRole": "GeneralPurposeServer",
+        "AdditionalServerRoles":[
+            "Geoevent",
+            "RasterAnalytics",
+            "WorkflowManagerServer",
+            "GeoAnalytics",
+            "ImageHosting"
+        ],
+        "Credentials": {
+            "ServiceAccount": {
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "Password": "[ServiceAccount Password]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            },
+            "ADServiceUser": {
+                "UserName": "[ADServiceUser Username - Active Directory Service user for enabling use of Integrated Windows Authentication with your portal.]",
+                "Password": "[ADServiceUser Password]"
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "PatchesDir": "[Path to Directory with Patches for Server]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ],
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "LocalRepositoryPath": "C:\\arcgisserver\\local",
+            "ServerLogsLocation": "C:\\arcgisserver\\logs",
+            "ServerDirectories": [
+                {
+                    "name": "arcgiscache",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgiscache",
+                    "directoryType": "CACHE",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                },
+                {
+                    "name": "arcgisjobs",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisjobs",
+                    "directoryType": "JOBS",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 360
+                },
+                {
+                    "name": "arcgisoutput",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisoutput",
+                    "directoryType": "OUTPUT",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 10
+                },
+                {
+                    "name": "arcgissystem",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgissystem",
+                    "directoryType": "SYSTEM",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                }
+            ],
+            "RegisteredDirectories": [
+                {
+                    "name": "BasemapsCacheDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
+                    "directoryType": "CACHE"
+                },
+                {
+                    "name": "TestOutputDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testOutput",
+                    "directoryType": "OUTPUT"
+                },
+                {
+                    "name": "TestJobsDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testJobs",
+                    "directoryType": "JOBS"
+                }
+            ],
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
+        },
+        "WorkflowManagerServer": {
+            "LicenseFilePath": "[License File Path - Workflow Manager Server ]",
+            "Installer": {
+                "Path": "[Workflow Manager Server Installer Path]"
+            }
+        },
+        "GeoEventServer": {
+            "LicenseFilePath": "[License File Path - GeoEvent Server ]",
+            "Installer": {
+                "Path": "[GeoEvent Server Installer Path]",
+                "PatchesDir": "[Path to Directory with Patches for GeoEvent Server]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "EnableGeoeventSDK": "[ Optional - True | False(Default) - Enables GeoEvent SDK during installation.]"
+        },
+        "Portal": {
+            "LicenseFilePath": "[License File Path - Portal ]",
+            "PortalLicenseUserTypeId": "[Portal License User Type Id- Required for 10.7 and above]",
+            "Installer": {
+                "Path": "[Portal Installer Path]",
+                "WebStylesPath": "[Optional Parameter starting ArcGIS Enterprise 10.7.1 - Portal Web Styles Installer Path]",
+                "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
+                "ContentDir": "[Portal Content Dir for Install- Ex. C:\\arcgisportal",
+                "PatchesDir": "[Path to Directory with Patches for Portal]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "ContentDirectoryLocation":"C:\\arcgisportal\\content",
+            "EnableAutomaticAccountCreation": true,
+            "DefaultRoleForUser": "[Optional - Values: account_user | account_publisher | <custom role ID>]",
+            "DefaultUserLicenseTypeIdForUser": "[Optional (Valid for 10.7 and later) - Values: fieldWorkerUT | GISProfessionalStdUT | GISProfessionalBasicUT | GISProfessionalAdvUT | creatorUT | editorUT | viewerUT]",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            },
+            "EmailSettings":{
+                "SMTPServerAddress":"[SMTP Server Host Address]",
+                "From":"[SMTP Server Host Email From]",
+                "Label":"[SMTP Server Host Email From Label]",
+                "AuthenticationRequired":"[SMTP Server Host Authentication required flag - False | True]",
+                "SMTPPort":"[SMTP Server Host Port]",
+                "UserName": "[SMTP Server Host Authentication Username]",
+                "Password": "[SMTP Server Host Authentication Password]",
+                "PasswordFilePath": "[SMTP Server Host Authentication Password File Path]",
+                "EncryptionMethod": "[SMTP Server Host Encryption Method - SSL,TLS,NONE]"
+            }
+        },
+        "DataStore": {
+            "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",
+            "EnableFailoverOnPrimaryStop": false,
+            "EnablePointInTimeRecovery": false,
+            "Installer": {
+                "Path": "[DataStore Installer Path]",
+                "InstallDir": "[DataStore Install Dir - Ex. C:\\ArcGIS\\DataStore]",
+                "PatchesDir": "[Path to Directory with Patches for DataStore]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            }
+        },
+        "WebAdaptor": {
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "[WebAdaptor Installer Path]",
+                "PatchesDir": "[Path to Directory with Patches for Web Adaptor]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "WebSiteId": 1
+        }
+    }
+}

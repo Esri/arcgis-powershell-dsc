@@ -22,13 +22,31 @@ Configuration ServerUpgrade{
         $InstallerPath,
 
         [System.String]
-        $InstallDir,
+        $PatchesDir,
+
+        [System.Array]
+        $PatchInstallOrder,
         
+        [System.String]
+        $InstallDir,
+
         [System.String]
         $GeoEventServerInstaller,
 
         [System.String]
+        $GeoEventServerPatchesDir,
+
+        [System.Array]
+        $GeoEventServerPatchInstallOrder,
+
+        [System.String]
         $WorkflowManagerServerInstaller,
+
+        [System.String]
+        $WorkflowManagerServerPatchesDir,
+
+        [System.Array]
+        $WorkflowManagerServerPatchInstallOrder,
 
         [System.Array]
         $ContainerImagePaths,
@@ -57,7 +75,7 @@ Configuration ServerUpgrade{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"} 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
@@ -65,6 +83,7 @@ Configuration ServerUpgrade{
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_MissionServerUpgrade 
     Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_InstallPatch
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -84,7 +103,7 @@ Configuration ServerUpgrade{
         
         $ServerTypeName = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($Node.ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" }
 
-        if($Node.ServerRole -ieq "GeoEvent"){
+        if($Node.ServerRole -ieq "GeoEvent" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoEvent")){
             Service ArcGIS_GeoEvent_Service_Stop
             {
                 Name        = "ArcGISGeoEvent"
@@ -177,6 +196,18 @@ Configuration ServerUpgrade{
             }
         }
 
+        if ($PatchesDir) {
+            ArcGIS_InstallPatch ServerInstallPatch
+            {
+                Name = $ServerTypeName
+                Version = $Version
+                PatchesDir = $PatchesDir
+                PatchInstallOrder = $PatchInstallOrder
+                Ensure = "Present"
+            }
+            $Depends += "[ArcGIS_InstallPatch]ServerInstallPatch"
+        }
+
         if((($MajorVersion -gt 8) -and $NotebookServerSamplesDataPath)){
             ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)Upgrade"
             { 
@@ -194,7 +225,7 @@ Configuration ServerUpgrade{
             $Depends += "[ArcGIS_Install]NotebookServerSamplesData$($Node.NodeName)Upgrade"
         }
         
-        if(($Node.ServerRole -ieq "GeoAnalytics") -and ($MajorVersion -gt 8) -and $IsMultiMachineServerSite){
+        if((($Node.ServerRole -ieq "GeoAnalytics") -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoAnalytics")) -and ($MajorVersion -gt 8) -and $IsMultiMachineServerSite){
             $GeoAnalyticsPorts = @("7077","12181","12182","12190")
             ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
             {
@@ -226,17 +257,46 @@ Configuration ServerUpgrade{
             $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules'
         }
 
-        ArcGIS_License ServerLicense
-        {
-            LicenseFilePath = $Node.ServerLicenseFilePath
-            LicensePassword = if($Node.ServerLicensePassword){ $Node.ServerLicensePassword }else{ $null }
-            Ensure = "Present"
-            Component = 'Server'
-            ServerRole = $Node.ServerRole 
-            Force = $True
-            DependsOn = $Depends
+        if($Node.ServerRole -ine "GeoEvent" -and $Node.ServerRole -ine "WorkflowManagerServer" -and $Node.ServerLicenseFilePath){
+            ArcGIS_License "ServerLicense$($Node.NodeName)"
+            {
+                LicenseFilePath = $Node.ServerLicenseFilePath
+                LicensePassword = if($Node.ServerLicensePassword){ $Node.ServerLicensePassword }else{ $null }
+                Ensure = "Present"
+                Component = 'Server'
+                ServerRole = $Node.ServerRole
+                AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ ( $Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}) }else{ $null }
+                Force = $True
+                DependsOn = $Depends
+            }
+            $Depends += "[ArcGIS_License]ServerLicense$($Node.NodeName)"
         }
-        $Depends += '[ArcGIS_License]ServerLicense'
+
+        if(($Node.ServerRole -ieq "GeoEvent" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoEvent")) -and $Node.GeoeventServerLicenseFilePath){
+            ArcGIS_License "GeoeventServerLicense$($Node.NodeName)"
+            {
+                LicenseFilePath =  $Node.GeoeventServerLicenseFilePath
+                LicensePassword = $Node.GeoeventServerLicensePassword
+                Ensure = "Present"
+                Component = 'Server'
+                ServerRole = "GeoEvent"
+                Force = $True
+            }
+            $Depends += "[ArcGIS_License]GeoeventServerLicense$($Node.NodeName)"
+        }
+
+        if(($Node.ServerRole -ieq "WorkflowManagerServer" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "WorkflowManagerServer")) -and $Node.WorkflowManagerServerLicenseFilePath){
+            ArcGIS_License "WorkflowManagerServerLicense$($Node.NodeName)"
+            {
+                LicenseFilePath =  $Node.WorkflowManagerServerLicenseFilePath
+                LicensePassword = $Node.WorkflowManagerServerLicensePassword
+                Ensure = "Present"
+                Component = 'Server'
+                ServerRole = "WorkflowManagerServer"
+                Force = $True
+            }
+            $Depends += "[ArcGIS_License]WorkflowManagerServerLicense$($Node.NodeName)"
+        }
 
         if($ServerRole -ieq "NotebookServer"){
             ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
@@ -251,7 +311,7 @@ Configuration ServerUpgrade{
 
                 if($IsServiceAccountMSA){
                     ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                        SiteName            = 'arcgis' 
+                        SiteName            = "arcgis"
                         ContainerImagePaths = $ContainerImagePaths
                         ExtractSamples      = $false
                         DependsOn           = $Depends
@@ -282,8 +342,8 @@ Configuration ServerUpgrade{
             }
         }
 
-        #Upgrade GeoEvents
-        if($Node.ServerRole -ieq "WorkflowManagerServer"){
+        #Upgrade Workflow Manager Server
+        if($Node.ServerRole -ieq "WorkflowManagerServer" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "WorkflowManagerServer")){
             $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
 
             ArcGIS_Install WorkflowManagerServerUpgrade
@@ -300,10 +360,22 @@ Configuration ServerUpgrade{
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]WorkflowManagerServerUpgrade"
+
+            if ($WorkflowManagerServerPatchesDir) {
+                ArcGIS_InstallPatch WorkflowManagerServerPatches
+                {
+                    Name = "WorkflowManagerServer"
+                    Version = $Version
+                    PatchesDir = $WorkflowManagerServerPatchesDir
+                    PatchInstallOrder = $WorkflowManagerServerPatchInstallOrder
+                    Ensure = "Present"
+                }
+                $Depends += "[ArcGIS_InstallPatch]WorkflowManagerServerPatches"
+            }
         }
 
         #Upgrade GeoEvents
-        if($Node.ServerRole -ieq "GeoEvent"){
+        if($Node.ServerRole -ieq "GeoEvent" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoEvent")){
             $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
 
             ArcGIS_Install GeoEventServerUpgrade{
@@ -319,6 +391,18 @@ Configuration ServerUpgrade{
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]GeoEventServerUpgrade"
+
+            if ($GeoEventServerPatchesDir) {
+                ArcGIS_InstallPatch GeoEventServerPatches
+                {
+                    Name = "GeoEvent"
+                    Version = $Version
+                    PatchesDir = $GeoEventServerPatchesDir
+                    PatchInstallOrder = $GeoEventServerPatchInstallOrder
+                    Ensure = "Present"
+                }
+                $Depends += "[ArcGIS_InstallPatch]GeoEventServerPatches"
+            }
 
             ArcGIS_xFirewall GeoEventService_Firewall
             {

@@ -159,7 +159,7 @@ Configuration ServerUpgrade{
 
         if($ServerRole -ieq "NotebookServer"){
             $NotebookSamplesDataInstallerFileName = Split-Path $NotebookSamplesDataInstallerPath -Leaf
-            $NotebookSamplesDataInstallerPathOnMachine = "$env:TEMP\Server\$NotebookSamplesDataInstallerFileName"
+            $NotebookSamplesDataInstallerPathOnMachine = "$env:TEMP\NBServer\$NotebookSamplesDataInstallerFileName"
 
             File DownloadNotebookSampleInstallerFromFileShare      
             {            	
@@ -364,7 +364,7 @@ Configuration ServerUpgrade{
 
             if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
             {
-                ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
+                ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service_Start
                 {
                     Name		= 'ArcGISGeoEventGateway'
                     Credential  = $ServiceCredential
@@ -372,7 +372,7 @@ Configuration ServerUpgrade{
                     State       = 'Running'
                     DependsOn   = $Depends
                 }
-                $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
+                $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service_Start"
             }
         }
     }

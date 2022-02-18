@@ -6,7 +6,7 @@ Configuration ArcGISLicense
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DSCResource -ModuleName @{ModuleName="ArcGIS";ModuleVersion="3.3.0"}
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
     Import-DscResource -Name ArcGIS_License
 
     Node $AllNodes.NodeName 
@@ -24,14 +24,41 @@ Configuration ArcGISLicense
             {
                 'Server'
                 {
-                    ArcGIS_License "ServerLicense$($Node.NodeName)"
-                    {
-                        LicenseFilePath =  $Node.ServerLicenseFilePath
-                        LicensePassword = $Node.ServerLicensePassword
-                        Ensure = "Present"
-                        Component = 'Server'
-                        ServerRole = $Node.ServerRole 
-                        Force = $ForceLicenseUpdate
+                    if($Node.ServerRole -ine "GeoEvent" -and $Node.ServerRole -ine "WorkflowManagerServer" -and $Node.ServerLicenseFilePath){
+                        ArcGIS_License "ServerLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath =  $Node.ServerLicenseFilePath
+                            LicensePassword = $Node.ServerLicensePassword
+                            Ensure = "Present"
+                            Component = 'Server'
+                            ServerRole = $Node.ServerRole
+                            AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ if(($Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}).Count -gt 0){$Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}}else{$null} }else{ $null }
+                            Force = $ForceLicenseUpdate
+                        }
+                    }
+
+                    if(($Node.ServerRole -ieq "GeoEvent" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoEvent")) -and $Node.GeoeventServerLicenseFilePath){
+                        ArcGIS_License "GeoeventServerLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath = $Node.GeoeventServerLicenseFilePath
+                            LicensePassword = $Node.GeoeventServerLicensePassword
+                            Ensure = "Present"
+                            Component = 'Server'
+                            ServerRole = "GeoEvent"
+                            Force = $ForceLicenseUpdate
+                        }
+                    }
+
+                    if(($Node.ServerRole -ieq "WorkflowManagerServer" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "WorkflowManagerServer")) -and $Node.WorkflowManagerServerLicenseFilePath){
+                        ArcGIS_License "WorkflowManagerServerLicense$($Node.NodeName)"
+                        {
+                            LicenseFilePath =  $Node.WorkflowManagerServerLicenseFilePath
+                            LicensePassword = $Node.WorkflowManagerServerLicensePassword
+                            Ensure = "Present"
+                            Component = 'Server'
+                            ServerRole = "WorkflowManagerServer"
+                            Force = $ForceLicenseUpdate
+                        }
                     }
                 }
                 'Portal'
