@@ -72,6 +72,9 @@ Configuration ArcGISPortal
         $DisableServiceDirectory,
 
         [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $EnableHSTS = $false,
+        [Parameter(Mandatory=$False)]
         [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
         [AllowNull()] 
         [System.String]
@@ -353,6 +356,7 @@ Configuration ArcGISPortal
             DefaultRoleForUser = $DefaultRoleForUser
             DefaultUserLicenseTypeIdForUser = $DefaultUserLicenseTypeIdForUser
             DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
+            EnableHSTS = if($EnableHSTS) { $true } else { $false }
             ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
             ContentDirectoryCloudContainerName = $ContentDirectoryCloudContainerName
             EnableEmailSettings = if($EnableEmailSettings){ $True }else{ $False }

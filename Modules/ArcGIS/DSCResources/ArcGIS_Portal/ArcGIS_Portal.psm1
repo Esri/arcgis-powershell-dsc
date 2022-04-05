@@ -466,6 +466,8 @@ function Set-TargetResource {
         $DisableServiceDirectory,
 
         [System.Boolean]
+        $EnableHSTS,
+        [System.Boolean]
         $EnableEmailSettings,
 
         [System.String]
@@ -692,6 +694,22 @@ function Set-TargetResource {
             }
         }
 		        
+        Write-Verbose "Get HSTS Setting"
+        $Url = if($PortalMajorVersion -ge 8){ "https://$($FQDN):7443/arcgis/portaladmin/machines/$FQDN/sslCertificates" } else { "https://$($FQDN):7443/arcgis/portaladmin/security/sslCertificates" }
+        $SSLConfig = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token.token; } -Referer $Referer -HttpMethod 'GET'
+        if($SSLConfig.HSTSEnabled -eq $True) { $HstsStatus = "enabled" } else { $HstsStatus = "disabled" }
+        Write-Verbose "Current HSTS Setting:- $HstsStatus"
+        if($SSLConfig.HSTSEnabled -ine $EnableHSTS) {
+            Write-Verbose "Updating HSTS Setting"
+            $NewHstsValue = if ($EnableHSTS) {'true'} else {'false'} #need as api would not accept bool
+            
+            Invoke-ArcGISWebRequest -Url ($Url + "/update") -HttpFormParameters @{ f = 'json'; token = $Token.token; webServerCertificateAlias = $SSLConfig.webServerCertificateAlias; sslProtocols = $SSLConfig.sslProtocols; cipherSuites = $SSLConfig.cipherSuites; HSTSEnabled = $NewHstsValue; } -Referer $Referer -HttpMethod 'Post' -TimeOutSec 90
+            
+            # Changing hsts setting will cause the web server to restart.
+            Write-Verbose "Waiting for Url 'https://$($FQDN):7443/arcgis/admin' to respond"
+            Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90
+        }   
+        
 		if(-not($Join)){
             Write-Verbose "Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/' to intialize"
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
@@ -930,6 +948,8 @@ function Test-TargetResource {
         $DisableServiceDirectory,
 
         [System.Boolean]
+        $EnableHSTS,
+        [System.Boolean]
         $EnableEmailSettings,
 
         [System.String]
@@ -1108,6 +1128,17 @@ function Test-TargetResource {
         else {
             Write-Verbose "Portal CurrentLogLevel '$CurrentLogLevel' matches desired value of '$LogLevel'"
         }
+    }
+    
+    if ($result){
+        Write-Verbose "Get HSTS Setting"
+        $Url = if($PortalMajorVersion -ge 8){ "https://$($FQDN):7443/arcgis/portaladmin/machines/$FQDN/sslCertificates" } else { "https://$($FQDN):7443/arcgis/portaladmin/security/sslCertificates" }
+        $SSLConfig = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters @{ f = 'json'; token = $Token.token; } -Referer $Referer -HttpMethod 'GET'
+        if($SSLConfig.HSTSEnabled -eq $True) { $HstsStatus = "enabled" } else { $HstsStatus = "disabled" }
+        Write-Verbose "Current HSTS Setting:- $HstsStatus"
+        if($SSLConfig.HSTSEnabled -ine $EnableHSTS) {
+            $result = $false
+        }   
     }
 
     if($result -and -not($Join)){

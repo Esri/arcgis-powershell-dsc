@@ -546,11 +546,7 @@ function Get-NodeAgentAmazonElementsPresent
     $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
     if(Test-Path $File){
         [xml]$xml = Get-Content $File
-        if((($xml.NodeAgent.Observers.Observer | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon') -or `
-                (($xml.NodeAgent.Plugins.Plugin | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon'))
-        {
+        if((Select-Xml -Xml $xml -XPath "//NodeAgent/Observers/Observer[@platform='amazon']").Length -gt 0 -or (Select-Xml -Xml $xml -XPath "//NodeAgent/Plugins/Plugin[@platform='amazon']").Length -gt 0){
             Write-Verbose "Amazon elements exist in $File"
             $Enabled = $true
         }
@@ -572,17 +568,21 @@ function Remove-NodeAgentAmazonElements
     $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
     if(Test-Path $File){
         [xml]$xml = Get-Content $File
-        if($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Observers.RemoveChild($xml.NodeAgent.Observers.Observer)
-            Write-Verbose "Amazon Observer exists in $File. Removing it"
-            $Changed = $true
+        if((Select-Xml -Xml $xml -XPath "//NodeAgent/Observers/Observer[@platform='amazon']").Length -gt 0){
+            $amazonObserverNode = $xml.NodeAgent.Observers.SelectSingleNode("//Observer[@platform='amazon']")
+            if($null -ne $amazonObserverNode){
+                Write-Verbose "Amazon Observer exists in $File. Removing it"
+                $amazonObserverNode.ParentNode.RemoveChild($amazonObserverNode) | Out-Null
+                $Changed = $true
+            }
         }
-        if($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Plugins.RemoveChild($xml.NodeAgent.Plugins.Plugin)
-            Write-Verbose "Amazon plugin exists in $File. Removing it"
-            $Changed = $true
+        if((Select-Xml -Xml $xml -XPath "//NodeAgent/Plugins/Plugin[@platform='amazon']").Length -gt 0){
+            $amazonPluginNode = $xml.NodeAgent.Plugins.SelectSingleNode("//Plugin[@platform='amazon']")
+            if($null -ne $amazonPluginNode){
+                Write-Verbose "Amazon plugin exists in $File. Removing it"
+                $amazonPluginNode.ParentNode.RemoveChild($amazonPluginNode) | Out-Null
+                $Changed = $true
+            }
         }
         if($Changed) {
             $xml.Save($File)

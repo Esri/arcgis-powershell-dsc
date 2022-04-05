@@ -17,6 +17,7 @@ class ArcGIS_Server : OMI_BaseResource
     [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
 	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
 	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
+	[Write, Description("Enable HSTS")] Boolean EnableHSTS;
 	[Write, Description("Enable Usage Metering")] Boolean EnableUsageMetering;
 	[Write] String SharedKey;
 };

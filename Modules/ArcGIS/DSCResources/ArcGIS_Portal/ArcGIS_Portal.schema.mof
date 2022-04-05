@@ -23,6 +23,7 @@ class ArcGIS_Portal : OMI_BaseResource
 	[Write] String DefaultUserLicenseTypeIdForUser;
 	[Write] String DefaultRoleForUser;
 	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;  
+	[Write, Description("Enable HSTS")] Boolean EnableHSTS;
 	[Write] Boolean EnableEmailSettings;
 	[Write] String EmailSettingsSMTPServerAddress;
 	[Write] String EmailSettingsFrom;

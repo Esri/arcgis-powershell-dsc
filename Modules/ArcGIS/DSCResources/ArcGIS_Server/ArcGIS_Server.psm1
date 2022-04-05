@@ -166,6 +166,9 @@ function Set-TargetResource
         
         [System.Boolean]
         $DisableServiceDirectory,
+        
+        [System.Boolean]
+        $EnableHSTS,
 
         [System.Boolean]
         $EnableUsageMetering,
@@ -332,6 +335,23 @@ function Set-TargetResource
                     Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" -Token $token.token -Properties $servicesdirectory
                 }
             }
+            
+            if($EnableHSTS) {
+                Write-Verbose "Get HSTS Setting"
+                $SecurityConfig = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/config" -Token $token.token
+                if($SecurityConfig.HSTSEnabled -eq $True) { $HstsStatus = "enabled" } else { $HstsStatus = "disabled" }
+                Write-Verbose "Current HSTS Setting:- $HstsStatus"
+                if($SecurityConfig.HSTSEnabled -ine $EnableHSTS) {
+                    Write-Verbose "Updating HSTS Setting"
+                    $SecurityConfig.HSTSEnabled = $EnableHSTS
+                    $SecurityConfigProperties = (@{securityConfig = $SecurityConfig} | ConvertTo-Json -Depth 10)
+                    Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/config/update" -Token $token.token -Properties $SecurityConfigProperties
+                            
+                    # Changing hsts setting will cause the web server to restart.
+		            Write-Verbose "Waiting for Url '$ServerUrl/$SiteName/admin' to respond"
+		            Wait-ForUrl -Url "$ServerUrl/$SiteName/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90
+                }
+            }
 
             if($SharedKey){
                 Write-Verbose "Get Token Setting"
@@ -436,6 +456,9 @@ function Test-TargetResource
 
         [System.Boolean]
         $DisableServiceDirectory,
+        
+        [System.Boolean]
+        $EnableHSTS,
 
         [System.Boolean]
         $EnableUsageMetering,
@@ -506,6 +529,16 @@ function Test-TargetResource
         }
         Write-Verbose "Current Service Directory Setting:- $dirStatus"
         if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
+            $result = $false
+        }
+    }
+    
+    if($result -and $EnableHSTS) {
+        Write-Verbose "Get Security Setting"
+        $SecurityConfig = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/config" -Token $token.token
+        if($SecurityConfig.HSTSEnabled -eq $True) { $HstsStatus = "enabled" } else { $HstsStatus = "disabled" }
+        Write-Verbose "Current HSTS Setting:- $HstsStatus"
+        if($SecurityConfig.HSTSEnabled -ine $EnableHSTS) {
             $result = $false
         }
     }
@@ -1053,12 +1086,16 @@ function Set-AdminSettings
         
         [System.String]
         $Properties
-    )
+    )            
     $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
     $COProperties = $Properties | ConvertFrom-Json
     $RequestParams = @{ f= 'json'; token = $Token; }
     $COProperties.psobject.properties | ForEach-Object { $RequestParams[$_.Name] = $_.Value }
-    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
+    
+    # logic for updating the arcgis server security config which requires a json object
+    if (($RequestParams.securityConfig) -and ($RequestUrl.EndsWith('/security/config/update'))) { $RequestParams.securityConfig = ($RequestParams.securityConfig | ConvertTo-Json -Depth 10) } 
+    
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams -TimeOutSec 90
     Write-Verbose $Response
     Confirm-ResponseStatus $Response
     $Response

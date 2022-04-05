@@ -1117,6 +1117,7 @@ function Invoke-ArcGISConfiguration
                             }
 
                             $ServerArgs["DisableServiceDirectory"] = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
+                            $ServerArgs["EnableHSTS"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $true }else{ $false }
                             $ServerArgs["OpenFirewallPorts"] = ($PortalCheck -or $DataStoreCheck -or $IsServerWAOnSeparateMachine)
                             $ServerArgs["RegisteredDirectories"] = ($ConfigurationParamsHashtable.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
                             $ServerArgs["LocalRepositoryPath"] = if($ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath){$ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath}else{$null}
@@ -1262,6 +1263,7 @@ function Invoke-ArcGISConfiguration
                             DefaultRoleForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser }else{ $null }
                             DefaultUserLicenseTypeIdForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser }else{ $null }
                             DisableServiceDirectory = if($ConfigurationParamsHashtable.ConfigData.Portal.DisableServiceDirectory){ $true }else{ $false }
+                            EnableHSTS = if($ConfigurationParamsHashtable.ConfigData.Portal.EnableHSTS){ $true }else{ $false }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }

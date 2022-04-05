@@ -110,6 +110,10 @@ Configuration ArcGISServer
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $DisableServiceDirectory = $False,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $EnableHSTS = $False,
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -423,6 +427,7 @@ Configuration ArcGISServer
             DependsOn = $Depends
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
             DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
+            EnableHSTS = if($EnableHSTS) { $true } else { $false }
             SingleClusterMode = $true
             ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
