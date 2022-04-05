@@ -1262,6 +1262,7 @@ function Invoke-ArcGISConfiguration
                             DefaultRoleForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser }else{ $null }
                             DefaultUserLicenseTypeIdForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser -and ($MajorVersion -ge 7)){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser }else{ $null }
                             DisableServiceDirectory = if($ConfigurationParamsHashtable.ConfigData.Portal.DisableServiceDirectory){ $true }else{ $false }
+                            DisableAnonymousAccess = if($ConfigurationParamsHashtable.ConfigData.Portal.DisableAnonymousAccess){ $true }else{ $false }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }

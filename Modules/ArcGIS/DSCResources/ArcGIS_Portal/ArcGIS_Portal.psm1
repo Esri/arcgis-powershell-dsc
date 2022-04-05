@@ -464,6 +464,9 @@ function Set-TargetResource {
 
         [System.Boolean]
         $DisableServiceDirectory,
+                
+        [System.Boolean]
+        $DisableAnonymousAccess = $false,
 
         [System.Boolean]
         $EnableEmailSettings,
@@ -691,7 +694,7 @@ function Set-TargetResource {
                 Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json" -HttpMethod 'GET' -Verbose
             }
         }
-		        
+        
 		if(-not($Join)){
             Write-Verbose "Waiting for 'https://$($FQDN):7443/arcgis/portaladmin/' to intialize"
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
@@ -708,6 +711,15 @@ function Set-TargetResource {
             {
                 Write-Verbose "Setting Portal to HTTPS_Only"
                 $PortalSelfResponse = Set-PortalSelfDescription -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -Properties @{ allSSL = 'true' }
+                Write-Verbose $PortalSelfResponse
+            }
+            
+            Write-Verbose "Checking if Portal allows anonymous access"
+            $PortalSelf = Get-PortalSelfDescription -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
+            if(($PortalSelf.access -ieq 'public') -and ($DisableAnonymousAccess))
+            {
+                Write-Verbose "Disabling anonymous access"
+                $PortalSelfResponse = Set-PortalSelfDescription -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer -Properties @{ access = 'private' }
                 Write-Verbose $PortalSelfResponse
             }
 
@@ -928,6 +940,9 @@ function Test-TargetResource {
 
         [System.Boolean]
         $DisableServiceDirectory,
+        
+        [System.Boolean]
+        $DisableAnonymousAccess = $false,
 
         [System.Boolean]
         $EnableEmailSettings,
@@ -1094,6 +1109,22 @@ function Test-TargetResource {
             $result = $false
         }
     }
+    
+    if ($result){
+        try {
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer     
+
+            Write-Verbose "Checking if Portal allows anonymous access"
+            $PortalSelf = Get-PortalSelfDescription -PortalHostName $FQDN -SiteName 'arcgis' -Token $token.token -Referer $Referer
+            
+            $result = (if(($PortalSelf.access -ieq 'public') -and ($DisableAnonymousAccess)) {$false} else {$true})
+        }
+        catch {
+            Write-Verbose "[WARNING]:- Exception:- $($_)"   
+            $result = $false
+        }
+    }
 
     if ($result) {        
         Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
@@ -1137,7 +1168,7 @@ function Test-TargetResource {
                 $result = $false
             }  
         }
-
+        
         if ($result) {
             $EnableAutoAccountCreationStatus = if ($securityConfig.enableAutomaticAccountCreation -ne "true") { "disabled" } else { 'enabled' }
             Write-Verbose "Current Automatic Account Creation Setting:- $EnableAutoAccountCreationStatus" 
@@ -1146,7 +1177,7 @@ function Test-TargetResource {
                 $result = $false
             }
         }
-
+        
         if($RealVersion.Split('.')[1] -lt 8){
             if ($result -and -not([string]::IsNullOrEmpty($DefaultRoleForUser))) {
                 Write-Verbose "Current Default Role for User Setting:- $($securityConfig.defaultRoleForUser)"
@@ -1201,7 +1232,7 @@ function Test-TargetResource {
         }
     }
 
-
+    
     if ($Ensure -ieq 'Present') {
 	       $result   
     } elseif ($Ensure -ieq 'Absent') {        

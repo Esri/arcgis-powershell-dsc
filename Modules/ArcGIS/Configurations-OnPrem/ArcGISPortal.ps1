@@ -70,6 +70,10 @@ Configuration ArcGISPortal
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $DisableServiceDirectory,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $DisableAnonymousAccess = $false,
 
         [Parameter(Mandatory=$False)]
         [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
@@ -353,6 +357,7 @@ Configuration ArcGISPortal
             DefaultRoleForUser = $DefaultRoleForUser
             DefaultUserLicenseTypeIdForUser = $DefaultUserLicenseTypeIdForUser
             DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
+            DisableAnonymousAccess = if($DisableAnonymousAccess) { $true } else { $false }
             ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
             ContentDirectoryCloudContainerName = $ContentDirectoryCloudContainerName
             EnableEmailSettings = if($EnableEmailSettings){ $True }else{ $False }
