@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Federates a Server with an existing Portal.
     .PARAMETER Ensure

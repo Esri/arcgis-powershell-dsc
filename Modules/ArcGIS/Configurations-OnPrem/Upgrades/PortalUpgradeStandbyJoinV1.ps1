@@ -1,4 +1,4 @@
-Configuration PortalUpgradeStandbyJoinV1{
+﻿Configuration PortalUpgradeStandbyJoinV1{
     param(
         [parameter(Mandatory = $true)]
         [System.String]
@@ -49,7 +49,7 @@ Configuration PortalUpgradeStandbyJoinV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2 
     Import-DscResource -Name ArcGIS_Portal
     
     if($null -ne $CloudStorageType)

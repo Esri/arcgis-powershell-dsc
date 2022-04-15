@@ -1,4 +1,4 @@
-"""
+﻿"""
 Name: enable_enterprise_gdb.py
 Description: Creates a connection file to a SQL Server or PostgreSQL database as the input user credentials and enables an enterprise geodatabase.
 Type enable_enterprise_gdb.py -h or enable_enterprise_gdb.py --help for usage

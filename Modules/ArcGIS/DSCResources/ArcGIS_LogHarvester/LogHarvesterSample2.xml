@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+  <Properties>
+    <Property name="log.dir">C:\\arcgisserver\\logs2</Property>
+    <Property name="log.format">csv</Property>
+  </Properties>
+  <Appenders>
+    <Console name="Console" target="SYSTEM_OUT">
+      <PatternLayout>
+        <Pattern>%mdc{time}, %mdc{type}, %mdc{code}, %mdc{source}, %mdc{methodName}, %mdc{machine}, %mdc{process}, %mdc{thread}, %mdc{elapsed}, %mdc{requestId}, %mdc{user}, [%msg]%n</Pattern>
+      </PatternLayout>
+    </Console>
+    <RollingFile name="csv" filePattern="${log.dir}\\${env:COMPUTERNAME:-arcgisserver}-%d{YYYYMMdd-HHmmss}-%i.log">
+      <PatternLayout>
+        <Pattern>%mdc{time}, %mdc{type}, %mdc{code}, %mdc{source}, %mdc{methodName}, %mdc{machine}, %mdc{process}, %mdc{thread}, %mdc{elapsed}, %mdc{requestId}, %mdc{user}, [%msg]%n</Pattern>
+      </PatternLayout>
+      <Policies>
+        <SizeBasedTriggeringPolicy size="10 MB"/>
+      </Policies>
+      <DirectWriteRolloverStrategy>
+        <Delete basePath="${log.dir}" maxDepth="1">
+           <IfAccumulatedFileCount exceeds="5" />
+        </Delete>
+      </DirectWriteRolloverStrategy>
+    </RollingFile>
+    <RollingFile name="json" filePattern="${log.dir}\\${env:COMPUTERNAME:-arcgisserver}-%d{YYYYMMdd-HHmmss}-%i.log">
+      <JsonTemplateLayout />
+      <Policies>
+        <SizeBasedTriggeringPolicy size="10 MB"/>
+      </Policies>
+      <DirectWriteRolloverStrategy>
+        <Delete basePath="${log.dir}" maxDepth="1">
+           <IfAccumulatedFileCount exceeds="5" />
+        </Delete>
+      </DirectWriteRolloverStrategy>
+    </RollingFile>
+  </Appenders>
+  <Loggers>
+    <Logger name="com.esri.arcgis.discovery.logharvester" level="debug" additivity="false">
+      <AppenderRef ref="${log.format}" />
+    </Logger>
+    <Logger name="com.esri.arcgis.discovery.logging.handlers.Log4jLogHandler" level="debug" additivity="false">
+      <AppenderRef ref="${log.format}" />
+    </Logger>
+    <Root level="error">
+      <AppenderRef ref="Console"/>
+    </Root>
+  </Loggers>
+</Configuration>

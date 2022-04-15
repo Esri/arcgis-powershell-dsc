@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Portal")]
 class ArcGIS_Portal : OMI_BaseResource
 {

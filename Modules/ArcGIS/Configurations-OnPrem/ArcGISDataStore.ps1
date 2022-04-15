@@ -1,4 +1,4 @@
-Configuration ArcGISDataStore 
+﻿Configuration ArcGISDataStore 
 {
     param(
         [Parameter(Mandatory=$true)]    
@@ -65,7 +65,7 @@ Configuration ArcGISDataStore
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore

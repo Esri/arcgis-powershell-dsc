@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Installs a given component of the ArcGIS Enterprise Stack.
     .PARAMETER Ensure

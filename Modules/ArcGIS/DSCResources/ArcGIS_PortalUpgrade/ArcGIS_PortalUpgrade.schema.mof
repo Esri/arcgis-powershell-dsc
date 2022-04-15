@@ -1,4 +1,4 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_PortalUpgrade")]
+﻿[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_PortalUpgrade")]
 class ArcGIS_PortalUpgrade : OMI_BaseResource
 {
 	[Key] String PortalHostName;

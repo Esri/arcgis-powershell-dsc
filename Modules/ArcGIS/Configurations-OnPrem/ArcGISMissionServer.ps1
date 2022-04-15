@@ -1,4 +1,4 @@
-Configuration ArcGISMissionServer
+﻿Configuration ArcGISMissionServer
 {
     param(
         [Parameter(Mandatory=$true)]
@@ -97,7 +97,7 @@ Configuration ArcGISMissionServer
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_MissionServer
     Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS

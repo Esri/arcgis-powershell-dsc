@@ -1,4 +1,4 @@
-Configuration MissionServerSingleTierConfiguration{
+﻿Configuration MissionServerSingleTierConfiguration{
     param(
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]

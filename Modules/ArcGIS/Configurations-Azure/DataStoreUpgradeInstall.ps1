@@ -1,4 +1,4 @@
-Configuration DataStoreUpgradeInstall{
+﻿Configuration DataStoreUpgradeInstall{
     param(
         [System.String]
         $Version,

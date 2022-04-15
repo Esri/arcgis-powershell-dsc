@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Configures a Refrenced or Managed Geo Database
     .PARAMETER Ensure
@@ -786,7 +786,7 @@ function Register-EGDBWithServerSite
     $item = @{
                 type = 'egdb'
                 info = @{
-                    dataStoreConnectionType = 'serverOnly'
+                    dataStoreConnectionType = if($IsManaged){'serverOnly'}else{'shared'}
                     isManaged = $IsManaged
                     connectionString = $ConnString
                 }

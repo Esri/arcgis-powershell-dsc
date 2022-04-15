@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Resource to make the Data Directories accesssible to given Run as Account for a given ArcGIS Component.
     .PARAMETER Ensure

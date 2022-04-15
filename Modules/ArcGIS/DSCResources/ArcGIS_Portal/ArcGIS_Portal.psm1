@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Resource to Configure a Portal site.
     .PARAMETER Ensure

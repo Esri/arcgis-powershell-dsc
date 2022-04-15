@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Resource to start or stop a Windows Service.
     .PARAMETER Name

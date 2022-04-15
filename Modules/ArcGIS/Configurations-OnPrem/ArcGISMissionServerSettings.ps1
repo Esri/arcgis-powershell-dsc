@@ -1,4 +1,4 @@
-Configuration ArcGISMissionServerSettings{
+﻿Configuration ArcGISMissionServerSettings{
     param(
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -20,7 +20,7 @@ Configuration ArcGISMissionServerSettings{
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_MissionServerSettings
 
     Node $AllNodes.NodeName

@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Imports a SSL certificate from remote machine to local machines root store.
     .PARAMETER Ensure

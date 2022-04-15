@@ -1,4 +1,4 @@
-Configuration ServerUpgrade{
+﻿Configuration ServerUpgrade{
     param(
         [parameter(Mandatory = $true)]
         [System.String]
@@ -75,7 +75,7 @@ Configuration ServerUpgrade{
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
@@ -152,6 +152,17 @@ Configuration ServerUpgrade{
         $Depends += '[ArcGIS_Install]ServerUpgrade'
 
         if($ServerTypeName -ieq "Server" -and $null -ne $Extensions){
+            if($Version -ieq "10.9.1"){
+                ArcGIS_Install "ServerUpgradeUninstallWorkflowManagerClasicExtension"
+                {
+                    Name = "ServerWorkflowManagerClassic"
+                    Version = $OldVersion
+                    Ensure = "Absent"
+                    DependsOn = $Depends
+                }
+                $Depends += '[ArcGIS_Install]ServerUpgradeUninstallWorkflowManagerClasicExtension'
+            }
+
             if($MajorVersion -gt 8){
                 ArcGIS_Install "ServerUpgradeUninstallLocationReferencingExtension"
                 {
@@ -265,7 +276,7 @@ Configuration ServerUpgrade{
                 Ensure = "Present"
                 Component = 'Server'
                 ServerRole = $Node.ServerRole
-                AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ ( $Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}) }else{ $null }
+                AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ if(($Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}).Count -gt 0){ $Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'} }else{$null} }else{ $null }
                 Force = $True
                 DependsOn = $Depends
             }
@@ -298,7 +309,7 @@ Configuration ServerUpgrade{
             $Depends += "[ArcGIS_License]WorkflowManagerServerLicense$($Node.NodeName)"
         }
 
-        if($ServerRole -ieq "NotebookServer"){
+        if($Node.ServerRole -ieq "NotebookServer"){
             ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
                 Ensure = "Present"
                 Version = $Version
@@ -326,7 +337,7 @@ Configuration ServerUpgrade{
                     }
                 }
             }
-        }elseif($ServerRole -ieq "MissionServer"){
+        }elseif($Node.ServerRole -ieq "MissionServer"){
             ArcGIS_MissionServerUpgrade MissionServerConfigureUpgrade{
                 Ensure = "Present"
                 Version = $Version

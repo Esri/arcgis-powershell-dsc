@@ -1,4 +1,4 @@
-Configuration ArcGISWebAdaptor
+﻿Configuration ArcGISWebAdaptor
 {
     param(
         [System.Management.Automation.PSCredential]
@@ -24,7 +24,7 @@ Configuration ArcGISWebAdaptor
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor

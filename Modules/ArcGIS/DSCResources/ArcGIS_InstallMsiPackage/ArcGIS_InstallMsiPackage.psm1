@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Installs a given msi
     .PARAMETER Ensure

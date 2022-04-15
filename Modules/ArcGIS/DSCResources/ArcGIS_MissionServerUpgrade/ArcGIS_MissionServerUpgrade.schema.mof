@@ -1,4 +1,4 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_MissionServerUpgrade")]
+﻿[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_MissionServerUpgrade")]
 class ArcGIS_MissionServerUpgrade : OMI_BaseResource
 {
 	[Key] String ServerHostName;

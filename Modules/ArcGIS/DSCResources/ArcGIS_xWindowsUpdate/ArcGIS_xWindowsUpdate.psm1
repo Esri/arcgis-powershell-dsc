@@ -1,4 +1,4 @@
-Data LocalizedData
+﻿Data LocalizedData
 {
     # culture="en-US"e
     ConvertFrom-StringData @'

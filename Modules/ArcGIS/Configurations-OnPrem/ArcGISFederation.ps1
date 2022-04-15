@@ -1,4 +1,4 @@
-Configuration ArcGISFederation
+﻿Configuration ArcGISFederation
 {    
     param(
         [Parameter(Mandatory=$true)]
@@ -61,7 +61,7 @@ Configuration ArcGISFederation
         
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName

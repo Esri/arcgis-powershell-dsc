@@ -1,4 +1,4 @@
-Configuration ArcGISRasterDataStoreItem
+﻿Configuration ArcGISRasterDataStoreItem
 {
     param(
         [Parameter(Mandatory=$true)]
@@ -32,7 +32,7 @@ Configuration ArcGISRasterDataStoreItem
         $FileShareLocalPath
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_FileShare
     Import-DSCResource -Name ArcGIS_DataStoreItem
 

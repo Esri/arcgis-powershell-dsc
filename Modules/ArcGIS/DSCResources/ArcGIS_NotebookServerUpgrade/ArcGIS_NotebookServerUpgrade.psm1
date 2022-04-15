@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Resource to aid post upgrade completion workflows. This resource upgrades the Notebook Server Site once Server Installer has completed the upgrade.
     .PARAMETER Ensure

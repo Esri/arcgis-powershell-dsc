@@ -1,7 +1,7 @@
-Configuration ArcGISDataStoreCertificateUpdate 
+﻿Configuration ArcGISDataStoreCertificateUpdate 
 {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_DataStore_TLS
 
     Node $AllNodes.NodeName 

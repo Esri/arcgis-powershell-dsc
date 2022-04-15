@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Configures a WebAdaptor
     .PARAMETER Ensure

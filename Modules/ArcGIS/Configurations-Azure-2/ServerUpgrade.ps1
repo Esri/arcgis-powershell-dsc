@@ -1,4 +1,4 @@
-Configuration ServerUpgrade{
+﻿Configuration ServerUpgrade{
     param(
         [System.String]
         $Version,
@@ -242,7 +242,10 @@ Configuration ServerUpgrade{
         if($ServerRole -ieq "NotebookServer"){
             $ServerLicenseRole = "NotebookServer"
         }
-        
+        if($ServerRole -ieq "MissionServer"){
+            $ServerLicenseRole = "MissionServer"
+        }
+
 		## Download license file
 		if($ServerLicenseFileUrl) {
 			$ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
@@ -279,6 +282,13 @@ Configuration ServerUpgrade{
                 PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
             }
 
+        }elseif($ServerRole -ieq "MissionServer"){
+            ArcGIS_MissionServerUpgrade MissionServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $MachineFQDN
+                DependsOn = $Depends
+            }
         }else{
             ArcGIS_ServerUpgrade ServerConfigureUpgrade{
                 Ensure = "Present"

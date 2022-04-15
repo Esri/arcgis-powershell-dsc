@@ -1,4 +1,4 @@
-Configuration MissionServerMultiTierConfiguration{
+﻿Configuration MissionServerMultiTierConfiguration{
     param(
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]

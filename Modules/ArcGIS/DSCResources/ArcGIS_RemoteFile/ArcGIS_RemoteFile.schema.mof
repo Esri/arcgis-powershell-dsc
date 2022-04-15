@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_RemoteFile")]
 class ArcGIS_RemoteFile : OMI_BaseResource
 {

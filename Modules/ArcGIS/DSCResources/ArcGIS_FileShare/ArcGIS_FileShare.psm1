@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Creates a File Share for the Server and Portal to be shared in a High Availabilty Setup.
 	.PARAMETER Ensure

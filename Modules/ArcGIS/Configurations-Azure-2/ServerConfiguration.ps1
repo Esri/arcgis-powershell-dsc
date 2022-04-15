@@ -294,6 +294,8 @@
                 {
                     ComponentType = "Server"
                     EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
+                    Version = "10.9.1"
+                    LogFormat = "csv"
                     DependsOn = $ServerDependsOn
                 }
 

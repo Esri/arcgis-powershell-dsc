@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Configures Datastore with the GIS server. 
         - Can be a primary or secondary in case of Relational DataStore. 

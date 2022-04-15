@@ -1,10 +1,10 @@
-Configuration InsightsUpgradeUninstall{
+﻿Configuration InsightsUpgradeUninstall{
     param(
         [System.String]
         $Version
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_Install
     
     Node $AllNodes.NodeName

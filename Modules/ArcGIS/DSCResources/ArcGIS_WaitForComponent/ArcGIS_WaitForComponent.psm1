@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Resource Implements application level to handle cross node dependencies specific to the ArcGIS Enterprise Stack
     .PARAMETER Component

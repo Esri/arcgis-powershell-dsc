@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Resource to aid post upgrade completion workflows. This resource upgrades the Server Site once Server Installer has completed the upgrade.
     .PARAMETER Ensure
@@ -114,36 +114,10 @@ function Set-TargetResource
             while(-not($ServerReady) -and ($Attempts -lt 120)){
                 $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
                 if(($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error')){
-                    Write-Verbose "Server Upgrade is likely done!"
-                    $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -Verbose
-                    $currentversion = "$($Info.currentVersion)"
-					Write-Verbose "Current Version Installed - $currentversion"
-                    if($currentversion -ieq "10.51"){
-                        $currentversion = "10.5.1"
-                    }elseif($currentversion -ieq "10.61"){
-                        $currentversion = "10.6.1"
-                    }elseif($currentversion -ieq "10.71"){
-                        $currentversion = "10.7.1"
-                    }elseif($currentversion -ieq "10.81"){
-                        $currentversion = "10.8.1"
-                    }elseif($currentversion -ieq "10.91"){
-                        $currentversion = "10.9.1"
+                    if(Test-ServerUpgradeStatus -ServerSiteURL $ServerSiteURL -Referer $Referer -Version $Version -Verbose){
+                        $ServerReady = $True
+                        break
                     }
-                    
-                    if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){
-                        if($Version.Split('.').Length -eq 3){
-                            if($Version.Split('.')[2] -eq $currentversion.Split('.')[2]){
-                                Write-Verbose 'Server Upgrade Successful'
-                                $ServerReady = $true
-                                break
-                            }
-                        }else{
-                            Write-Verbose 'Server Upgrade Successful'
-                            $ServerReady = $true
-                            break
-                        }
-                    }
-                    
                 }elseif(($ResponseStatus.status -ieq "error") -and ($ResponseStatus.code -ieq '500')){
 					throw $ResponseStatus.messages
 					break
@@ -191,19 +165,27 @@ function Test-TargetResource
     $result = Test-Install -Name "Server" -Version $Version
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     $Referer = "http://localhost"
-    $ServerUpgradeUrl = "https://$($FQDN):6443/arcgis/admin/upgrade"
+
+    Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -MaxWaitTimeInSeconds 300 -SleepTimeInSeconds 15 -HttpMethod 'GET' -Verbose
+
+    $Referer = "http://localhost"
+    $ServerSiteURL = "https://$($FQDN):6443"
+    $ServerUpgradeUrl = "$($ServerSiteURL)/arcgis/admin/upgrade"
     $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
-    
     if($result) {
         if($ResponseStatus.upgradeStatus -ieq "UPGRADE_REQUIRED" -or $ResponseStatus.upgradeStatus -ieq "LAST_ATTEMPT_FAILED" -or $ResponseStatus.upgradeStatus -ieq "IN_PROGRESS"){
             $result = $false
         }else{
-            $result = $true
+            if(($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error')){
+                $result = Test-ServerUpgradeStatus -ServerSiteURL $ServerSiteURL -Referer $Referer -Version $Version -Verbose
+            } else {
+                Write-Verbose "Error Code - $($ResponseStatus.code), Error Messages - $($ResponseStatus.messages)"
+                $result = $false
+            }
         }
     }else{
         throw "ArcGIS Server not upgraded to required Version"
     }
-    
     
     if($Ensure -ieq 'Present') {
 	       $result   
@@ -211,6 +193,56 @@ function Test-TargetResource
     elseif($Ensure -ieq 'Absent') {        
         (-not($result))
     }
+}
+
+function Test-ServerUpgradeStatus
+{
+    [CmdletBinding()]
+	[OutputType([System.Boolean])]
+	param
+	(
+		[parameter(Mandatory = $true)]
+        [System.String]
+        $ServerSiteURL,
+
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Referer,
+
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version
+        
+    )
+
+    Write-Verbose "Server Upgrade is likely done!"
+    $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -Verbose
+    $currentversion = "$($Info.currentVersion)"
+    Write-Verbose "Current Version Installed - $currentversion"
+    if($currentversion -ieq "10.51"){
+        $currentversion = "10.5.1"
+    }elseif($currentversion -ieq "10.61"){
+        $currentversion = "10.6.1"
+    }elseif($currentversion -ieq "10.71"){
+        $currentversion = "10.7.1"
+    }elseif($currentversion -ieq "10.81"){
+        $currentversion = "10.8.1"
+    }elseif($currentversion -ieq "10.91"){
+        $currentversion = "10.9.1"
+    }
+    
+    if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){
+        if($Version.Split('.').Length -eq 3){
+            if($Version.Split('.')[2] -eq $currentversion.Split('.')[2]){
+                Write-Verbose 'Server Upgrade Successful'
+                return $True
+            }
+        }else{
+            Write-Verbose 'Server Upgrade Successful'
+            return $True
+        }
+    }
+    return $False
 }
 
 Export-ModuleMember -Function *-TargetResource
