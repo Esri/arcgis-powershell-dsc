@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Licenses the product (Server or Portal) depending on the params specified.
     .PARAMETER Ensure

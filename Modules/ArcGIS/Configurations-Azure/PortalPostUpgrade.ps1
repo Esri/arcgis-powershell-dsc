@@ -1,4 +1,4 @@
-Configuration PortalPostUpgrade{
+﻿Configuration PortalPostUpgrade{
 
     param(
         [parameter(Mandatory = $true)]

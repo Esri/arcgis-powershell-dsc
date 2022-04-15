@@ -1,4 +1,4 @@
-[ClassVersion("1.0.0"), FriendlyName("ArcGIS_xFirewall")] 
+﻿[ClassVersion("1.0.0"), FriendlyName("ArcGIS_xFirewall")] 
 class ArcGIS_xFirewall : OMI_BaseResource
 {
   [Key, Description("Name of the Firewall Rule")] String Name;

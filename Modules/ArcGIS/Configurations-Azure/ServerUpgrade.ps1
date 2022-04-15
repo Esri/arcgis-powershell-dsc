@@ -1,4 +1,4 @@
-Configuration ServerUpgrade{
+﻿Configuration ServerUpgrade{
     param(
         [System.String]
         $Version,

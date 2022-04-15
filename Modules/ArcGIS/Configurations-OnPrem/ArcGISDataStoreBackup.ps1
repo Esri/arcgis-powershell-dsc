@@ -1,4 +1,4 @@
-Configuration ArcGISDataStoreBackup
+﻿Configuration ArcGISDataStoreBackup
 {
     param(
         [Parameter(Mandatory=$False)]
@@ -27,7 +27,7 @@ Configuration ArcGISDataStoreBackup
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_DataStoreBackup
 
     Node $AllNodes.NodeName 

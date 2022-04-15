@@ -1,4 +1,4 @@
-Configuration ArcGISInstall{
+﻿Configuration ArcGISInstall{
     param(
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -18,10 +18,11 @@ Configuration ArcGISInstall{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
+    Import-DscResource -Name ArcGIS_xFirewall
 
     Node $AllNodes.NodeName {
 
@@ -191,9 +192,9 @@ Configuration ArcGISInstall{
                         }
 
                         if ($ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir) {
-                            ArcGIS_InstallPatch ServerInstallPatch
+                            ArcGIS_InstallPatch WorkflowManagerServerInstallPatch
                             {
-                                Name = $ServerTypeName
+                                Name = "WorkflowManagerServer"
                                 Version = $ConfigurationData.ConfigData.Version
                                 PatchesDir = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir
                                 PatchInstallOrder = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchInstallOrder
@@ -610,6 +611,19 @@ Configuration ArcGISInstall{
                         Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
                         EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
+                    }
+
+                    ArcGIS_xFirewall Server_FirewallRules
+                    {
+                        Name                  = "ArcGISLicenseManager"
+                        DisplayName           = "ArcGIS License Manager"
+                        DisplayGroup          = "ArcGIS License Manager"
+                        Ensure                = 'Present'
+                        Access                = "Allow"
+                        State                 = "Enabled"
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("27000")
+                        Protocol              = "TCP"
                     }
                 }
             }

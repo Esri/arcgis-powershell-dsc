@@ -1,4 +1,4 @@
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_WaitForComponent")]
+﻿[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_WaitForComponent")]
 class ArcGIS_WaitForComponent : OMI_BaseResource
 {
 	[Key, ValueMap{"Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal"}, Values{"Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal"}] String Component;

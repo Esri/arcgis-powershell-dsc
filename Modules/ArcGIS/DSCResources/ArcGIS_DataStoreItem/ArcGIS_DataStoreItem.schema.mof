@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_DataStoreItem")]
 class ArcGIS_DataStoreItem : OMI_BaseResource
 {

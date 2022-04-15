@@ -1,4 +1,4 @@
-Configuration DataStoreUpgradePreInstall
+﻿Configuration DataStoreUpgradePreInstall
 {
     param(
 		[Parameter(Mandatory=$true)]
@@ -7,7 +7,7 @@ Configuration DataStoreUpgradePreInstall
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
 	
     Node $AllNodes.NodeName {
         

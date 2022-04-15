@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_xSmbShare")]
 class ArcGIS_xSmbShare : OMI_BaseResource
 {

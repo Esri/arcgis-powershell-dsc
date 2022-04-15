@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Configures A Datastore Item with the GIS server. ("Folder","CloudStore","RasterStore","BigDataFileShare")
     .PARAMETER Name

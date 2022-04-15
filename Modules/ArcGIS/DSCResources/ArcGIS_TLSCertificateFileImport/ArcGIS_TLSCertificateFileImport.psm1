@@ -1,4 +1,4 @@
-
+﻿
 <#
     .SYNOPSIS
         Imports a SSL certificate to specified store location on local machines.

@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_MissionServerSettings")]
 class ArcGIS_MissionServerSettings : OMI_BaseResource
 {

@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Check for an SSL Certificate. If not present Installs and Configures the SSL Certificate. If certifcate not provided, creates a self signed certificate and configures it.
     .PARAMETER Ensure

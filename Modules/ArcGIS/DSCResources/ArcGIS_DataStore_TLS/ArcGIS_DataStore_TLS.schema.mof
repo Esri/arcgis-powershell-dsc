@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_DataStore_TLS")]
 class ArcGIS_DataStore_TLS : OMI_BaseResource
 {

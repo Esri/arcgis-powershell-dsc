@@ -1,4 +1,4 @@
-Configuration DataStoreUpgradePreInstall{
+﻿Configuration DataStoreUpgradePreInstall{
     param(
         [System.Management.Automation.PSCredential]
         $ServiceCredential,

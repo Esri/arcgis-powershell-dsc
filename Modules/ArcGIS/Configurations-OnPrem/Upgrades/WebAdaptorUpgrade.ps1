@@ -1,4 +1,4 @@
-Configuration WebAdaptorUpgrade{
+﻿Configuration WebAdaptorUpgrade{
     param(
         [ValidateSet("ServerWebAdaptor","PortalWebAdaptor")]
         [System.String]
@@ -39,7 +39,7 @@ Configuration WebAdaptorUpgrade{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptor
 

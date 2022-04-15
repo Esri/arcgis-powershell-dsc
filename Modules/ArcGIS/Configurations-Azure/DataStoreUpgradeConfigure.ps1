@@ -1,4 +1,4 @@
-Configuration DataStoreUpgradeConfigure{
+﻿Configuration DataStoreUpgradeConfigure{
     param(
         [System.Management.Automation.PSCredential]
         $SiteAdministratorCredential,

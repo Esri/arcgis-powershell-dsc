@@ -1,4 +1,4 @@
-Configuration PortalUpgradeV1{
+﻿Configuration PortalUpgradeV1{
     param(
         [parameter(Mandatory = $true)]
         [System.String]
@@ -99,7 +99,7 @@ Configuration PortalUpgradeV1{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_License 

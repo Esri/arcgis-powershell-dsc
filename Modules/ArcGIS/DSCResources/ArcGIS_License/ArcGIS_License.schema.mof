@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_License")]
 class ArcGIS_License : OMI_BaseResource
 {

@@ -1,4 +1,4 @@
-function Get-FQDN
+﻿function Get-FQDN
 {    
     [CmdletBinding()]
     param(
@@ -2222,11 +2222,11 @@ function Invoke-ServerUpgradeScript {
             }
 
             $NodeToAdd["ServerRole"] = $ServerRole
-            if($ServerRole -ine "GeneralPurposeServer" -and ($AdditionalServerRoles.Count -gt 0)){
+            if($ServerRole -ieq "GeneralPurposeServer" -and ($AdditionalServerRoles.Count -gt 0)){
                 $NodeToAdd["AdditionalServerRoles"] = $AdditionalServerRoles
             }
 
-            if($ServerRole -ine "GeoEvent" -and  $ServerRole -ine "WorkflowManagerServer"){
+            if($ServerRole -ine "GeoEvent" -and $ServerRole -ine "WorkflowManagerServer"){
                 $ServerLicenseFilePath = $cf.ConfigData.Server.LicenseFilePath
                 $ServerLicensePassword = $null
                 if($cf.ConfigData.Server.LicensePasswordFilePath){

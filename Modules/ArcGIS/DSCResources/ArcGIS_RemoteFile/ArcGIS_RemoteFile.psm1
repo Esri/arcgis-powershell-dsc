@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Makes a request to the download a file from remote file storage server.
     .PARAMETER Url

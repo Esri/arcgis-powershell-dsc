@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Makes a request to the installed Server to Register Existing External Cache Directories with existing Server Site
     .PARAMETER ServerHostName

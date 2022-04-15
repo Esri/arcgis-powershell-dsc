@@ -1,0 +1,74 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "Role": [
+                "Server",
+                "ServerWebAdaptor"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerRole": "MissionServer",
+        "ServerContext": "mission",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Mission Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgismissionserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgismissionserver\\config-store",
+            "ServerDirectories": [
+                {
+                    "name": "arcgisworkspace",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgisworkspace",
+                    "type": "WORKSPACE"
+                },
+                {
+                    "name": "arcgisoutput",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgisoutput",
+                    "type": "OUTPUT"
+                },
+                {
+                    "name": "arcgissystem",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgissystem",
+                    "type": "SYSTEM"
+                },
+                {
+                    "name": "arcgisjobs",
+                    "path": "C:\\arcgismissionserver\\directories\\arcgisjobs",
+                    "type": "JOBS"
+                }
+            ],
+            "ServerLogsLocation": "C:\\arcgismissionserver\\logs",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
+        },
+        "WebAdaptor": {
+            "Installer": {
+                "Path": "[WebAdaptor Installer Path]"
+            }
+        },
+        "Federation": {
+            "PortalHostName": "[Portal Host Name (FQDN) with which this site needs to be federated]",
+            "PortalPort": "[Port on which Portal is listening ex. - 443]",
+            "PortalContext": "[Context of the Portal ex. - portal]",
+            "PortalAdministrator": {
+                "UserName": "admin",
+                "Password": "changeit"
+            }
+        }
+    }
+}

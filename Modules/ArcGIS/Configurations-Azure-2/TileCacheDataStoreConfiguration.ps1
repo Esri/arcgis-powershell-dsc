@@ -1,4 +1,4 @@
-Configuration TileCacheDataStoreConfiguration{
+﻿Configuration TileCacheDataStoreConfiguration{
     param(
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]

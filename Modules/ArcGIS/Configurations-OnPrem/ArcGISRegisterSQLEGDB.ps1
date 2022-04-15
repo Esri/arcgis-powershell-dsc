@@ -1,4 +1,4 @@
-Configuration ArcGISRegisterSQLEGDB{
+﻿Configuration ArcGISRegisterSQLEGDB{
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true)]    
@@ -45,7 +45,7 @@ Configuration ArcGISRegisterSQLEGDB{
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DSCResource -Name ArcGIS_EGDB
     
     Node $AllNodes.NodeName

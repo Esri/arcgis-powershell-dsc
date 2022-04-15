@@ -1,4 +1,4 @@
-#
+﻿#
 # ArcGIS_Disk: DSC resource to resize the OS (System) Disk Drive
 #
 

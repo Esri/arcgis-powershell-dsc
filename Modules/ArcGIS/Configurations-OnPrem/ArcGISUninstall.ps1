@@ -1,4 +1,4 @@
-Configuration ArcGISUninstall
+﻿Configuration ArcGISUninstall
 {
     param(
         [Parameter(Mandatory=$false)]
@@ -14,7 +14,7 @@ Configuration ArcGISUninstall
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage

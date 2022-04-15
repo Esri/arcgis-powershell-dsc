@@ -1,4 +1,4 @@
-function ConvertTo-HttpBody($props)
+﻿function ConvertTo-HttpBody($props)
 {
     [string]$str = ''
     foreach($prop in $props.Keys){                
@@ -546,11 +546,7 @@ function Get-NodeAgentAmazonElementsPresent
     $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
     if(Test-Path $File){
         [xml]$xml = Get-Content $File
-        if((($xml.NodeAgent.Observers.Observer | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon') -or `
-                (($xml.NodeAgent.Plugins.Plugin | Where-Object { $_.platform -ieq 'amazon'}).Length -gt 0) -or `
-                ($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon'))
-        {
+        if((Select-Xml -Xml $xml -XPath "//NodeAgent/Observers/Observer[@platform='amazon']").Length -gt 0 -or (Select-Xml -Xml $xml -XPath "//NodeAgent/Plugins/Plugin[@platform='amazon']").Length -gt 0){
             Write-Verbose "Amazon elements exist in $File"
             $Enabled = $true
         }
@@ -572,17 +568,21 @@ function Remove-NodeAgentAmazonElements
     $File = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
     if(Test-Path $File){
         [xml]$xml = Get-Content $File
-        if($xml.NodeAgent.Observers.Observer.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Observers.RemoveChild($xml.NodeAgent.Observers.Observer)
-            Write-Verbose "Amazon Observer exists in $File. Removing it"
-            $Changed = $true
+        if((Select-Xml -Xml $xml -XPath "//NodeAgent/Observers/Observer[@platform='amazon']").Length -gt 0){
+            $amazonObserverNode = $xml.NodeAgent.Observers.SelectSingleNode("//Observer[@platform='amazon']")
+            if($null -ne $amazonObserverNode){
+                Write-Verbose "Amazon Observer exists in $File. Removing it"
+                $amazonObserverNode.ParentNode.RemoveChild($amazonObserverNode) | Out-Null
+                $Changed = $true
+            }
         }
-        if($xml.NodeAgent.Plugins.Plugin.platform -ieq 'amazon')
-        {
-            $xml.NodeAgent.Plugins.RemoveChild($xml.NodeAgent.Plugins.Plugin)
-            Write-Verbose "Amazon plugin exists in $File. Removing it"
-            $Changed = $true
+        if((Select-Xml -Xml $xml -XPath "//NodeAgent/Plugins/Plugin[@platform='amazon']").Length -gt 0){
+            $amazonPluginNode = $xml.NodeAgent.Plugins.SelectSingleNode("//Plugin[@platform='amazon']")
+            if($null -ne $amazonPluginNode){
+                Write-Verbose "Amazon plugin exists in $File. Removing it"
+                $amazonPluginNode.ParentNode.RemoveChild($amazonPluginNode) | Out-Null
+                $Changed = $true
+            }
         }
         if($Changed) {
             $xml.Save($File)
@@ -1118,7 +1118,7 @@ function Get-ComponentCode
         }
         ServerWorkflowManagerClassic = @{
             '10.6' = 'F0553C08-337E-4C10-AD64-F2E8A5457483'
-            '10.6.1' = '0C05EC3A-31E3-4530-B89F-FD51FB4822FB'
+            '10.6.1' = '816E8417-B450-4449-A660-1B98A4665FF7'
             '10.7' = 'FBF6F647-730E-40C6-97A2-B309127EFAEE'
             '10.7.1' = '2CCB468C-1534-4A70-8DBB-79083A01E0E5'
             '10.8' = 'A32F405C-5DFD-4470-92C6-CFC10514E1C0'
@@ -1128,7 +1128,7 @@ function Get-ComponentCode
         }
         DesktopWorkflowManagerClassic = @{
             '10.6' = 'CB6C6444-6F6B-4FF1-8BFC-46D528D59C50'
-            '10.6.1' = '816E8417-B450-4449-A660-1B98A4665FF7'
+            '10.6.1' = '0C05EC3A-31E3-4530-B89F-FD51FB4822FB'
             '10.7' = '2DD96926-CA3A-4F22-BC37-9396D6AF0994'
             '10.7.1' = 'FCC76F40-4B99-420B-854F-C0EE4D528090'
             '10.8' = '952B019D-51A5-4FF9-99F1-0B78108F1AD3'

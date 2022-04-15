@@ -1,4 +1,4 @@
-function Add-RewriteRule
+﻿function Add-RewriteRule
 {
 	[CmdletBinding()]
 	param(

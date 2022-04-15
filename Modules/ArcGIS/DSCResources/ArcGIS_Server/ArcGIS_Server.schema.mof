@@ -1,4 +1,4 @@
-
+﻿
 [ClassVersion("1.0.0.0"), FriendlyName("")]
 class ArcGIS_Server : OMI_BaseResource
 {

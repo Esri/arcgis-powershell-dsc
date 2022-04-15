@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Makes a request to the installed Server to create a New Server Site or Join it to an existing Server Site
     .PARAMETER Ensure

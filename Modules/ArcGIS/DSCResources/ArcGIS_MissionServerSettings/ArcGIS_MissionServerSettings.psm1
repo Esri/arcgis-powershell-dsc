@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Makes a request to the installed Mission Server to set the Web Context & Web Socket URL  
     .PARAMETER ServerHostName

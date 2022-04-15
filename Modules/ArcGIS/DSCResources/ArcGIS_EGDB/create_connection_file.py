@@ -1,4 +1,4 @@
-"""
+﻿"""
 Name: create_connection_file.py
 Description: Creates a connection file to a SQL Server or PostgreSQL database as the input user credentials.
 Type create_connection_file.py -h or create_connection_file.py --help for usage

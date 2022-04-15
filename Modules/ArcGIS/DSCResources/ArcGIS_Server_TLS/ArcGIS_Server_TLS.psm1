@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
         Creates a SelfSigned Certificate or Installs a SSL Certificated Provided and Configures it with Server
     .PARAMETER ServerHostName
