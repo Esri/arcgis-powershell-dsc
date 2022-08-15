@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Resource to make the Data Directories accesssible to given Run as Account for a given ArcGIS Component.
     .PARAMETER Ensure
@@ -55,8 +62,6 @@ function Get-TargetResource
         $SetStartupToAutomatic = $false
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$null
 }
 
@@ -97,8 +102,6 @@ function Set-TargetResource
         [System.Boolean]
         $SetStartupToAutomatic = $false
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') {
         
@@ -267,6 +270,15 @@ function Set-TargetResource
 			###
 			$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'						
 			if(Test-Path $GeoEventProgramData) {
+                # Backup Geoevent program data folder
+                $GeoEventProgramDataBackupFolder = Join-Path $env:ProgramData "Esri\GeoEvent-Backup-$(Get-Date -Format "MMddyyyy-HHmmss")"
+                if(Test-Path $GeoEventProgramDataBackupFolder){
+                    $GeoEventProgramDataBackupFolder = Join-Path $env:ProgramData "Esri\GeoEvent-Backup-$(Get-Date -Format "MMddyyyy-HHmmss")"   
+                }
+                New-Item $GeoEventProgramDataBackupFolder -ItemType "directory" 
+                Write-Verbose "Backing up $GeoEventProgramData to $GeoEventProgramDataBackupFolder"
+                Copy-Item -Path "$GeoEventProgramData\*" -Destination $GeoEventProgramDataBackupFolder -Recurse
+                
                 $ZooKeeperFolder = Join-Path $GeoEventProgramData 'zookeeper'
                 if(Test-Path $ZooKeeperFolder) {
                     Write-Verbose "Deleting ZooKeeper folder $ZooKeeperFolder"
@@ -421,8 +433,6 @@ function Test-TargetResource
         [System.Boolean]
         $SetStartupToAutomatic = $false
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $result = $true
     $ExpectedRunAsUserName = $RunAsAccount.UserName

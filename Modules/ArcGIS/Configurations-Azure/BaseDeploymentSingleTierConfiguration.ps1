@@ -1,19 +1,31 @@
 ﻿Configuration BaseDeploymentSingleTierConfiguration
 {
 	param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $Version = '11.0'
+
+        ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $ServiceCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false'
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $SiteAdministratorCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerContext = 'server'
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $PortalContext = 'portal'
 
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -32,12 +44,16 @@
         $StorageAccountCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.Management.Automation.PSCredential]
-        $SSLCertificatePassword
+        [System.String]
+        $PublicKeySSLCertificateFileUrl
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $SSLCertificateFileUrl
+        [System.Management.Automation.PSCredential]
+        $ServerInternalCertificatePassword
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $PortalInternalCertificatePassword
                 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -62,6 +78,10 @@
         ,[Parameter(Mandatory=$true)]
         [System.String]
         $ExternalDNSHostName
+
+        ,[Parameter(Mandatory=$False)]
+        [System.String]
+        $PrivateDNSHostName 
                 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -112,12 +132,12 @@
     Import-DSCResource -ModuleName ArcGIS
 	Import-DscResource -Name ArcGIS_License
 	Import-DscResource -Name ArcGIS_Server
+    Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Portal
+    Import-DscResource -Name ArcGIS_Portal_TLS
     Import-DscResource -Name ArcGIS_DataStore
-    Import-DscResource -Name ArcGIS_IIS_TLS
-    Import-DscResource -Name ArcGIS_ReverseProxy_ARR
     Import-DscResource -Name ArcGIS_Federation
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_xSmbShare
@@ -127,6 +147,14 @@
     Import-DscResource -Name ArcGIS_PortalSettings
     Import-DscResource -Name ArcGIS_LogHarvester
     
+    $FileShareHostName = $MachineName
+    $ServerCertificateFileName  = 'SSLCertificateForServer.pfx'
+    $PortalCertificateFileName  = 'SSLCertificateForPortal.pfx'
+    $ServerCertificateLocalFilePath =  (Join-Path $env:TEMP $ServerCertificateFileName)
+    $PortalCertificateLocalFilePath =  (Join-Path $env:TEMP $PortalCertificateFileName)
+    $ServerCertificateFileLocation = "\\$($FileShareHostName)\$FileShareName\Certs\$ServerCertificateFileName"
+    $PortalCertificateFileLocation = "\\$($FileShareHostName)\$FileShareName\Certs\$PortalCertificateFileName"
+   
     ##
     ## Download license files
     ##
@@ -138,27 +166,33 @@
         $PortalLicenseFileName = Get-FileNameFromUrl $PortalLicenseFileUrl
         Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
     }
-    if($SSLCertificateFileUrl) {
-        $SSLCertificateFileName = Get-FileNameFromUrl $SSLCertificateFileUrl
-        Invoke-WebRequest -OutFile $SSLCertificateFileName -Uri $SSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
-    }
+    
+    if($PublicKeySSLCertificateFileUrl){
+		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
+		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+	}
 
     $HostNames = @($MachineName)
     if($PeerMachineName) {
         $HostNames += $PeerMachineName
     }        
-    $FileShareHostName = $MachineName
+
+    $ipaddress = (Resolve-DnsName -Name $FileShareHostName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
+    if(-not($ipaddress)) { $ipaddress = $FileShareHostName }
+    $FileShareRootPath = "\\$ipaddress\$FileShareName"
+    
     $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $ConfigStoreLocation  = "\\$($FileShareHostName)\$FileShareName\$FolderName\server\config-store"
-    $ServerDirsLocation   = "\\$($FileShareHostName)\$FileShareName\$FolderName\server\server-dirs"
-    $ContentStoreLocation = "\\$($FileShareHostName)\$FileShareName\$FolderName\portal\content"    
+    $ConfigStoreLocation  = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($ServerContext)\config-store"
+    $ServerDirsLocation   = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($ServerContext)\server-dirs"
+    $ContentStoreLocation = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($PortalContext)\content"    
     $DataStoreBackupLocation = "\\$($FileShareHostName)\$FileShareName\$FolderName\datastore\dbbackups"    
     $FileShareLocalPath = (Join-Path $env:SystemDrive $FileShareName)         
+    
     $Join = ($env:ComputerName -ieq $PeerMachineName) -and ($MachineName -ine $PeerMachineName)
     $IsDualMachineDeployment = ($MachineName -ine $PeerMachineName)
     $IsDebugMode = $DebugMode -ieq 'true'
+    $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
     $LastHostName = $HostNames | Select-Object -Last 1
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
     if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
     {
@@ -179,16 +213,16 @@
         if($UseAzureFiles -ieq 'True') {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')                        
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case            
-            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\server\config-store"
-            $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\server\server-dirs" 
-            $ContentStoreLocation = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\portal\content"    
+            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\config-store"
+            $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\server-dirs" 
+            $ContentStoreLocation = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($PortalContext)\content"    
             $DataStoreBackupLocation = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\datastore\dbbackups"    
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($ServerContext)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
             $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($AccountKey)"
             $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName);AccountKey=$($AccountKey)$($EndpointSuffix)"
-		    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)"
+		    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)$($PortalContext)"
         }
     }
 
@@ -222,7 +256,7 @@
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
-            if(-Not($IsServiceCredentialDomainAccount)){
+            if(-Not($ServiceCredentialIsDomainAccount)){
                 User ArcGIS_RunAsAccount
                 {
                     UserName       = $ServiceCredential.UserName
@@ -245,7 +279,7 @@
             File ContentDirectoryLocationPath
 		    {
 			    Type						= 'Directory'
-			    DestinationPath				= (Join-Path $FileShareLocalPath "$FolderName/portal/content")
+			    DestinationPath				= (Join-Path $FileShareLocalPath "$FolderName/$($PortalContext)/content")
 			    Ensure						= 'Present'
 			    Force						= $true
 		    }
@@ -268,7 +302,7 @@
 			    Name						= $FileShareName
 			    Path						= $FileShareLocalPath
 			    FullAccess					= $Accounts
-			    DependsOn					= if(-Not($IsServiceCredentialDomainAccount)){ @('[File]FileShareLocationPath', '[User]ArcGIS_RunAsAccount')}else{ @('[File]FileShareLocationPath')}
+			    DependsOn					= if(-Not($ServiceCredentialIsDomainAccount)){ @('[File]FileShareLocationPath', '[User]ArcGIS_RunAsAccount')}else{ @('[File]FileShareLocationPath')}
             }
             
             $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')  
@@ -289,7 +323,7 @@
                 Credential      = $ServiceCredential
                 StartupType     = 'Automatic'
                 State           = 'Running' 
-                DependsOn	    = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+                DependsOn	    = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
             }
 
             ArcGIS_Service_Account Server_Service_Account
@@ -297,8 +331,8 @@
 			    Name            = 'ArcGIS Server'
 			    RunAsAccount    = $ServiceCredential
                 Ensure          = 'Present'
-                DependsOn	    = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}
-                IsDomainAccount = $IsServiceCredentialDomainAccount
+                DependsOn	    = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
 		    }
             
             $PortalDependsOn = @('[ArcGIS_Service_Account]Portal_Service_Account')   
@@ -311,7 +345,7 @@
                   {
                       TestScript = { 
                                         $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                        $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                        $result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
                                         if($result -like '*none*')
                                         {
                                             return $false
@@ -319,7 +353,7 @@
                                         return $true
                                     }
                       SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+						            $result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
 					              }
                       GetScript            = { return @{} }                  
                       DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
@@ -388,16 +422,16 @@
 						Credential		= $ServiceCredential
 						StartupType		= 'Manual'
 						State			= 'Stopped'
-						DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
+						DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
 					}
 				}
-			}
+			}	
             
             ArcGIS_LogHarvester ServerLogHarvester
             {
                 ComponentType = "Server"
                 EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
-                Version = "10.9.1"
+                Version = $Version
                 LogFormat = "csv"
                 DependsOn = $ServerDependsOn
             }
@@ -406,6 +440,7 @@
 
             ArcGIS_Server Server
 		    {
+                Version                                 = $Version
 			    Ensure                                  = 'Present'
 			    SiteAdministrator                       = $SiteAdministratorCredential
 			    ConfigurationStoreLocation              = $ConfigStoreLocation
@@ -417,8 +452,56 @@
 			    SingleClusterMode                       = $true
                 ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
                 ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
-		    }
-        
+            }
+            
+            Script CopyServerCertificateFileToLocalMachine
+            {
+                GetScript = {
+                    $null
+                }
+                SetScript = {    
+                    Write-Verbose "Copying from $using:ServerCertificateFileLocation to $using:ServerCertificateLocalFilePath"      
+                    $PsDrive = New-PsDrive -Name X -Root $using:FileShareRootPath -PSProvider FileSystem                 
+                    Write-Verbose "Mapped Drive $($PsDrive.Name) to $using:FileShareRootPath"              
+                    Copy-Item -Path $using:ServerCertificateFileLocation -Destination $using:ServerCertificateLocalFilePath -Force  
+                    if($PsDrive) {
+                        Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
+                        Remove-PsDrive -Name $PsDrive.Name -Force       
+                    }       
+                }
+                TestScript = {   
+                    $false
+                }
+                DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+            }
+            
+            ArcGIS_Server_TLS Server_TLS
+            {
+                ServerHostName             = $MachineName
+                SiteAdministrator          = $SiteAdministratorCredential                         
+                WebServerCertificateAlias  = "ApplicationGateway"
+                CertificateFileLocation    = $ServerCertificateLocalFilePath
+                CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
+                ServerType                 = "GeneralPurposeServer"
+                DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyServerCertificateFileToLocalMachine') 
+                SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+            }
+
+            if($env:ComputerName -ieq $LastHostName) # Perform on Last machine
+            {
+                ArcGIS_ServerSettings ServerSettings
+                {
+                    ServerContext       = 'server'
+                    ServerHostName      = $MachineName
+                    ExternalDNSName     = $ExternalDNSHostName
+                    SiteAdministrator   = $SiteAdministratorCredential
+                    EnableSSL           = $True
+                    EnableHTTP          = $True
+                    DependsOn           = @('[ArcGIS_Server_TLS]Server_TLS')
+                }
+            }
+            
             if($PortalLicenseFileName -and ($PortalLicenseFileName -ine $ServerLicenseFileName) -and [string]::IsNullOrEmpty($PortalLicenseUserTypeId))
             {
                 ArcGIS_License PortalLicense
@@ -435,10 +518,10 @@
                 Credential      = $ServiceCredential
                 StartupType     = 'Automatic'
                 State           = 'Running' 
-                DependsOn	    = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+                DependsOn	    = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
             }
             
-            $ServiceAccountsDepends = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}else{ @('[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}
+            $ServiceAccountsDepends = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}else{ @('[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}
             $DataDirsForPortal = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')
             if($ContentStoreLocation -and (-not($ContentStoreLocation.StartsWith('\')))) 
             {
@@ -460,7 +543,7 @@
 			    Ensure       = 'Present'
 			    DependsOn    = $ServiceAccountsDepends 
                 DataDir      = $DataDirsForPortal    
-                IsDomainAccount = $IsServiceCredentialDomainAccount                          
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
 		    } 
     
             if($IsDualMachineDeployment) 
@@ -487,7 +570,7 @@
 				        Access                = "Allow" 
 				        State                 = "Enabled" 
 				        Profile               = ("Domain","Private","Public")
-				        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses "5701", "5702" and 5702
+				        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701, 5702 and 5703
 				        Direction             = "Outbound"                       
 				        Protocol              = "TCP" 
 		        } 
@@ -501,7 +584,7 @@
 					    Access                = "Allow" 
 					    State                 = "Enabled" 
 					    Profile               = ("Domain","Private","Public")
-					    LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701,5702 and 5703
+					    LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701, 5702 and 5703
 					    Protocol              = "TCP" 
 			    }  
 
@@ -541,6 +624,7 @@
 		    ArcGIS_Portal Portal
 		    {
                 PortalHostName                        = if($MachineName -ieq $env:ComputerName){ $MachineName }else{ $PeerMachineName }
+                Version                               = $Version
                 Ensure                                = 'Present'
                 LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
                 UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
@@ -555,17 +639,59 @@
                 ContentDirectoryLocation              = $ContentStoreLocation
                 EnableDebugLogging                    = $IsDebugMode
                 LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
+                ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString			
                 ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
-                EnableEmailSettings                   = $False
-                EmailSettingsSMTPServerAddress        = $null
-                EmailSettingsFrom                     = $null
-                EmailSettingsLabel                    = $null
-                EmailSettingsAuthenticationRequired   = $false
-                EmailSettingsCredential               = $null
-                EmailSettingsSMTPPort                 = $null
-                EmailSettingsEncryptionMethod         = "NONE"
-            } 
+            }
+
+            
+            Script CopyPortalCertificateFileToLocalMachine
+            {
+                GetScript = {
+                    $null
+                }
+                SetScript = {    
+                    Write-Verbose "Copying from $using:PortalCertificateFileLocation to $using:PortalCertificateLocalFilePath"      
+                    $PsDrive = New-PsDrive -Name X -Root $using:FileShareRootPath -PSProvider FileSystem                 
+                    Write-Verbose "Mapped Drive $($PsDrive.Name) to $using:FileShareRootPath"              
+                    Copy-Item -Path $using:PortalCertificateFileLocation -Destination $using:PortalCertificateLocalFilePath -Force  
+                    if($PsDrive) {
+                        Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
+                        Remove-PsDrive -Name $PsDrive.Name -Force       
+                    }       
+                }
+                TestScript = {   
+                    $false
+                }
+                DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+            }
+            
+
+            ArcGIS_Portal_TLS ArcGIS_Portal_TLS
+            {
+                PortalHostName = if($MachineName -ieq $env:ComputerName){ $MachineName }else{ $PeerMachineName }
+                SiteAdministrator       = $SiteAdministratorCredential 
+                WebServerCertificateAlias = "ApplicationGateway"
+                CertificateFileLocation = $PortalCertificateLocalFilePath 
+                CertificatePassword     = if($PortalInternalCertificatePassword -and ($PortalInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $PortalInternalCertificatePassword } else { $null }
+                DependsOn               = @('[ArcGIS_Portal]Portal','[Script]CopyPortalCertificateFileToLocalMachine')
+                SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+            }
+
+            if($env:ComputerName -ieq $LastHostName) # Perform on Last machine, 
+            {
+                ArcGIS_PortalSettings PortalSettings
+                {
+                    ExternalDNSName     = $ExternalDNSHostName
+                    PortalContext       = 'portal'
+                    PortalHostName      = $MachineName
+                    PortalEndPoint      = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName }
+                    PortalEndPointPort    = 443
+                    PortalEndPointContext = 'portal'
+                    PortalAdministrator = $SiteAdministratorCredential
+                    DependsOn = @('[ArcGIS_Portal]Portal','[ArcGIS_Portal_TLS]ArcGIS_Portal_TLS')
+                }
+            }
             
             ArcGIS_WindowsService ArcGIS_DataStore_Service
             {
@@ -573,22 +699,22 @@
                 Credential      = $ServiceCredential
                 StartupType     = 'Automatic'
                 State           = 'Running' 
-                DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
+                DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
             }
 
             ArcGIS_Service_Account ArcGIS_DataStore_RunAs_Account
 		    {
-                Name              = 'ArcGIS Data Store'
+			    Name              = 'ArcGIS Data Store'
+                RunAsAccount      = $ServiceCredential
                 ForceRunAsAccountUpdate = $True
-			    RunAsAccount      = $ServiceCredential
 			    Ensure            = 'Present'
 			    DataDir           = $DataStoreContentDirectory
-                DependsOn         = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
-                IsDomainAccount = $IsServiceCredentialDomainAccount
-		    } 
+                DependsOn         = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
+            } 
             $DataStoreDependsOn = @('[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account')
 
-            ArcGIS_xFirewall DataStore_FirewallRules
+		    ArcGIS_xFirewall DataStore_FirewallRules
 		    {
                 Name                  = "ArcGISDataStore" 
                 DisplayName           = "ArcGIS Data Store" 
@@ -602,7 +728,22 @@
             }
             $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules')
 
-            if($IsDualMachineDeployment){
+            ArcGIS_xFirewall Queue_DataStore_FirewallRules_OutBound
+            {
+                Name                  = "ArcGISQueueDataStore-Out" 
+                DisplayName           = "ArcGIS Queue Data Store Out" 
+                DisplayGroup          = "ArcGIS Data Store" 
+                Ensure                = 'Present'  
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("25672","44369","45671","45672")                      
+                Protocol              = "TCP"
+            }
+            $DataStoreDependsOn += '[ArcGIS_xFirewall]Queue_DataStore_FirewallRules_OutBound'
+
+            if($IsDualMachineDeployment) 
+            {
                 ArcGIS_xFirewall DataStore_FirewallRules_OutBound
 			    {
                     Name                  = "ArcGISDataStore-Out" 
@@ -616,9 +757,10 @@
                     Direction             = "Outbound"                        
                     Protocol              = "TCP" 
 			    } 
+
 			    $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
             }
-
+            
             if($DataStoreTypes.split(",") -iContains "TileCache"){
                 ArcGIS_xFirewall TileCache_DataStore_FirewallRules
                 {
@@ -633,7 +775,7 @@
                     Protocol              = "TCP" 
                 }
                 $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_DataStore_FirewallRules')
-                
+
                 ArcGIS_xFirewall TileCache_FirewallRules_OutBound
                 {
                     Name                  = "ArcGISTileCacheDataStore-Out" 
@@ -643,7 +785,7 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("29079-29082")
+                    LocalPort             = ("29079-29082")       
                     Direction             = "Outbound"                        
                     Protocol              = "TCP" 
                 } 
@@ -654,7 +796,7 @@
                     {
                         Name                  = "ArcGISMultiMachineTileCacheDataStore" 
                         DisplayName           = "ArcGIS Multi Machine Tile Cache Data Store" 
-                        DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                        DisplayGroup          = "ArcGIS TileCache Data Store" 
                         Ensure                = 'Present' 
                         Access                = "Allow" 
                         State                 = "Enabled" 
@@ -673,7 +815,7 @@
                         Access                = "Allow" 
                         State                 = "Enabled" 
                         Profile               = ("Domain","Private","Public")
-                        LocalPort             = ("4369","29083-29090")
+                        LocalPort             = ("4369","29083-29090")       
                         Direction             = "Outbound"                        
                         Protocol              = "TCP" 
                     } 
@@ -691,7 +833,7 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2443", "9320", "9220")                        
+                    LocalPort             = ("2443", "9220")                        
                     Protocol              = "TCP" 
                 } 
                 $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules')
@@ -710,119 +852,47 @@
                         Protocol              = "TCP" 
                     } 
                     $DataStoreDependsOn += @('[ArcGIS_xFirewall]SpatioTemporalDataStore_MultiMachine_FirewallRules')
-                }   
+                }
             }
-            
+
             $DataStoreDependsOn += @('[ArcGIS_Server]Server')
+
             ArcGIS_DataStore DataStore
 		    {
 			    Ensure                     = 'Present'
+                Version                    = $Version
 			    SiteAdministrator          = $SiteAdministratorCredential
 			    ServerHostName             = $MachineName
-			    ContentDirectory           = "$($env:SystemDrive)\\arcgis\\datastore\\content"
+			    ContentDirectory           = $DataStoreContentDirectory
 			    IsStandby                  = $false
                 DataStoreTypes             = $DataStoreTypes.split(",")
                 EnableFailoverOnPrimaryStop= $true
                 IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
+                IsObjectDataStoreClustered = $False
                 DependsOn                  = $DataStoreDependsOn
 		    } 
-        
-            ArcGIS_xFirewall ReverseProxy_FirewallRules
+	
+            if($env:ComputerName -ieq $LastHostName) # Perform on Last machine
             {
-                Name                  = "IIS-ARR" 
-                DisplayName           = "IIS-ARR" 
-                DisplayGroup          = "IIS-ARR" 
-                Ensure                = 'Present' 
-                Access                = "Allow" 
-                State                 = "Enabled" 
-                Profile               = "Public"
-                LocalPort             = ("80", "443")                        
-                Protocol              = "TCP" 
+                ArcGIS_Federation Federate
+                {
+                    PortalHostName = $ExternalDNSHostName
+                    PortalPort = 443
+                    PortalContext = 'portal'
+                    ServiceUrlHostName = $ExternalDNSHostName
+                    ServiceUrlContext = 'server'
+                    ServiceUrlPort = 443
+                    ServerSiteAdminUrlHostName = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName}
+                    ServerSiteAdminUrlPort = 443
+                    ServerSiteAdminUrlContext ='server'
+                    Ensure = 'Present'
+                    RemoteSiteAdministrator = $SiteAdministratorCredential
+                    SiteAdministrator = $SiteAdministratorCredential
+                    ServerRole = 'HOSTING_SERVER'
+                    ServerFunctions = 'GeneralPurposeServer'
+                    DependsOn =  @('[ArcGIS_ServerSettings]ServerSettings','[ArcGIS_PortalSettings]PortalSettings','[ArcGIS_DataStore]DataStore')
+                }
             }
-        }
-					
-		ArcGIS_IIS_TLS IISHTTPS
-        {
-			WebSiteId               = 1
-            Ensure                  = 'Present'
-            ExternalDNSName         = $ExternalDNSHostName                        
-            CertificateFileLocation = (Join-Path $(Get-Location).Path $SSLCertificateFileName)
-            CertificatePassword     = if($SSLCertificatePassword -and ($SSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SSLCertificatePassword } else { $null }
-        }
-
-        ArcGIS_ReverseProxy_ARR WebProxy
-		{
-			Ensure                      = 'Present'
-			ServerSiteName              = 'arcgis'
-			PortalSiteName              = 'arcgis'
-			ServerHostNames             = $HostNames
-			PortalHostNames             = $HostNames
-			ExternalDNSName             = $ExternalDNSHostName
-			PortalAdministrator         = $SiteAdministratorCredential
-			SiteAdministrator           = $SiteAdministratorCredential
-			ServerEndPoint              = $MachineName
-			PortalEndPoint              = $MachineName
-			EnableFailedRequestTracking = $IsDebugMode
-			EnableGeoEventEndpoints     = $false
-			DependsOn                   = @('[ArcGIS_IIS_TLS]IISHTTPS')						
-		}  
-
-        if($env:ComputerName -ieq $LastHostName) # Perform on Last machine
-        {
-            ArcGIS_ServerSettings ServerSettings
-            {
-                ServerContext       = 'server'
-                ServerHostName      = $MachineName
-                ServerEndPoint      = (Get-FQDN $MachineName) #ExternalDNSHostName
-                ServerEndPointPort  = 6443 #443
-                ServerEndPointContext = 'arcgis' #443
-                ExternalDNSName     = $ExternalDNSHostName
-                SiteAdministrator   = $SiteAdministratorCredential
-                DependsOn = if($HasValidServiceCredential) { @('[ArcGIS_Server]Server','[ArcGIS_ReverseProxy_ARR]WebProxy') }else{ @('[ArcGIS_ReverseProxy_ARR]WebProxy') }
-            }
-
-            ArcGIS_PortalSettings PortalSettings
-            {
-                ExternalDNSName     = $ExternalDNSHostName
-                PortalContext       = 'portal'
-                PortalHostName      = $MachineName
-                PortalEndPoint      = (Get-FQDN $MachineName)
-                PortalEndPointPort    = 7443
-                PortalEndPointContext = 'arcgis'
-                PortalAdministrator = $SiteAdministratorCredential
-                DependsOn = if($HasValidServiceCredential) {@('[ArcGIS_Portal]Portal','[ArcGIS_ReverseProxy_ARR]WebProxy')}else{@('[ArcGIS_ReverseProxy_ARR]WebProxy')}
-            }
-
-            ArcGIS_Federation Federate
-            {
-                PortalHostName = (Get-FQDN $MachineName)
-                PortalPort = 7443
-                PortalContext = 'arcgis'
-                ServiceUrlHostName = $ExternalDNSHostName
-                ServiceUrlContext = 'server'
-                ServiceUrlPort = 443
-                ServerSiteAdminUrlHostName = (Get-FQDN $MachineName)
-                ServerSiteAdminUrlPort = 6443
-                ServerSiteAdminUrlContext ='arcgis'
-                Ensure = 'Present'
-                RemoteSiteAdministrator = $SiteAdministratorCredential
-                SiteAdministrator = $SiteAdministratorCredential
-                ServerRole = 'HOSTING_SERVER'
-                ServerFunctions = 'GeneralPurposeServer'
-                DependsOn = if($HasValidServiceCredential) { @('[ArcGIS_ReverseProxy_ARR]WebProxy','[ArcGIS_PortalSettings]PortalSettings','[ArcGIS_ServerSettings]ServerSettings') } else { @('[ArcGIS_ReverseProxy_ARR]WebProxy') }
-            }
-        }
-
-        if($HasValidServiceCredential) 
-        {
-		    Service ArcGIS_GeoEvent_Service
-		    {
-			    Name		= 'ArcGISGeoEvent'
-			    Credential  = $ServiceCredential
-			    StartupType = 'Manual'
-			    State		= 'Stopped' 
-			    DependsOn   = if(-Not($IsServiceCredentialDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()}
-		    }
         }
 	}
 }

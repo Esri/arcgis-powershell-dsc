@@ -13,6 +13,10 @@
         [System.String]
         $PrimaryTileCache,
 
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $PrimaryGraphStore,
+
         [Parameter(Mandatory=$false)]
         [System.Object]
         $RelationalBackups = $null,
@@ -23,11 +27,15 @@
 
         [Parameter(Mandatory=$false)]
         [System.Object]
-        $SpatioTemporalBackups = $null
+        $SpatioTemporalBackups = $null,
+
+        [Parameter(Mandatory=$false)]
+        [System.Object]
+        $GraphStoreBackups = $null
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_DataStoreBackup
 
     Node $AllNodes.NodeName 
@@ -81,6 +89,23 @@
                 ArcGIS_DataStoreBackup "TileCacheBackup-$($Backup.Name)"
                 {
                     DataStoreType = 'TileCache'
+                    BackupType = $Backup.Type
+                    BackupName = $Backup.Name
+                    BackupLocation = $Backup.Location
+                    CloudBackupCredential = $Backup.CloudCredential
+                    IsDefault = $Backup.IsDefault
+                    ForceCloudCredentialsUpdate = $Backup.ForceCloudCredentialsUpdate
+                }
+            }
+        }
+
+        if(($PrimaryGraphStore -ieq $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'GraphStore') -and ($null -ne $GraphStoreBackups))
+        {
+            foreach($Backup in $GraphStoreBackups) 
+			{
+                ArcGIS_DataStoreBackup "GraphStoreBackup-$($Backup.Name)"
+                {
+                    DataStoreType = 'GraphStore'
                     BackupType = $Backup.Type
                     BackupName = $Backup.Name
                     BackupLocation = $Backup.Location

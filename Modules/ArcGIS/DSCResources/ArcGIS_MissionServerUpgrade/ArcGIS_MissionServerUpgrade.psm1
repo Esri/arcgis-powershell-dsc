@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Resource to aid post upgrade completion workflows. This resource upgrades the Mission Server Site once Server Installer has completed the upgrade.
     .PARAMETER Ensure
@@ -22,8 +29,6 @@ function Get-TargetResource
 		$ServerHostName
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     $returnValue = @{
 		ServerHostName = $ServerHostName
 	}
@@ -50,8 +55,6 @@ function Set-TargetResource
 
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     #$MachineFQDN = Get-FQDN $env:COMPUTERNAME    
     Write-Verbose "Fully Qualified Domain Name :- $ServerHostName"
 
@@ -98,11 +101,8 @@ function Test-TargetResource
         [parameter(Mandatory = $true)]
         [System.String]
         $Version
-        
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $result = Test-Install -Name "MissionServer" -Version $Version
@@ -120,7 +120,6 @@ function Test-TargetResource
     }else{
         throw "ArcGIS Mission Server not upgraded to required Version"
     }
-    
     
     if($Ensure -ieq 'Present') {
 	       $result   

@@ -1,19 +1,27 @@
 ﻿Configuration ServerConfiguration
 {
 	param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $Version = '11.0'
+
+        ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $ServiceCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false'
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $SiteAdministratorCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerContext = 'server'
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -36,13 +44,12 @@
         $ServerMachineNames
 
         ,[Parameter(Mandatory=$false)]
-        [System.Management.Automation.PSCredential]
-        $SelfSignedSSLCertificatePassword
-
-        ,[Parameter(Mandatory=$true)]
-        [ValidateNotNullorEmpty()]
         [System.String]
-        $ServerEndpoint
+        $PublicKeySSLCertificateFileUrl
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServerInternalCertificatePassword
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
@@ -100,31 +107,37 @@
     Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_LogHarvester
+    Import-DscResource -Name ArcGIS_ServerSettings
     
     ##
-    ## Download license file
+    ## Download license file and certificate files
     ##
+    
+    $ServerCertificateFileName  = 'SSLCertificateForServer.pfx'
+    $ServerCertificateLocalFilePath =  (Join-Path $env:TEMP $ServerCertificateFileName)
+    $ServerCertificateFileLocation = "\\$($FileShareMachineName)\$FileShareName\Certs\$ServerCertificateFileName"
+
     if($ServerLicenseFileUrl -and ($ServerLicenseFileUrl.Trim().Length -gt 0)) {
         $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-    }    
+    }
+
+    if($PublicKeySSLCertificateFileUrl){
+		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
+		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+	}
         
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1    
-    $LastServerHostName = $ServerHostName | Select-Object -Last 1
     $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
     if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
     $FileShareRootPath = "\\$ipaddress\$FileShareName"
     $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $ConfigStoreLocation  = "\\$FileShareMachineName\$FileShareName\$FolderName\server\config-store"
-    $ServerDirsLocation   = "\\$FileShareMachineName\$FileShareName\$FolderName\server\server-dirs" 
-    $CertificateFileName  = 'SSLCertificateForServer.pfx'
-    $CertificateFileLocation = "\\$FileShareMachineName\$FileShareName\Certs\$CertificateFileName"
-    $CertificateLocalFilePath =  (Join-Path $env:TEMP $CertificateFileName)
+    $ConfigStoreLocation  = "\\$FileShareMachineName\$FileShareName\$FolderName\$($ServerContext)\config-store"
+    $ServerDirsLocation   = "\\$FileShareMachineName\$FileShareName\$FolderName\$($ServerContext)\server-dirs" 
 
     $Join = ($env:ComputerName -ine $ServerHostName)
     $IsDebugMode = $DebugMode -ieq 'true'
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
-    $IsMultiMachineServer = ($ServerMachineNames.Length -gt 1)
+    $IsMultiMachineServer = (($ServerMachineNames -split ',').Length -gt 1)
 
     if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
     {
@@ -144,11 +157,11 @@
         if($UseAzureFiles -ieq 'True') {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')                        
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case            
-            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\server\config-store"
-            $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\server\server-dirs"   
+            $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\config-store"
+            $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\server-dirs"   
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($ServerContext)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
             $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
         }
     }    
@@ -183,7 +196,7 @@
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
-            if(-Not($IsServiceCredentialDomainAccount)){
+            if(-Not($ServiceCredentialIsDomainAccount)){
                 User ArcGIS_RunAsAccount
                 {
                     UserName       = $ServiceCredential.UserName
@@ -213,16 +226,16 @@
                     Credential      = $ServiceCredential
                     StartupType     = 'Automatic'
                     State           = 'Running' 
-                    DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                    DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
                 }
 
                 ArcGIS_Service_Account Server_Service_Account
 		        {
 			        Name            = 'ArcGIS Server'
                     RunAsAccount    = $ServiceCredential
-                    IsDomainAccount = $IsServiceCredentialDomainAccount
+                    IsDomainAccount = $ServiceCredentialIsDomainAccount
 			        Ensure          = 'Present'
-			        DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}
+			        DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}
 		        }
              
                 if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
@@ -286,7 +299,7 @@
                 {
                     ComponentType = "Server"
                     EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
-                    Version = "10.9.1"
+                    Version = $Version
                     LogFormat = "csv"
                     DependsOn = $ServerDependsOn
                 }
@@ -295,6 +308,7 @@
 
 		        ArcGIS_Server Server
 		        {
+                    Version                                 = $Version
 			        Ensure                                  = 'Present'
 			        SiteAdministrator                       = $SiteAdministratorCredential
 			        ConfigurationStoreLocation              = $ConfigStoreLocation
@@ -307,17 +321,17 @@
                     ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
                     ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
 		        }
-
+                
                 Script CopyCertificateFileToLocalMachine
                 {
                     GetScript = {
                         $null
                     }
                     SetScript = {    
-                        Write-Verbose "Copying from $using:CertificateFileLocation to $using:CertificateLocalFilePath"      
+                        Write-Verbose "Copying from $using:ServerCertificateFileLocation to $using:ServerCertificateLocalFilePath"      
                         $PsDrive = New-PsDrive -Name X -Root $using:FileShareRootPath -PSProvider FileSystem                 
                         Write-Verbose "Mapped Drive $($PsDrive.Name) to $using:FileShareRootPath"              
-                        Copy-Item -Path $using:CertificateFileLocation -Destination $using:CertificateLocalFilePath -Force  
+                        Copy-Item -Path $using:ServerCertificateFileLocation -Destination $using:ServerCertificateLocalFilePath -Force  
                         if($PsDrive) {
                             Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
                             Remove-PsDrive -Name $PsDrive.Name -Force       
@@ -326,25 +340,38 @@
                     TestScript = {   
                         $false
                     }
-                    DependsOn             = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                    DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-                } 
+                }                 
 
                 ArcGIS_Server_TLS Server_TLS
                 {
-                    Ensure                     = 'Present'
-                    SiteName                   = 'arcgis'
+                    ServerHostName             = $env:ComputerName
                     SiteAdministrator          = $SiteAdministratorCredential                         
-                    CName                      = $ServerEndpoint 
-                    CertificateFileLocation    = $CertificateLocalFilePath
-                    CertificatePassword        = if($SelfSignedSSLCertificatePassword -and ($SelfSignedSSLCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $SelfSignedSSLCertificatePassword } else { $null }
-                    EnableSSL                  = -not($Join)
+                    WebServerCertificateAlias  = "ApplicationGateway"
+                    CertificateFileLocation    = $ServerCertificateLocalFilePath
+                    CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
                     ServerType                 = "GeneralPurposeServer"
 			        DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') 
+                    SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                }
+
+                if($env:ComputerName -ieq $ServerHostName) # Perform on First machine
+                {
+                    ArcGIS_ServerSettings ServerSettings
+                    {
+                        ServerContext       = $ServerContext
+                        ServerHostName      = $ServerHostName
+                        ExternalDNSName     = $ExternalDNSHostName
+                        SiteAdministrator   = $SiteAdministratorCredential
+                        EnableSSL           = $True
+                        EnableHTTP          = $True
+                        DependsOn = @('[ArcGIS_Server_TLS]Server_TLS')
+                    }
                 }
             }
-
-            foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
+            
+		    foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -354,7 +381,7 @@
 					    Credential		= $ServiceCredential
 					    StartupType		= 'Manual'
 					    State			= 'Stopped'
-					    DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+					    DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
 				    }
 			    }
 		    }

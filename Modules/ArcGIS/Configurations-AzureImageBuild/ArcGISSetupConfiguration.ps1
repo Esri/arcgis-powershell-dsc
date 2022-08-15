@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License10.9"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.0"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -121,27 +121,29 @@
                 }
                 else
                 {
-                    ArcGIS_Install "AI_$($Installer.Name.Replace(' ', '_'))"
-                    {
-                        Name = $Installer.Name
-                        Path = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath)
-                        Version = "00"
-                        Ensure = $Ensure
-                        ProductId = $Installer.ProductId
-                        Arguments = $ExecutionContext.InvokeCommand.ExpandString($Installer.Arguments)
-                        DependsOn = $Depends
-                    }
-                    $Depends += "[ArcGIS_Install]AI_$($Installer.Name.Replace(' ', '_'))"
-
-                    if((($Installer.Patches).Length -gt 0) -and $Installer.PatchesLocalDir) {
-                        ArcGIS_InstallPatch "$($Installer.Name)InstallPatch"
+                    if(-not($Installer.Name -eq "ArcGIS Pro" -and $Installer.Version -eq '3.0')){
+                        ArcGIS_Install "AI_$($Installer.Name.Replace(' ', '_'))"
                         {
                             Name = $Installer.Name
+                            Path = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath)
                             Version = "00"
+                            Ensure = $Ensure
                             ProductId = $Installer.ProductId
-                            PatchesDir = $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir)
-                            PatchInstallOrder = $Installer.Patches
-                            Ensure = "Present"
+                            Arguments = $ExecutionContext.InvokeCommand.ExpandString($Installer.Arguments)
+                            DependsOn = $Depends
+                        }
+                        $Depends += "[ArcGIS_Install]AI_$($Installer.Name.Replace(' ', '_'))"
+
+                        if((($Installer.Patches).Length -gt 0) -and $Installer.PatchesLocalDir) {
+                            ArcGIS_InstallPatch "$($Installer.Name)InstallPatch"
+                            {
+                                Name = $Installer.Name
+                                Version = "00"
+                                ProductId = $Installer.ProductId
+                                PatchesDir = $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir)
+                                PatchInstallOrder = $Installer.Patches
+                                Ensure = "Present"
+                            }
                         }
                     }
                 }
@@ -197,6 +199,9 @@
             }
             if($Installers.Name -icontains "Mission Server"){
                 $ServiceToStopList += "ArcGIS Mission Server"
+            }
+            if($Installers.Name -icontains "Workflow Manager Server"){
+                $ServiceToStopList += "WorkflowManager"
             }
 
             $ServiceToStopList | ForEach-Object{

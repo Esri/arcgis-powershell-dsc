@@ -1,7 +1,7 @@
 ﻿[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_DataStoreBackup")]
 class ArcGIS_DataStoreBackup : OMI_BaseResource
 {
-	[Key, ValueMap{"Relational","TileCache","SpatioTemporal"}, Values{"Relational","TileCache","SpatioTemporal"}] String DataStoreType;
+	[Key, ValueMap{"Relational","TileCache","SpatioTemporal","GraphStore"}, Values{"Relational","TileCache","SpatioTemporal","GraphStore"}] String DataStoreType;
 	[Key, ValueMap{"fs","s3","azure"}, Values{"fs","s3","azure"}] String BackupType;
 	[Key] String BackupName;
 	[Key] String BackupLocation;

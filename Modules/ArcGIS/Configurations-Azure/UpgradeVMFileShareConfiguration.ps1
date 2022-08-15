@@ -6,8 +6,8 @@
         $ServiceCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false'
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -22,7 +22,6 @@
     $FileShareLocalPath = (Join-Path $env:SystemDrive "ArcGIS\Deployment\Downloads")
 	$FileShareName = "UpgradeSetups"  
 	$IsDebugMode = $DebugMode -ieq 'true'
-	$IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
     Node localhost
     {   
@@ -36,7 +35,7 @@
 		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
-			if(-Not($IsServiceCredentialDomainAccount)){
+			if(-Not($ServiceCredentialIsDomainAccount)){
 				User ArcGIS_RunAsAccount
 				{
 					UserName                = $ServiceCredential.UserName
@@ -65,7 +64,7 @@
 				Name						= $FileShareName
 				Path						= $FileShareLocalPath
 				FullAccess					= $Accounts
-				DependsOn					= if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount','[File]FileShareLocationPath')}else{@('[File]FileShareLocationPath')}
+				DependsOn					= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount','[File]FileShareLocationPath')}else{@('[File]FileShareLocationPath')}
 			}
 		}
     }

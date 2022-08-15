@@ -1,13 +1,17 @@
 ﻿Configuration TileCacheDataStoreConfiguration{
-	param(
-        [Parameter(Mandatory=$true)]
+    param(
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $Version = '11.0'
+
+        ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $ServiceCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false'
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -22,6 +26,10 @@
         [System.String]
         $TileCacheDataStoreMachineNames
 
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsTileCacheDataStoreClustered = $False
+
         ,[Parameter(Mandatory=$true)]
         [System.String]
         $ServerMachineNames
@@ -33,10 +41,6 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DataStoreTypes = 'TileCache'
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Boolean]
-        $IsTileCacheDataStoreClustered = $False
         
         ,[Parameter(Mandatory=$false)]
         [System.Int32]
@@ -54,29 +58,29 @@
         [System.String]
         $DebugMode
     )
-        
+     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
-	Import-DscResource -Name ArcGIS_DataStore
+    Import-DscResource -Name ArcGIS_DataStore
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     
-    $TileCacheDataStoreHostNames = ($TileCacheDataStoreMachineNames -split ',')    
+    $TileCacheDataStoreHostNames = ($TileCacheDataStoreMachineNames -split ',')   
     $ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1    
-    $IsDebugMode = $DebugMode -ieq 'true'    
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
+    $IsDebugMode = $DebugMode -ieq 'true'
     $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
 
-	Node localhost
-	{
+    Node localhost
+    {
         $DataStoreDependsOn = @()
+
         LocalConfigurationManager
         {
-			ActionAfterReboot = 'ContinueConfiguration'            
+            ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
             RebootNodeIfNeeded = $true
         }
@@ -102,7 +106,7 @@
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
-            if(-Not($IsServiceCredentialDomainAccount)){
+            if(-Not($ServiceCredentialIsDomainAccount)){
                 User ArcGIS_RunAsAccount
                 {
                     UserName       = $ServiceCredential.UserName
@@ -112,7 +116,6 @@
                     PasswordChangeRequired = $false
                     PasswordNeverExpires = $true
                 }
-                $DataStoreDependsOn += @('[User]ArcGIS_RunAsAccount')
             }
 
             ArcGIS_WindowsService ArcGIS_DataStore_Service
@@ -121,35 +124,34 @@
                 Credential      = $ServiceCredential
                 StartupType     = 'Automatic'
                 State           = 'Running' 
-                DependsOn       = $DataStoreDependsOn
+                DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
             }
-            $DataStoreDependsOn += @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')
                 
             ArcGIS_Service_Account DataStore_Service_Account
-		    {
-			    Name            = 'ArcGIS Data Store'
+            {
+                Name            = 'ArcGIS Data Store'
                 RunAsAccount    = $ServiceCredential
                 ForceRunAsAccountUpdate = $True
-                IsDomainAccount = $IsServiceCredentialDomainAccount
-			    Ensure          = 'Present'
-			    DependsOn       = $DataStoreDependsOn
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
+                Ensure          = 'Present'
+                DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
                 DataDir         = $DataStoreContentDirectory  
             }
-            $DataStoreDependsOn += @('[ArcGIS_Service_Account]DataStore_Service_Account')
+            $DataStoreDependsOn += @('[ArcGIS_Service_Account]DataStore_Service_Account') 
 
-            ArcGIS_xFirewall TileCacheDataStore_FirewallRules
+            ArcGIS_xFirewall TileCache_DataStore_FirewallRules
 		    {
-			    Name                  = "ArcGISTileCacheDataStore" 
-			    DisplayName           = "ArcGIS Data Store" 
-			    DisplayGroup          = "ArcGIS Data Store" 
-			    Ensure                = 'Present'
-			    Access                = "Allow" 
-			    State                 = "Enabled" 
-			    Profile               = ("Domain","Private","Public")
-			    LocalPort             = ("2443","29079-29082")                        
-			    Protocol              = "TCP" 
-            }    
-            $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCacheDataStore_FirewallRules')
+                Name                  = "ArcGISTileCacheDataStore" 
+                DisplayName           = "ArcGIS Tile Cache Data Store" 
+                DisplayGroup          = "ArcGIS Tile Cache Data Store" 
+                Ensure                = 'Present' 
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("2443", "29079-29082")
+                Protocol              = "TCP" 
+            }
+            $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_DataStore_FirewallRules')
 
             ArcGIS_xFirewall TileCache_FirewallRules_OutBound
             {
@@ -160,13 +162,13 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = ("29079-29082")       
+                LocalPort             = ("29079-29082")
                 Direction             = "Outbound"                        
                 Protocol              = "TCP" 
             } 
             $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
-            
-            if($IsMultiMachineTileCache) {
+
+            if($IsMultiMachineTileCache){
                 ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
                 {
                     Name                  = "ArcGISMultiMachineTileCacheDataStore" 
@@ -176,11 +178,11 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("4369","29083-29090")                        
+                    LocalPort             = ("4369","29083-29090")   
                     Protocol              = "TCP" 
                 }
                 $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_DataStore_FirewallRules')
-
+                
                 ArcGIS_xFirewall MultiMachine_TileCache_FirewallRules_OutBound
                 {
                     Name                  = "ArcGISMultiMachineTileCacheDataStore-Out" 
@@ -190,7 +192,7 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("4369","29083-29090")       
+                    LocalPort             = ("4369","29083-29090")  
                     Direction             = "Outbound"                        
                     Protocol              = "TCP" 
                 } 
@@ -198,31 +200,32 @@
             }
 
             ArcGIS_DataStore TileCacheDataStore
-		    {
-			    Ensure				= 'Present'
-			    SiteAdministrator	= $SiteAdministratorCredential 
-			    ServerHostName		= $ServerMachineName
-			    ContentDirectory	= $DataStoreContentDirectory
+            {
+                Ensure				= 'Present'
+                Version             = $Version
+                SiteAdministrator	= $SiteAdministratorCredential 
+                ServerHostName		= $ServerMachineName
+                ContentDirectory	= $DataStoreContentDirectory
                 DataStoreTypes		= $DataStoreTypes
-                EnableFailoverOnPrimaryStop= $true
-                DependsOn			= $DataStoreDependsOn
+                EnableFailoverOnPrimaryStop = $true
                 IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
-		    }
+                DependsOn			= $DataStoreDependsOn
+            }
             
-            foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
+            foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 		    {
-			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
-			    {
-				    Service "$($ServiceToStop.Replace(' ','_'))_Service"
-				    {
-					    Name			= $ServiceToStop
-					    Credential		= $ServiceCredential
-					    StartupType		= 'Manual'
-					    State			= 'Stopped'
-					    DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-				    }
-			    }
-		    }
+                if(Get-Service $ServiceToStop -ErrorAction Ignore) 
+                {
+                    Service "$($ServiceToStop.Replace(' ','_'))_Service"
+                    {
+                        Name			= $ServiceToStop
+                        Credential		= $ServiceCredential
+                        StartupType		= 'Manual'
+                        State			= 'Stopped'
+                        DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                    }
+                }
+            }
         }
-	}
+    }
 }

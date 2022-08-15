@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Makes a request to the installed Server to create a New Server Site or Join it to an existing Server Site
     .PARAMETER ServerHostName
@@ -44,6 +51,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $True)]    
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -103,8 +114,6 @@ function Get-TargetResource
         [System.String]
         $SharedKey
 	)
-	
-	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$null
 }
@@ -114,6 +123,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $True)]    
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -174,8 +187,6 @@ function Set-TargetResource
         $SharedKey
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     if($VerbosePreference -ine 'SilentlyContinue') 
     {        
         Write-Verbose ("Site Administrator UserName:- " + $SiteAdministrator.UserName) 
@@ -188,13 +199,11 @@ function Set-TargetResource
 	$ServiceName = 'ArcGIS Server'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
-    $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
-    $ArcGISServerVersion = New-Object 'System.Version' -ArgumentList $RealVersion
-	Write-Verbose "Version of ArcGIS Server is $ArcGISServerVersion"
-
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+    
+	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
     Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
+    Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
 
     if($Ensure -ieq 'Present') {
        
@@ -222,6 +231,7 @@ function Set-TargetResource
 
 			Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
             Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
+            Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
             Start-Sleep -Seconds 30
         }
 
@@ -239,15 +249,13 @@ function Set-TargetResource
         if($Join) {
             if(-not($siteExists)) {
                 Write-Verbose 'Joining to Server Site'
-                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer -CurrentMachineServerHostName $FQDN -DeploymentMajorVersion $ArcGISServerVersion.Minor
+                Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer -CurrentMachineServerHostName $FQDN -Version $Version
                 Write-Verbose 'Joined to Server Site'
             }else{
                 Write-Verbose "Skipping Join site operation. $FQDN already belongs to a site."
             }
         }else {
             if(-not($siteExists)) {
-                Wait-ForHostNameResolution -InstallDir $InstallDir -FQDN $FQDN -MaxAttempts 10 -RetryIntervalInSeconds 5
-
                 [int]$Attempt = 1
                 [bool]$Done = $false
                 while(-not($Done) -and ($Attempt -le 3)) {                
@@ -273,6 +281,7 @@ function Set-TargetResource
 
 							Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
                             Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
+                            Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
                         }else {
                             Write-Verbose "[WARNING] Unable to create Site. Error:- $_"
                             if($_.ToString().IndexOf('The remote name could not be resolved') -gt -1) {
@@ -300,6 +309,7 @@ function Set-TargetResource
             if(-not($Join)) {
 				Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
                 Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -Verbose -MaxWaitTimeInSeconds 180 -HttpMethod 'GET'
+                Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
                 #Write-Verbose "Get Server Token" 
                 $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer  
                 #Write-Verbose "Got Server Token $($token.token)" 
@@ -345,7 +355,8 @@ function Set-TargetResource
             }
 
 		    Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
-            Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' 
+            Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
+            Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
 
             #Write-Verbose 'Get Server Token'   
             $token = Get-ServerToken -ServerEndPoint "https://$($FQDN):6443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
@@ -384,6 +395,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
+        [parameter(Mandatory = $True)]    
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -444,8 +459,6 @@ function Test-TargetResource
         $SharedKey
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
@@ -455,6 +468,7 @@ function Test-TargetResource
     try {        
         Write-Verbose "Checking for site on '$ServerUrl'"
         Wait-ForUrl -Url $ServerUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'  
+        Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
         $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
         $result = ($null -ne $token.token)
         if($result){
@@ -700,7 +714,7 @@ function Invoke-CreateSite
 
     # make sure Tomcat is up and running BEFORE sending a request
     Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
-    Wait-ForUrl -Url $baseHostUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'   
+    Wait-ForUrl -Url $baseHostUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'
 
     $httpRequestBody = ConvertTo-HttpBody -props $requestParams
     #Write-Verbose $requestParams
@@ -789,7 +803,7 @@ function Join-Site
         $CurrentMachineServerHostName,
 
         [System.String]
-        $DeploymentMajorVersion
+        $Version
     )
 
     $ServerFQDN = Get-FQDN $ServerName
@@ -853,7 +867,9 @@ function Join-Site
 	$token = Get-ServerToken -ServerEndPoint "https://localhost:6443" -ServerSiteName 'arcgis' -Credential $Credential -Referer $Referer 
     
     ####### Add to cluster
-    if($DeploymentMajorVersion -lt 8){
+    $VersionArray = $Version.Split(".")
+
+    if($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8){
         Write-Verbose "Adding machine '$CurrentMachineServerHostName' to cluster '$clusterName'"  
         $AddMachineUrl  = "$LocalAdminURL/clusters/$clusterName/machines/add" 
         $AddMachineParams = @{ token = $token.token; f = 'json';machineNames = $CurrentMachineServerHostName }
@@ -935,62 +951,6 @@ function Set-SingleClusterModeOnServer
         Write-Verbose "[EXCEPTION] $_"
     }
 }
-
-function Wait-ForHostNameResolution
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $InstallDir,
-        
-        [System.String]
-        $FQDN,
-        
-        [System.Int32]
-        $MaxAttempts = 12,
-        
-        [System.Int32]
-        $RetryIntervalInSeconds = 30
-    )
-
-    $JavaExe = Join-Path $InstallDir 'framework\runtime\jre\bin\java.exe' # Use the JRE in Server Install Directory
-    if(-not(Test-Path $JavaExe)){
-        throw "java.exe not found at $JavaExe"
-    } 
-    $JavaClassFilePath = Join-Path $PSScriptRoot 'FQDN.class'
-    if(-not(Test-Path $JavaClassFilePath)) {
-        Write-Warning "Java Test Class not found at $JavaClassFilePath"
-    }
-    else {
-        $NumAttempts = 0
-        $Done = $false
-        $NumSuccess = 0
-        while(-not($Done) -and ($NumAttempts -lt $MaxAttempts))
-        {
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = $JavaExe
-            $psi.Arguments = 'FQDN'
-            $psi.WorkingDirectory = $PSScriptRoot
-            $psi.UseShellExecute = $false #start the process from it's own executable file    
-            $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-            $psi.RedirectStandardError = $true #enable the process to read from standard error
-
-            $p = [System.Diagnostics.Process]::Start($psi)
-            $p.WaitForExit()
-            $op = $p.StandardOutput.ReadToEnd().Trim()
-            if($op -ieq $FQDN) {
-                Write-Verbose "Name Resolution output '$op' matches expected '$FQDN'"
-                $NumSuccess++
-                if($NumSuccess -gt 2) { $Done = $true } else{ Start-Sleep -Seconds 5}
-            }else {
-                $NumAttempts++
-                Write-Verbose "Name Resolution output '$op' does not match expected '$FQDN'. Retrying after $RetryIntervalInSeconds seconds"
-                Start-Sleep -Seconds $RetryIntervalInSeconds            
-            }
-        }
-    }
-}
-
 function Get-SingleClusterModeOnServer
 {
     [CmdletBinding()]

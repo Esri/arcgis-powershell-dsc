@@ -1,16 +1,19 @@
-﻿function Get-TargetResource
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+function Get-TargetResource
 {
 	[CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
-        [parameter(Mandatory = $false)]    
+        [parameter(Mandatory = $true)]    
         [System.String]
         $DatastoreMachineHostName,
-
-		[parameter(Mandatory = $true)]
-		[System.String]
-		$SiteName,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -25,7 +28,6 @@
         $CertificatePassword
 	)
 
-	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$null 
 }
@@ -35,13 +37,9 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
-        [parameter(Mandatory = $false)]    
+        [parameter(Mandatory = $true)]    
         [System.String]
         $DatastoreMachineHostName,
-
-		[parameter(Mandatory = $true)]
-		[System.String]
-		$SiteName,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -55,7 +53,7 @@ function Set-TargetResource
         [System.Management.Automation.PSCredential]
         $CertificatePassword
     )
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
@@ -86,13 +84,9 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
-        [parameter(Mandatory = $false)]    
+        [parameter(Mandatory = $true)]    
         [System.String]
         $DatastoreMachineHostName,
-
-		[parameter(Mandatory = $true)]
-		[System.String]
-		$SiteName,
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -107,7 +101,6 @@ function Test-TargetResource
         $CertificatePassword
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }

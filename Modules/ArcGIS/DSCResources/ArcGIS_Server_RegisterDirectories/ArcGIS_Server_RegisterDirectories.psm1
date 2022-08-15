@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Makes a request to the installed Server to Register Existing External Cache Directories with existing Server Site
     .PARAMETER ServerHostName
@@ -34,8 +41,6 @@ function Get-TargetResource
         [System.Management.Automation.PSCredential]
         $SiteAdministrator
 	)
-	
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$null
 }
@@ -61,8 +66,6 @@ function Set-TargetResource
         [System.Management.Automation.PSCredential]
         $SiteAdministrator       
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
@@ -125,8 +128,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $SiteAdministrator  
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }

@@ -1,4 +1,11 @@
-﻿function Get-TargetResource {
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+function Get-TargetResource {
     [CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
 	param
@@ -15,7 +22,7 @@
         [System.Boolean]
         $ExtractSamples = $False
     )
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+    
     $null
 }
 
@@ -35,7 +42,6 @@ function Set-TargetResource {
         [System.Boolean]
         $ExtractSamples = $False
     )
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     
     if($ContainerImagePaths.Length -gt 0){
         foreach ($ImagePath in $ContainerImagePaths) {
@@ -81,7 +87,7 @@ function Test-TargetResource
         [System.Boolean]
         $ExtractSamples = $False
     )
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
     $Result = $True
     try{
         if($ContainerImagePaths.Length -gt 0){

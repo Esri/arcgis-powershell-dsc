@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Installs a given msi
     .PARAMETER Ensure
@@ -37,8 +44,6 @@ function Get-TargetResource
 		$ProductId
 	)
 	
-	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$null
 }
 
@@ -72,8 +77,6 @@ function Set-TargetResource
 		$Ensure
 	)
 	
-	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	Write-Verbose "In Set-Resource for $Name"
 	
     if($Ensure -eq 'Present') {
@@ -157,8 +160,6 @@ function Test-TargetResource
 		$Ensure
 	)
 	
-	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$result = $false
 	
 	$result = Test-Install -Name $Name -ProductId $ProductId  

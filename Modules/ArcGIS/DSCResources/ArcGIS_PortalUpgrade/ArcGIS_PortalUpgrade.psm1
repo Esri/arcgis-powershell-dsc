@@ -1,4 +1,11 @@
-﻿function Get-TargetResource
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+function Get-TargetResource
 {
 	[CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
@@ -28,8 +35,6 @@
         [System.Boolean]
         $ImportExternalPublicCertAsRoot = $False
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null
 }
@@ -63,11 +68,12 @@ function Set-TargetResource
         [System.Boolean]
         $ImportExternalPublicCertAsRoot = $False
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = Get-FQDN $PortalHostName
     $Referer = "https://localhost"
+
+    $VersionArray = $Version.Split(".")
 	
 	$ServiceName = 'Portal for ArcGIS'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
@@ -242,10 +248,7 @@ function Set-TargetResource
                     Write-Verbose $_
                 }
                 
-                $VersionArray = $Version.Split(".")
-                $MajorVersion = $VersionArray[1]
-                $MinorVersion = if($VersionArray.Count -eq 3){ $VersionArray[2] }else { 0 }
-                if(($MajorVersion -lt 8) -or ($MajorVersion -eq 8 -and $MinorVersion -eq 0)){
+                if(($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -or $Version -ieq "10.8" -or $Version -ieq "10.8.0"){
                     Write-Verbose "Reindexing Portal"
                     Invoke-UpgradeReindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
                 }
@@ -264,7 +267,7 @@ function Set-TargetResource
             }
         }
 
-        if($Version -ieq "10.9.1" -and $ImportExternalPublicCertAsRoot){
+        if(($VersionArray[0] -eq 11 -or $Version -ieq "10.9.1") -and $ImportExternalPublicCertAsRoot){
             $sysProps = Invoke-ArcGISWebRequest -Url ("https://$($FQDN):7443/arcgis/portaladmin/system/properties/") -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $token.token } -Referer $Referer 
             Write-Verbose "Portal System Properties WebContextUrl is set to '$($sysProps.WebContextURL)'"
             
@@ -330,9 +333,8 @@ function Test-TargetResource
         [System.Boolean]
         $ImportExternalPublicCertAsRoot = $False
 	)
+
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     $FQDN = Get-FQDN $PortalHostName
     $Referer = "https://localhost"
     $result = $false

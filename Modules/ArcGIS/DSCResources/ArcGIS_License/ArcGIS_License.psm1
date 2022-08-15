@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Licenses the product (Server or Portal) depending on the params specified.
     .PARAMETER Ensure
@@ -35,8 +42,6 @@ function Get-TargetResource
 		$LicenseFilePath
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$null 
 }
 function Set-TargetResource
@@ -64,7 +69,7 @@ function Set-TargetResource
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -80,8 +85,6 @@ function Set-TargetResource
         [System.Boolean]
 		$Force= $False
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	if(-not(Test-Path $LicenseFilePath)){
         throw "License file not found at $LicenseFilePath"
@@ -147,7 +150,7 @@ function Test-TargetResource
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -163,8 +166,6 @@ function Test-TargetResource
         [System.Boolean]
 		$Force = $False
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [string]$RealVersion = @()
     $result = $false
@@ -300,7 +301,8 @@ function Invoke-LicenseSoftware
             }
         }
     }else{
-        if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($Version.Split('.')[1] -ge 8)){
+        $VersionArray = $Version.Split('.')
+        if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8))){
             $ServerTypeName = "ArcGIS Server"
             if($ServerRole -ieq "NotebookServer"){ 
                 $ServerTypeName = "ArcGIS Notebook Server" 
@@ -339,7 +341,6 @@ function Invoke-LicenseSoftware
     
         $p = [System.Diagnostics.Process]::Start($psi)
         $p.WaitForExit()
-        $result = $null
         $op = $p.StandardOutput.ReadToEnd()
         if($p.ExitCode -eq 0) {
             if($op -and (($op.IndexOf('Error') -gt -1) -or ($op.IndexOf('(null)') -gt -1))) {

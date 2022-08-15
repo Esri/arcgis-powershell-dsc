@@ -3,6 +3,9 @@
         [System.Management.Automation.PSCredential]
         $SiteAdministratorCredential,
 
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount,
+
         [System.String]
         $ServerMachineName,
 
@@ -23,14 +26,12 @@
             RebootNodeIfNeeded = $true
         }
         
-        $ServerHostName = Get-FQDN $ServerMachineName
-
         $InstallDir = "$($env:SystemDrive)\\arcgis\\datastore"
         $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
        
         ArcGIS_DataStoreUpgrade DataStoreConfigUpgrade
         {
-            ServerHostName = $ServerHostName
+            ServerHostName = $ServerMachineName
             Ensure = 'Present'
             SiteAdministrator = $SiteAdministratorCredential
             ContentDirectory = $DataStoreContentDirectory

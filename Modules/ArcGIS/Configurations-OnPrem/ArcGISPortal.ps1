@@ -1,6 +1,10 @@
 ﻿Configuration ArcGISPortal
 {
     param(
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $Version,
+
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
@@ -51,26 +55,6 @@
         [System.String]
         $UserLicenseTypeId,
 
-        [Parameter(Mandatory=$false)]
-        [System.Management.Automation.PSCredential]
-        $ADServiceCredential,
-
-        [Parameter(Mandatory=$False)]
-        [System.Boolean]
-        $EnableAutomaticAccountCreation,
-
-        [Parameter(Mandatory=$False)]
-        [System.String]
-        $DefaultRoleForUser,
-
-        [Parameter(Mandatory=$False)]
-        [System.String]
-        $DefaultUserLicenseTypeIdForUser,
-
-        [Parameter(Mandatory=$False)]
-        [System.Boolean]
-        $DisableServiceDirectory,
-
         [Parameter(Mandatory=$False)]
         [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
         [AllowNull()] 
@@ -90,31 +74,6 @@
         [System.Management.Automation.PSCredential]
         $CloudStorageCredentials,
 
-        [System.Boolean]
-        $EnableEmailSettings = $False,
-
-        [System.String]
-        $EmailSettingsSMTPServerAddress,
-
-        [System.String]
-        $EmailSettingsFrom,
-
-        [System.String]
-        $EmailSettingsLabel,
-
-        [System.Boolean]
-        $EmailSettingsAuthenticationRequired = $False,
-
-        [System.Management.Automation.PSCredential]
-        $EmailSettingsCredential,
-
-        [System.Int32]
-        $EmailSettingsSMTPPort = 25,
-
-        [ValidateSet("SSL", "TLS", "NONE")]
-        [System.String]
-        $EmailSettingsEncryptionMethod = "NONE",
-
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $UsesSSL = $False,
@@ -125,7 +84,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
@@ -173,7 +132,6 @@
             }
         }
         
-        $MachineFQDN = Get-FQDN $Node.NodeName
         $IsMultiMachinePortal = (($AllNodes | Measure-Object).Count -gt 1)
         
         $Depends = @()
@@ -311,7 +269,7 @@
                 ArcGIS_WaitForComponent "WaitForPortal$($PrimaryPortalMachine)"{
                     Component = "Portal"
                     InvokingComponent = "Portal"
-                    ComponentHostName = (Get-FQDN $PrimaryPortalMachine)
+                    ComponentHostName = $PrimaryServerMachine
                     ComponentContext = "arcgis"
                     Credential = $ServerPrimarySiteAdminCredential
                     Ensure = "Present"
@@ -334,50 +292,36 @@
         ArcGIS_Portal "Portal$($Node.NodeName)"
         {
             Ensure = 'Present'
-            PortalHostName = $MachineFQDN
+            Version = $Version
+            PortalHostName = $Node.NodeName
             LicenseFilePath = $LicenseFilePath
             UserLicenseTypeId = $UserLicenseTypeId
             PortalAdministrator = $PortalAdministratorCredential 
-            DependsOn =  $Depends
             AdminEmail = $AdminEmail
             AdminSecurityQuestionIndex = $AdminSecurityQuestionIndex
             AdminSecurityAnswer = $AdminSecurityAnswer
             ContentDirectoryLocation = $ContentDirectoryLocation
             Join = if($Node.NodeName -ine $PrimaryPortalMachine) { $true } else { $false } 
             IsHAPortal = if($IsMultiMachinePortal){ $true } else { $false }
-            PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { (Get-FQDN $PrimaryPortalMachine) } else { "" } #add peer machine name
+            PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { $PrimaryPortalMachine } else { "" } #add peer machine name
             EnableDebugLogging = if($DebugMode) { $true } else { $false }
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
-            ADServiceUser = $ADServiceCredential
-            EnableAutomaticAccountCreation = if($EnableAutomaticAccountCreation) { $true } else { $false }
-            DefaultRoleForUser = $DefaultRoleForUser
-            DefaultUserLicenseTypeIdForUser = $DefaultUserLicenseTypeIdForUser
-            DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
             ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
             ContentDirectoryCloudContainerName = $ContentDirectoryCloudContainerName
-            EnableEmailSettings = if($EnableEmailSettings){ $True }else{ $False }
-            EmailSettingsSMTPServerAddress = if($EnableEmailSettings){ $EmailSettingsSMTPServerAddress }else{ $null }
-            EmailSettingsFrom = if($EnableEmailSettings){ $EmailSettingsFrom }else{ $null }
-            EmailSettingsLabel = if($EnableEmailSettings){ $EmailSettingsLabel }else{ $null }
-            EmailSettingsAuthenticationRequired = if($EnableEmailSettings){ $EmailSettingsAuthenticationRequired }else{ $false }
-            EmailSettingsCredential =if($EnableEmailSettings){ $EmailSettingsCredential }else{ $null }
-            EmailSettingsSMTPPort = if($EnableEmailSettings){ $EmailSettingsSMTPPort }else{ $null }
-            EmailSettingsEncryptionMethod = if($EnableEmailSettings){ $EmailSettingsEncryptionMethod }else{ "NONE" }
+            DependsOn =  $Depends
         }
         $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"
 
-        if($Node.SSLCertificate){
+        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
             ArcGIS_Portal_TLS ArcGIS_Portal_TLS
             {
-                PortalEndPoint          = $MachineFQDN
-                Ensure                  = 'Present'
-                SiteName                = 'arcgis'
+                PortalHostName          = $Node.NodeName
                 SiteAdministrator       = $PortalAdministratorCredential 
-                CName                   = $Node.SSLCertificate.CName
-                CertificateFileLocation = $Node.SSLCertificate.Path
-                CertificatePassword     = $Node.SSLCertificate.Password
+                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
+                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
+                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
+                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
                 DependsOn               = $Depends
-                SslRootOrIntermediate   = $Node.SSLCertificate.SslRootOrIntermediate
             }
         }
     }   

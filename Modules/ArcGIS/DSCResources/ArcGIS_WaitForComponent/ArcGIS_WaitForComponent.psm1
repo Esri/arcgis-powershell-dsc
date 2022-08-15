@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Resource Implements application level to handle cross node dependencies specific to the ArcGIS Enterprise Stack
     .PARAMETER Component
@@ -29,7 +36,7 @@ function Get-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
 		[System.String]
         $Component,
 
@@ -46,8 +53,6 @@ function Get-TargetResource
 		[System.String]
 		$ComponentContext
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     
 	$null
 }
@@ -58,7 +63,7 @@ function Set-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
 		[System.String]
         $Component,
 
@@ -92,11 +97,10 @@ function Set-TargetResource
         $RetryCount  = 10
     )   
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     $Referer = 'http://localhost'
     $NumCount = 0
 	$Done     = $false
+    $ComponentHostNameFQDN = Get-FQDN $ComponentHostName
 	while ((-not $Done) -and ($NumCount++ -le $RetryCount)) 
 	{
         Write-Verbose "Attempt $NumCount - $Component"
@@ -104,7 +108,7 @@ function Set-TargetResource
             if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer"){
                 Write-Verbose "Checking for $Component site"
                 $Port = if($Component -ieq "NotebookServer"){ 11443 }elseif($Component -ieq "MissionServer"){ 20443 }else{ 6443 }
-                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):$($Port)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
+                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):$($Port)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking for $Component site on '$ComponentHostName'"
                 $Done = ($null -ne $token.token)
                 if($Done){
@@ -112,32 +116,29 @@ function Set-TargetResource
                 }
             }elseif($Component -ieq "Portal"){
                 Write-Verbose "Checking for Portal site on '$ComponentHostName'"
-                $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
+                $token = Get-PortalToken -PortalHostName $ComponentHostNameFQDN -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
                 $Done = ($null -ne $token.token)
             }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache"){
-                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
+                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking if all datastore types passed as Params are registered"
+                $AdditionalParams = $Component
                 if($Component -ieq "DataStore"){
                     $AdditionalParams = 'Relational'
-                }elseif($Component -ieq "SpatioTemporal"){
-                    $AdditionalParams = 'SpatioTemporal'
-                }elseif($Component -ieq "TileCache"){
-                    $AdditionalParams = 'TileCache'
                 }
-                $Done = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostName):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
+                $Done = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostNameFQDN):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
             }elseif($Component -ieq "PortalWA"){
-                $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
+                $token = Get-PortalToken -PortalHostName $ComponentHostNameFQDN -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
                 $Done = ($null -ne $token.token)
                 
             }elseif($Component -ieq "ServerWA"){
-                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer                      
+                $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer                      
                 $Done = ($null -ne $token.token)   
             }elseif($Component -ieq "UnregisterPortal"){
                 $Referer = 'http://localhost'
     
-                $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
+                $token = Get-PortalToken -PortalHostName $ComponentHostNameFQDN -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
                 
-                $Machines = Invoke-ArcGISWebRequest -Url ("https://$($ComponentHostName):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
+                $Machines = Invoke-ArcGISWebRequest -Url ("https://$($ComponentHostNameFQDN):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
                 $Done = $true
                 $StandbyMachine = Get-FQDN $env:COMPUTERNAME
                 ForEach($m in $Machines.machines){
@@ -170,7 +171,7 @@ function Test-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","UnregisterPortal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
 		[System.String]
         $Component,
 
@@ -204,18 +205,16 @@ function Test-TargetResource
         $RetryCount  = 10
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     $Referer = 'http://localhost'
     $result = $false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    
+    $ComponentHostNameFQDN = Get-FQDN $ComponentHostName
     try {
         if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer"){
             Write-Verbose "Checking for $Component site"
             $Port = if($Component -ieq "NotebookServer"){ 11443 }elseif($Component -ieq "MissionServer"){ 20443 }else{ 6443}
 
-            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):$($Port)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
+            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):$($Port)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
             $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "$Component Site Exists. Was able to retrieve token for PSA"
@@ -225,11 +224,11 @@ function Test-TargetResource
         }
         elseif($Component -ieq "Portal"){
             Write-Verbose "Checking for Portal site on '$ComponentHostName'"
-            $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
+            $token = Get-PortalToken -PortalHostName $ComponentHostNameFQDN -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
             $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Portal Site Exists. Was able to retrieve token for PSA. Making a secondary check"
-                $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($ComponentHostName):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+                $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($ComponentHostNameFQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
                 if($PortalHealthCheck.status -ieq "success"){
                     $result = $true
                 }else{
@@ -240,18 +239,15 @@ function Test-TargetResource
             }else{
                 Write-Verbose "Unable to detect if Portal Site Exists. Was NOT able to retrieve token for PSA"
             }
-        }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache"){
-            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
+        }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache" -or $Component -ieq "GraphStore" -or $Component -ieq "ObjectStore"){
+            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):6443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
             
             Write-Verbose "Checking if data store is registered"
+            $AdditionalParams = $Component
             if($Component -ieq "DataStore"){
                 $AdditionalParams = 'Relational'
-            }elseif($Component -ieq "SpatioTemporal"){
-                $AdditionalParams = 'SpatioTemporal'
-            }elseif($Component -ieq "TileCache"){
-                $AdditionalParams = 'TileCache'
             }
-            $result = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostName):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
+            $result = Test-DataStoreRegistered -ServerURL "https://$($ComponentHostNameFQDN):6443" -Token $token.token -Referer $Referer -Type $AdditionalParams
             if($result){
                 Write-Verbose "All Types of DataStores are registered."
             }else{
@@ -260,7 +256,7 @@ function Test-TargetResource
         }elseif($Component -ieq "PortalWA"){
             Write-Verbose "Checking for Portal WebAdaptor"
             
-            $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
+            $token = Get-PortalToken -PortalHostName $ComponentHostNameFQDN -SiteName $ComponentContext -port 443 -Credential $Credential -Referer $Referer 
             $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Portal WebAdaptor Works. Was able to retrieve token for PSA"
@@ -270,7 +266,7 @@ function Test-TargetResource
         }elseif($Component -ieq "ServerWA"){
             Write-Verbose "Checking for Server WebAdaptor"
             
-            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostName):443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
+            $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):443" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
             $result = ($null -ne $token.token)
             if($result){
                 Write-Verbose "Server WebAdaptor Works. Was able to retrieve token for PSA"
@@ -280,9 +276,9 @@ function Test-TargetResource
         }elseif($Component -ieq "UnregisterPortal"){
             $Referer = 'http://localhost'
 
-            $token = Get-PortalToken -PortalHostName $ComponentHostName -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
+            $token = Get-PortalToken -PortalHostName $ComponentHostNameFQDN -SiteName $ComponentContext -Credential $Credential -Referer $Referer 
             
-            $Machines = Invoke-ArcGISWebRequest -Url ("https://$($ComponentHostName):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
+            $Machines = Invoke-ArcGISWebRequest -Url ("https://$($ComponentHostNameFQDN):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
             $result = $true
             $StandbyMachine = Get-FQDN $env:COMPUTERNAME
             ForEach($m in $Machines.machines){
@@ -316,7 +312,7 @@ function Test-DataStoreRegistered
     if($DBTypes -icontains 'Relational') {
         $DsTypes += 'egdb'
     }
-    if($DBTypes -icontains 'TileCache' -or $DBTypes -icontains 'SpatioTemporal'){
+    if($DBTypes -icontains 'TileCache' -or $DBTypes -icontains 'SpatioTemporal' -or $DBTypes -icontains 'GraphStore'){
         if($DsTypes -ne ""){
             $DsTypes += ","
         }
@@ -341,6 +337,10 @@ function Test-DataStoreRegistered
                 $result = $($items | Where-Object { ($_.type -ieq "nosql") -and ($_.info.dsFeature -ieq "tileCache") } | Measure-Object).Count -gt 0
             }elseif($type -ieq 'SpatioTemporal'){
                 $result = $($items | Where-Object { ($_.type -ieq "nosql") -and ($_.info.dsFeature -ieq "spatioTemporal") } | Measure-Object).Count -gt 0
+            }elseif($type -ieq 'GraphStore'){
+                $result = $($items | Where-Object { ($_.type -ieq "nosql") -and ($_.info.dsFeature -ieq "graphStore") } | Measure-Object).Count -gt 0
+            }elseif($type -ieq 'ObjectStore'){
+                $result = $($items | Where-Object { ($_.type -ieq "cloudStore") -and ($_.info.dsFeature -ieq "objectStore") } | Measure-Object).Count -gt 0
             }
             if(-not($result)){
                 break

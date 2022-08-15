@@ -6,7 +6,7 @@
         [System.Management.Automation.PSCredential]
         $DatabaseAdminCredential
     )
-    
+
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_xFirewall

@@ -24,7 +24,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
@@ -55,6 +55,16 @@
             Protocol              = "TCP" 
         }
         $Depends += "[ArcGIS_xFirewall]WebAdaptorFirewallRules$($Node.NodeName)"
+
+        Service "StartW3SVC$($Node.NodeName)"
+        {
+            Name = 'W3SVC'
+            StartupType = 'Automatic'
+            Ensure = 'Present'
+            State = 'Running'
+            DependsOn = $Depends
+        }
+        $Depends += "[Service]StartW3SVC$($Node.NodeName)"
 
         if($Node.SSLCertificate){
             ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"

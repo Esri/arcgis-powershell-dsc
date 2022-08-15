@@ -1,4 +1,11 @@
-﻿function Get-TargetResource
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+function Get-TargetResource
 {
 	[CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
@@ -20,25 +27,24 @@
 		$ServerEndPoint,
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator
-	)
+		$SiteAdministrator,
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+		[System.Boolean]
+        $EnableSSL,
+
+		[System.Boolean]
+        $EnableHTTP
+	)
 
 	$null
 }
-
 
 function Set-TargetResource
 {
 	[CmdletBinding()]
 	param
 	(
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $ServerContext,
-        
-        [parameter(Mandatory = $true)]
+		[parameter(Mandatory = $true)]
 		[System.String]
 		$ServerHostName,
 
@@ -46,56 +52,34 @@ function Set-TargetResource
 		[System.String]
 		$ExternalDNSName,
 
-	    [System.String]
-        $ServerEndPoint,
-        
-        [System.Int32]
-        $ServerEndPointPort = 6443,
-        
-        [System.String]
-		$ServerEndPointContext = 'arcgis',
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ServerContext,
 
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator
+		$SiteAdministrator,
+
+		[System.Boolean]
+        $EnableSSL,
+
+		[System.Boolean]
+        $EnableHTTP
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$ServerFQDN = Get-FQDN $ServerHostName
-    $Referer = if($ExternalDNSName){"https://$($ExternalDNSName)/$($ServerContext)"}else{"https://localhost"}
-    Write-Verbose "Getting Server Token for user '$($SiteAdministrator.UserName)' from 'https://$($ServerFQDN):6443'"
+	$ServerHttpsUrl = "https://$($ServerFQDN):6443" 
+    $Referer = $ServerHttpsUrl
+	
+	Write-Verbose "Getting Server Token for user '$($SiteAdministrator.UserName)' from '$ServerHttpsUrl'"
 
-	$serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN):6443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+	$serverToken = Get-ServerToken -ServerEndPoint $ServerHttpsUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
     if(-not($serverToken.token)) {
         Write-Verbose "Get Server Token Response:- $serverToken"
         throw "Unable to retrieve Server Token for '$($SiteAdministrator.UserName)'"
     }
 	Write-Verbose "Connected to Server successfully and retrieved token for '$($SiteAdministrator.UserName)'"
-	if($ServerEndPoint){
-		$ExpectedPrivateServerUrl = if($ServerEndPointPort -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
-		$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
-		$ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $ExpectedPrivateServerUrl }
-		if(-not($ExistingWebAdaptor)) {
-			#Register the ServerEndpoint as a (dummy) web adaptor for server				
-			Write-Verbose 'Registering the Server Endpoint as a Web Adaptor for Server'
-			Write-Verbose "Register $ExpectedPrivateServerUrl as web adaptor"
-			$ServerEndPointHttpPort = if($ServerEndPointPort -eq 443){ 80 }else{ 6080 }
-			Register-WebAdaptorForServer -ServerUrl "https://$($ServerFQDN):6443" -Token $serverToken.token -Referer $Referer -SiteName 'arcgis' `
-											-WebAdaptorUrl $ExpectedPrivateServerUrl -MachineName $ServerEndPoint -HttpPort $ServerEndPointHttpPort -HttpsPort $ServerEndPointPort
-			Write-Verbose 'Finished Registering the ServerEndPoint as a Web Adaptor for Server'
 
-			$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
-			$VerifyWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $ExpectedPrivateServerUrl }
-			if(-not($VerifyWebAdaptor)) {
-				Write-Verbose "[WARNING] Unable to verify the web adaptor that was just registered for $ServerEndPoint with URL $ExpectedPrivateServerUrl"
-			}
-		}
-		else{
-			Write-Verbose "Web Adaptor for $ServerEndPoint with URL $ExpectedPrivateServerUrl already exists on the Server"
-		}
-	}
-	
 	if ($ExternalDNSName){
 		$serverSysProps = Get-ServerSystemProperties -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer	
 		if($serverSysProps) {
@@ -107,7 +91,6 @@ function Set-TargetResource
 		if($serverSysProps.WebContextURL -ieq $ExpectedServerWebContextUrl) {
 			Write-Verbose "Server System Properties > WebContextUrl is correctly set to '$($ExpectedServerWebContextUrl)'"
 		}else{
-			$result = $false
 			Write-Verbose "Server System Properties > WebContextUrl is NOT correctly set to '$($ExpectedServerWebContextUrl)'"
 			if(-not($serverSysProps.WebContextURL)) {
 				Add-Member -InputObject $serverSysProps -MemberType NoteProperty -Name 'WebContextURL' -Value $ExpectedServerWebContextUrl
@@ -119,10 +102,40 @@ function Set-TargetResource
 			Write-Verbose "Updated Server System Properties to set WebContextUrl to $ExpectedServerWebContextUrl"
 		}
 	}
+
+	Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
+	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck?f=json" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
+
+	# Get the current security configuration
+	$UpdateSecurityConfig = $False
+	Write-Verbose 'Getting security config for site'
+	$secConfig = Get-SecurityConfig -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer
+	if($EnableSSL -ine $secConfig.sslEnabled){
+		Write-Verbose "Enabled SSL matches doesn't match the expected state $EnableSSL"
+		$UpdateSecurityConfig = $True
+	}else{
+		Write-Verbose "Enabled SSL matches the expected state $EnableSSL"
+	}
+
+	if($EnableHTTP -ine $secConfig.httpEnabled){
+		Write-Verbose "Http Enabled doesn't match the expected state $EnableHTTP"
+		$UpdateSecurityConfig = $True
+	}else{
+		Write-Verbose "Http Enabled matches the expected state $EnableHTTP"
+	}
+
+	if($UpdateSecurityConfig){
+		Update-SecurityConfig -ServerHostName $ServerFQDN -Token $serverToken.token -SecurityConfig $secConfig `
+									-Referer $Referer -EnableHTTP $EnableHTTP -EnableSSL $EnableSSL -Verbose
+		# Changes will cause the web server to restart.
+		Write-Verbose "Waiting 30 seconds before checking"
+		Start-Sleep -Seconds 30
+		Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/admin' to respond"
+		Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
+	}
     
     Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
-	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
-
+	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck?f=json" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
 }
 
 function Test-TargetResource
@@ -143,20 +156,15 @@ function Test-TargetResource
 		[System.String]
 		$ExternalDNSName,
 
-	    [System.String]
-        $ServerEndPoint,
-        
-        [System.Int32]
-        $ServerEndPointPort = 6443,
-        
-        [System.String]
-		$ServerEndPointContext = 'arcgis',
-
 		[System.Management.Automation.PSCredential]
-		$SiteAdministrator
+		$SiteAdministrator,
+
+		[System.Boolean]
+        $EnableSSL,
+
+		[System.Boolean]
+        $EnableHTTP
     )
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$ServerFQDN = Get-FQDN $ServerHostName
@@ -164,14 +172,14 @@ function Test-TargetResource
     $Referer = $ServerHttpsUrl	
     Write-Verbose "Getting Server Token for user '$($SiteAdministrator.UserName)' from 'https://$($ServerFQDN):6443'"
 
-    $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN):6443" -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
+    $serverToken = Get-ServerToken -ServerEndPoint $ServerHttpsUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer
     if(-not($serverToken.token)) {
         Write-Verbose "Get Server Token Response:- $serverToken"
         throw "Unable to retrieve Server Token for '$($SiteAdministrator.UserName)'"
     }
     Write-Verbose "Connected to Server successfully and retrieved token for '$($SiteAdministrator.UserName)'"
-    
 	$result = $true
+	
 	if($result){
 		$serverSysProps = Get-ServerSystemProperties -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer	
 		if($serverSysProps) {
@@ -190,20 +198,27 @@ function Test-TargetResource
 		}
 	}
 
-	if($result -and $ServerEndPoint) {
-		$ExpectedPrivateServerUrl = if($ServerEndPointPort -ieq 443){ "https://$($ServerEndPoint)/$($ServerEndPointContext)" }else{ "https://$($ServerEndPoint):$($ServerEndPointPort)/$($ServerEndPointContext)" }
-		
-		$WebAdaptorsForServer = Get-WebAdaptorsConfigForServer -ServerUrl "https://$($ServerFQDN):6443/arcgis" -Token $serverToken.token -Referer $Referer
-		$ExistingWebAdaptor = $WebAdaptorsForServer.webAdaptors | Where-Object { $_.webAdaptorURL -ieq $ExpectedPrivateServerUrl }
-
-		if(-not($ExistingWebAdaptor)) {
+	$secConfig = Get-SecurityConfig -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer
+	if($result){
+		Write-Verbose "Enabled SSL Current state- $($secConfig.sslEnabled)"
+		if($EnableSSL -ine $secConfig.sslEnabled){
+			Write-Verbose "Enabled SSL doesn't match the expected state $EnableSSL"
 			$result = $false
-			Write-Verbose "Web Adaptor for url '$WebAdaptorUrl' is not set"
+		}else{
+			Write-Verbose "Enabled SSL matches the expected state $EnableSSL"
 		}
-	}		
-
-	$result    
+	}
 	
+	if($result){
+		Write-Verbose "Enabled Http Current state- $($secConfig.httpEnabled)"
+		if($EnableHTTP -ine $secConfig.httpEnabled){
+			Write-Verbose "Http Enabled doesn't match the expected state $EnableHTTP"
+			$result = $false
+		}else{
+			Write-Verbose "Http Enabled matches the expected state $EnableHTTP"
+		}
+	}
+	$result    
 }
 
 function Get-ServerSystemProperties
@@ -214,19 +229,13 @@ function Get-ServerSystemProperties
 		$ServerHostName, 
 
         [System.String]
-		$ContextName = 'arcgis', 
-
-		[System.Int32]
-		$AdminEndpointHttpsPort = 6443,
-
-        [System.String]
 		$Token, 
 
         [System.String]
 		$Referer
     )
     
-    Invoke-ArcGISWebRequest -Url ("https://$($ServerHostName):$($AdminEndpointHttpsPort)/$($ContextName)" + '/admin/system/properties/') -HttpMethod 'Get' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+    Invoke-ArcGISWebRequest -Url ("https://$($ServerHostName):6443/arcgis/admin/system/properties/") -HttpMethod 'Get' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
 }
 
 function Set-ServerSystemProperties
@@ -238,12 +247,6 @@ function Set-ServerSystemProperties
 		$ServerHostName, 
 
         [System.String]
-		$ContextName = 'arcgis', 
-
-		[System.Int32]
-		$AdminEndpointHttpsPort = 6443,
-
-        [System.String]
 		$Token, 
 
         [System.String]
@@ -253,69 +256,77 @@ function Set-ServerSystemProperties
     )
     
     try {
-        Invoke-ArcGISWebRequest -Url("https://$($ServerHostName):$($AdminEndpointHttpsPort)/$($ContextName)" + '/admin/system/properties/update/') -HttpFormParameters @{ f = 'json'; token = $Token; properties = (ConvertTo-Json $Properties -Depth 4) } -Referer $Referer -TimeOutSec 180
+        Invoke-ArcGISWebRequest -Url("https://$($ServerHostName):6443/arcgis/admin/system/properties/update/") -HttpFormParameters @{ f = 'json'; token = $Token; properties = (ConvertTo-Json $Properties -Depth 4) } -Referer $Referer -TimeOutSec 180
     }catch {
         Write-Verbose "[WARNING] Request to Set-ServerSystemProperties returned error:- $_"
     }
 }
 
-function Get-WebAdaptorsConfigForServer
+function Update-SecurityConfig
 {
     [CmdletBinding()]
     param(
-      [System.String]
-	  $ServerUrl,
+		[System.String]
+		$ServerHostName,
 
-      [System.String]
-	  $Token, 
+        [System.String]
+        $Token, 
 
-      [System.String]
-	  $Referer
-    )
+        [System.String]
+        $Referer,
 
-    $GetWebAdaptorsUrl = $ServerUrl.TrimEnd('/') + "/admin/system/webadaptors"  
-    Invoke-ArcGISWebRequest -Url $GetWebAdaptorsUrl -HttpFormParameters  @{ f= 'json'; token = $Token } -HttpMethod 'GET' -Referer $Referer -TimeoutSec 30    
+        $SecurityConfig,
+
+		[System.Boolean]
+        $EnableSSL,
+
+		[System.Boolean]
+        $EnableHTTP
+    ) 
+
+    if(-not($SecurityConfig)) {
+        throw "Security Config parameter is not provided"
+    }
+
+	$Protocol = "HTTP_AND_HTTPS"
+	if($EnableSSL -and $EnableHTTP){
+		$Protocol = "HTTP_AND_HTTPS"
+	}elseif($EnableSSL -and -not($EnableHTTP)){
+		$Protocol = "HTTPS"
+	}elseif($EnableHTTP -and -not($EnableSSL)){
+		$Protocol = "HTTP"
+	}
+
+    $UpdateSecurityConfigUrl  = "https://$($ServerHostName):6443/arcgis/admin/security/config/update"
+    $props = @{ 
+				f= 'json'; 
+				token = $Token; 
+				Protocol = $Protocol; 
+				authenticationTier = $SecurityConfig.authenticationTier; 
+				allowDirectAccess = $SecurityConfig.allowDirectAccess;  
+				cipherSuites = $SecurityConfig.cipherSuites 
+			}
+    Invoke-ArcGISWebRequest -Url $UpdateSecurityConfigUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 300
 }
 
-function Register-WebAdaptorForServer 
+function Get-SecurityConfig 
 {
     [CmdletBinding()]
     param(
+		[System.String]
+		$ServerHostName,
+        
         [System.String]
-		$ServerUrl, 
-
+        $Token, 
+        
         [System.String]
-		$SiteName, 
+        $Referer
+    ) 
 
-        [System.String]
-		$Token, 
-
-        [System.String]
-		$Referer, 
-
-        [System.String]
-		$WebAdaptorUrl, 
-
-        [System.String]
-		$MachineName, 
-
-        [System.Int32]
-		$HttpPort = 80, 
-
-        [System.Int32]
-		$HttpsPort = 443
-    )
-
-    [System.String]$RegisterWebAdaptorsUrl = $ServerUrl.TrimEnd('/') + "/$SiteName/admin/system/webadaptors/register"  
-    $WebParams = @{ token = $Token
-                    f = 'json'
-                    webAdaptorURL = $WebAdaptorUrl
-                    machineName = $MachineName
-                    httpPort = $HttpPort.ToString()
-                    httpsPort = $HttpsPort.ToString()
-                    isAdminEnabled = 'true'
-                  }
-    Invoke-ArcGISWebRequest -Url $RegisterWebAdaptorsUrl -HttpFormParameters $WebParams -Referer $Referer       
+    $GetSecurityConfigUrl  = "https://$($ServerHostName):6443/arcgis/admin/security/config/"
+    Write-Verbose "Url:- $GetSecurityConfigUrl"
+    Invoke-ArcGISWebRequest -Url $GetSecurityConfigUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 30
 }
+
 
 Export-ModuleMember -Function *-TargetResource

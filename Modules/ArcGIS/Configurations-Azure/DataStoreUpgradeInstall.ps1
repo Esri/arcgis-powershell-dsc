@@ -1,13 +1,14 @@
 ﻿Configuration DataStoreUpgradeInstall{
     param(
+        [Parameter(Mandatory=$false)]
         [System.String]
-        $Version,
+        $Version = '11.0',
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
 
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false',
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount,
 
 		[System.Management.Automation.PSCredential]
         $FileshareMachineCredential,
@@ -44,9 +45,7 @@
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_WindowsService
-    
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
-    
+
     Node localhost {
         LocalConfigurationManager
         {
@@ -56,13 +55,8 @@
         }
 
         $Depends = @()
-        $VersionArray = $Version.Split(".")
-        $MajorVersion = $VersionArray[1]
-        $MinorVersion = $VersionArray[2]
-
-		$InstallerFileName = Split-Path $InstallerPath -Leaf
-
-		$InstallerPathOnMachine = "$env:TEMP\datastore\$InstallerFileName" 
+        $InstallerFileName = Split-Path $InstallerPath -Leaf
+        $InstallerPathOnMachine = "$env:TEMP\datastore\$InstallerFileName" 
 
 		File DownloadInstallerFromFileShare      
 		{            	
@@ -73,7 +67,6 @@
 			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
 		}
-
         $Depends += '[File]DownloadInstallerFromFileShare'
 
         #ArcGIS Data Store 10.3 or 10.3.1, you must manually provide this account full control to your ArcGIS Data Store content directory 
@@ -83,12 +76,11 @@
             Path = $InstallerPathOnMachine
             Arguments = "/qn ACCEPTEULA=YES";
             ServiceCredential = $ServiceCredential
-            ServiceCredentialIsDomainAccount = $IsServiceCredentialDomainAccount
+            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
             DependsOn = $Depends
         }
-
         $Depends += '[ArcGIS_Install]DataStoreUpgrade'
         
         Script RemoveInstaller
@@ -99,103 +91,16 @@
 			}
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
 			GetScript = { $null }          
-		}
-            
+		}    
         $Depends += '[Script]RemoveInstaller'
-        
-        # Fix for BDS Not Upgrading Bug - Setup needs to run as local account system
-        # But in that case it cannot access (C:\Windows\System32\config\systemprofile\AppData\Local)
-        if(-not(($MajorVersion -eq 7) -and ($MinorVersion -eq 1))){
-            Service ArcGIS_DataStore_Service_Stop
-            {
-                Name = 'ArcGIS Data Store'
-                Credential = $ServiceCredential
-                StartupType = 'Manual'
-                State = 'Stopped'
-                DependsOn = $Depends
-            }
-            $Depends += '[Service]ArcGIS_DataStore_Service_Stop'
 
-            $InstallDir = "$($env:SystemDrive)\arcgis\datastore"
-
-            File CreateUpgradeFile
-            {
-                Ensure          = "Present"
-                DestinationPath = "$($InstallDir)\etc\upgrade.txt"
-                Contents        = ""
-                Type            = "File"
-                DependsOn = @('[Service]ArcGIS_DataStore_Service_Stop')
-            }  
-            $Depends += '[File]CreateUpgradeFile'
-
-            ArcGIS_WindowsService ArcGIS_DataStore_Service_Start
-            {
-                Name = 'ArcGIS Data Store'
-                Credential = $ServiceCredential
-                StartupType = 'Automatic'
-                State = 'Running'
-                DependsOn = $Depends
-            }
-        }
-
-        $TileCacheMachineNamesArray = $TileCacheMachineNames.Split(",")
-
-        if(($MajorVersion -gt 7)){
-            ArcGIS_xFirewall TileCache_DataStore_FirewallRules
-            {
-                Name                  = "ArcGISTileCacheDataStore" 
-                DisplayName           = "ArcGIS Tile Cache Data Store" 
-                DisplayGroup          = "ArcGIS Tile Cache Data Store" 
-                Ensure                = 'Present' 
-                Access                = "Allow" 
-                State                 = "Enabled" 
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("29079-29082")                        
-                Protocol              = "TCP" 
-            }
-            
-            ArcGIS_xFirewall TileCache_FirewallRules_OutBound
-            {
-                Name                  = "ArcGISTileCacheDataStore-Out" 
-                DisplayName           = "ArcGIS TileCache Data Store Out" 
-                DisplayGroup          = "ArcGIS TileCache Data Store" 
-                Ensure                = 'Present'
-                Access                = "Allow" 
-                State                 = "Enabled" 
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("29079-29082")       
-                Direction             = "Outbound"                        
-                Protocol              = "TCP" 
-            } 
-            
-            if(($TileCacheMachineNamesArray.Length -gt 1) -and ($TileCacheMachineNamesArray -iContains $env:ComputerName)){
-                ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
-                {
-                    Name                  = "ArcGISMultiMachineTileCacheDataStore" 
-                    DisplayName           = "ArcGIS Multi Machine Tile Cache Data Store" 
-                    DisplayGroup          = "ArcGIS Tile Cache Data Store" 
-                    Ensure                = 'Present' 
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("4369","29083-29090")                        
-                    Protocol              = "TCP" 
-                }
-            
-                ArcGIS_xFirewall MultiMachine_TileCache_FirewallRules_OutBound
-                {
-                    Name                  = "ArcGISMultiMachineTileCacheDataStore-Out" 
-                    DisplayName           = "ArcGIS Multi Machine TileCache Data Store Out" 
-                    DisplayGroup          = "ArcGIS TileCache Data Store" 
-                    Ensure                = 'Present'
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("4369","29083-29090")       
-                    Direction             = "Outbound"                        
-                    Protocol              = "TCP" 
-                } 
-            }
+        ArcGIS_WindowsService ArcGIS_DataStore_Service_Start
+        {
+            Name = 'ArcGIS Data Store'
+            Credential = $ServiceCredential
+            StartupType = 'Automatic'
+            State = 'Running'
+            DependsOn = $Depends
         }
     }
 }

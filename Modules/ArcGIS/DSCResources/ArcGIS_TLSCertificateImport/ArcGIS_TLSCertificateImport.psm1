@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Imports a SSL certificate from remote machine to local machines root store.
     .PARAMETER Ensure
@@ -58,8 +65,6 @@ function Get-TargetResource
         $ServerType
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$null
 }
 
@@ -102,8 +107,6 @@ function Test-TargetResource
         [System.String]
         $ServerType
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     $FQDN = Get-FQDN $HostName  
@@ -156,8 +159,6 @@ function Set-TargetResource
         [System.String]
         $ServerType
     )
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') 
     {

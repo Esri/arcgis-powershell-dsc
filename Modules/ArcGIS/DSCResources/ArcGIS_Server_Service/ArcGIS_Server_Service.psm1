@@ -1,4 +1,11 @@
-﻿function Get-TargetResource
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+function Get-TargetResource
 {
 	[CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
@@ -12,8 +19,6 @@
 		[System.String]
 		$PathToSourceFile
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     
 	$null
 }
@@ -83,10 +88,7 @@ function Test-TargetResource
         [parameter(Mandatory = $false)]
         [System.String]
 		$PortalContext
-
     )
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if(-not(Test-Path $PathToSourceFile)){
         Write-Verbose "File $PathToSourceFile not found or inaccessible"
@@ -241,8 +243,6 @@ function Set-TargetResource
         [System.String]
 		$PortalContext
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if(-not(Test-Path $PathToSourceFile)){
         Write-Verbose "File $PathToSourceFile not found or inaccessible"

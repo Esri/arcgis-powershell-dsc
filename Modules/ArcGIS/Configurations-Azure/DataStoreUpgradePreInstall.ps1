@@ -4,8 +4,8 @@
         $ServiceCredential,
 
         [Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false',
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount,
 		
 		[Parameter(Mandatory=$false)]
         [System.String]

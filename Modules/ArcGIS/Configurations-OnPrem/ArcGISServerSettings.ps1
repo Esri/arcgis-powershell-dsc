@@ -15,16 +15,12 @@
 
         [Parameter(Mandatory=$false)]
         [System.String]
-        $ServerContext,
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $InternalLoadBalancer
+        $ServerContext
     )
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_ServerSettings
 
     Node $AllNodes.NodeName
@@ -39,13 +35,12 @@
         if($Node.NodeName -ieq $PrimaryServerMachine){
             ArcGIS_ServerSettings ServerSettings
             {
-                ServerHostName          = Get-FQDN $PrimaryServerMachine
-                SiteAdministrator       = $ServerPrimarySiteAdminCredential
-                ExternalDNSName         = $ExternalDNSHostName
-                ServerContext           = $ServerContext
-                ServerEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ $null } }
-                ServerEndPointPort      = if($InternalLoadBalancer){ 6443 }else{ 443 }
-                ServerEndPointContext   = if($InternalLoadBalancer){ 'arcgis' }else{ $ServerContext }
+                ServerHostName   = $PrimaryServerMachine
+                SiteAdministrator= $ServerPrimarySiteAdminCredential
+                ExternalDNSName  = $ExternalDNSHostName
+                ServerContext    = $ServerContext
+                EnableSSL        = $True
+                EnableHTTP       = $True
             }
         }
     }

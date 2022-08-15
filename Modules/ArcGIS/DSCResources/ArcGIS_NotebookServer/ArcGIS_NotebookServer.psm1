@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Makes a request to the installed Notebook Server to create a New Server Site
     .PARAMETER ServerHostName
@@ -30,6 +37,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
     (
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -80,8 +91,6 @@ function Get-TargetResource
         $LogLevel
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     $null
 }
 
@@ -91,6 +100,10 @@ function Set-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(	
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -141,7 +154,6 @@ function Set-TargetResource
         $LogLevel
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     if($VerbosePreference -ine 'SilentlyContinue') 
@@ -205,10 +217,11 @@ function Set-TargetResource
                             Write-Verbose "Attempt # $Attempt"   
                         }            
                         Invoke-CreateSite -ServerURL $ServerUrl -Credential $SiteAdministrator -ConfigurationStoreLocation $ConfigurationStoreLocation `
-                        -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation `
-                                    -ServerDirectories $ServerDirectories -Verbose -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
-                                    -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
-                                    -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel
+                                            -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation -Version $Version `
+                                            -ServerDirectories $ServerDirectories -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
+                                            -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName `
+                                            -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
+                                            -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel -Verbose
                         $Done = $true
                         Write-Verbose 'Created Site'
                     }catch{
@@ -276,6 +289,10 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
     (   
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -326,7 +343,6 @@ function Test-TargetResource
         $LogLevel
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
@@ -386,6 +402,9 @@ function Invoke-CreateSite
     Param
     (
         [System.String]
+        $Version,
+
+        [System.String]
         $ServerURL,
 
         [System.Management.Automation.PSCredential]
@@ -422,19 +441,15 @@ function Invoke-CreateSite
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
 
-    $ServiceName = "ArcGIS Notebook Server"
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
-    $BuildNumber = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).BuildNumber
-    Write-Verbose "Notebook Server Version - $RealVersion, Build Number - $BuildNumber"
-    $MajorVersion = $($RealVersion.Split('.')[1])
+    Write-Verbose "Notebook Server Version - $Version"
+    $VersionArray = $Version.Split('.')
     
     $configStoreConnection = $null
     if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0)
     {
         if(($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1)){
             Write-Verbose "Using Azure Cloud Storage for the config store"
-            $configStoreConnection = if($MajorVersion -ge 8){
+            $configStoreConnection = if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8)){
                 @{ 
                     configPersistenceType = "AZURE";
                     connectionString = $ConfigStoreCloudStorageConnectionString;
@@ -451,7 +466,7 @@ function Invoke-CreateSite
             }
         } else {
             Write-Verbose "Using AWS Cloud Storage S3 for the config store"
-            if($MajorVersion -ge 8) {
+            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8)) {
                 $configStoreConnection = @{ 
                     configPersistenceType = "AMAZON";
                     connectionString = $ConfigStoreCloudStorageConnectionString;
@@ -514,7 +529,7 @@ function Invoke-CreateSite
         }
     }
 
-	if($BuildNumber -gt 12790){
+	if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $Version -ieq "10.8.1"){
 		$directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"}| Measure-Object).Count -gt 0){
 			($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"})
 		}else{

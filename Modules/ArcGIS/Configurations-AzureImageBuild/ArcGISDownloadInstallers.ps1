@@ -41,11 +41,11 @@
             {
                 ArcGIS_RemoteFile $Installer.Name.Replace(' ', '_')
                 {
-                    Url = $Installer.RemotePath
-                    DestinationPath = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) 
+                    Source = $Installer.RemotePath
+                    Destination = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) 
                     FileSourceType = $FileSourceType
-                    AFSEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
-                    AFSCredential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }         
+                    AzureFilesEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
+                    Credential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }         
                     Ensure = $Ensure
                 }
 
@@ -54,11 +54,11 @@
                         $PatchFileName = Split-Path $patch -leaf
                         ArcGIS_RemoteFile "$($Installer.Name.Replace(' ', '_'))_$($PatchFileName.Replace(' ', '_'))"
                         {
-                            Url = $PatchFileName
-                            DestinationPath = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir) $PatchFileName)
+                            Source = $PatchFileName
+                            Destination = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir) $PatchFileName)
                             FileSourceType = $FileSourceType
-                            AFSEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
-                            AFSCredential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }         
+                            AzureFilesEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
+                            Credential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }         
                             Ensure = $Ensure
                         }
                     }

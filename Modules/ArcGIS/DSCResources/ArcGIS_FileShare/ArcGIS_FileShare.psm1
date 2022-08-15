@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Creates a File Share for the Server and Portal to be shared in a High Availabilty Setup.
 	.PARAMETER Ensure
@@ -51,8 +58,6 @@ function Get-TargetResource
         $IsMSAAccount = $false
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$null
 }
 
@@ -90,8 +95,6 @@ function Set-TargetResource
         [System.Boolean]
         $IsMSAAccount = $false
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -eq 'Present') {
 		$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
@@ -180,8 +183,6 @@ function Test-TargetResource
         [System.Boolean]
         $IsMSAAccount = $false
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $result = $false
 	

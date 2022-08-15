@@ -24,12 +24,15 @@
         [System.Boolean]
         $IsServiceAccountMSA = $False,
 
+        [System.Boolean]
+        $DownloadPatches = $False,
+
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $EnableMSILogging = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallPatch
     
@@ -60,6 +63,7 @@
             {
                 Name = "Insights"
                 Version = $Version
+                DownloadPatches = $DownloadPatches
                 PatchesDir = $PatchesDir
                 PatchInstallOrder = $PatchInstallOrder
                 Ensure = "Present"

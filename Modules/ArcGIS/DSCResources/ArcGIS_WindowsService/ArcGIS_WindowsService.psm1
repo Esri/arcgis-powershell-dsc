@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Resource to start or stop a Windows Service.
     .PARAMETER Name
@@ -68,8 +75,6 @@ function Get-TargetResource
         $State = "Running"
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     $svc = GetServiceResource $Name
     $svcWmi = GetWMIService $Name
 
@@ -119,8 +124,6 @@ function Test-TargetResource
         $State="Running"
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     ValidateStartupType $Name $StartupType $State
 
     $svc=GetServiceResource $Name
@@ -183,8 +186,6 @@ function Set-TargetResource
         $State="Running"
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	try {
 		ValidateStartupType $Name $StartupType $State
 
