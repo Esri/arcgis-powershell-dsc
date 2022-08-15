@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Makes a request to Harvest ArcGIS Enterprise Component logs in a standardized format using Log Harvestor Plugin
     .PARAMETER HostName
@@ -42,7 +49,7 @@ function Get-TargetResource
 		[System.String]
 		$LogFormat = "csv"
     )
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+    $null
 }
 
 function Set-TargetResource
@@ -77,8 +84,6 @@ function Set-TargetResource
 		$LogFormat = "csv"
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     $ServiceName = $null
     if($ComponentType -eq "Server"){
         Write-Verbose "Configuring Server Log Harvester Plugin"
@@ -100,17 +105,28 @@ function Set-TargetResource
                 (($xml.configuration.appender | Where-Object { $_.name -eq "file-server-logs" }).param | Where-Object { $_.name -eq "file" }).value = ( $LogOutputFolder.trimend('\') + "\\server.log" )
             }else{
                 ($xml.Configuration.Properties.Property | Where-Object { $_.name -eq "log.dir" })."#text" = $LogOutputFolder.trimend('\')
-                ($xml.Configuration.Properties.Property | Where-Object { $_.name -eq "log.format" })."#text" = $LogFormat 
+                ($xml.Configuration.Properties.Property | Where-Object { $_.name -eq "log.format" })."#text" =  $LogFormat 
             }
             $xml.Save($Log4jxmlFilePath)
             $Log4jXMLZipPath = (Join-Path $ServerObserverFolderPath 'log4j-xml.zip')
-            Compress-Archive -LiteralPath $Log4jxmlFilePath -CompressionLevel Optimal -DestinationPath $Log4jXMLZipPath
-            Rename-Item -Path $Log4jXMLZipPath -NewName "log4j-xml.jar"
+            Compress-Archive -LiteralPath $Log4jxmlFilePath -CompressionLevel Optimal -DestinationPath $Log4jXMLZipPath -Force
+            $Log4jXMLJarPath = (Join-Path $ServerObserverFolderPath 'log4j-xml.jar')
+            if(Test-Path $Log4jXMLJarPath){
+                Write-Verbose 'Stopping the service' 
+                Stop-Service -Name $ServiceName -Force -ErrorAction Ignore
+                Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+                Write-Verbose 'Stopped the service'
+                Start-Sleep -Seconds 5
+            }
+            Write-Verbose "Updating Log4j Jar"
+            Move-Item -Path $Log4jXMLZipPath -Destination $Log4jXMLJarPath -Force
             Remove-Item $Log4jxmlFilePath -Force
             #Enable Log Handlers JSON File
-            $logHandlersJsonFilePath = (Join-Path $InstallDir "framework\etc\log-handlers.json.disabled")
-            if(Test-Path $logHandlersJsonFilePath){
-                Rename-Item -Path $logHandlersJsonFilePath -NewName "log-handlers.json"
+            Write-Verbose "Updating Log Handlers JSON File"
+            $logHandlersDisabledJsonFilePath = (Join-Path $InstallDir "framework\etc\log-handlers.json.disabled")
+            if(Test-Path $logHandlersDisabledJsonFilePath){
+                $logHandlersEnabledJsonFilePath = (Join-Path $InstallDir "framework\etc\log-handlers.json")
+                Move-Item -Path $logHandlersDisabledJsonFilePath -Destination $logHandlersEnabledJsonFilePath -Force
                 # $destpath = (Join-Path $InstallDir "framework\etc\log-handlers.json")
                 # $temp = Get-Content $destpath -raw | ConvertFrom-Json
                 # $tempArray = @()
@@ -119,6 +135,7 @@ function Set-TargetResource
                 # $temp | ConvertTo-Json  | set-content $destpath
             }
             #Enable Log Harvester Plugin
+            Write-Verbose "Updating Log Harvester Node Agent Plugin"
             if(Test-Path $NodeAgentFilePath){
                 $NodeAgentFile = New-Object System.Xml.XmlDocument
                 $NodeAgentFile.Load($NodeAgentFilePath)
@@ -150,12 +167,12 @@ function Set-TargetResource
             Write-Verbose "Disabled Server Log Harvester Plugin"
         }
     }
-
+    
     if(-not($UsesLog4j)){
         [Environment]::SetEnvironmentVariable("ARCGIS_LOG_APPENDER", "agol", 'Machine')
     }
 
-    # Restart Component
+    #Restart Component
     Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
     if($ComponentType -eq "Server"){
@@ -198,8 +215,6 @@ function Test-TargetResource
 		$LogFormat = "csv"
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     $result = $true
     if($ComponentType -eq "Server"){
         $ServiceName = 'ArcGIS Server'

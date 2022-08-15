@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Configures A Datastore Item with the GIS server. ("Folder","CloudStore","RasterStore","BigDataFileShare")
     .PARAMETER Name
@@ -43,7 +50,7 @@ function Get-TargetResource
 		[System.String]
 		$Name
 	)
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
 	$null
 }
 
@@ -97,7 +104,6 @@ function Test-TargetResource
 		$DataStoreEndpoint
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$result = $false
@@ -203,7 +209,7 @@ function Set-TargetResource
         [System.String]
 		$DataStoreEndpoint
 	)
-	Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
 	$FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }
     $Scheme = if($Port -eq 6080 -or $Port -eq 80) { 'http' } else { 'https' }
     $ServerUrl = "$($Scheme)://$($FQDN):$Port"

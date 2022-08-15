@@ -57,11 +57,14 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ServerFunctions
-        
+        $ServerFunctions,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $IsFederatedWithRestrictedPublishing
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName
@@ -88,7 +91,7 @@
                 Ensure = "Present"
                 RemoteSiteAdministrator = $RemoteSiteAdministrator
                 SiteAdministrator = $ServerPrimarySiteAdminCredential
-                ServerRole = if($IsHostingServer){'HOSTING_SERVER'}else{'FEDERATED_SERVER'}
+                ServerRole = if($IsHostingServer){'HOSTING_SERVER'}else{if($IsFederatedWithRestrictedPublishing){ 'FEDERATED_SERVER_WITH_RESTRICTED_PUBLISHING' }else{'FEDERATED_SERVER'}}
                 ServerFunctions = $ServerFunctions
             }  
         }     

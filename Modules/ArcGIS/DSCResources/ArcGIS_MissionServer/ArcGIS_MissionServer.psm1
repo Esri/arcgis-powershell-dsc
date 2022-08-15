@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Makes a request to the installed Mission Server to create a New Server Site
     .PARAMETER ServerHostName
@@ -30,6 +37,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
     (
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -80,8 +91,6 @@ function Get-TargetResource
         $LogLevel
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-    
     $null
 }
 
@@ -91,6 +100,10 @@ function Set-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(	
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -140,8 +153,7 @@ function Set-TargetResource
         [System.String]
         $LogLevel
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     if($VerbosePreference -ine 'SilentlyContinue') 
@@ -162,9 +174,8 @@ function Set-TargetResource
         $Referer = 'http://localhost' 
         $RestartRequired = $false
 
-        [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Mission Server').RealVersion
-        Write-Verbose "Mission Server Version is $RealVersion"
-        if($RealVersion -ne "10.8"){
+        Write-Verbose "Mission Server Version is $Version"
+        if($Version -ne "10.8"){
             $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
             if($configuredHostName -ine $FQDN){
                 Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
@@ -208,10 +219,11 @@ function Set-TargetResource
                             Write-Verbose "Attempt # $Attempt"   
                         }            
                         Invoke-CreateSite -ServerURL $ServerUrl -Credential $SiteAdministrator -ConfigurationStoreLocation $ConfigurationStoreLocation `
-                        -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation `
-                                    -ServerDirectories $ServerDirectories -Verbose -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
-                                    -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
-                                    -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel
+                                        -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation -Version $Version `
+                                        -ServerDirectories $ServerDirectories -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
+                                        -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName `
+                                        -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
+                                        -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel -Verbose
                         $Done = $true
                         Write-Verbose 'Created Site'
                     }catch{
@@ -278,7 +290,11 @@ function Test-TargetResource
     [CmdletBinding()]
 	[OutputType([System.Boolean])]
 	param
-    (   
+    ( 
+        [parameter(Mandatory = $true)]
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -329,7 +345,6 @@ function Test-TargetResource
         $LogLevel
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
@@ -364,9 +379,8 @@ function Test-TargetResource
         }
     }
 
-    [string]$RealVersion = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\ESRI\ArcGIS Mission Server').RealVersion
-    Write-Verbose "Mission Server Version is $RealVersion"
-    if($result -and ($RealVersion -ne "10.8")) {
+    Write-Verbose "Mission Server Version is $Version"
+    if($result -and ($Version -ne "10.8")) {
         $ServiceName = 'ArcGIS Mission Server'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
         $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir 
@@ -390,6 +404,9 @@ function Invoke-CreateSite
     [CmdletBinding()]
     Param
     (
+        [System.String]
+        $Version,
+
         [System.String]
         $ServerURL,
 
@@ -426,12 +443,7 @@ function Invoke-CreateSite
   
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
-
-    $ServiceName = "ArcGIS Mission Server"
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
-    $BuildNumber = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).BuildNumber
-    Write-Verbose "Mission Server Version - $RealVersion, Build Number - $BuildNumber"
+    Write-Verbose "Mission Server Version - $Version"
     
     $configStoreConnection = $null
     if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0)
@@ -470,7 +482,7 @@ function Invoke-CreateSite
 
     $directories =  @()
     $ServerDirectoriesObject = (ConvertFrom-Json $ServerDirectories)
-    if($BuildNumber -eq 12790){
+    if($Version -eq "10.8"){
         $directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"}| Measure-Object).Count -gt 0){
             ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisworkspace"})
         }else{
@@ -520,7 +532,7 @@ function Invoke-CreateSite
                         #logsSettings = "{}"
                         async = "false"
                         f = "pjson"
-                       }
+                    }
 
     if(-not([string]::IsNullOrEmpty($ServerLogsLocation))){           
         $requestParams["logsSettings"] = (ConvertTo-Json -Compress -InputObject @{

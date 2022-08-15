@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Federates a Server with an existing Portal.
     .PARAMETER Ensure
@@ -30,9 +37,7 @@
     .PARAMETER ServerFunctions
         Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more 
     .PARAMETER ServerRole
-        Role of the Federate server - (HOSTING_SERVER, FEDERATED_SERVER)
-    .PARAMETER IsMultiTierAzureBaseDeployment
-        Optional Parameter only valid when deploying a Multi Tier Base Deployment. Provides a fix for inability to run spatial services when using Azure Internal Load Balancers.
+        Role of the Federate server - (HOSTING_SERVER, FEDERATED_SERVER, FEDERATED_SERVER_WITH_RESTRICTED_PUBLISHING)
 #>
 
 function Get-TargetResource
@@ -49,8 +54,6 @@ function Get-TargetResource
 		[System.String]
         $ServiceUrlHostName
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null
 }
@@ -115,14 +118,8 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String] 
-        $ServerRole,
-
-        [parameter(Mandatory = $false)]
-		[System.Boolean] 
-        $IsMultiTierAzureBaseDeployment
+        $ServerRole
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $ServiceUrl = "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext"
     if($ServiceUrlPort -eq 443){
@@ -318,14 +315,8 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String] 
-        $ServerRole,
-
-        [parameter(Mandatory = $false)]
-		[System.Boolean] 
-        $IsMultiTierAzureBaseDeployment
+        $ServerRole
     )
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     
@@ -527,15 +518,6 @@ function Set-TargetResource
                     }catch{
                         throw $_
                     }
-                }
-            }
-
-            # Hacky fix for Running Spatial Services.
-            if($IsMultiTierAzureBaseDeployment){
-                $servers = Get-RegisteredServersForPortal -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer 
-                $server = $servers.servers | Where-Object { $_.isHosted -eq $true }
-                if($server -and ($server.url -ieq $ServiceUrl)){
-                    Update-ServerAdminUrlForPortal -PortalHostName $PortalFQDN -SiteName $PortalContext -PortalPort $PortalPort -Token $token.token -Referer $Referer -ServerAdminUrl "https://$($ServiceUrlHostName):$($ServiceUrlPort)/$ServiceUrlContext" -FederatedServer $server
                 }
             }
         }

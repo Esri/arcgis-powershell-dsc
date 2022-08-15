@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Configures a Refrenced or Managed Geo Database
     .PARAMETER Ensure
@@ -39,8 +46,6 @@ function Get-TargetResource
 		[System.String]
 		$DatabaseName
 	)
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 	
 	$returnValue = @{
 		DatabaseServer = $DatabaseServer
@@ -98,7 +103,6 @@ function Set-TargetResource
 		$Ensure
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 	
 	if($Ensure -ieq 'Present') {
         #Add check if possible
@@ -321,7 +325,7 @@ function Set-TargetResource
             Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
             $RealVersionArr = $RealVersion.Split(".")
             $Version = $RealVersionArr[0] + '.' + $RealVersionArr[1] 
-            $UsePython3 = ($RealVersion -eq "10.9.1")
+            $UsePython3 = ($RealVersion -eq "10.9.1" -or $RealVersionArr -eq 11)
             if($UsePython3){
                 $PythonInstallDir = Join-Path $InstallDir "\\framework\\runtime\\ArcGIS\\bin\\Python\\envs\\arcgispro-py3"
             }else{
@@ -534,7 +538,6 @@ function Test-TargetResource
 		$Ensure
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $result = $false    
     $ServerUrl = 'https://localhost:6443/'
@@ -912,7 +915,17 @@ function Invoke-ExecutePostgresQuery{
     $Password = $ConnStringArray[4].split("=")[1]
     $InstallerPath = $ConnStringArray[5].split("=")[1]
     
-    $PsqlExePath  = Join-Path $InstallerPath "framework\runtime\pgsql\bin\psql.exe" 
+    $PsqlExePath = ""
+    if( $null -ne [Environment]::GetEnvironmentVariable('PSQL_EXE_PATH', 'MACHINE')){
+        $PsqlExePath = [Environment]::GetEnvironmentVariable('PSQL_EXE_PATH', 'MACHINE')
+    }else{
+        if($InstallerPath -ieq "None"){
+            throw "Neither ArcGIS Portal or ArcGIS Datastore is installed. PSQL needed for the Resource to access Azure PostgreSQL"
+        }else{
+            $PsqlExePath  = Join-Path $InstallerPath "framework\runtime\pgsql\bin\psql.exe" 
+        }
+    }
+   
     $exeArgsHash = "-h $HostName -p $Port -U $UserName -c ""$($sql)"" -w $Database"
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $PsqlExePath
@@ -987,7 +1000,7 @@ function Get-PostgresDatabaseConnectionString
         if($DatastoreInstallationDirectory){
             $InstallerPath = $DatastoreInstallationDirectory
         }else{
-            throw "Neither ArcGIS Portal or ArcGIS Datastore is installed. PSQL needed for the Resource to access Azure PostgreSQL"
+            $InstallerPath = "None"
         }
     }
 	$ServerName = $Server.Split(".")[0]
@@ -1171,10 +1184,10 @@ function Enable-DatabasePrivilegesForGeoDatabaseAdministrator
         $DatabaseName
     )
 
-    $sql = "ALTER DATABASE $DatabaseName SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE"
+    $sql = "ALTER DATABASE [$DatabaseName] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE"
     Invoke-ExecuteSqlNonQuery -ConnString $ConnString -sql $sql
 
-    $sql = "ALTER DATABASE $DatabaseName SET ALLOW_SNAPSHOT_ISOLATION ON"
+    $sql = "ALTER DATABASE [$DatabaseName] SET ALLOW_SNAPSHOT_ISOLATION ON"
     Invoke-ExecuteSqlNonQuery -ConnString $ConnString -sql $sql
 }
 
@@ -1610,6 +1623,3 @@ function Start-ServerService
 }
 
 Export-ModuleMember -Function *-TargetResource
-
-
-

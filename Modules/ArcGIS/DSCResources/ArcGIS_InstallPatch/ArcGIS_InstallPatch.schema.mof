@@ -3,6 +3,7 @@
 class ArcGIS_InstallPatch : OMI_BaseResource
 {
 	[Key] String Name;
+	[Write, Description("Download patches from Esri patch downloads endpoint")] Boolean DownloadPatches;
 	[Write] String PatchesDir;
 	[Write] String PatchInstallOrder[];
 	[Key] String Version;

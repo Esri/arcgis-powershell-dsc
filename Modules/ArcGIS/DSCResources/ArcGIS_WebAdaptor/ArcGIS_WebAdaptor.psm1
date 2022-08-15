@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Configures a WebAdaptor
     .PARAMETER Ensure
@@ -58,7 +65,6 @@ function Get-TargetResource
         [System.Boolean]
         $AdminAccessEnabled = $true
     )
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null 
 }
@@ -99,7 +105,6 @@ function Set-TargetResource
         $AdminAccessEnabled = $true
     )
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     if($Ensure -ieq 'Present') {
         $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
@@ -118,6 +123,10 @@ function Set-TargetResource
 				    break
                 }elseif($wa.Version.StartsWith("10.9")){	
                     $Version = if($wa.Name -match "10.9.1"){ "10.9.1" }else{ "10.9" }
+                    $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
+				    break
+                }elseif($wa.Version.StartsWith("11.0")){	
+                    $Version = if($wa.Name -match "11.0.1"){ "11.0.1" }else{ "11.0" }
                     $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
 				    break
                 }
@@ -206,9 +215,8 @@ function Test-TargetResource
         [System.Boolean]
         $AdminAccessEnabled = $true
     )
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
     $result = $false
     foreach($wa in $WAInstalls){
@@ -355,7 +363,8 @@ function Start-RegisterWebAdaptorCMDLineTool{
         $SiteUrlCheck = "$($SiteURL)/arcgis/sharing/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
-        if(($Version.Split('.')[1] -gt 8) -or ($Version -ieq "10.8.1")){
+        $VersionArray = $Version.Split('.')
+        if(($VersionArray[0] -eq 11) -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")){
             $Arguments += " /r false"
         }
     }

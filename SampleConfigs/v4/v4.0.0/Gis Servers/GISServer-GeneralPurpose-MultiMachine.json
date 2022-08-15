@@ -1,0 +1,53 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine 1 Name]",
+            "Role": [
+                "FileShare",
+                "Server"
+            ]
+        },
+        {
+            "NodeName": "[Machine 2 Name]",
+            "Role": [
+                "Server"
+            ]
+        },
+        {
+            "NodeName": "[Machine 3 Name]",
+            "Role": [
+                "Server"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "FileShareLocalPath": "[File Share Local Path]",
+        "FileShareName": "[File Share Name]",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\directories",
+            "ConfigStoreLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
+        }
+    }
+}

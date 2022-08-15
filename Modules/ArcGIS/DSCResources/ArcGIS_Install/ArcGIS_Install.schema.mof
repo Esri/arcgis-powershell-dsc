@@ -7,6 +7,7 @@ class ArcGIS_Install : OMI_BaseResource
 	[Write] String ProductId;
 	[Write] String Path;
 	[Write] String Arguments;
+	[Write] String FeatureSet[];
 	[Write] String WebAdaptorContext;
 	[Write, EmbeddedInstance("MSFT_Credential")] String ServiceCredential;
 	[Write] Boolean ServiceCredentialIsDomainAccount;

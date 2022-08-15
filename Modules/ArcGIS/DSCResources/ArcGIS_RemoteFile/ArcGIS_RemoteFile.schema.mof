@@ -1,11 +1,11 @@
-﻿
-[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_RemoteFile")]
+﻿[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_RemoteFile")]
 class ArcGIS_RemoteFile : OMI_BaseResource
 {
-	[Key] String Url;
-	[Write] String DestinationPath;
-	[Write, ValueMap{"AzureFiles","AzureBlobsManagedIdentity","Default"}, Values{"AzureFiles","AzureBlobsManagedIdentity","Default"}] String FileSourceType;
-	[Write, EmbeddedInstance("MSFT_Credential")] String AFSCredential;
-	[Write] String AFSEndpoint;
+	[Key] String Source;
+	[Write] String Destination;
+	[Write] String AzureFilesEndpoint;
+	[Write] String ArcGISDownloadAPIFolderPath;
+	[Write, ValueMap{"AzureFiles","AzureBlobsManagedIdentity","ArcGISDownloadsAPI","Default"}, Values{"AzureFiles","AzureBlobsManagedIdentity","ArcGISDownloadsAPI","Default"}] String FileSourceType;
+	[Write, EmbeddedInstance("MSFT_Credential")] String Credential;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };

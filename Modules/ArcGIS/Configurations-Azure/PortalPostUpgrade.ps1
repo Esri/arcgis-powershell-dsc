@@ -47,7 +47,6 @@
     Import-DscResource -Name ArcGIS_PortalUpgrade 
 
     $IsDebugMode = $DebugMode -ieq 'true'
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
     Node localhost {
         LocalConfigurationManager
@@ -65,10 +64,11 @@
         ArcGIS_PortalUpgrade PortalUpgrade
         {
             PortalAdministrator = $SiteAdministratorCredential 
-            PortalHostName = Get-FQDN $env:ComputerName
-            LicenseFilePath =  (Join-Path $(Get-Location).Path $PortalLicenseFileName) 
+            PortalHostName = $env:ComputerName
+            LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName) 
             SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
             Version = $Version
-        }    
+            ImportExternalPublicCertAsRoot = $True
+        }
     }
 }

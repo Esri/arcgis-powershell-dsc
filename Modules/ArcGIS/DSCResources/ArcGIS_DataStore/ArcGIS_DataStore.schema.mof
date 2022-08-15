@@ -3,6 +3,7 @@
 class ArcGIS_DataStore : OMI_BaseResource
 {
 	[Write] String DatastoreMachineHostName;
+	[Write] String Version;
 	[Key] String ServerHostName;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
@@ -10,6 +11,7 @@ class ArcGIS_DataStore : OMI_BaseResource
 	[Write] String DataStoreTypes[];
 	[Write, Description("Is Standby instance")] Boolean IsStandby;
 	[Write, Description("Is Tile Cache DataStore Clustered")] Boolean IsTileCacheDataStoreClustered;
+	[Write, Description("Is Tile Cache DataStore Clustered")] Boolean IsObjectDataStoreClustered;
 	[Write, Description("Is Failover Enabled when service on Primary machine is stopped.")] Boolean EnableFailoverOnPrimaryStop;
 	[Write, ValueMap{"Enabled","Disabled"}, Values{"Enabled","Disabled"}] String PITRState;
 };

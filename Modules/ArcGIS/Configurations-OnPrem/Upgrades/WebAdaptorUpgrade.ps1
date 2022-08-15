@@ -33,13 +33,16 @@
         [System.Int32]
 		$WebSiteId = 1,
 
+        [System.Boolean]
+        $DownloadPatches = $False,
+
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $EnableMSILogging = $false
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptor
 
@@ -50,6 +53,8 @@
                 CertificateId = $Node.Thumbprint
             }
         }
+
+        $VersionArray = $Version.Split('.')
 
         if($WebAdaptorRole -ieq "PortalWebAdaptor"){
             $AdminAccessEnabled = $False
@@ -72,12 +77,12 @@
         }
         $Depends += '[ArcGIS_Install]WebAdaptorUninstall'
 
-        $MachineFQDN = (Get-FQDN $Node.NodeName)
         $WAArguments = "/qn VDIRNAME=$($Context) WEBSITE_ID=$($WebSiteId)"
-        if($Version.Split('.')[1] -gt 5){
+        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 5)){
             $WAArguments += " CONFIGUREIIS=TRUE"
         }
-        if($Version.Split('.')[1] -gt 8){
+
+        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
             $WAArguments += " ACCEPTEULA=YES"
         }
 
@@ -99,6 +104,7 @@
             {
                 Name = "WebAdaptor"
                 Version = $Version
+                DownloadPatches = $DownloadPatches
                 PatchesDir = $PatchesDir
                 PatchInstallOrder = $PatchInstallOrder
                 Ensure = "Present"
@@ -107,11 +113,11 @@
             $Depends += '[ArcGIS_InstallPatch]WebAdaptorInstallPatch'
         }
 
-        ArcGIS_WebAdaptor "Configure$($Component)-$($MachineFQDN)"
+        ArcGIS_WebAdaptor "Configure$($Component)-$($Node.NodeName)"
         {
             Ensure = "Present"
             Component = $Component
-            HostName =  if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN }
+            HostName =  if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ (Get-FQDN $Node.NodeName) }
             ComponentHostName = (Get-FQDN $ComponentHostName)
             Context = $Context
             OverwriteFlag = $False

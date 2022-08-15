@@ -1,4 +1,10 @@
-﻿
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
 function Get-TargetResource
 {
 	[CmdletBinding()]
@@ -6,7 +12,7 @@ function Get-TargetResource
 	param
 	(
         [parameter(Mandatory = $True)]
-        [ValidateSet("Relational","TileCache","SpatioTemporal")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
         [System.String]
         $DataStoreType,
 
@@ -40,7 +46,6 @@ function Get-TargetResource
         $ForceCloudCredentialsUpdate = $False
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$null
 }
@@ -52,7 +57,7 @@ function Set-TargetResource
 	param
 	(
         [parameter(Mandatory = $True)]
-        [ValidateSet("Relational","TileCache","SpatioTemporal")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
         [System.String]
         $DataStoreType,
 
@@ -86,7 +91,6 @@ function Set-TargetResource
         $ForceCloudCredentialsUpdate = $False
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
     $ServiceName = 'ArcGIS Data Store'
@@ -98,55 +102,40 @@ function Set-TargetResource
     
     Write-Verbose "Version of DataStore is $RealVersion"
     $VersionArray = $RealVersion.Split('.')
-    if($VersionArray[1] -lt 6){
-        throw "ArcGIS_DataStoreBackup resource doesn't support ArcGIS DataStore 10.5.1 and below"
+    if(-not($VersionArray[0] -eq 11) -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7)){
+        throw "ArcGIS_DataStoreBackup resource doesn't support ArcGIS DataStore 10.6.1 and below"
     }
     
-    $UseDescribeDataStore = (($VersionArray[1] -lt 8) -and ($DataStoreType -eq "TileCache")) -or (($RealVersion -ieq "10.6") -and ($DataStoreType -eq "Relational"))
+    $UseDescribeDataStore = (($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -and ($DataStoreType -eq "TileCache"))
     $AllExistingBackupLocations = Get-DataStoreBackupLocation -DataStoreType $DataStoreType -DataStoreInstallDirectory $DataStoreInstallDirectory `
                                     -UseDescibeDatastore:$UseDescribeDataStore
 
     $Flag = $False
     if($DataStoreType -eq "Relational"){
-        if(($VersionArray[1] -eq 6) -and ($VersionArray[2] -eq 0)){
-            if($BackupName -ne "DEFAULT"){
-                throw "Backup for Relational DataStore cannot have a backup name other than 'DEFAULT' at $RealVersion"
-            }
+        if($IsDefault){
             if($BackupType -ne "fs"){
-                throw "Backup for Relational DataStore can only be a local path or shared file location at $RealVersion"
+                throw "Default back up for Relational DataStore can only be a local path or shared file location at $RealVersion"
             }
-            if($AllExistingBackupLocations[0].Location -ine $BackupLocation){
+            $ExistingBackup = ($AllExistingBackupLocations | Where-Object { $_.IsDefault -ieq $true } | Select-Object -First 1 )
+            if($ExistingBackup.Location -ine $BackupLocation){
                 Write-Verbose "Updating default backup location to '$BackupLocation' for $DataStoreType Datastore"
                 Invoke-DataStoreConfigureBackupLocationTool -BackupLocationString $BackupLocation `
+                                                    -DataStoreInstallDirectory $DataStoreInstallDirectory `
+                                                    -DataStoreType $DataStoreType -OperationType "change" `
+                                                    -Verbose -ForceUpdate:$ForceDefaultRelationalBackupUpdate
+            }
+            if($ExistingBackup.Name -ne $BackupName){
+                Write-Verbose "Updating default backup name to '$BackupName' for $DataStoreType Datastore"
+                $ExpectedBackupLocationString = "type=fs;name=$($BackupName);location=$($BackupLocation)"
+                Invoke-DataStoreConfigureBackupLocationTool -BackupLocationString $ExpectedBackupLocationString `
                                                     -DataStoreInstallDirectory $DataStoreInstallDirectory `
                                                     -DataStoreType $DataStoreType -OperationType "change" -Verbose 
             }
         }else{
-            if($IsDefault){
-                if($BackupType -ne "fs"){
-                    throw "Default back up for Relational DataStore can only be a local path or shared file location at $RealVersion"
-                }
-                $ExistingBackup = ($AllExistingBackupLocations | Where-Object { $_.IsDefault -ieq $true } | Select-Object -First 1 )
-                if($ExistingBackup.Location -ine $BackupLocation){
-                    Write-Verbose "Updating default backup location to '$BackupLocation' for $DataStoreType Datastore"
-                    Invoke-DataStoreConfigureBackupLocationTool -BackupLocationString $BackupLocation `
-                                                        -DataStoreInstallDirectory $DataStoreInstallDirectory `
-                                                        -DataStoreType $DataStoreType -OperationType "change" `
-                                                        -Verbose -ForceUpdate:$ForceDefaultRelationalBackupUpdate
-                }
-                if($ExistingBackup.Name -ne $BackupName){
-                    Write-Verbose "Updating default backup name to '$BackupName' for $DataStoreType Datastore"
-                    $ExpectedBackupLocationString = "type=fs;name=$($BackupName);location=$($BackupLocation)"
-                    Invoke-DataStoreConfigureBackupLocationTool -BackupLocationString $ExpectedBackupLocationString `
-                                                        -DataStoreInstallDirectory $DataStoreInstallDirectory `
-                                                        -DataStoreType $DataStoreType -OperationType "change" -Verbose 
-                }
-            }else{
-                $Flag = $true
-            }
+            $Flag = $true
         }
     }elseif($DataStoreType -eq "TileCache"){
-        if($VersionArray[1] -lt 8){
+        if($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8){
             if($BackupName -ne "DEFAULT"){
                 throw "Backup for Tile Cache DataStore cannot have a backup name other than 'DEFAULT' at $RealVersion"
             }
@@ -162,7 +151,7 @@ function Set-TargetResource
         }else{
             $Flag = $true
         }
-    }elseif($DataStoreType -eq "SpatioTemporal"){
+    }elseif($DataStoreType -eq "SpatioTemporal" -or $DataStoreType -eq "GraphStore"){
         $Flag = $true  
     }
       
@@ -175,12 +164,8 @@ function Set-TargetResource
                 $Pos = $CloudBackupCredential.UserName.IndexOf('.blob.')
                 if($Pos -gt -1) 
                 {
+                    $CloudCredentialUserName = $CloudCredentialUserName.Substring(0, $Pos)
                     $EndpointSuffix = $CloudCredentialUserName.Substring($Pos + 6)
-                    if(($VersionArray[1] -ge 7) -or (($VersionArray[1] -le 6) -and ($EndpointSuffix -ieq "core.windows.net"))){
-                        $CloudCredentialUserName = $CloudCredentialUserName.Substring(0, $Pos)
-                    }else{
-                        throw "Error - Backups to Azure Cloud Storage with endpoint suffix $EndpointSuffix is not supported for ArcGIS Enterprise 10.6.1 and below"
-                    }
                 }
                 else
                 {
@@ -189,7 +174,7 @@ function Set-TargetResource
             }
 
             $ExpectedBackupLocationString += ";username=$($CloudCredentialUserName);password=$($CloudBackupCredential.GetNetworkCredential().Password)"
-            if($BackupType -ieq "azure" -and ($null -ne $EndpointSuffix) -and ($VersionArray[1] -ge 7)){
+            if($BackupType -ieq "azure"){
                 $ExpectedBackupLocationString += ";endpointsuffix=$EndpointSuffix"
             }
         }
@@ -235,7 +220,7 @@ function Test-TargetResource
 	param
 	(
         [parameter(Mandatory = $True)]
-        [ValidateSet("Relational","TileCache","SpatioTemporal")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
         [System.String]
         $DataStoreType,
 
@@ -269,7 +254,6 @@ function Test-TargetResource
         $ForceCloudCredentialsUpdate = $False
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $true
@@ -282,47 +266,34 @@ function Test-TargetResource
     
     Write-Verbose "Version of DataStore is $RealVersion"
     $VersionArray = $RealVersion.Split('.')
-    if($VersionArray[1] -lt 6){
-        throw "ArcGIS_DataStoreBackup resource doesn't support ArcGIS DataStore 10.5.1 and below"
+    if(-not($VersionArray[0] -eq 11) -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7)){
+        throw "ArcGIS_DataStoreBackup resource doesn't support ArcGIS DataStore 10.6.1 and below"
     }
     
-    $UseDescribeDataStore = (($VersionArray[1] -lt 8) -and ($DataStoreType -eq "TileCache")) -or ($RealVersion -ieq "10.6" -and ($DataStoreType -eq "Relational"))
+    $UseDescribeDataStore = (($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -and ($DataStoreType -eq "TileCache"))
 	$AllExistingBackupLocations = Get-DataStoreBackupLocation -DataStoreType $DataStoreType -DataStoreInstallDirectory $DataStoreInstallDirectory `
                                     -UseDescibeDatastore:$UseDescribeDataStore
 
     if($DataStoreType -eq "Relational"){
-        if(($VersionArray[1] -eq 6) -and ($VersionArray[2] -eq 0)){
-            if($BackupName -ne "DEFAULT"){
-                throw "Backup for Relational DataStore cannot have a backup name other than 'DEFAULT' at $RealVersion"
-            }
+        if($IsDefault){
             if($BackupType -ne "fs"){
-                throw "Backup for Relational DataStore can only be a local path or shared file location at $RealVersion"
+                throw "Default back up for Relational DataStore can only be a local path or shared file location at $RealVersion"
             }
-            if($AllExistingBackupLocations[0].Location -ine $BackupLocation){
+            $ExistingBackup = ($AllExistingBackupLocations | Where-Object { $_.IsDefault -ieq $true } | Select-Object -First 1 )
+            if($ExistingBackup.Location -ine $BackupLocation){
                 Write-Verbose "Current Default backup location $($ExistingBackup.Location) doesn't match '$BackupLocation' for $DataStoreType Datastore"
                 $result = $False
             }
-        }else{
-            if($IsDefault){
-                if($BackupType -ne "fs"){
-                    throw "Default back up for Relational DataStore can only be a local path or shared file location at $RealVersion"
-                }
-                $ExistingBackup = ($AllExistingBackupLocations | Where-Object { $_.IsDefault -ieq $true } | Select-Object -First 1 )
-                if($ExistingBackup.Location -ine $BackupLocation){
-                    Write-Verbose "Current Default backup location $($ExistingBackup.Location) doesn't match '$BackupLocation' for $DataStoreType Datastore"
-                    $result = $False
-                }
-                
-                if($result -and $ExistingBackup.Name -ne $BackupName){
-                    Write-Verbose "Current Default backup name $($ExistingBackup.Name) doesn't match '$BackupName' for $DataStoreType Datastore"
-                    $result = $False
-                }
-            }else{
-                $Flag = $true
+            
+            if($result -and $ExistingBackup.Name -ne $BackupName){
+                Write-Verbose "Current Default backup name $($ExistingBackup.Name) doesn't match '$BackupName' for $DataStoreType Datastore"
+                $result = $False
             }
+        }else{
+            $Flag = $true
         }
     }elseif($DataStoreType -eq "TileCache"){
-        if($VersionArray[1] -lt 8){
+        if($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8){
             if($BackupName -ne "DEFAULT"){
                 throw "Backup for Tile Cache DataStore cannot have a backup name other than 'DEFAULT' at $RealVersion"
             }
@@ -336,7 +307,7 @@ function Test-TargetResource
         }else{
             $Flag = $true
         }
-    }elseif($DataStoreType -eq "SpatioTemporal"){
+    }elseif($DataStoreType -eq "SpatioTemporal" -or $DataStoreType -eq "GraphStore"){
         $Flag = $true  
     }
 
@@ -345,19 +316,10 @@ function Test-TargetResource
         if($null -ne $ExistingBackup){
             Write-Verbose "Backup with location '$BackupLocation' found for  $DataStoreType Datastore"
             if($BackupType -ne "fs"){
-                $EndpointSuffix = $null
-                $CloudCredentialUserName = $CloudBackupCredential.UserName
                 if($BackupType -ieq "azure"){
                     Write-Verbose "Validating Azure Cloud Storage account Name"
                     $Pos = $CloudBackupCredential.UserName.IndexOf('.blob.')
-                    if($Pos -gt -1) 
-                    {
-                        $EndpointSuffix = $CloudCredentialUserName.Substring($Pos + 6)
-                        if(-not(($VersionArray[1] -ge 7) -or (($VersionArray[1] -le 6) -and ($EndpointSuffix -eq "core.windows.net")))){
-                            throw "Error - Backups to Azure Cloud Storage with endpoint suffix $EndpointSuffix is not supported for ArcGIS Enterprise 10.6.1 and below"
-                        }
-                    }
-                    else
+                    if(-not($Pos -gt -1))
                     {
                         throw "Error - Invalid Backup Azure Blob Storage Account"
                     } 

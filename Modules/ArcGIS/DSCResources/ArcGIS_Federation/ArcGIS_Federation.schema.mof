@@ -16,6 +16,5 @@ class ArcGIS_Federation : OMI_BaseResource
 	[Write] String ServerRole;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write, EmbeddedInstance("MSFT_Credential")] String RemoteSiteAdministrator;
-	[Write] Boolean IsMultiTierAzureBaseDeployment;
 };
 

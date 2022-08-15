@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Supports configuration changes and Updates for the Datastore configured with the Server
     .PARAMETER Ensure
@@ -39,8 +46,6 @@ function Get-TargetResource
         [System.String]
 		$InstallDir
     )
-    
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null
 }
@@ -69,7 +74,6 @@ function Set-TargetResource
 		$InstallDir
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     if($Ensure -ieq 'Present') {
@@ -109,7 +113,7 @@ function Set-TargetResource
         $dstypesarray = [System.Collections.ArrayList]@()
         
         if($info.relational.registered) {
-            if(($VersionArray[1] -gt 7) -and -not(($VersionArray[1] -eq 8) -and ($VersionArray[2] -eq 0))){
+            if($VersionArray[0] -eq 11 -or (($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $info.currentVersion -ieq "10.8.1" )){
                 $datastoreConfigFilePath = "$ContentDirectory\\etc\\relational-config.json"
                 $datastoreConfigJSONObject = (ConvertFrom-Json (Get-Content $datastoreConfigFilePath -Raw))
                 $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
@@ -125,8 +129,8 @@ function Set-TargetResource
             }
         }
         if($info.tileCache.registered) {
-            if($VersionArray[1] -gt 7){
-                if($VersionArray[1] -eq 8 -and $VersionArray[2] -eq 0){
+            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){
+                if($VersionArray[0] -eq 10 -and $VersionArray[1] -eq 8 -and $VersionArray[2] -eq 0){
                     Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
                     if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY" -or $datastoreConfigHashtable["replication.role"] -ieq "CLUSTER_MEMBER"){
                         $dstypesarray.Add('tilecache')
@@ -219,7 +223,6 @@ function Test-TargetResource
 		$InstallDir
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $ServerUrl = "https://$($ServerHostName):6443"   
@@ -266,7 +269,7 @@ function Get-DataStoreInfo
                     username = $ServerSiteAdminCredential.UserName
                     password = $ServerSiteAdminCredential.GetNetworkCredential().Password
                     serverURL = $ServerSiteUrl      
-                    dsSettings = '{"features":{"feature.egdb":true,"feature.nosqldb":true,"feature.bigdata":true}}'
+                    dsSettings = '{"features":{"feature.egdb":true,"feature.nosqldb":true,"feature.bigdata":true,"feature.graphstore":true,"feature.objectstore":true}}'
                     getConfigureInfo = 'true'
                   }  
         

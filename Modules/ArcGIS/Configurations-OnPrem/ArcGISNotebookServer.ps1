@@ -105,7 +105,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_NotebookServer
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_NotebookServerSettings
@@ -163,7 +163,6 @@
             }
         }
 
-        $MachineFQDN = Get-FQDN $Node.NodeName
         $IsMultiMachineNotebookServer = (($AllNodes | Measure-Object).Count -gt 1)
         $DependsOn = @()
 
@@ -280,7 +279,7 @@
                 ArcGIS_WaitForComponent "WaitForServer$($PrimaryServerMachine)"{
                     Component = "NotebookServer"
                     InvokingComponent = "NotebookServer"
-                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentHostName = $PrimaryServerMachine
                     ComponentContext = "arcgis"
                     Credential = $ServerPrimarySiteAdminCredential
                     Ensure = "Present"
@@ -302,7 +301,8 @@
 
         ArcGIS_NotebookServer "NotebookServer$($Node.NodeName)"
         {
-            ServerHostName                          = $MachineFQDN
+            Version                                 = $Version
+            ServerHostName                          = $Node.NodeName
             Ensure                                  = 'Present'
             SiteAdministrator                       = $ServerPrimarySiteAdminCredential
             ConfigurationStoreLocation              = $ConfigStoreLocation
@@ -314,32 +314,28 @@
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
             ServerLogsLocation                      = $ServerLogsLocation
             Join                                    = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
-            PeerServerHostName                      = Get-FQDN $PrimaryServerMachine
+            PeerServerHostName                      = $PrimaryServerMachine
             DependsOn                               = $DependsOn
         }
         $DependsOn += "[ArcGIS_NotebookServer]NotebookServer$($Node.NodeName)"
 
-        if($Node.SSLCertificate){
+        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
             ArcGIS_Server_TLS "NotebookServer_TLS_$($Node.NodeName)"
             {
-                ServerHostName = $MachineFQDN
-                Ensure = 'Present'
-                SiteName = 'arcgis'
+                ServerHostName = $Node.NodeName
                 SiteAdministrator = $ServerPrimarySiteAdminCredential                         
-                CName =  $Node.SSLCertificate.CName
-                CertificateFileLocation = $Node.SSLCertificate.Path
-                CertificatePassword = $Node.SSLCertificate.Password
-                EnableSSL = $True
-                SslRootOrIntermediate = $Node.SSLCertificate.SslRootOrIntermediate
+                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
+                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
+                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
+                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
                 ServerType = "NotebookServer"
                 DependsOn = $DependsOn
             }
             $DependsOn += "[ArcGIS_Server_TLS]NotebookServer_TLS_$($Node.NodeName)"
         }
 
-        $MajorVersion = $Version.Split('.')[1]
-
-        if($ContainerImagePaths.Count -gt 0 -or (($MajorVersion -gt 8) -and $ExtractNotebookServerSamplesData)){
+        $VersionArray = $Version.Split('.')
+        if($ContainerImagePaths.Count -gt 0 -or (-not($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 9) -and $ExtractNotebookServerSamplesData)){
             if($ServiceCredentialIsMSA){
                 ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
                     SiteName            = 'arcgis' 
@@ -351,7 +347,7 @@
                 ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
                     SiteName            = 'arcgis' 
                     ContainerImagePaths = $ContainerImagePaths
-                    ExtractSamples      = (($MajorVersion -gt 8) -and $ExtractNotebookServerSamplesData)
+                    ExtractSamples      = (-not($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 9) -and $ExtractNotebookServerSamplesData)
                     DependsOn           = $DependsOn
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
                 }

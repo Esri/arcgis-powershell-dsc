@@ -3,6 +3,7 @@
 class ArcGIS_Portal : OMI_BaseResource
 {
 	[Key] String PortalHostName;
+	[Write] String Version;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write] String LicenseFilePath;
 	[Write] String UserLicenseTypeId;
@@ -17,19 +18,6 @@ class ArcGIS_Portal : OMI_BaseResource
 	[Write] String PeerMachineHostName;
 	[Write] String ContentDirectoryLocation;
     [Write] String ContentDirectoryCloudConnectionString;
-    [Write] String ContentDirectoryCloudContainerName; 
-	[Write, EmbeddedInstance("MSFT_Credential")] String ADServiceUser;
-	[Write] Boolean EnableAutomaticAccountCreation;   
-	[Write] String DefaultUserLicenseTypeIdForUser;
-	[Write] String DefaultRoleForUser;
-	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;  
-	[Write] Boolean EnableEmailSettings;
-	[Write] String EmailSettingsSMTPServerAddress;
-	[Write] String EmailSettingsFrom;
-	[Write] String EmailSettingsLabel;
-	[Write] Boolean EmailSettingsAuthenticationRequired;
-	[Write, EmbeddedInstance("MSFT_Credential")] String EmailSettingsCredential;
-	[Write] Uint64 EmailSettingsSMTPPort;
-	[Write, ValueMap{"SSL","TLS","NONE"}, Values{"SSL","TLS","NONE"}] String EmailSettingsEncryptionMethod;
+    [Write] String ContentDirectoryCloudContainerName;
 };
 

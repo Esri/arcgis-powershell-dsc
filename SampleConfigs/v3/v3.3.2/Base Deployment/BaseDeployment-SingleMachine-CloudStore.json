@@ -3,7 +3,9 @@
         {
             "NodeName": "[Machine Name]",
             "DataStoreTypes": [
-                "Relational"
+                "Relational",
+                "TileCache",
+                "SpatioTemporal"
             ],
             "Role": [
                 "Server",

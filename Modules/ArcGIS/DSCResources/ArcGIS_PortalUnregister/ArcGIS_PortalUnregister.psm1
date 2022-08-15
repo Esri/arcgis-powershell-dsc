@@ -1,4 +1,11 @@
-﻿function Get-TargetResource
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+function Get-TargetResource
 {
 	[CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
@@ -19,8 +26,6 @@
         [System.String]
         $Version
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
     $null
 }
@@ -47,7 +52,6 @@ function Test-TargetResource
         $Version
     )
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
 	$result = $false
@@ -96,7 +100,7 @@ function Set-TargetResource
         $Version
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $Referer = 'http://localhost'

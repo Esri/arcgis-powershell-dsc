@@ -1,14 +1,15 @@
 ﻿Configuration ServerUpgrade{
     param(
+        [Parameter(Mandatory=$false)]
         [System.String]
-        $Version,
+        $Version = '11.0',
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
 
         [Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false',
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount,
 
 		[System.Management.Automation.PSCredential]
         $FileshareMachineCredential,
@@ -25,7 +26,7 @@
 		[Parameter(Mandatory=$false)]
         [System.String]
         $GeoEventServerInstallerPath = "",
-        
+
         [Parameter(Mandatory=$false)]
         [System.String]
         $NotebookSamplesDataInstallerPath = "",
@@ -61,14 +62,14 @@
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_WindowsService 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
-    Import-DscResource -Name ArcGIS_NotebookServerUpgrade
-    Import-DscResource -Name ArcGIS_NotebookPostInstall
+    Import-DscResource -Name ArcGIS_NotebookServerUpgrade 
+    Import-DscResource -Name ArcGIS_MissionServerUpgrade
+    Import-DscResource -Name ArcGIS_NotebookPostInstall 
     Import-DscResource -Name ArcGIS_xFirewall 
 
     $IsDebugMode = $DebugMode -ieq 'true'
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
 
-    Node $AllNodes.NodeName {
+    Node localhost {
         LocalConfigurationManager
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
@@ -76,14 +77,8 @@
             RebootNodeIfNeeded = $true
         }
 
-		$NodeName = $Node.NodeName
-        $VersionArray = $Version.Split(".")
-        $MajorVersion = $VersionArray[1]
-        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
-        $MachineFQDN = Get-FQDN $NodeName
-        
-        $Depends = @()
-        if(-Not($IsServiceCredentialDomainAccount)){
+		$Depends = @()
+        if(-Not($ServiceCredentialIsDomainAccount)){
             User ArcGIS_RunAsAccount
             {
                 UserName = $ServiceCredential.UserName
@@ -105,7 +100,7 @@
 			DestinationPath = $InstallerPathOnMachine     
 			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
-		}
+        }
 
         $Depends += '[File]DownloadInstallerFromFileShare'
 
@@ -133,12 +128,12 @@
         }
       
         ArcGIS_Install ServerUpgrade{
-            Name = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "Server" } 
+            Name = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" } 
             Version = $Version
             Path = $InstallerPathOnMachine
             Arguments = "/qn ACCEPTEULA=YES";
             ServiceCredential = $ServiceCredential
-            ServiceCredentialIsDomainAccount =  $IsServiceCredentialDomainAccount
+            ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
             DependsOn = $Depends
@@ -155,7 +150,6 @@
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
 			GetScript = { $null }          
 		}
-            
         $Depends += '[Script]RemoveInstaller'
 
         if($ServerRole -ieq "NotebookServer"){
@@ -179,7 +173,7 @@
                 Path = $NotebookSamplesDataInstallerPathOnMachine
                 Arguments = "/qn";
                 ServiceCredential = $ServiceCredential
-                ServiceCredentialIsDomainAccount =  $IsServiceCredentialDomainAccount
+                ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
                 Ensure = "Present"
                 DependsOn = $Depends
@@ -198,38 +192,39 @@
             $Depends += '[Script]RemoveNotebookSamplesDataInstaller'
         }
 
-        if(($ServerRole -ieq "GeoAnalyticsServer") -and ($MajorVersion -gt 8) -and $IsMultiMachineServerSite){
+        if(($ServerRole -ieq "GeoAnalyticsServer") -and $IsMultiMachineServerSite){
             ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
             {
-                Name                  = "ArcGISGeoAnalyticsInboundFirewallRules"
-                DisplayName           = "ArcGIS GeoAnalytics"
-                DisplayGroup          = "ArcGIS GeoAnalytics"
-                Ensure                = 'Present'
-                Access                = "Allow"
-                State                 = "Enabled"
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
-                Protocol              = "TCP"
+                    Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
+                    DisplayName           = "ArcGIS GeoAnalytics" 
+                    DisplayGroup          = "ArcGIS GeoAnalytics" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
+                    Protocol              = "TCP" 
             }
             $Depends += '[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules'
 
             ArcGIS_xFirewall GeoAnalytics_OutboundFirewallRules
             {
-                Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules"
-                DisplayName           = "ArcGIS GeoAnalytics"
-                DisplayGroup          = "ArcGIS GeoAnalytics"
-                Ensure                = 'Present'
-                Access                = "Allow"
-                State                 = "Enabled"
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
-                Protocol              = "TCP"
-                Direction             = "Outbound"
+                    Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules" 
+                    DisplayName           = "ArcGIS GeoAnalytics" 
+                    DisplayGroup          = "ArcGIS GeoAnalytics" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
+                    Protocol              = "TCP" 
+                    Direction             = "Outbound"    
             }
             $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules'
+
         }
 
-		$ServerLicenseRole = $ServerRole
+        $ServerLicenseRole = $ServerRole
         if(-not($ServerRole) -or ($ServerRole -ieq "GeoEventServer")){
             $ServerLicenseRole = "GeneralPurposeServer"
         }
@@ -241,6 +236,9 @@
         }
         if($ServerRole -ieq "NotebookServer"){
             $ServerLicenseRole = "NotebookServer"
+        }
+        if($ServerRole -ieq "MissionServer"){
+            $ServerLicenseRole = "MissionServer"
         }
         
 		## Download license file
@@ -266,7 +264,7 @@
             ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
                 Ensure = "Present"
                 Version = $Version
-                ServerHostName = $MachineFQDN
+                ServerHostName = $env:ComputerName
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_NotebookServerUpgrade]NotebookServerConfigureUpgrade'
@@ -278,19 +276,28 @@
                 DependsOn           = $Depends
                 PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
             }
+
+        }elseif($ServerRole -ieq "MissionServer"){
+            ArcGIS_MissionServerUpgrade MissionServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $env:ComputerName
+                DependsOn = $Depends
+            }
         }else{
             ArcGIS_ServerUpgrade ServerConfigureUpgrade{
                 Ensure = "Present"
                 Version = $Version
-                ServerHostName = $MachineFQDN
+                ServerHostName = $env:ComputerName
                 DependsOn = $Depends
             }
         }
 
         #Upgrade GeoEvents
         if($ServerRole -ieq "GeoEventServer"){
-            $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
             
+            $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
+
             Script ArcGIS_GeoEvent_Service_Stop_for_Upgrade
             {
                 TestScript  = {  return $false }
@@ -311,44 +318,43 @@
                 Name = "GeoEvent"
                 Version = $Version
                 Path = $GeoEventServerInstallerPath
-                Arguments = "/qn";
+                Arguments = "/qn USERBACKUPCONFIGFILES=YES";
                 ServiceCredential = $ServiceCredential
-                ServiceCredentialIsDomainAccount = $IsServiceCredentialDomainAccount
+                ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
                 Ensure = "Present"
                 DependsOn = $Depends
             }
 
-            if( ($MajorVersion -gt 8) -and $IsMultiMachineServerSite){
+            if($IsMultiMachineServerSite){
                 ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
                 {
-                    Name                  = "ArcGISGeoEventFirewallRulesCluster"
-                    DisplayName           = "ArcGIS GeoEvent Extension Cluster"
-                    DisplayGroup          = "ArcGIS GeoEvent Extension" 
-                    Ensure                = 'Present'
-                    Access                = "Allow"
-                    State                 = "Enabled"
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","5565","5575")
-                    Protocol              = "TCP"
+                        Name                  = "ArcGISGeoEventFirewallRulesCluster" 
+                        DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
+                        DisplayGroup          = "ArcGIS GeoEvent Extension" 
+                        Ensure                = 'Present' 
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","5565","5575")
+                        Protocol              = "TCP" 
                 }
-                $Depends += '[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine'
+                $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine"
 
                 ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
                 {
-                    Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound"
-                    DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound"
-                    DisplayGroup          = "ArcGIS GeoEvent Extension"
-                    Ensure                = 'Present'
-                    Access                = "Allow"
-                    State                 = "Enabled"
-                    Profile               = ("Domain","Private","Public")
-                    RemotePort            = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")
-                    Protocol              = "TCP" 
-                    Direction             = "Outbound"
+                        Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound" 
+                        DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound" 
+                        DisplayGroup          = "ArcGIS GeoEvent Extension" 
+                        Ensure                = 'Present' 
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        RemotePort            = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")
+                        Protocol              = "TCP" 
+                        Direction             = "Outbound"    
                 }
-                $Depends += '[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound'
-
+                $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound"
             }
             
             ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Start
@@ -359,6 +365,7 @@
                 State = 'Running'
                 DependsOn = $Depends
             }
+            $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service_Start"
 
             if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
             {

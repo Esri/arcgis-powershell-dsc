@@ -121,7 +121,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
@@ -176,13 +176,9 @@
             }
         }
         
-        $MachineFQDN = Get-FQDN $Node.NodeName
         $IsMultiMachineServer = (($AllNodes | Measure-Object).Count -gt 1)
 
         $VersionArray = $Version.Split(".")
-        $MajorVersion = $VersionArray[1]
-        $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
-
         $Depends = @()
         if($OpenFirewallPorts -or $IsMultiMachineServer ) # Server only deployment or behind an ILB or has DataStore nodes that need to register using admin			
         {
@@ -223,7 +219,7 @@
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules' 
 
                 $GeoAnalyticsPorts = @("7077")
-                if($MajorVersion -gt 8){
+                if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){
                     $GeoAnalyticsPorts += @("12181","12182","12190")
                 }else{
                     $GeoAnalyticsPorts += @("2181","2182","2190")
@@ -388,7 +384,7 @@
                 ArcGIS_WaitForComponent "WaitForServer$($PrimaryServerMachine)"{
                     Component = "Server"
                     InvokingComponent = "Server"
-                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentHostName = $PrimaryServerMachine
                     ComponentContext = "arcgis"
                     Credential = $ServerPrimarySiteAdminCredential
                     Ensure = "Present"
@@ -410,7 +406,8 @@
 
         ArcGIS_Server "Server$($Node.NodeName)"
         {
-            ServerHostName = $MachineFQDN
+            Version = $Version
+            ServerHostName = $Node.NodeName
             Ensure = 'Present'
             SiteAdministrator = $ServerPrimarySiteAdminCredential
             ConfigurationStoreLocation = $ConfigStoreLocation
@@ -419,7 +416,7 @@
             ServerLogsLocation = $ServerLogsLocation
             LocalRepositoryPath = $LocalRepositoryPath
             Join =  if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false } 
-            PeerServerHostName = Get-FQDN $PrimaryServerMachine
+            PeerServerHostName = $PrimaryServerMachine
             DependsOn = $Depends
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
             DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
@@ -429,43 +426,25 @@
         }
         $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
 
-        if($Node.SSLCertificate){
+        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
             ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
             {
-                ServerHostName = $MachineFQDN
-                Ensure = 'Present'
-                SiteName = 'arcgis'
+                ServerHostName = $Node.NodeName
                 SiteAdministrator = $ServerPrimarySiteAdminCredential                         
-                CName =  $Node.SSLCertificate.CName
-                CertificateFileLocation = $Node.SSLCertificate.Path
-                CertificatePassword = $Node.SSLCertificate.Password
-                EnableSSL = $True
-                SslRootOrIntermediate = $Node.SSLCertificate.SslRootOrIntermediate
+                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
+                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
+                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
+                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
                 ServerType = "GeneralPurposeServer"
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
-        }else{
-            if(@("10.5.1").Contains($Version)){
-                ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-                {
-                    ServerHostName = $MachineFQDN
-                    Ensure = 'Present'
-                    SiteName = 'arcgis'
-                    SiteAdministrator = $ServerPrimarySiteAdminCredential                         
-                    CName = $MachineFQDN
-                    ServerType = "GeneralPurposeServer"
-                    EnableSSL = $True
-                    DependsOn = $Depends
-                } 
-                $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
-            }
         }
         
         if ($RegisteredDirectories -and ($Node.NodeName -ieq $PrimaryServerMachine)) {
             ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"
             { 
-                ServerHostName = $MachineFQDN
+                ServerHostName = $Node.NodeName
                 Ensure = 'Present'
                 SiteAdministrator = $ServerPrimarySiteAdminCredential
                 DirectoriesJSON = $RegisteredDirectories
@@ -506,7 +485,7 @@
             }
             $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
             
-            if($IsMultiMachineServer -and ($MajorVersion -lt 9))
+            if($IsMultiMachineServer -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 9))
             {
                 ArcGIS_xFirewall GeoEvent_FirewallRules_Zookeeper
 				{
@@ -537,7 +516,7 @@
 				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRule_Zookeeper_Outbound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_Zookeeper')
 
                 $GeoEventPorts = ("27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
-                if($MajorVersion -gt 8){
+                if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){
                     $GeoEventPorts += @("12181","12182","12190")
                 }else{
                     $GeoEventPorts += @("2181","2182","2190")
@@ -592,11 +571,12 @@
 
             ArcGIS_GeoEvent ArcGIS_GeoEvent
             {
-                ServerHostName            = $MachineFQDN
+                ServerHostName            = $Node.NodeName
                 Name	                  = 'ArcGIS GeoEvent'
                 Ensure	                  =  "Present"
                 SiteAdministrator         = $ServerPrimarySiteAdminCredential
-                WebSocketContextUrl       = "wss://$($MachineFQDN):6143/arcgis" #Fix this
+                WebSocketContextUrl       = "wss://$(Get-FQDN $Node.NodeName):6143/arcgis" #Fix this
+                Version					  = $Version
                 DependsOn                 = $Depends
                 #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }
             }

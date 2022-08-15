@@ -1,15 +1,19 @@
 ﻿Configuration SpatiotemporalBigDataStoreConfiguration
 {
 	param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $Version = '11.0'
+
+        ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $ServiceCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $ServiceCredentialIsDomainAccount = 'false'
-
+        [System.Boolean]
+        $ServiceCredentialIsDomainAccount
+        
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
@@ -60,8 +64,7 @@
     $SpatiotemporalDataStoreHostNames = ($SpatiotemporalBigDataStoreMachineNames -split ',')    
     $ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1    
-    $IsDebugMode = $DebugMode -ieq 'true'    
-    $IsServiceCredentialDomainAccount = $ServiceCredentialIsDomainAccount -ieq 'true'
+    $IsDebugMode = $DebugMode -ieq 'true'
     $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
 
 	Node localhost
@@ -94,7 +97,7 @@
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
-            if(-Not($IsServiceCredentialDomainAccount)){
+            if(-Not($ServiceCredentialIsDomainAccount)){
                 User ArcGIS_RunAsAccount
                 {
                     UserName       = $ServiceCredential.UserName
@@ -112,25 +115,25 @@
                 Credential      = $ServiceCredential
                 StartupType     = 'Automatic'
                 State           = 'Running' 
-                DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
             }
                 
             ArcGIS_Service_Account DataStore_Service_Account
 		    {
 			    Name            = 'ArcGIS Data Store'
                 RunAsAccount    = $ServiceCredential
-                IsDomainAccount = $IsServiceCredentialDomainAccount
                 ForceRunAsAccountUpdate = $True
+                IsDomainAccount = $ServiceCredentialIsDomainAccount
 			    Ensure          = 'Present'
-			    DependsOn       = if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
+			    DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
                 DataDir         = $DataStoreContentDirectory  
 		    }
 
             ArcGIS_xFirewall SpatioTemporalDataStore_FirewallRules
 		    {
 			    Name                  = "ArcGISSpatioTemporalDataStore" 
-			    DisplayName           = "ArcGIS Data Store" 
-			    DisplayGroup          = "ArcGIS Data Store" 
+			    DisplayName           = "ArcGIS SpatioTemporal Data Store" 
+			    DisplayGroup          = "ArcGIS SpatioTemporal Data Store" 
 			    Ensure                = 'Present'
 			    Access                = "Allow" 
 			    State                 = "Enabled" 
@@ -142,6 +145,7 @@
             ArcGIS_DataStore SpatiotemporalDataStore
 		    {
 			    Ensure				= 'Present'
+                Version             = $Version
 			    SiteAdministrator	= $SiteAdministratorCredential 
 			    ServerHostName		= $ServerMachineName
 			    ContentDirectory	= $DataStoreContentDirectory
@@ -150,7 +154,7 @@
 			    DependsOn			= @('[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules', '[ArcGIS_Service_Account]DataStore_Service_Account') 
 		    }
 
-            foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
+            foreach($ServiceToStop in @( 'ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -160,7 +164,7 @@
 					    Credential		= $ServiceCredential
 					    StartupType		= 'Manual'
 					    State			= 'Stopped'
-					    DependsOn		= if(-Not($IsServiceCredentialDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+					    DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
 				    }
 			    }
 		    }

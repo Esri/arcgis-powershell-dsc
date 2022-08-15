@@ -14,7 +14,7 @@
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -79,7 +79,8 @@
                         }
                     }
                     
-                    if($ServerTypeName -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Version.Split(".")[1] -gt 8) 
+                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    if($ServerTypeName -ieq "NotebookServer" -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)))
                     {
                         ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
                         { 
@@ -115,9 +116,7 @@
                     }
 
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    $MajorVersion = $VersionArray[1]
-                    $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
-                    if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                    if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_Install "WebStylesUninstall$($Node.NodeName)"
                         { 
                             Name = "WebStyles"

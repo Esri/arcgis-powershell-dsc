@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Makes a request to the installed Server to create a New Server Site or Join it to an existing Server Site
     .PARAMETER Ensure
@@ -7,6 +14,8 @@
         - "Absent" ensures that GeoEvents Server is unconfigured, i.e. if present (not implemented).
     .PARAMETER ServerHostName
         Optional Host Name or IP of the Machine on which the GeoEvent has been installed and is to be configured.
+    .PARAMETER Version
+        Version of the Geoevent Server
     .PARAMETER Name
         Name of the Geoevent Server Resource
     .PARAMETER SiteAdministrator
@@ -23,6 +32,10 @@ function Get-TargetResource
 	[OutputType([System.Collections.Hashtable])]
 	param
 	(
+        [parameter(Mandatory = $true)]    
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -32,8 +45,6 @@ function Get-TargetResource
 		$Name
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
 	$null
 }
 
@@ -42,6 +53,10 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
+        [parameter(Mandatory = $true)]    
+        [System.String]
+        $Version,
+
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -67,18 +82,12 @@ function Set-TargetResource
 		$Ensure
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
-    $WmiComponentObject = (Get-ArcGISProductDetails -ProductName "geoevent")
-    $VersionArray = $WmiComponentObject.Version.Split('.')
-    $MinorVersion = [int]$VersionArray[1]
-    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8" -or $WmiComponentObject.Name -match "10.9")
-    
+    $VersionArray = $Version.Split('.')
+    $IsBuild1071orAbove = ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1")
     $ServiceName = 'ArcGISGeoEvent'
     $GatewayServiceName = 'ArcGISGeoEventGateway'
-    if($Ensure -ieq 'Present') {   
-        
+    if($Ensure -ieq 'Present') {
         Write-Verbose "Stopping the service '$ServiceName'"    
         Stop-Service -Name $ServiceName -ErrorAction Ignore    
         Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
@@ -149,7 +158,7 @@ function Set-TargetResource
         }
 
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis'  -Referer $Referer -Token $token.token        
-        if(($MinorVersion -le 7) -and -not($IsBuild1071orAbove)){
+        if(-not($IsBuild1071orAbove)){
             $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
             if(-not($messageBus)){ 
                 throw "No Message Bus found in platform service" 
@@ -185,19 +194,10 @@ function Set-TargetResource
         $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
         Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
         if($synchronizationService.configuredState -ine 'STARTED') {
-            if($MinorVersion -lt 6){
-                Write-Verbose "Synchronization Service is not started. Starting it"
-                Start-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer         
-            }else{
-                Write-Verbose "Synchronization Service is already stopped"
-            }
+            Write-Verbose "Synchronization Service is already stopped"
         }else {
-            if($MinorVersion -lt 6){
-                Write-Verbose "Synchronization Service is already started"
-            }else{
-                Write-Verbose "Synchronization Service is already started. stopping it"
-                Stop-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer            
-            }
+            Write-Verbose "Synchronization Service is already started. stopping it"
+            Stop-ArcGISPlatformService -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer            
         }
 
         Write-Verbose "Checking if WebSocketContextURL in sys props is $WebSocketContextUrl"
@@ -236,6 +236,10 @@ function Test-TargetResource
         [System.String]
         $ServerHostName,
 
+        [parameter(Mandatory = $true)]    
+        [System.String]
+        $Version,
+
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
@@ -257,17 +261,13 @@ function Test-TargetResource
 		$Ensure
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
 	$ServiceName = 'ArcGISGeoEvent'
     $result = $true    
     $result = (Get-Service -Name $ServiceName -ErrorAction Ignore).Status -ieq 'Running'
-    $WmiComponentObject = (Get-ArcGISProductDetails -ProductName "geoevent")
-    $VersionArray = $WmiComponentObject.Version.Split('.')
-    $MinorVersion = [int]$VersionArray[1]
-    $IsBuild1071orAbove = ($WmiComponentObject.Name -match "10.7.1" -or $WmiComponentObject.Name -match "10.8" -or $WmiComponentObject.Name -match "10.9")
+    $VersionArray = $Version.Split('.')
+    $IsBuild1071orAbove = ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1")
 
     if($result) {
         $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
@@ -292,7 +292,7 @@ function Test-TargetResource
         }
     }
 
-    if($result -and (($MinorVersion -le 7) -and -not($IsBuild1071orAbove))){
+    if($result -and -not($IsBuild1071orAbove)){
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
         $messageBus = $platformServices.platformservices | Where-Object { $_.type -ieq 'MESSAGE_BUS' }
         if(-not($messageBus)){ 
@@ -317,32 +317,22 @@ function Test-TargetResource
     if($result) {
         $platformServices = Get-ArcGISPlatformServices -ServerHostName $FQDN -SiteName 'arcgis' -Referer $Referer -Token $token.token
         $syncService = $platformServices.platformservices | Where-Object { $_.type -ieq 'SYNCHRONIZATION_SERVICE' }
-        if(-not($syncService) -and ($MinorVersion -lt 6)){ 
+        if(-not($syncService)){ 
             throw "No Synchronization Service found in platform service" 
         }
         $syncServiceId = $syncService.id
         Write-Verbose "ID of Synchronization Service is $syncServiceId"
 
-        if(-not($syncServiceId) -and ($MinorVersion -lt 6)){ 
+        if(-not($syncServiceId)){ 
             throw "No Synchronization Service found in platform service" 
         }
         $synchronizationService = Get-ArcGISPlatformServiceStatus -ServerHostName $FQDN -SiteName 'arcgis' -Token $token.token -PlatformServiceId $syncServiceId -Referer $Referer 
         Write-Verbose "Status of Synchronization Service is $($synchronizationService.configuredState)"
-        Write-Verbose $MinorVersion
-        if($MinorVersion -lt 6){
-            if($synchronizationService.configuredState -ine 'STARTED') {
-                Write-Verbose "Synchronization Service is not started. It should be started!"
-                $result = $false            
-            }else {
-                Write-Verbose "Synchronization Service is started."
-            }
-        }else{
-            if($synchronizationService.configuredState -ine 'STARTED') {
-                Write-Verbose "Synchronization Service is not started."
-            }else {
-                Write-Verbose "Synchronization Service is started. It should be stopped!"
-                $result = $false 
-            }
+        if($synchronizationService.configuredState -ine 'STARTED') {
+            Write-Verbose "Synchronization Service is not started."
+        }else {
+            Write-Verbose "Synchronization Service is started. It should be stopped!"
+            $result = $false 
         }
     }
 

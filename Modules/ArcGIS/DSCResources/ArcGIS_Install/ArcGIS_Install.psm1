@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Installs a given component of the ArcGIS Enterprise Stack.
     .PARAMETER Ensure
@@ -43,6 +50,10 @@ function Get-TargetResource
 		[System.String]
 		$Arguments,
 
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$FeatureSet,
+
 		[System.String]
         $WebAdaptorContext,
 
@@ -66,8 +77,6 @@ function Get-TargetResource
 		[System.String]
 		$Ensure
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$null
 }
@@ -97,6 +106,11 @@ function Set-TargetResource
 		[System.String]
 		$Arguments,
 
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$FeatureSet,
+
+        [parameter(Mandatory = $false)]
 		[System.String]
         $WebAdaptorContext,
 
@@ -120,8 +134,6 @@ function Set-TargetResource
 		[System.String]
 		$Ensure
 	)
-
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
     
     $ComponentName = $Name
     if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
@@ -226,9 +238,41 @@ function Set-TargetResource
             }
         }
 
+        if($FeatureSet.Count -gt 0){
+            if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
+                if($Name -ieq "DataStore"){
+                    if($Version -ieq "11.0"){
+                        $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
+                        if($AddLocalFeatureSet.Count -gt 0){
+                            $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
+                            $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
+                        }
+                        if($RemoveFeatureSet.Count -gt 0){
+                            $RemoveFeatureSetString = [System.String]::Join(",", $RemoveFeatureSet)
+                            $Arguments += " REMOVE=$($RemoveFeatureSetString)"
+                        }
+                    }
+                }else{
+                    $AddFeatureSetString = [System.String]::Join(",", $FeatureSet)
+                    $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
+                }
+            }else{
+                if($Name -ieq "DataStore"){
+                    if($Version -ieq "11.0"){
+                        $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
+                        $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
+                        $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
+                    }
+                }else{
+                    $AddFeatureSetString = [System.String]::Join(",", $FeatureSet)
+                    $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
+                }
+            }
+        }
+
         if($EnableMSILogging){
             $MSILogFileName = if($WebAdaptorContext){ "$($Name)_$($WebAdaptorContext)_install.log" }else{ "$($Name)_install.log" }
-            $MSILogPath = (Join-Path $env:TEMP $MSILogFileName)
+            $MSILogPath = (Join-Path $env:TEMP $MSILogFileName.replace(' ',''))
             Write-Verbose "Logs for $Name will be written to $MSILogPath" 
             $Arguments += " /L*v $MSILogPath";
         }
@@ -257,29 +301,8 @@ function Set-TargetResource
         }
 
         if(($Name -ieq "Portal") -or ($Name -ieq "Portal for ArcGIS")){
-            if($Version -ieq "10.5"){
-                $ArgsArray = $Arguments.Split('=')
-                $Done = $False
-                $NumCount = 0
-                $RetryIntervalSec  = 30
-                $RetryCount  = 15
-                while(-not($Done) -and ($NumCount++ -le $RetryCount)){
-                    if(Test-Path "$($ArgsArray[2])\arcgisportal\content\items\portal" ){
-                        $Done = $True
-                    }else{
-                        Write-Verbose "Portal Dependencies Still being Unpacked"
-                        Start-Sleep -Seconds $RetryIntervalSec
-                    }
-                }
-            }
-
             Write-Verbose "Waiting just in case for Portal to finish unpacking any additional dependecies - 120 Seconds"
             Start-Sleep -Seconds 120
-            if($Version -ieq "10.5"){
-                if(-not(Test-Path "$($ArgsArray[2])\arcgisportal\content\items\portal")){
-                    throw "Portal Dependencies Didn't Unpack!"
-                }
-            }
         }
         
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
@@ -303,35 +326,8 @@ function Set-TargetResource
         }
 
         Write-Verbose "Validating the $Name Installation"
-        $result = $false
-        if(-not($ProductId)){
-            $trueName = Get-ArcGISProductName -Name $Name -Version $Version
-            
-            $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
-
-            if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
-                if($InstallObject.Length -gt 1){
-                    Write-Verbose "Multiple Instances of Web Adaptor are already installed"
-                }
-                Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
-                foreach($wa in $InstallObject){
-                    $WAProdId = $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}")
-                    if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
-                        $result = Test-Install -Name "WebAdaptor" -Version $Version -ProductId $WAProdId
-                        break
-                    }else{
-                        Write-Verbose "Component with $($WebAdaptorContext) is not installed on this machine"
-                        $result = $false
-                    }
-                }
-            }else{
-                Write-Verbose "Installed Version $($InstallObject.Version)"
-                $result = Test-Install -Name $Name -Version $Version
-            }
-        }else{
-            $result = Test-Install -Name $Name -ProductId $ProductId
-        }
-		
+        $result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
+        
 		if(-not($result)){
 			throw "Failed to Install $Name"
 		}else{
@@ -426,6 +422,11 @@ function Test-TargetResource
 		[System.String]
 		$Arguments,
 
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$FeatureSet,
+
+        [parameter(Mandatory = $false)]
 		[System.String]
         $WebAdaptorContext,
 
@@ -450,12 +451,61 @@ function Test-TargetResource
 		$Ensure
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
+    if($result -and $FeatureSet.Count -gt 0){
+        if($Name -ieq "DataStore"){
+            if($Version -ieq "11.0"){
+                $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
+                $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
+            }
+        }elseif($Name -ieq "Server"){
+            if($Version -ieq "10.9.1"){
+                # Get all the feature that are installed.
+                # Create an add and remove feature list
 
-	$result = $false
-    
+
+            }elseif($Version -ieq "11.0"){
+                #Get all the feature that are installed.
+                #Create an add and remove feature list
+            }
+        }
+    }
+
+    if($Ensure -ieq 'Present') {
+		$result   
+    }
+    elseif($Ensure -ieq 'Absent') {        
+        (-not($result))
+    }
+}
+
+function Test-ProductInstall
+{
+    [CmdletBinding()]
+	[OutputType([System.Boolean])]
+	param
+	(
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$Name,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+		$ProductId,
+		
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$Version,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorContext
+    )
+
+    $result = $False
+
     if(-not($ProductId)){
-        $trueName = Get-ArcGISProductName -Name $Name -Version $Version        
+        $trueName = Get-ArcGISProductName -Name $Name -Version $Version
         
         $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
@@ -480,13 +530,59 @@ function Test-TargetResource
     }else{
         $result = Test-Install -Name $Name -ProductId $ProductId
     }
-    
-    if($Ensure -ieq 'Present') {
-		$result   
-    }
-    elseif($Ensure -ieq 'Absent') {        
-        (-not($result))
-    }
+
+    $result
 }
+
+function Test-DataStoreFeautureSet {
+    [CmdletBinding()]
+    Param(
+        [parameter(Mandatory = $false)]
+		[System.Array]
+		$FeatureSet,
+
+        [parameter(Mandatory = $false)]
+		[System.Boolean]
+		$DSInstalled = $False
+    )
+
+    $DSFeatureNameMapping = @{
+        Relational = "relational"
+        GraphStore = "graph"
+        ObjectStore = "object"
+        Spatiotemporal = "spatiotemporal"
+        TileCache = "tilecache"
+    }
+
+    $AddLocalFeatureSet = @()
+    $RemoveFeatureSet = @()
+    
+    if($DSInstalled){
+        $InstalledFeatures = (Get-ItemProperty -Path "HKLM:\SOFTWARE\ESRI\ArcGIS Data Store\DataStoreTypes")
+        foreach ($h in $DSFeatureNameMapping.GetEnumerator()) {
+            if($InstalledFeatures.$($h.Name) -ieq $true){
+                if(-not($FeatureSet -icontains $h.Name -or $FeatureSet -icontains "ALL")){
+                    $RemoveFeatureSet += @($h.Value)
+                }
+            }else{
+                if($FeatureSet -icontains $h.Name -or $FeatureSet -icontains "ALL"){
+                    $AddLocalFeatureSet += @($h.Value)
+                }
+            }
+        }
+
+    }else{
+        if($FeatureSet -icontains "ALL"){
+            $AddLocalFeatureSet = @("ALL")
+        }else{
+            foreach($f in $FeatureSet){
+                $AddLocalFeatureSet += @($DSFeatureNameMapping[$f])
+            }
+        }
+    }
+
+    return $AddLocalFeatureSet,$RemoveFeatureSet
+}
+
 
 Export-ModuleMember -Function *-TargetResource

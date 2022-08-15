@@ -1,4 +1,11 @@
-﻿<#
+﻿$modulePath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath 'Modules'
+
+# Import the ArcGIS Common Modules
+Import-Module -Name (Join-Path -Path $modulePath `
+        -ChildPath (Join-Path -Path 'ArcGIS.Common' `
+            -ChildPath 'ArcGIS.Common.psm1'))
+
+<#
     .SYNOPSIS
         Check for an SSL Certificate. If not present Installs and Configures the SSL Certificate. If certifcate not provided, creates a self signed certificate and configures it.
     .PARAMETER Ensure
@@ -30,9 +37,7 @@ function Get-TargetResource
 		$ExternalDNSName
 	)
     
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
-	
-	$null
+    $null
 }
 
 function Set-TargetResource
@@ -59,7 +64,7 @@ function Set-TargetResource
         $CertificatePassword
 	)
 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
+    
 
 	$CurrVerbosePreference = $VerbosePreference # Save current preference
 	$VerbosePreference = 'SilentlyContinue' # quieten it to ignore verbose output from Importing WebAdmin (bug in Powershell for this module) 
@@ -118,8 +123,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $CertificatePassword
 	)
- 
-    Import-Module $PSScriptRoot\..\..\ArcGISUtility.psm1 -Verbose:$false
 
 	$result = $false
     $Port = 443

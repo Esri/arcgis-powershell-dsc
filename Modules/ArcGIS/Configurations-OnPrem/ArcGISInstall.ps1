@@ -18,7 +18,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
@@ -32,6 +32,23 @@
                 CertificateId = $Node.Thumbprint
             }
         }
+
+        $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
+        if($HasValidServiceCredential) 
+        {
+            if(-not($ServiceCredentialIsDomainAccount -or $ServiceCredentialIsMSA)){
+                User ArcGIS_RunAsAccount
+                {
+                    UserName       = $ServiceCredential.UserName
+                    Password       = $ServiceCredential
+                    FullName       = 'ArcGIS Service Account'
+                    Ensure         = 'Present'
+                    PasswordChangeRequired = $false
+                    PasswordNeverExpires = $true
+                }
+            }
+        }
+
 
         $NodeRoleArray = @()
         if($Node.Role -icontains "Server")
@@ -82,23 +99,42 @@
                 {
                     $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
 
+                    $ServerFeatureSet = @()
                     $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
                     if($ServerTypeName -ieq "Server"){
-                        if($ConfigurationData.ConfigData.Version -ieq "10.9.1"){ # TODO - Make this more generalized at a later date
-                            $EnableArcMapRuntime = if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableArcMapRuntime")){ $ConfigurationData.ConfigData.Server.Installer.EnableArcMapRuntime }else{ $True }
-                            $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
-                            if($ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport -and $EnableArcMapRuntime){
-                                $ServerInstallArguments += " INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`""
-                            }elseif($ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport -and -not($EnableArcMapRuntime)){
-                                $ServerInstallArguments += " ADDLOCAL=DotNetSupport"
-                            }elseif($EnableArcMapRuntime -and -not($ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport)){
-                                $ServerInstallArguments += " ADDLOCAL=ArcMap INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`""
-                            }else{
-                                $ServerInstallArguments += " ADDLOCAL=GIS_Server"
+                        if($ConfigurationData.ConfigData.Version -ieq "11.0"){
+                            $EnableDontet = $True
+                            if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
+                                $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
                             }
-                        }else{
+                            if(-not($EnableDontet)){
+                                $ServerFeatureSet += @("GIS_Server")
+                            }
+                        } elseif ($ConfigurationData.ConfigData.Version -ieq "10.9.1"){ 
+                            $EnableArcMapRuntime = $True
+                            if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableArcMapRuntime")){
+                                $EnableArcMapRuntime = $ConfigurationData.ConfigData.Server.Installer.EnableArcMapRuntime
+                            }
+                            $EnableDontet = $True
+                            if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
+                                $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
+                            }
+
+                            if($EnableArcMapRuntime -and $EnableDontet){
+                                $ServerInstallArguments += " INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`""
+                            }elseif($EnableArcMapRuntime -and -not($EnableDontet)){
+                                $ServerFeatureSet += @("ArcMap")
+                            }elseif($EnableDontet -and -not($EnableArcMapRuntime)){
+                                $ServerFeatureSet += @("DotNetSupport")
+                            }else{
+                                $ServerFeatureSet += @("GIS_Server")
+                            }
+                        } else {
                             $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDirPython)`""
                         }                        
+                        if($ServerFeatureSet.Count -eq 0){
+                            $ServerFeatureSet = $null
+                        }
                     }
 
                     ArcGIS_Install ServerInstall
@@ -107,6 +143,7 @@
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
                         Arguments = $ServerInstallArguments
+                        FeatureSet = $ServerFeatureSet
                         ServiceCredential = $ServiceCredential
                         ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
                         ServiceCredentialIsMSA = $ServiceCredentialIsMSA
@@ -118,21 +155,15 @@
                         foreach ($Extension in $ConfigurationData.ConfigData.Server.Extensions.GetEnumerator())
                         {
                             $Arguments = "/qn"
+                            $ServerExtensionFeatureSet = @()
                             if($Extension.Value.Features -and $Extension.Value.Features.Count -gt 0){
-								$Features = $null
 								if($Extension.Value.Features -icontains "ALL"){
-									$Features = "ALL"
+									$ServerExtensionFeatureSet = @( "ALL" )
 								}else{
-									$Extension.Value.Features | % {
-										if($null -eq $Features){ 
-											$Features = $_
-										}else{
-											$Features += ",$_"
-										}
+									$Extension.Value.Features | Foreach-Object {
+										$ServerExtensionFeatureSet += @( $_ )
 									}
 								}
-
-                                $Arguments += " ADDLOCAL=$Features"
                             }
 
                             ArcGIS_Install "Server$($Extension.Key)InstallExtension"
@@ -141,6 +172,7 @@
                                 Version = $ConfigurationData.ConfigData.Version
                                 Path = $Extension.Value.Installer.Path
                                 Arguments = $Arguments
+                                FeatureSet = $ServerExtensionFeatureSet
                                 EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
                             }
@@ -152,6 +184,7 @@
                         {
                             Name = $ServerTypeName
                             Version = $ConfigurationData.ConfigData.Version
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.Server.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.Server.Installer.PatchInstallOrder
                             Ensure = "Present"
@@ -160,7 +193,9 @@
 
                     if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath) 
                     {
-                        if($ConfigurationData.ConfigData.Version.Split(".")[1] -gt 8){
+                        $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8))
+                        {
                             ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
                             { 
                                 Name = "NotebookServerSamplesData"
@@ -196,6 +231,7 @@
                             {
                                 Name = "WorkflowManagerServer"
                                 Version = $ConfigurationData.ConfigData.Version
+                                DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                                 PatchesDir = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir
                                 PatchInstallOrder = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchInstallOrder
                                 Ensure = "Present"
@@ -210,7 +246,8 @@
                             Name = "GeoEvent"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.GeoEventServer.Installer.Path
-                            Arguments = if($ConfigurationData.ConfigData.GeoEventServer.EnableGeoeventSDK){ "/qn ADDLOCAL=GeoEvent,SDK"}else{ "/qn" };
+                            Arguments = "/qn"
+                            FeatureSet = if($ConfigurationData.ConfigData.GeoEventServer.EnableGeoeventSDK){ @("GeoEvent","SDK") }else{ $null }
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA
@@ -223,6 +260,7 @@
                             {
                                 Name = "GeoEvent"
                                 Version = $ConfigurationData.ConfigData.Version
+                                DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                                 PatchesDir = $ConfigurationData.ConfigData.GeoEventServer.Installer.PatchesDir
                                 PatchInstallOrder = $ConfigurationData.ConfigData.GeoEventServer.Installer.PatchInstallOrder
                                 Ensure = "Present"
@@ -246,10 +284,7 @@
                     }
 
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    $MajorVersion = $VersionArray[1]
-                    $MinorVersion = if($VersionArray.Length -gt 2){ $VersionArray[2] }else{ 0 }
-
-                    if((($MajorVersion -eq 7 -and $MinorVersion -eq 1) -or ($MajorVersion -ge 8)) -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                    if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_Install "WebStylesInstall$($Node.NodeName)"
                         { 
                             Name = "WebStyles"
@@ -269,6 +304,7 @@
                         {
                             Name = "Portal"
                             Version = $ConfigurationData.ConfigData.Version
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.Portal.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.Portal.Installer.PatchInstallOrder
                             Ensure = "Present"
@@ -311,6 +347,7 @@
                         {
                             Name = "Insights"
                             Version = $ConfigurationData.ConfigData.InsightsVersion
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.Insights.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.Insights.Installer.PatchInstallOrder
                             Ensure = "Present"
@@ -319,12 +356,23 @@
                 }
                 'DataStore'
                 {
+                    $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
+
+                    $DsFeatureSet = $Null
+                    if($ConfigurationData.ConfigData.Version -ieq "11.0") {
+                        $DsFeatureSet = $Node.DataStoreTypes
+                        if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
+                            $DsFeatureSet = @("ALL")
+                        }
+                    }
+
                     ArcGIS_Install DataStoreInstall
                     { 
                         Name = "DataStore"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
-                        Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
+                        Arguments = $Arguments
+                        FeatureSet = $DsFeatureSet
                         ServiceCredential = $ServiceCredential
                         ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
                         ServiceCredentialIsMSA = $ServiceCredentialIsMSA
@@ -337,6 +385,7 @@
                         {
                             Name = "DataStore"
                             Version = $ConfigurationData.ConfigData.Version
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.DataStore.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.DataStore.Installer.PatchInstallOrder
                             Ensure = "Present"
@@ -356,13 +405,12 @@
                     
                     if(-not($PortalWebAdaptorSkip))
                     {
-                        $WAMajorVersion = $ConfigurationData.ConfigData.Version.Split(".")[1]
-                        
+                        $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
                         $WebsiteId = if($ConfigurationData.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationData.ConfigData.WebAdaptor.WebSiteId }else{ 1 } 
                         if(($Node.Role -icontains 'PortalWebAdaptor') -and $ConfigurationData.ConfigData.PortalContext)
                         {
                             $PortalWAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=$($WebSiteId)"
-                            if($WAMajorVersion -gt 5){
+                            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
                                 $PortalWAArguments += " CONFIGUREIIS=TRUE"
                             }
                             ArcGIS_Install WebAdaptorInstallPortal
@@ -380,7 +428,7 @@
                         if(($Node.Role -icontains 'ServerWebAdaptor') -and $Node.ServerContext)
                         {
                             $ServerWAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Node.ServerContext) WEBSITE_ID=$($WebSiteId)"
-                            if($WAMajorVersion -gt 5){
+                            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
                                 $ServerWAArguments += " CONFIGUREIIS=TRUE"
                             }
                             ArcGIS_Install WebAdaptorInstallServer
@@ -401,6 +449,7 @@
                         {
                             Name = "WebAdaptor"
                             Version = $ConfigurationData.ConfigData.Version
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchInstallOrder
                             Ensure = "Present"
@@ -442,9 +491,9 @@
                 'Desktop' {
                     $Arguments =""
                     if($ConfigurationData.ConfigData.Desktop.SeatPreference -ieq "Fixed"){
-                        $Arguments = "/qn ACCEPTEULA=YES ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                        $Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`" MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
                     }else{
-                        $Arguments = "/qn ACCEPTEULA=YES ADDLOCAL=`"$($ConfigurationData.ConfigData.Desktop.InstallFeatures)`" INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
+                        $Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDir)`" INSTALLDIR1=`"$($ConfigurationData.ConfigData.Desktop.Installer.InstallDirPython)`" ESRI_LICENSE_HOST=`"$($ConfigurationData.ConfigData.Desktop.EsriLicenseHost)`" SOFTWARE_CLASS=`"$($ConfigurationData.ConfigData.Desktop.SoftwareClass)`" SEAT_PREFERENCE=`"$($ConfigurationData.ConfigData.Desktop.SeatPreference)`" DESKTOP_CONFIG=`"$($ConfigurationData.ConfigData.Desktop.DesktopConfig)`"  MODIFYFLEXDACL=`"$($ConfigurationData.ConfigData.Desktop.ModifyFlexdAcl)`""
                     }
 
                     if ($ConfigurationData.ConfigData.Desktop.BlockAddIns -match '^[0-4]+$') {
@@ -460,7 +509,8 @@
                         Name = "Desktop"
                         Version = $ConfigurationData.ConfigData.DesktopVersion
                         Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
-                        Arguments =   $Arguments
+                        FeatureSet = @( $ConfigurationData.ConfigData.Desktop.InstallFeatures )
+                        Arguments = $Arguments
                         EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
                     }
@@ -469,21 +519,17 @@
                         foreach ($Extension in $ConfigurationData.ConfigData.Desktop.Extensions.GetEnumerator()) 
                         {
                             $Arguments = "/qn"
+                            $DesktopExtensionFeatureSet = @()
                             if($Extension.Value.Features -and $Extension.Value.Features.Count -gt 0){
-								$Features = $null
 								if($Extension.Value.Features -icontains "ALL"){
-									$Features = "ALL"
+									$DesktopExtensionFeatureSet = @( "ALL" )
 								}else{
 									$Extension.Value.Features | % {
-										if($null -eq $Features){ 
-											$Features = $_
-										}else{
-											$Features += ",$_"
-										}
+										$DesktopExtensionFeatureSet += @( $_ )
 									}
 								}
-
-                                $Arguments += " ADDLOCAL=$Features"
+                            }else{
+                                $DesktopExtensionFeatureSet = $null
                             }
 
                             ArcGIS_Install "Desktop$($Extension.Key)InstallExtension"
@@ -492,6 +538,7 @@
                                 Version = $ConfigurationData.ConfigData.DesktopVersion
                                 Path = $Extension.Value.Installer.Path
                                 Arguments = $Arguments
+                                FeatureSet = $DesktopExtensionFeatureSet
                                 EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
                             }
@@ -503,6 +550,7 @@
                         {
                             Name = "Desktop"
                             Version = $ConfigurationData.ConfigData.DesktopVersion
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.Desktop.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.Desktop.Installer.PatchInstallOrder
                             Ensure = "Present"
@@ -548,7 +596,7 @@
 					if(-not($ConfigurationData.ConfigData.Pro.ContainsKey("CheckForUpdatesAtStartup")) -or ($ConfigurationData.ConfigData.Pro.ContainsKey("CheckForUpdatesAtStartup") -and -not($ConfigurationData.ConfigData.Pro.CheckForUpdatesAtStartup)) ){
 						$Arguments += " CHECKFORUPDATESATSTARTUP=0"
                     }
-
+                    
                     ArcGIS_Install ProInstall{
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion
@@ -556,27 +604,24 @@
                         Arguments = $Arguments
                         EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
-                    }
-
+                        PsDscRunAsCredential = if($ConfigurationData.ConfigData.ProVersion -ieq "3.0"){ $ServiceCredential }else{$null}
+                    }    
+                    
                     if($ConfigurationData.ConfigData.Pro.Extensions){
                         foreach ($Extension in $ConfigurationData.ConfigData.Pro.Extensions.GetEnumerator()) 
                         {
                             $Arguments = "/qn"
+                            $ProExtensionFeatureSet = @()
                             if($Extension.Value.Features -and $Extension.Value.Features.Count -gt 0){
-								$Features = $null
 								if($Extension.Value.Features -icontains "ALL"){
-									$Features = "ALL"
+									$ProExtensionFeatureSet = @( "ALL" )
 								}else{
 									$Extension.Value.Features | % {
-										if($null -eq $Features){ 
-											$Features = $_
-										}else{
-											$Features += ",$_"
-										}
+										$ProExtensionFeatureSet += @( $_ )
 									}
 								}
-
-                                $Arguments += " ADDLOCAL=$Features"
+                            }else{
+                                $ProExtensionFeatureSet = $null
                             }
 
                             ArcGIS_Install "Pro$($Extension.Key)InstallExtension"
@@ -585,6 +630,7 @@
                                 Version = $ConfigurationData.ConfigData.ProVersion
                                 Path = $Extension.Value.Installer.Path
                                 Arguments = $Arguments
+                                FeatureSet = $ProExtensionFeatureSet
                                 EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
                             }
@@ -596,6 +642,7 @@
                         {
                             Name = "Pro"
                             Version = $ConfigurationData.ConfigData.ProVersion
+                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
                             PatchesDir = $ConfigurationData.ConfigData.Pro.Installer.PatchesDir
                             PatchInstallOrder = $ConfigurationData.ConfigData.Pro.Installer.PatchInstallOrder
                             Ensure = "Present"

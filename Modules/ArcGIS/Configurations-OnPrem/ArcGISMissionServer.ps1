@@ -97,7 +97,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 3.3.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
     Import-DscResource -Name ArcGIS_MissionServer
     Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
@@ -154,7 +154,6 @@
             }
         }
 
-        $MachineFQDN = Get-FQDN $Node.NodeName
         $IsMultiMachineMissionServer = (($AllNodes | Measure-Object).Count -gt 1)
         $DependsOn = @()
 
@@ -271,7 +270,7 @@
                 ArcGIS_WaitForComponent "WaitForServer$($PrimaryServerMachine)"{
                     Component = "MissionServer"
                     InvokingComponent = "MissionServer"
-                    ComponentHostName = (Get-FQDN $PrimaryServerMachine)
+                    ComponentHostName = $PrimaryServerMachine
                     ComponentContext = "arcgis"
                     Credential = $ServerPrimarySiteAdminCredential
                     Ensure = "Present"
@@ -293,7 +292,7 @@
 
         ArcGIS_MissionServer "MissionServer$($Node.NodeName)"
         {
-            ServerHostName                          = $MachineFQDN
+            ServerHostName                          = $Node.NodeName
             Ensure                                  = 'Present'
             SiteAdministrator                       = $ServerPrimarySiteAdminCredential
             ConfigurationStoreLocation              = $ConfigStoreLocation
@@ -305,23 +304,21 @@
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
             ServerLogsLocation                      = $ServerLogsLocation
             Join                                    = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
-            PeerServerHostName                      = Get-FQDN $PrimaryServerMachine
+            PeerServerHostName                      = $PrimaryServerMachine
+            Version                                 = $Version
             DependsOn                               = $DependsOn
         }
         $DependsOn += "[ArcGIS_MissionServer]MissionServer$($Node.NodeName)"
 
-        if($Node.SSLCertificate){
+        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
             ArcGIS_Server_TLS "MissionServer_TLS_$($Node.NodeName)"
             {
-                ServerHostName = $MachineFQDN
-                Ensure = 'Present'
-                SiteName = 'arcgis'
+                ServerHostName = $Node.NodeName
                 SiteAdministrator = $ServerPrimarySiteAdminCredential                         
-                CName =  $Node.SSLCertificate.CName
-                CertificateFileLocation = $Node.SSLCertificate.Path
-                CertificatePassword = $Node.SSLCertificate.Password
-                EnableSSL = $True
-                SslRootOrIntermediate = $Node.SSLCertificate.SslRootOrIntermediate
+                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
+                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
+                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
+                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
                 ServerType = "MissionServer"
                 DependsOn = $DependsOn
             }
