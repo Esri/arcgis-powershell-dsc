@@ -549,6 +549,7 @@ function Set-TargetResource {
         Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
         $Referer = 'http://localhost'
         $RestartRequired = $false
+        $MessageNotCreated = @("The portal site has not been initialized. Please create a new site and try again.","Le site du portail na pas Ã©tÃ© initialisÃ©. CrÃ©ez un nouveau site et rÃ©essayez.")
         
         $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -Verbose -HttpMethod "GET"
         if($SiteCreatedCheckResponse.error.message -ieq "Token Required." -and $SiteCreatedCheckResponse.error.code -eq 499){
@@ -574,7 +575,7 @@ function Set-TargetResource {
             }
         } else {
             if($SiteCreatedCheckResponse.status -ieq "error"){
-                if($SiteCreatedCheckResponse.messages -icontains "The portal site has not been initialized. Please create a new site and try again."){
+                if($SiteCreatedCheckResponse.messages -in $MessageNotCreated){
                     if($Join) {
                         $PeerMachineFQDN = Get-FQDN $PeerMachineHostName
                         Write-Verbose "Joining machine to portal site at peer $PeerMachineFQDN"   
