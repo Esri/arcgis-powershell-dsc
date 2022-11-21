@@ -595,8 +595,7 @@
 			    Join                                    = $Join
 			    PeerServerHostName                      = $ServerHostName
 			    LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-			    SingleClusterMode                       = $true
-                ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
+			    ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
 				ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
 		    }
 			$RemoteFederationDependsOn += @('[ArcGIS_Server]Server') 
@@ -828,8 +827,6 @@
 				ServerHostName      = $ServerHostName
 				ExternalDNSName     = $ExternalDNSHostName
 				SiteAdministrator   = $SiteAdministratorCredential
-				EnableSSL           = $True
-                EnableHTTP          = $True
 				DependsOn 			= $RemoteFederationDependsOn
 			}
 			$RemoteFederationDependsOn += @("[ArcGIS_ServerSettings]ServerSettings")	

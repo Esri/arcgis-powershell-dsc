@@ -23,5 +23,6 @@ class ArcGIS_PortalSettings : OMI_BaseResource
 	[Write, EmbeddedInstance("MSFT_Credential")] String EmailSettingsCredential;
 	[Write] Uint64 EmailSettingsSMTPPort;
 	[Write, ValueMap{"SSL","TLS","NONE"}, Values{"SSL","TLS","NONE"}] String EmailSettingsEncryptionMethod;
+	[Write] Boolean WaitForPortalRestart;
 };
 

@@ -9,5 +9,7 @@ class ArcGIS_Server_TLS : OMI_BaseResource
 	[Write, Description("Location of the .pfx certificate file")] String CertificateFileLocation;
 	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
     [Write, Description("List of RootOrIntermediate Certificates")] String SslRootOrIntermediate;
+	[Write, Description("Enable Only HTTPS")] Boolean EnableHTTPSOnly;
+	[Write, Description("Enable HTTP Strict Transport Security (HSTS)")] Boolean EnableHSTS;
 };
 

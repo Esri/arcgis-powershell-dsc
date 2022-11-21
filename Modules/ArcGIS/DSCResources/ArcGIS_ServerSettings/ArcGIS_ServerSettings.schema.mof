@@ -6,7 +6,7 @@ class ArcGIS_ServerSettings : OMI_BaseResource
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write] String ExternalDNSName;
 	[Write] String ServerContext;
-	[Write, Description("EnableSSL")] Boolean EnableSSL;
-	[Write, Description("EnableHTTP")] Boolean EnableHTTP;
+	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
+	[Write] String SharedKey;
 };
 

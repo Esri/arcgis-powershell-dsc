@@ -30,10 +30,10 @@ function Get-TargetResource
 		$SiteAdministrator,
 
 		[System.Boolean]
-        $EnableSSL,
+        $DisableServiceDirectory,
 
-		[System.Boolean]
-        $EnableHTTP
+        [System.String]
+        $SharedKey
 	)
 
 	$null
@@ -60,10 +60,10 @@ function Set-TargetResource
 		$SiteAdministrator,
 
 		[System.Boolean]
-        $EnableSSL,
+        $DisableServiceDirectory,
 
-		[System.Boolean]
-        $EnableHTTP
+        [System.String]
+        $SharedKey
     )
     
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -106,33 +106,32 @@ function Set-TargetResource
 	Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
 	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck?f=json" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
 
-	# Get the current security configuration
-	$UpdateSecurityConfig = $False
-	Write-Verbose 'Getting security config for site'
-	$secConfig = Get-SecurityConfig -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer
-	if($EnableSSL -ine $secConfig.sslEnabled){
-		Write-Verbose "Enabled SSL matches doesn't match the expected state $EnableSSL"
-		$UpdateSecurityConfig = $True
-	}else{
-		Write-Verbose "Enabled SSL matches the expected state $EnableSSL"
+	Write-Verbose "Get Service Directory Setting"
+	$servicesdirectory = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $serverToken.token -Referer $Referer
+	if($servicesdirectory.enabled -eq "true") {
+		$dirStatus = "enabled"
+	} else {
+		$dirStatus = "disabled"
+	}
+	Write-Verbose "Current Service Directory Setting:- $dirStatus"
+	if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
+		Write-Verbose "Updating Service Directory Setting"
+		$servicesdirectory.enabled = (!$DisableServiceDirectory)
+		$servicesdirectory = ConvertTo-Json $servicesdirectory
+		Set-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" -Token $serverToken.token -Properties $servicesdirectory -Referer $Referer
+	}
+	
+	if($SharedKey){
+		Write-Verbose "Get Token Setting"
+		$TokenSettings = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens" -Token $serverToken.token -Referer $Referer
+		if($TokenSettings.properties.sharedKey -ine $SharedKey) {
+			Write-Verbose "Updating shared key"
+			$TokenSettings.properties.sharedKey = $SharedKey
+			$TokenSettings = ConvertTo-Json $TokenSettings
+			Set-TokenSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens/update" -Token $serverToken.token -Properties $TokenSettings -Referer $Referer
+		}
 	}
 
-	if($EnableHTTP -ine $secConfig.httpEnabled){
-		Write-Verbose "Http Enabled doesn't match the expected state $EnableHTTP"
-		$UpdateSecurityConfig = $True
-	}else{
-		Write-Verbose "Http Enabled matches the expected state $EnableHTTP"
-	}
-
-	if($UpdateSecurityConfig){
-		Update-SecurityConfig -ServerHostName $ServerFQDN -Token $serverToken.token -SecurityConfig $secConfig `
-									-Referer $Referer -EnableHTTP $EnableHTTP -EnableSSL $EnableSSL -Verbose
-		# Changes will cause the web server to restart.
-		Write-Verbose "Waiting 30 seconds before checking"
-		Start-Sleep -Seconds 30
-		Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/admin' to respond"
-		Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
-	}
     
     Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
 	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck?f=json" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
@@ -160,10 +159,10 @@ function Test-TargetResource
 		$SiteAdministrator,
 
 		[System.Boolean]
-        $EnableSSL,
+        $DisableServiceDirectory,
 
-		[System.Boolean]
-        $EnableHTTP
+        [System.String]
+        $SharedKey
     )
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -198,26 +197,28 @@ function Test-TargetResource
 		}
 	}
 
-	$secConfig = Get-SecurityConfig -ServerHostName $ServerFQDN -Token $serverToken.token -Referer $Referer
-	if($result){
-		Write-Verbose "Enabled SSL Current state- $($secConfig.sslEnabled)"
-		if($EnableSSL -ine $secConfig.sslEnabled){
-			Write-Verbose "Enabled SSL doesn't match the expected state $EnableSSL"
-			$result = $false
-		}else{
-			Write-Verbose "Enabled SSL matches the expected state $EnableSSL"
-		}
-	}
-	
-	if($result){
-		Write-Verbose "Enabled Http Current state- $($secConfig.httpEnabled)"
-		if($EnableHTTP -ine $secConfig.httpEnabled){
-			Write-Verbose "Http Enabled doesn't match the expected state $EnableHTTP"
-			$result = $false
-		}else{
-			Write-Verbose "Http Enabled matches the expected state $EnableHTTP"
-		}
-	}
+	if($result) {
+        Write-Verbose "Get Service Directory Setting"
+        $servicesdirectory = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $serverToken.token -Referer $Referer
+        if($servicesdirectory.enabled -eq "true") {
+            $dirStatus = "enabled"
+        } else {
+            $dirStatus = "disabled"
+        }
+        Write-Verbose "Current Service Directory Setting:- $dirStatus"
+        if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
+            $result = $false
+        }
+    }
+
+	if($result -and $SharedKey) {
+        Write-Verbose "Get Token Setting"
+        $TokenSettings = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens" -Token $serverToken.token -Referer $Referer
+        if($TokenSettings.properties.sharedKey -ine $SharedKey) {
+            $result = $false
+        }
+    }
+
 	$result    
 }
 
@@ -262,71 +263,85 @@ function Set-ServerSystemProperties
     }
 }
 
-function Update-SecurityConfig
+function Get-AdminSettings
 {
     [CmdletBinding()]
-    param(
-		[System.String]
-		$ServerHostName,
-
+    Param
+    (
         [System.String]
-        $Token, 
-
+        $ServerUrl,
+        
         [System.String]
-        $Referer,
-
-        $SecurityConfig,
-
-		[System.Boolean]
-        $EnableSSL,
-
-		[System.Boolean]
-        $EnableHTTP
-    ) 
-
-    if(-not($SecurityConfig)) {
-        throw "Security Config parameter is not provided"
-    }
-
-	$Protocol = "HTTP_AND_HTTPS"
-	if($EnableSSL -and $EnableHTTP){
-		$Protocol = "HTTP_AND_HTTPS"
-	}elseif($EnableSSL -and -not($EnableHTTP)){
-		$Protocol = "HTTPS"
-	}elseif($EnableHTTP -and -not($EnableSSL)){
-		$Protocol = "HTTP"
-	}
-
-    $UpdateSecurityConfigUrl  = "https://$($ServerHostName):6443/arcgis/admin/security/config/update"
-    $props = @{ 
-				f= 'json'; 
-				token = $Token; 
-				Protocol = $Protocol; 
-				authenticationTier = $SecurityConfig.authenticationTier; 
-				allowDirectAccess = $SecurityConfig.allowDirectAccess;  
-				cipherSuites = $SecurityConfig.cipherSuites 
-			}
-    Invoke-ArcGISWebRequest -Url $UpdateSecurityConfigUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 300
-}
-
-function Get-SecurityConfig 
-{
-    [CmdletBinding()]
-    param(
-		[System.String]
-		$ServerHostName,
+        $SettingUrl,
         
         [System.String]
         $Token, 
-        
-        [System.String]
-        $Referer
-    ) 
 
-    $GetSecurityConfigUrl  = "https://$($ServerHostName):6443/arcgis/admin/security/config/"
-    Write-Verbose "Url:- $GetSecurityConfigUrl"
-    Invoke-ArcGISWebRequest -Url $GetSecurityConfigUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 30
+        [System.String]
+		$Referer
+    )
+    $RequestParams = @{ f= 'json'; token = $Token; }
+    $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams -Referer $Referer
+    Confirm-ResponseStatus $Response
+    $Response
 }
 
+function Set-AdminSettings
+{
+    [CmdletBinding()]
+    Param
+    (
+        [System.String]
+        $ServerUrl,
+
+        [System.String]
+        $SettingUrl,
+        
+        [System.String]
+        $Token,
+        
+        [System.String]
+        $Properties, 
+
+        [System.String]
+		$Referer
+    )
+    $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
+    $COProperties = $Properties | ConvertFrom-Json
+    $RequestParams = @{ f= 'json'; token = $Token; }
+    $COProperties.psobject.properties | ForEach-Object { $RequestParams[$_.Name] = $_.Value }
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams -Referer $Referer 
+    Write-Verbose $Response
+    Confirm-ResponseStatus $Response
+    $Response
+}
+
+function Set-TokenSettings {
+    [CmdletBinding()]
+    Param (
+        [System.String]
+        $ServerUrl,
+
+        [System.String]
+        $SettingUrl,
+        
+        [System.String]
+        $Token,
+        
+        [System.String]
+        $Properties, 
+
+        [System.String]
+		$Referer
+    )
+
+    $RequestUrl = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
+    $RequestParams = @{ f = 'json'; token = $Token; tokenManagerConfig = $Properties }
+    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams -Referer $Referer
+    Confirm-ResponseStatus $Response
+    Write-Verbose $Response
+    $Response
+}
 
 Export-ModuleMember -Function *-TargetResource

@@ -20,11 +20,15 @@
         $ServerRole,
 
         [System.Int32]
-		$WebSiteId = 1
+		$WebSiteId = 1,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $OverrideHTTPSBinding = $True
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
@@ -66,26 +70,28 @@
         }
         $Depends += "[Service]StartW3SVC$($Node.NodeName)"
 
-        if($Node.SSLCertificate){
-            ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
-            {
-                WebSiteId               = $WebSiteId
-                ExternalDNSName         = $Node.SSLCertificate.CName
-                Ensure                  = 'Present'
-                CertificateFileLocation = $Node.SSLCertificate.Path
-                CertificatePassword     = $Node.SSLCertificate.Password
-                DependsOn               = $Depends
+        if($OverrideHTTPSBinding){
+            if($Node.SSLCertificate){
+                ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
+                {
+                    WebSiteId               = $WebSiteId
+                    ExternalDNSName         = $Node.SSLCertificate.CName
+                    Ensure                  = 'Present'
+                    CertificateFileLocation = $Node.SSLCertificate.Path
+                    CertificatePassword     = $Node.SSLCertificate.Password
+                    DependsOn               = $Depends
+                }
+            }else{
+                ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
+                {
+                    WebSiteId       = $WebSiteId
+                    ExternalDNSName = $MachineFQDN 
+                    Ensure          = 'Present'
+                    DependsOn       = $Depends
+                }
             }
-        }else{
-            ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
-            {
-                WebSiteId       = $WebSiteId
-                ExternalDNSName = $MachineFQDN 
-                Ensure          = 'Present'
-                DependsOn       = $Depends
-            }
+            $Depends += "[ArcGIS_IIS_TLS]WebAdaptorCertificateInstall$($Node.NodeName)"
         }
-        $Depends += "[ArcGIS_IIS_TLS]WebAdaptorCertificateInstall$($Node.NodeName)"
 
         if($Node.IsServerWebAdaptorEnabled -and $PrimaryServerMachine){
             ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)"

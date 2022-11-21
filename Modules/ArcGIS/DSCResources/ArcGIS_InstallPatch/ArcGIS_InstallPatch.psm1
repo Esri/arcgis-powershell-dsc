@@ -129,7 +129,7 @@ function Set-TargetResource
                 }else{
                     Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId not installed"
                     if(Install-Patch -mspPath $PatchLocation -Verbose){
-                        Write-Verbose "Installation was successful for patch file at $($PatchLocation) with QFE Id $QFEId not installed"
+                        Write-Verbose "Installation was successful for patch file at $($PatchLocation) with QFE Id $QFEId"
                     }else{
                         Write-Verbose "Installation failed for patch file at $($PatchLocation) with QFE Id $QFEId not installed"
                     }
@@ -167,7 +167,7 @@ function Invoke-TestDownloadInstallPatch
             throw "Error downloading remote file. Error - $_"
         }
         if(Install-Patch -mspPath $PatchLocation -Verbose){
-            Write-Verbose "Installation was successful for patch file at $($PatchLocation) with QFE Id $QFEId not installed"
+            Write-Verbose "Installation was successful for patch file at $($PatchLocation) with QFE Id $QFEId"
         }else{
             Write-Verbose "Installation failed for patch file at $($PatchLocation) with QFE Id $QFEId not installed"
         }
@@ -240,7 +240,7 @@ function Test-TargetResource
             $PatchManifest = Get-PatchManifestFromESRIDownloads -ProductName $Name -Version $Version
             if($PatchInstallOrder.Count -eq 0) {
                 foreach($Patch in $PatchManifest.GetEnumerator()){
-                    $QFEId = $Patch.QFE_ID
+                    $QFEId = $Patch.Value.QFE_ID
                     if(Test-PatchInstalled -QFEId $QFEId){
                         Write-Verbose "Patch with QFE Id $QFEId installed"
                     }else{
@@ -304,25 +304,26 @@ function Get-PatchManifestFromESRIDownloads
     )
 
     #TODO - Tackle multiple patches for a installer
-
+    $ProductNameArray = @()
     if($ProductName -ieq "Desktop"){
-        $ProductName = "ArcMap"
+        $ProductNameArray += "ArcMap"
     }elseif($ProductName -ieq "DataStore"){
-        $ProductName = "ArcGIS Data Store"
+        $ProductNameArray += "ArcGIS Data Store"
     }elseif($ProductName -ieq "Portal"){
-        $ProductName = "Portal for ArcGIS"
+        $ProductNameArray += "Portal for ArcGIS"
     }elseif($ProductName -ieq "Server"){
-        $ProductName = "ArcGIS Server"
+        $ProductNameArray += "ArcGIS Server"
     }elseif($ProductName -ieq "WebAdaptor"){
-        $ProductName = "ArcGIS Web Adaptor (IIS)"
+        $ProductNameArray += "ArcGIS Web Adaptor (IIS)"
     }elseif($ProductName -ieq "WorkflowManagerServer"){
-        $ProductName = "ArcGIS Workflow Manager Server"
+        $ProductNameArray += "ArcGIS Workflow Manager Server"
     }elseif($ProductName -ieq "MissionServer"){
-        $ProductName = "ArcGIS Mission Server"
+        $ProductNameArray += "ArcGIS Mission Server"
     }elseif($ProductName -ieq "NotebookServer"){
-        $ProductName = "ArcGIS Notebook Server"
-    }elseif($ProductName -ieq "Geoevent"){
-        $ProductName = "ArcGIS Geoevent Server"
+        $ProductNameArray += "ArcGIS Notebook Server"
+    }elseif($ProductName -ieq "GeoEvent"){
+        $ProductNameArray += "ArcGIS GeoEvent Server"
+        $ProductNameArray += "GeoEvent"
     }
 
     $MinifiedVersion = $Version.Replace(".","")
@@ -332,30 +333,28 @@ function Get-PatchManifestFromESRIDownloads
 	$ParsedPatchesObject = [ordered]@{}
 	$AllPatchesForVersion = ($AllPatches.Product | Where-Object { $_.Version -ieq $Version })
 	if($null -ne $AllPatchesForVersion){
-		$PatchesForProduct = $AllPatchesForVersion.patches | Where-Object { $_.Products.Split(",") -iContains $ProductName }
+        $PatchesForProduct = $AllPatchesForVersion.patches | Where-Object { @(Compare-Object -ReferenceObject ($_.Products.Split(",") | % { $_.Trim() }) -DifferenceObject $ProductNameArray -IncludeEqual -excludedifferent).count -gt 0 }
 		if($null -ne $PatchesForProduct){
-			$PatchesForProductSorted = $PatchesForProduct | Sort-Object {[System.DateTime]::ParseExact($_.ReleaseDate, "MM/dd/yyyy", $null)} 
+			$PatchesForProductSorted = $PatchesForProduct | Sort-Object {[System.DateTime]::ParseExact($_.ReleaseDate, "MM/dd/yyyy", $null)}
 			foreach($Patch in $PatchesForProductSorted){
 				if($Patch.PatchFiles.Length -gt 0){
 					try{ 
 						foreach($PatchFileUrl in $Patch.PatchFiles){
-							if($PatchFileUrl.Contains(".msp")){
+							if($PatchFileUrl.Contains(".msp") -and $PatchFileUrl.Contains($MinifiedVersion)){
 								$PatchFileName = Split-Path "$(($PatchFileUrl -split ".msp")[0]).msp" -leaf
-								if($PatchFileName.Contains($MinifiedVersion)){
-									$ParsedPatchesObject[$PatchFileName.ToLower()] = @{
-										"Name" = $Patch.name
-										"FileName" = $PatchFileName
-										"QFE_ID" = $Patch.QFE_ID
-										"ReleaseDate" = $Patch.ReleaseDate
-										"PatchFileUrl" = $PatchFileUrl
-										"Critical" = $Patch.Critical
-										#"SHA256sum" = ($Patch.SHA256sums | Where-Object { $_.StartsWith($PatchFileName)} | Select-Object -First 1 ).Split(':')[1]
-									}
+                                $ParsedPatchesObject[$PatchFileName.ToLower()] = @{
+									"Name" = $Patch.name
+									"FileName" = $PatchFileName
+									"QFE_ID" = $Patch.QFE_ID
+									"ReleaseDate" = $Patch.ReleaseDate
+									"PatchFileUrl" = $PatchFileUrl
+									"Critical" = $Patch.Critical
+									#"SHA256sum" = ($Patch.SHA256sums | Where-Object { $_.StartsWith($PatchFileName)} | Select-Object -First 1 ).Split(':')[1]
 								}
 							}
 						}
 					}catch{
-						Write-Host "$($Patch.Name) $_"
+						Write-Verbose "$($Patch.Name) $_"
 						throw $_
 					}
 				}
@@ -409,7 +408,8 @@ function Test-PatchInstalled
             foreach($Reg_QFE_ID in $Reg_QFE_IDs){
                 if(-not([string]::IsNullOrEmpty($Reg_QFE_ID.QFE_ID))){
                     Write-Verbose -Message "Comparing QFE ID $QFEId against ID $($Reg_QFE_ID.QFE_ID)"
-                    if($Reg_QFE_ID.QFE_ID -ieq $QFEId)
+                    $QFEIdsArray = ($Reg_QFE_ID.QFE_ID.Split(",") | % { $_.Trim() }) 
+                    if($QFEIdsArray -iContains $QFEId)
                     {
                         # The patch is installed, skip further processing
                         Write-Verbose -Message "Patch with QFE Id $QFEId already installed"
@@ -461,12 +461,12 @@ function Get-QFEId
         [System.String]
         $PatchLocation
     )
-    if(Test-Path $PatchLocation){
+    if(-not(Test-Path $PatchLocation)){
         throw "Patch File $PatchLocation is not accessible"
     }
     try{
         $wi = New-Object -com WindowsInstaller.Installer
-        $mspdb = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $Null, $wi, $($PatchLocation.FullName, 32))
+        $mspdb = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $Null, $wi, $($PatchLocation, 32))
         $su = $mspdb.GetType().InvokeMember("SummaryInformation", "GetProperty", $Null, $mspdb, $Null)
         #$pc = $su.GetType().InvokeMember("PropertyCount", "GetProperty", $Null, $su, $Null)
         [string] $qfeID = $su.GetType().InvokeMember("Property", "GetProperty", $Null, $su, 3)

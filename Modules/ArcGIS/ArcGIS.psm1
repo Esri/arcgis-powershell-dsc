@@ -440,7 +440,7 @@ function Invoke-CreateNodeToAdd
     if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -icontains  $TargetComponent }  | Measure-Object).Count -gt 0) ){
         $SSLCertificate = ($Node.SslCertificates | Where-Object { $_.Target -icontains $TargetComponent }  | Select-Object -First 1)
 
-        if($SSLCertificate.CNameFQDN -and $SSLCertificate.Path -and ($SSLCertificate.Password -or $SSLCertificate.PasswordFilePath)){
+        if($SSLCertificate.CNameFQDN -and $SSLCertificate.Path){
             $Certificate = @{
                 CName = if($SSLCertificate.CNameFQDN){ $SSLCertificate.CNameFQDN }else{ $null }
                 Path = if($SSLCertificate.Path){ $SSLCertificate.Path }else{ $null }
@@ -1154,6 +1154,8 @@ function Invoke-ArcGISConfiguration
                             ServerDirectoriesRootLocation = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
                             ServerDirectories = if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){$ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories}else{$null}
                             ServerLogsLocation = if($ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation){$ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation}else{$null}
+                            EnableHTTPSOnly = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
+                            EnableHSTS = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS }else{ $False }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
@@ -1172,7 +1174,6 @@ function Invoke-ArcGISConfiguration
                                 $ServerArgs["AdditionalServerRoles"] = $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles
                             }
 
-                            $ServerArgs["DisableServiceDirectory"] = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
                             $ServerArgs["OpenFirewallPorts"] = ($PortalCheck -or $DataStoreCheck -or $IsServerWAOnSeparateMachine)
                             $ServerArgs["RegisteredDirectories"] = ($ConfigurationParamsHashtable.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
                             $ServerArgs["LocalRepositoryPath"] = if($ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath){$ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath}else{$null}
@@ -1272,13 +1273,14 @@ function Invoke-ArcGISConfiguration
                         }
                     }
 
-                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck -and -not($null -eq $ServerExternalDNSHostName)){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
                         $ServerSettingsArgs = @{
                             ConfigurationData = $ServerCD
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
                             ExternalDNSHostName = $ServerExternalDNSHostName 
                             ServerContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
+                            DisableServiceDirectory = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
                         }
                         $ConfigurationName = "ArcGISServerSettings"
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
@@ -1307,6 +1309,7 @@ function Invoke-ArcGISConfiguration
                             AdminSecurityAnswer = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswer
                             LicenseFilePath = if($ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath){ $ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath }else{ $null }
                             UserLicenseTypeId = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId }else{ $null }
+                            EnableHSTS = if($ConfigurationParamsHashtable.ConfigData.Portal.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Portal.EnableHSTS }else{ $False }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
@@ -1350,6 +1353,7 @@ function Invoke-ArcGISConfiguration
                             ExternalDNSHostName = $PortalExternalDNSHostName
                             PortalContext = if($null -ne $PortalExternalDNSHostName){ $ConfigurationParamsHashtable.ConfigData.PortalContext }else{ $null }
                             InternalLoadBalancer = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ $null }
+                            InternalLoadBalancerPort = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ $null }
                             EnableAutomaticAccountCreation = if($ConfigurationParamsHashtable.ConfigData.Portal.EnableAutomaticAccountCreation){ $true }else{ $false }
                             DefaultRoleForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultRoleForUser }else{ $null }
                             DefaultUserLicenseTypeIdForUser = if($ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser){ $ConfigurationParamsHashtable.ConfigData.Portal.DefaultUserLicenseTypeIdForUser }else{ $null }
@@ -1374,7 +1378,7 @@ function Invoke-ArcGISConfiguration
                                 if($ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.AuthenticationRequired){
                                     $EmailSettingsPassword = if( $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.Password -AsPlainText -Force }
                                     $EmailSettingsCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.UserName, $EmailSettingsPassword )
-                                    $PortalArgs["EmailSettingsCredential"] = $EmailSettingsCredential
+                                    $PortalSettingsArgs["EmailSettingsCredential"] = $EmailSettingsCredential
                                 }
                                 $PortalSettingsArgs["EmailSettingsSMTPPort"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.SMTPPort
                                 $PortalSettingsArgs["EmailSettingsEncryptionMethod"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.EncryptionMethod
@@ -1396,6 +1400,7 @@ function Invoke-ArcGISConfiguration
                             PrimaryServerMachine        = $PrimaryServerMachine.NodeName
                             PrimaryPortalMachine        = $PrimaryPortalMachine.NodeName
                             WebSiteId                   = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
+                            OverrideHTTPSBinding        = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding }else{ $True } 
                         }
                         if($ServerCheck){
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
@@ -1727,7 +1732,7 @@ function Invoke-ArcGISConfiguration
                         if($PortalCheck){
                             $PortalServerFederation = $True
                             $PortalHostName = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryPortalMachine.NodeName } }
-                            $PortalPort = 7443
+                            $PortalPort = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ 7443 }
                             $PortalContext = 'arcgis'
                         }elseif($ConfigurationParamsHashtable.ConfigData.Federation){
                             $RemoteFederation = $True
@@ -1747,11 +1752,17 @@ function Invoke-ArcGISConfiguration
 
                             $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName }
                             $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
+                            if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
+                                $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
+                            }
                             $ServerSiteAdminURLContext = 'arcgis'
 
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
                                 $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
+                                if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
+                                    $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
+                                }
                                 $ServerSiteAdminURLContext = 'arcgis'
                             }else{
                                 if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer')-or ($ServerRole -ieq 'MissionServer')){ 
@@ -1815,8 +1826,9 @@ function Invoke-ArcGISConfiguration
                             $PortalAdminUrl = "$($PrimaryPortalCName):7443/arcgis"
 
                             if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){
-                                $PortalUrl = "$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):7443/arcgis"
-                                $PortalAdminUrl = "$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):7443/arcgis"
+                                $PortalEndpointPort = if($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ 7443}
+                                $PortalUrl = "$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):$($PortalEndpointPort)/arcgis"
+                                $PortalAdminUrl = "$($ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer):$($PortalEndpointPort)/arcgis"
                             }
 
                             if($null -ne $PortalExternalDNSHostName){
@@ -1835,6 +1847,9 @@ function Invoke-ArcGISConfiguration
                             $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
                             
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
+                                if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
+                                    $Port = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
+                                }
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
                                 $ServerAdminURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
                                 $ServerManagerURL = "$($ServerSiteAdminURL):$($Port)/arcgis"

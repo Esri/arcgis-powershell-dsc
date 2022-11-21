@@ -22,6 +22,10 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Sercret Certificate Password or Key.
     .PARAMETER SslRootOrIntermediate
         Takes a JSON string list of all the root or intermediate certificates to import
+    .PARAMETER EnableHTTPSOnly
+        Enable only HTTPs protocol
+    .PARAMETER EnableHSTS
+        Enable HTTP Strict Transport Security (HSTS)
 #>
 
 function Get-TargetResource
@@ -63,7 +67,13 @@ function Set-TargetResource
 		$CertificatePassword,
         
         [System.String]
-        $SslRootOrIntermediate       
+        $SslRootOrIntermediate,
+
+        [System.Boolean]
+        $EnableHTTPSOnly,
+
+        [System.Boolean]
+        $EnableHSTS
 	)
 
     if($CertificateFileLocation -and -not(Test-Path $CertificateFileLocation)){
@@ -90,6 +100,54 @@ function Set-TargetResource
     $token = Get-ServerToken -ServerEndPoint $ServerURL -Credential $SiteAdministrator -Referer $Referer
     if(-not($token.token)){
         throw "Unable to retrieve token for Site Administrator"
+    }
+
+    # Get the current security configuration
+    if($ServerType -ine "NotebookServer" -or $ServerType -ine "MissionServer"){
+        $UpdateSecurityConfig = $False
+        Write-Verbose 'Getting security config for site'
+        $secConfig = Get-SecurityConfig -ServerURL $ServerURL -Token $token.token -Referer $Referer
+        
+        if($EnableHTTPSOnly){
+            if($secConfig.sslEnabled -and -not($secConfig.httpEnabled)){
+                Write-Verbose "Https Only is enabled. No update required"
+            }else{
+                Write-Verbose "Https Only is disabled. Update required"
+                $UpdateSecurityConfig = $True
+            }
+        }else{
+            if($EnableHSTS){
+                throw "Error: Enable HSTS porperty requires http protocol set to only HTTPS."
+            }
+
+            if(-not($secConfig.sslEnabled -and -not($secConfig.httpEnabled))){
+                Write-Verbose "Https Only is disabled. No update required"
+            }else{
+                Write-Verbose "Https Only is enabled. Update required"
+                $UpdateSecurityConfig = $True
+            }
+        }
+
+        if(-not($UpdateSecurityConfig)){
+            if($secConfig.HSTSEnabled -ine $EnableHSTS){
+                Write-Verbose "Enable HSTS doesn't match the expected state $EnableHSTS"
+                $UpdateSecurityConfig = $True
+            }else{
+                Write-Verbose "Enable HSTS matches the expected state $EnableHSTS"
+            }
+        }
+
+        if($UpdateSecurityConfig){
+            Update-SecurityConfig -ServerURL $ServerURL -Token $token.token -SecurityConfig $secConfig `
+                                        -Referer $Referer -EnableHTTPSOnly $EnableHTTPSOnly -EnableHSTS $EnableHSTS -Verbose
+            # Changes will cause the web server to restart.
+            Write-Verbose "Waiting 30 seconds before checking"
+            Start-Sleep -Seconds 30
+
+            Write-Verbose "Waiting for Url '$($ServerUrl)/arcgis/admin' to respond"
+            Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
+            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+        }
     }
 
     $MachineName = $FQDN
@@ -229,10 +287,27 @@ function Set-TargetResource
         $RestartRequired = $false
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
+            $UploadRootOrIntermediateCertificate = $False
             if ($Certs.certificates -icontains $key.Alias){
-                Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates no Action Required"
+                Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates."
+                $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias -Verbose
+                Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.Thumbprint)"
+                $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $key.Path
+                Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."
+                if($RootOrIntermediateCertForMachine.Thumbprint -ine $NewCert.Thumbprint){
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) doesn't match that of existing cetificate. Deleting existing certificate and uploading a new one"
+                    $UploadRootOrIntermediateCertificate = $True
+                    $res = Invoke-DeleteSSLCertForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias
+                    Write-Verbose "Delete existing Certificate Operation result - $($res | ConvertTo-Json)"
+                }else{
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) match that of existing cetificate."
+                }
             }else{
                 Write-Verbose "RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates Import-RootOrIntermediate"
+                $UploadRootOrIntermediateCertificate = $True
+            }
+
+            if($UploadRootOrIntermediateCertificate){
                 try{
                     Import-RootOrIntermediateCertificate -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -CertAlias $key.Alias -CertificateFilePath $key.Path
                     if(-not($RestartRequired)){
@@ -283,7 +358,13 @@ function Test-TargetResource
 		$CertificatePassword,
         
         [System.String]
-        $SslRootOrIntermediate
+        $SslRootOrIntermediate,
+
+        [System.Boolean]
+        $EnableHTTPSOnly,
+
+        [System.Boolean]
+        $EnableHSTS
 	)
 
     if($CertificateFileLocation -and -not(Test-Path $CertificateFileLocation)){
@@ -309,6 +390,40 @@ function Test-TargetResource
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -Credential $SiteAdministrator -Referer $Referer 
     if(-not($token.token)){
         throw "Unable to retrieve token for Site Administrator"
+    }
+
+    if($ServerType -ine "NotebookServer" -or $ServerType -ine "MissionServer"){
+        $secConfig = Get-SecurityConfig -ServerURL $ServerURL -Token $token.token -Referer $Referer
+        if($result){
+            if($EnableHTTPSOnly){
+                if($secConfig.sslEnabled -and -not($secConfig.httpEnabled)){
+                    Write-Verbose "Https Only is enabled. No update required"
+                }else{
+                    Write-Verbose "Https Only is disabled. Update required"
+                    $result = $false
+                }
+            }else{
+                if($EnableHSTS){
+                    throw "Error: Enable HSTS porperty requires http protocol set to only HTTPS."
+                }
+        
+                if(-not($secConfig.sslEnabled -and -not($secConfig.httpEnabled))){
+                    Write-Verbose "Https Only is disabled. No update required"
+                }else{
+                    Write-Verbose "Https Only is enabled. Update required."
+                    $result = $false
+                }
+            }
+        
+            if($result){
+                if($secConfig.HSTSEnabled -ine $EnableHSTS){
+                    Write-Verbose "Enable HSTS doesn't match the expected state $EnableHSTS"
+                    $result = $false
+                }else{
+                    Write-Verbose "Enable HSTS matches the expected state $EnableHSTS"
+                }
+            }
+        }
     }
 
     $MachineName = $FQDN
@@ -366,7 +481,17 @@ function Test-TargetResource
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
             if ($Certs.certificates -icontains $key.Alias){
-                Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates no Action Required"
+                Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates. Validating if thumbprint matches the existing certificate"
+                $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias -Verbose
+                Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.Thumbprint)"
+                $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $key.Path
+                Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."
+                if($RootOrIntermediateCertForMachine.Thumbprint -ine $NewCert.Thumbprint){
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) doesn't match that of existing cetificate."
+                    $result = $False
+                }else{
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) match that of existing cetificate."
+                }
             }else{
                 Write-Verbose "RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates"
                 $result = $False
@@ -477,7 +602,7 @@ function Import-ExistingCertificate
     }
 
     $res = Invoke-UploadFile -url $ImportCACertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'certFile' -httpHeaders $Header -Verbose 
-    if($res -and $res.Content) {
+    if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCACertUrl
     } else {
@@ -511,7 +636,7 @@ function Import-RootOrIntermediateCertificate
     $ImportCertUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/machines/$MachineName/sslCertificates/importRootOrIntermediate"
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; } 
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'rootCACertificate'    
-    if($res -and $res.Content) {
+    if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCACertUrl
     } else {
@@ -699,6 +824,69 @@ function Get-SSLCertificateForMachine
         $null
     }
 }
+function Update-SecurityConfig
+{
+    [CmdletBinding()]
+    param(
+		[System.String]
+        $ServerURL, 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer,
+
+        $SecurityConfig,
+
+        [System.Boolean]
+        $EnableHTTPSOnly,
+        
+        [System.Boolean]
+        $EnableHSTS
+    ) 
+
+    if(-not($SecurityConfig)) {
+        throw "Security Config parameter is not provided"
+    }
+
+    $UpdateSecurityConfigUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/security/config/update"
+    $props = @{
+        f= 'json';
+        token = $Token;
+        httpsProtocols = if($null -eq $SecurityConfig.httpsProtocols) {"TLSv1.2,TLSv1.1,TLSv1"}else{$SecurityConfig.httpsProtocols};
+        cipherSuites = $SecurityConfig.cipherSuites;
+        Protocol = if($EnableHTTPSOnly){ "HTTPS" }else{ "HTTP_AND_HTTPS" };
+        authenticationTier = $SecurityConfig.authenticationTier;
+        HSTSEnabled = "$EnableHSTS";
+        portalProperties = (ConvertTo-Json $SecurityConfig.portalProperties -Compress);
+        allowedAdminAccessIPs= if($null -eq $SecurityConfig.allowedAdminAccessIPs) { "" }else{$SecurityConfig.allowedAdminAccessIPs};
+        allowDirectAccess= $SecurityConfig.allowDirectAccess ;
+        allowInternetCORSEnabled= $SecurityConfig.allowInternetCORSAccess;
+        virtualDirsSecurityEnabled = $SecurityConfig.virtualDirsSecurityEnabled;
+    }
+    Invoke-ArcGISWebRequest -Url $UpdateSecurityConfigUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 300 -Verbose
+}
+
+function Get-SecurityConfig 
+{
+    [CmdletBinding()]
+    param(
+		[System.String]
+        $ServerURL,
+        
+        [System.String]
+        $Token, 
+        
+        [System.String]
+        $Referer
+    ) 
+
+    $GetSecurityConfigUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/security/config/"
+    Write-Verbose "Url:- $GetSecurityConfigUrl"
+    Invoke-ArcGISWebRequest -Url $GetSecurityConfigUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 30
+}
+
 
 Export-ModuleMember -Function *-TargetResource
 

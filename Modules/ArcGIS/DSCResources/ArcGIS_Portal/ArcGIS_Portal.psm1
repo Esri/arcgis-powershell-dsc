@@ -52,8 +52,6 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Service User to connect the Portal-UserStore to an Active Directory
     .PARAMETER EnableAutomaticAccountCreation
         Enables the automaticAccountCreation on Portal
-    .PARAMETER DisableServiceDirectory
-        Disable the Services Directory on Portal
     .PARAMETER EnableEmailSettings
         Enable Email Settings on Portal
     .PARAMETER EmailSettingsSMTPServerAddress

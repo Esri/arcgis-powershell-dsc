@@ -64,7 +64,7 @@
         $IsFederatedWithRestrictedPublishing
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
     Import-DscResource -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName

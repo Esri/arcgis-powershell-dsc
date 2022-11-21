@@ -386,29 +386,41 @@ function Set-TargetResource
         if(-not($fedServer)) {
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl does not exist"
             [bool]$Done = $false
-            [int]$NumOfAttempts = 0
-            while(($Done -eq $false) -and ($NumOfAttempts -lt 3))
-            {
-                $resp = Invoke-FederateServer -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
+            [int]$NumAttempts = 1
+            [int]$MaxAttempts = 3
+            while(-not($Done)) {
+                Write-Verbose "Federation of Server Attempt $NumAttempts"
+                [bool]$failed = $false
+                $ErrorMessage = ""
+                try {
+                    $resp = Invoke-FederateServer -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -PortalToken $token.token -Referer $Referer `
                             -ServerServiceUrl $ServiceUrl -ServerAdminUrl $ServerSiteAdminUrl -ServerAdminCredential $SiteAdministrator
-                if($resp.error) {			
-                    Write-Verbose "[ERROR]:- Federation returned error. Error:- $($resp.error)"
-                    if(-not($ServerSiteAdminUrlHostName -as [ipaddress]) -and ($NumOfAttempts -eq 2)){
-                        # We don't Throw and error for Max HA due to Current workaround for issue with last() ARM function incorrectly detecting circular dependency
-                        # As a result we run federation on Web-1 and Portal-Sec'
-                        throw "[ERROR]:- Federation returned error. Error:- $($resp.error)"
+                    if($resp.error){
+                        $failed = $true
+                        $ErrorMessage = $resp.error
                     }
-                    if($NumOfAttempts -gt 1) {
-                        Write-Verbose "Waiting for 30 seconds!"
+                }
+                catch
+                {
+                    $failed = $true
+                    $ErrorMessage =  $_
+                }
+
+                if($failed) {
+                    if($NumAttempts -ge $MaxAttempts) {
+                        throw "[ERROR]:- Federation Failed after multiple attempts. Error:- $ErrorMessage"                        
+                    }else{
+                        Write-Verbose "[ERROR]:- Federation returned error. Error:- $ErrorMessage"
+                        Write-Verbose "Attempt [$NumAttempts] Failed. Retrying after 30 seconds!"
+                        Start-Sleep -Seconds 30
                     }
-                    Start-Sleep -Seconds 30
-                    $NumOfAttempts++
-                }else {
+                } else {
                     Write-Verbose 'Federation succeeded. Now updating server role and function.'
                     $Done = $true
                 }
-            }   
-        }else {
+                $NumOfAttempts++
+            }
+        } else {
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl already exists"
         }
 
@@ -793,7 +805,8 @@ function Update-FederatedServer
     )
     
     try{
-        $response = Invoke-ArcGISWebRequest -Url ("https://$($PortalHostName):$Port/$($SiteName)/portaladmin/federation/servers/$($ServerId)/update") -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 300 -Verbose 
+        $UpdateUrl = "https://$($PortalHostName):$Port/$($SiteName)" + "/portaladmin/federation/servers/"+$ServerId+"/update"
+        $response = Invoke-ArcGISWebRequest -Url $UpdateUrl -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 300 -Verbose
         Write-Verbose ($response | ConvertTo-Json -Depth 5 -Compress)
         $response
     }catch{

@@ -1052,7 +1052,7 @@ function Get-ComponentCode
             '2021.3.1' = '2EFCCCED-8C84-4A76-B2B7-4680195E9FD4'
             '2022.1' = 'EDD58C88-F2D2-413B-8CC8-0B07C8997BD4'
             '2022.1.1' = 'EDD58C88-F2D2-413B-8CC8-0B07C8997BD4'
-            '2022.2' = 'C16053FC-0F7A-4819-95C6-FB14B05782AE'
+            '2022.2' = 'E1B018A2-C615-4CDA-AC51-8F1EDE8492AF'
         }
         ServerDataInteroperability = @{
             '10.6' = 'D603B058-F1BA-4DD4-92E0-8F9498FCB16C'

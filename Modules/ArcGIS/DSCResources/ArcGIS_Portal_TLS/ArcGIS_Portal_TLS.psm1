@@ -20,6 +20,8 @@ Import-Module -Name (Join-Path -Path $modulePath `
         CName/Alias with which the Certificate will be associated.
 	.PARAMETER SslRootOrIntermediate
         List of RootOrIntermediate Certificates
+    .PARAMETER EnableHSTS
+        Enable HTTP Strict Transport Security (HSTS)
 #>
 
 function Get-TargetResource
@@ -58,7 +60,10 @@ function Set-TargetResource
 		$WebServerCertificateAlias,
 
         [System.String]
-        $SslRootOrIntermediate
+        $SslRootOrIntermediate,
+
+        [System.Boolean]
+        $EnableHSTS
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -187,10 +192,25 @@ function Set-TargetResource
         $Certs = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 -ErrorAction SilentlyContinue
         $RestartRequired = $False
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
+            $UploadRootOrIntermediateCertificate = $False
             if ($Certs.sslCertificates -icontains $key.Alias){
                 Write-Verbose "Set RootOrIntermediate $($key.Alias) is in List of SSL-Certificates no Action Required"
+                $RootOrIntermediateCertForMachine = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -WebServerCertificateAlias $key.Alias -VersionGreaterThan1071 $VersionGreaterThan1071 -MachineName $FQDN
+                Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.sha1Fingerprint)"
+                $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $key.Path
+                Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."
+                if($RootOrIntermediateCertForMachine.sha1Fingerprint -ine $NewCert.Thumbprint){
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) doesn't match that of existing cetificate. Deleting existing certificate and uploading a new one"
+                    $UploadRootOrIntermediateCertificate = $True
+                    Invoke-DeletePortalCertificate -PortalURL $PortalURL -Token $token.token -Referer $Referer -WebServerCertificateAlias $key.Alias -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071
+                }else{
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) match that of existing cetificate."
+                }
             }else{
                 Write-Verbose "Set RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates Import-RootOrIntermediate"
+                $UploadRootOrIntermediateCertificate = $True
+            }
+            if($UploadRootOrIntermediateCertificate){
                 try{
                     Import-RootOrIntermediateCertificate -PortalURL $PortalURL -Token $token.token -Referer $Referer -CertAlias $key.Alias -CertificateFilePath $key.Path -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071
                     if(-not($RestartRequired)){
@@ -209,6 +229,18 @@ function Set-TargetResource
             Wait-ForUrl "$PortalURL/arcgis/portaladmin/healthCheck/?f=json" -Verbose
             Wait-ForUrl "$PortalURL/arcgis/sharing/rest/generateToken" -Verbose
         }
+    }
+
+    $PortalMachineCertSettings = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 -ErrorAction SilentlyContinue
+    if($PortalMachineCertSettings.HSTSEnabled -ine $EnableHSTS){
+        Write-Verbose "Enabled HSTS doesn't match the expected state $EnableHSTS"
+        Update-HSTSSetting -PortalURL $PortalURL -Token $token.token -Referer $Referer  -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 -HSTSEnabled $EnableHSTS -Verbose
+        Write-Verbose "Waiting 30 seconds as changing hsts setting will cause the web server to restart."
+        Start-Sleep -Seconds 30
+        Wait-ForUrl "$PortalURL/arcgis/portaladmin/healthCheck/?f=json" -Verbose
+        Wait-ForUrl "$PortalURL/arcgis/sharing/rest/generateToken" -Verbose
+    }else{
+        Write-Verbose "Enabled HSTS matches the expected state $EnableHSTS"
     }
 }
 
@@ -235,7 +267,10 @@ function Test-TargetResource
 		$WebServerCertificateAlias,
 
         [System.String]
-        $SslRootOrIntermediate
+        $SslRootOrIntermediate,
+
+        [System.Boolean]
+        $EnableHSTS
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -300,13 +335,33 @@ function Test-TargetResource
         $Certs = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 -ErrorAction SilentlyContinue
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
             if ($Certs.sslCertificates -icontains $key.Alias){
-                Write-Verbose "Test RootOrIntermediate $($key.Alias) is in List of SSL-Certificates"
-                #TODO - Check thumbprint
+                Write-Verbose "Test RootOrIntermediate $($key.Alias) is in List of SSL-Certificates. Validating if thumbprint matches the existing certificate"
+                $RootOrIntermediateCertForMachine = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -WebServerCertificateAlias $key.Alias -VersionGreaterThan1071 $VersionGreaterThan1071 -MachineName $FQDN
+                Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.sha1Fingerprint)"
+                $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $key.Path
+                Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."
+                if($RootOrIntermediateCertForMachine.sha1Fingerprint -ine $NewCert.Thumbprint){
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) doesn't match that of existing cetificate."
+                    $result = $False
+                    break
+                }else{
+                    Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) match that of existing cetificate."
+                }
             }else{
                 $result = $False
                 Write-Verbose "Test RootOrIntermediate $($key.Alias) is NOT in List of SSL-Certificates"
-                break;
+                break
             }
+        }
+    }
+
+    if ($result){
+        $PortalMachineCertSettings = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 -ErrorAction SilentlyContinue
+        if($PortalMachineCertSettings.HSTSEnabled -ine $EnableHSTS){
+            Write-Verbose "Enabled HSTS doesn't match the expected state $EnableHSTS"
+            $result = $false
+        }else{
+            Write-Verbose "Enabled HSTS matches the expected state $EnableHSTS"
         }
     }
 
@@ -407,7 +462,7 @@ function Import-ExistingCertificate
     
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; password = $CertificatePassword.GetNetworkCredential().Password  }    
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
-    if($res -and $res.Content) {
+    if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCertUrl
     } else {
@@ -444,12 +499,46 @@ function Import-RootOrIntermediateCertificate
     $ImportCertUrl = if($VersionGreaterThan1071){ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/machines/$MachineName/sslCertificates/importRootOrIntermediate" }else{ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/security/sslCertificates/importRootOrIntermediate" }
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; norestart = $true }
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
-    if($res -and $res.Content) {
+    if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCertUrl
     } else {
         Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
     }
+}
+
+function Update-HSTSSetting
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $PortalURL, 
+
+        [System.String]
+        $Token, 
+
+        [System.String]
+        $Referer, 
+
+        [System.String]
+        $MachineName,
+
+        [System.Boolean]
+        $VersionGreaterThan1071,
+
+        [System.Boolean]
+        $HSTSEnabled
+    )
+
+    $URL = if($VersionGreaterThan1071){ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/machines/$MachineName/sslCertificates/update" }else{ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/security/sslCertificates/update" }
+
+    $SSLCertsObject = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $Token -Referer $Referer -MachineName $MachineName -VersionGreaterThan1071 $VersionGreaterThan1071
+    
+    $sslProtocols = if($null -eq $SSLCertsObject.cipherSuites) { "TLSv1.2,TLSv1.1,TLSv1" }else{ $SSLCertsObject.sslProtocols }
+    $cipherSuites = if($null -eq $SSLCertsObject.cipherSuites){ "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,TLS_DHE_RSA_WITH_AES_256_CBC_SHA,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_CBC_SHA256,TLS_RSA_WITH_AES_256_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA" }else{ $SSLCertsObject.cipherSuites }
+    $WebParams = @{ f = 'json'; token = $Token; webServerCertificateAlias = $SSLCertsObject.webServerCertificateAlias; sslProtocols = $sslProtocols ; cipherSuites = $cipherSuites; HSTSEnabled = "$HSTSEnabled";}
+    
+    Invoke-ArcGISWebRequest -Url $URL -HttpFormParameters $WebParams -Referer $Referer
 }
 
 function Update-PortalSSLCertificate
@@ -479,10 +568,12 @@ function Update-PortalSSLCertificate
 
     $SSLCertsObject = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $Token -Referer $Referer -MachineName $MachineName -VersionGreaterThan1071 $VersionGreaterThan1071
 
-    $sslProtocols = if($null -eq $SSLCertsObject.cipherSuites) {"TLSv1.2,TLSv1.1,TLSv1"}else{$SSLCertsObject.sslProtocols}
+    $sslProtocols = if($null -eq $SSLCertsObject.sslProtocols) {"TLSv1.2,TLSv1.1,TLSv1"}else{$SSLCertsObject.sslProtocols}
     $cipherSuites = if($null -eq $SSLCertsObject.cipherSuites){ "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,TLS_DHE_RSA_WITH_AES_256_CBC_SHA,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_CBC_SHA256,TLS_RSA_WITH_AES_256_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA" }else{ $SSLCertsObject.cipherSuites }
     $WebParams = @{ f = 'json'; token = $Token; webServerCertificateAlias = $CertAlias; sslProtocols = $sslProtocols ; cipherSuites = $cipherSuites;}
-    if($VersionGreaterThan1071){ $WebParams.HSTSEnabled = $False; }
+    if($VersionGreaterThan1071){ 
+        $WebParams.HSTSEnabled = "$($SSLCertsObject.HSTSEnabled)"; 
+    }
    
     Invoke-ArcGISWebRequest -Url $URL -HttpFormParameters $WebParams -Referer $Referer
 }

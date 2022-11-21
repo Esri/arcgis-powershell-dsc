@@ -555,7 +555,7 @@ function Invoke-RegisterOrConfigureDataStore
                 $DatastoresToRegisterFlag = ($DatastoresToRegisterOrConfigure.Count -gt 0)
             }            
             if($DatastoresToRegisterFlag) {
-                Write-Verbose "Register DataStore on Machine $MachineFQDN"    
+                Write-Verbose "Register DataStore on Machine $MachineFQDN"
                 $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 600 -Verbose
                 if($response.error) {
                     Write-Verbose "Error Response - $($response.error | ConvertTo-Json)"
