@@ -8,5 +8,6 @@ class ArcGIS_Portal_TLS : OMI_BaseResource
 	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
     [Write, Description("Portal Web Server SSL Certificate Alias")] String WebServerCertificateAlias;
 	[Write, Description("List of RootOrIntermediate Certificates")] String SslRootOrIntermediate;
+	[Write, Description("Enable HTTP Strict Transport Security (HSTS)")] Boolean EnableHSTS;
 };
 

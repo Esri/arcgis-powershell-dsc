@@ -109,7 +109,11 @@
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
-        $DisableServiceDirectory = $False,
+        $EnableHTTPSOnly = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $EnableHSTS = $False,
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -121,7 +125,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
@@ -419,27 +423,25 @@
             PeerServerHostName = $PrimaryServerMachine
             DependsOn = $Depends
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
-            DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
-            SingleClusterMode = $true
             ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
         }
         $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
 
-        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
-            ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-            {
-                ServerHostName = $Node.NodeName
-                SiteAdministrator = $ServerPrimarySiteAdminCredential                         
-                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
-                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
-                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
-                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
-                ServerType = "GeneralPurposeServer"
-                DependsOn = $Depends
-            }
-            $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
+        ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
+        {
+            ServerHostName = $Node.NodeName
+            SiteAdministrator = $ServerPrimarySiteAdminCredential
+            WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
+            CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
+            CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
+            SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
+            EnableHTTPSOnly = $EnableHTTPSOnly
+            EnableHSTS = $EnableHSTS
+            ServerType = "GeneralPurposeServer"
+            DependsOn = $Depends
         }
+        $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
         
         if ($RegisteredDirectories -and ($Node.NodeName -ieq $PrimaryServerMachine)) {
             ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"

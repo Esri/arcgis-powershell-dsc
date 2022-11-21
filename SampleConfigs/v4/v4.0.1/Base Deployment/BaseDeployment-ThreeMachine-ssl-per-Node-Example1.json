@@ -1,0 +1,129 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine 1 Name]",
+            "DataStoreTypes": [
+                "Relational",
+                "SpatioTemporal"
+            ],
+            "Role": [
+                "DataStore"
+            ],
+            "SslCertificates": [
+                {
+                    "Path": "[DataStore SSL Certificate Path]",
+                    "Password": "[DataStore SSL Password]",
+                    "CNameFQDN": "[DataStore CName Alias]",
+                    "Target": [
+                        "DataStore"
+                    ]
+                }
+            ]
+        },
+        {
+            "NodeName": "[Machine 2 Name]",
+            "Role": [
+                "Server",
+                "ServerWebAdaptor"
+            ],
+            "SslCertificates": [
+                {
+                    "Path": "[Server SSL Certificate Path]",
+                    "Password": "[Server SSL Password]",
+                    "CNameFQDN": "[Server CName Alias]",
+                    "Target": [
+                        "Server"
+                    ]
+                },
+                {
+                    "Path": "[Server WebAdaptor SSL Certificate Path]",
+                    "Password": "[Server WebAdaptor SSL Password]",
+                    "CNameFQDN": "[Server WebAdaptor CName Alias]",
+                    "Target": [
+                        "WebAdaptor"
+                    ]
+                }
+            ]
+        },
+        {
+            "NodeName": "[Machine 3 Name]",
+            "Role": [
+                "Portal",
+                "PortalWebAdaptor"
+            ],
+            "SslCertificates": [
+                {
+                    "Path": "[Common Cert for Portal and Portal Webadaptor SSL Certificate Path]",
+                    "Password": "[Common Cert SSL Password]",
+                    "CNameFQDN": "[Common Cert CName Alias]",
+                    "Target": [
+                        "Portal",
+                        "WebAdaptor"
+                    ]
+                }
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerContext": "server",
+        "PortalContext": "portal",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
+        },
+        "Portal": {
+            "LicenseFilePath": "[License File Path - Portal ]",
+            "PortalLicenseUserTypeId": "[Portal License User Type Id- Required for 10.7 and above]",
+            "Installer": {
+                "Path": "[Portal Installer Path]",
+                "WebStylesPath": "[Optional Parameter starting ArcGIS Enterprise 10.7.1 - Portal Web Styles Installer Path]",
+                "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
+                "ContentDir": "[Portal Content Dir for Install- Ex. C:\\arcgisportal"
+            },
+            "ContentDirectoryLocation":"C:\\arcgisportal\\content",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            }
+        },
+        "DataStore": {
+            "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",
+            "EnableFailoverOnPrimaryStop": false,
+            "Installer": {
+                "Path": "[DataStore Installer Path]",
+                "InstallDir": "[DataStore Install Dir - Ex. C:\\ArcGIS\\DataStore]"
+            }
+        },
+        "WebAdaptor": {
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "[WebAdaptor Installer Path]"
+            }
+        }
+    }
+}

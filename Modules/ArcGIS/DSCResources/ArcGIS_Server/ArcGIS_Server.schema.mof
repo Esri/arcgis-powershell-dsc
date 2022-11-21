@@ -1,5 +1,5 @@
 ﻿
-[ClassVersion("1.0.0.0"), FriendlyName("")]
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Server")]
 class ArcGIS_Server : OMI_BaseResource
 {
 	[Write] String Version;
@@ -16,9 +16,7 @@ class ArcGIS_Server : OMI_BaseResource
     [Write, Description("Is Joining Existing site")] Boolean Join;
 	[Write] String PeerServerHostName;
     [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
-	[Write, Description("Enable Single Cluster Mode")] Boolean SingleClusterMode;
-	[Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
 	[Write, Description("Enable Usage Metering")] Boolean EnableUsageMetering;
-	[Write] String SharedKey;
+	
 };
 

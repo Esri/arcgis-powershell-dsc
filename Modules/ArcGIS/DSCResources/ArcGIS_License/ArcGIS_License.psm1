@@ -185,7 +185,7 @@ function Test-TargetResource
 
     Write-Verbose "RealVersion of ArcGIS Software to be Licensed:- $RealVersion" 
     $RealVersion = $RealVersion.Split('.')[0] + '.' + $RealVersion.Split('.')[1] 
-    
+    $LicenseVersion = if($Component -ieq 'Pro' -or $Component -ieq 'LicenseManager'){ '10.6' }else{ $RealVersion }
     Write-Verbose "Version $LicenseVersion" 
     if($Component -ieq 'Desktop') {
         Write-Verbose "TODO:- Check for Desktop license. For now forcing Software Authorization Tool to License Pro."
@@ -199,7 +199,7 @@ function Test-TargetResource
     else {
         Write-Verbose "License Check Component:- $Component"
         $file = "$env:SystemDrive\Program Files\ESRI\License$($LicenseVersion)\sysgen\keycodes"
-        if(-not($Force) -and (Test-Path $file)){
+        if(-not($Force) -and (Test-Path $file)){ 
             $searchtexts = @()
             if($Component -ieq 'Portal') {
                 $searchtext += 'portal_'
@@ -210,9 +210,11 @@ function Test-TargetResource
                 $searchtexts += if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }
                 if($ServerRole -ieq 'ImageServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "ImageServer")) {
                     $searchtexts += 'imgsvr'
+                    $searchtexts += 'imgsvr_4'
                 }
                 if($ServerRole -ieq 'GeoEvent' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) {
                     $searchtexts += 'geoesvr'
+                    $searchtexts += 'geoesvr_4'
                 }
                 if($ServerRole -ieq 'WorkflowManagerServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "WorkflowManagerServer")) {
                     $searchtexts += 'workflowsvr_4'
@@ -220,6 +222,10 @@ function Test-TargetResource
                 }
                 if($ServerRole -ieq 'GeoAnalytics' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoAnalytics")) {
                     $searchtexts += 'geoasvr'
+                    $searchtexts += 'geoasvr_4'
+                }
+                if($ServerRole -ieq 'KnowledgeServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "KnowledgeServer")){ 
+                    $searchtexts += 'knwldgsvr'
                 }
                 if($ServerRole -ieq 'NotebookServer') {
                     $searchtexts += 'notebooksstdsvr'

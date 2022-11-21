@@ -34,16 +34,10 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Boolean to indicate whether to Join or Create a new Site
     .PARAMETER PeerServerHostName
         Required Host Name of the Peer Machine in case the Site Needs to be joined to an existing Server Site with the said HostName.
-    .PARAMETER SingleClusterMode
-        Enables Single Cluster Mode for Machine 
     .PARAMETER LogLevel
         Defines the Logging Level of Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
-    .PARAMETER DisableServiceDirectory
-        Boolean to indicate whether to disable the service directory for ArcGIS Server
     .PARAMETER EnableUsageMetering
         Boolean to indicate whether to enable the internal usage metering plugin
-    .PARAMETER SharedKey
-        Secret to use as the Shared Key for token generatiion
 #>
 function Get-TargetResource
 {
@@ -103,16 +97,7 @@ function Get-TargetResource
         $LogLevel,
 
         [System.Boolean]
-        $SingleClusterMode,
-
-        [System.Boolean]
-        $DisableServiceDirectory,
-
-        [System.Boolean]
-        $EnableUsageMetering,
-
-        [System.String]
-        $SharedKey
+        $EnableUsageMetering
 	)
 
 	$null
@@ -175,16 +160,7 @@ function Set-TargetResource
 		$LogLevel,
 
         [System.Boolean]
-        $SingleClusterMode,
-        
-        [System.Boolean]
-        $DisableServiceDirectory,
-
-        [System.Boolean]
-        $EnableUsageMetering,
-
-        [System.String]
-        $SharedKey
+        $EnableUsageMetering
 	)
     
     if($VerbosePreference -ine 'SilentlyContinue') 
@@ -315,46 +291,7 @@ function Set-TargetResource
                 #Write-Verbose "Got Server Token $($token.token)" 
             }
 
-            if($SingleClusterMode) 
-            {
-                Write-Verbose "Get Single Cluster Mode Setting" 
-                $deploymentConfig = Get-SingleClusterModeOnServer -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-                Write-Verbose "Current Single Cluster Mode $($deploymentConfig)" # .singleClusterMode
-                if(-not($deploymentConfig.singleClusterMode)) {
-                    Write-Verbose "Enabling Single Cluster Mode"
-                    Set-SingleClusterModeOnServer -ServerURL $ServerUrl -Token $token.token -Referer $Referer -SingleClusterMode $true
-                }
-            }
-
-            if($DisableServiceDirectory) {
-                Write-Verbose "Get Service Directory Setting"
-                $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $token.token
-                if($servicesdirectory.enabled -eq "true") {
-                    $dirStatus = "enabled"
-                } else {
-                    $dirStatus = "disabled"
-                }
-                Write-Verbose "Current Service Directory Setting:- $dirStatus"
-                if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
-                    Write-Verbose "Updating Service Directory Setting"
-                    $servicesdirectory.enabled = (!$DisableServiceDirectory)
-                    $servicesdirectory = ConvertTo-Json $servicesdirectory
-                    Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory/edit" -Token $token.token -Properties $servicesdirectory
-                }
-            }
-
-            if($SharedKey){
-                Write-Verbose "Get Token Setting"
-                $TokenSettings = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/tokens" -Token $token.token
-                if($TokenSettings.properties.sharedKey -ine $SharedKey) {
-                    Write-Verbose "Updating shared key"
-                    $TokenSettings.properties.sharedKey = $SharedKey
-                    $TokenSettings = ConvertTo-Json $TokenSettings
-                    Set-TokenSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/tokens/update" -Token $token.token -Properties $TokenSettings
-                }
-            }
-
-		    Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
+            Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
             Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
             Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
 
@@ -447,16 +384,7 @@ function Test-TargetResource
 		$LogLevel,
 
         [System.Boolean]
-        $SingleClusterMode,
-
-        [System.Boolean]
-        $DisableServiceDirectory,
-
-        [System.Boolean]
-        $EnableUsageMetering,
-
-        [System.String]
-        $SharedKey
+        $EnableUsageMetering
     )
     
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -498,40 +426,7 @@ function Test-TargetResource
             $result = $false
         }
     }
-
-    if($result -and $SingleClusterMode) 
-    {
-        Write-Verbose "Get Single Cluster Mode Setting" 
-        $deploymentConfig = Get-SingleClusterModeOnServer -ServerURL $ServerUrl -Token $token.token -Referer $Referer
-        Write-Verbose "Current Single Cluster Mode Setting:- $($deploymentConfig.singleClusterMode)"  
-        if(-not($deploymentConfig.singleClusterMode)){
-            Write-Verbose "Single cluster mode not set"
-            $result = $false
-        }
-    }
-
-    if($result -and $DisableServiceDirectory) {
-        Write-Verbose "Get Service Directory Setting"
-        $servicesdirectory = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/handlers/rest/servicesdirectory" -Token $token.token
-        if($servicesdirectory.enabled -eq "true") {
-            $dirStatus = "enabled"
-        } else {
-            $dirStatus = "disabled"
-        }
-        Write-Verbose "Current Service Directory Setting:- $dirStatus"
-        if($servicesdirectory.enabled -eq $DisableServiceDirectory) {
-            $result = $false
-        }
-    }
-
-    if($result -and $SharedKey) {
-        Write-Verbose "Get Token Setting"
-        $TokenSettings = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/security/tokens" -Token $token.token
-        if($TokenSettings.properties.sharedKey -ine $SharedKey) {
-            $result = $false
-        }
-    }
-        
+    
     if($result) {
         $ServiceName = 'ArcGIS Server'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
@@ -921,131 +816,6 @@ function Invoke-DeleteSite
     $DeleteSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/deleteSite" 
     $response = Invoke-ArcGISWebRequest -Url $DeleteSiteUrl -HttpFormParameters @{ f= 'json'; token = $token.token; } -Referer $Referer -TimeOutSec $TimeOut
     Write-Verbose ($response.messages -join ', ') 
-}
-
-function Set-SingleClusterModeOnServer
-{
-    [CmdletBinding()]
-	param
-	(
-		[System.String]
-        $ServerURL, 
-        
-        [System.String]
-        $Token, 
-        
-        [System.String]
-        $Referer, 
-        
-        [System.Boolean]
-        $SingleClusterMode
-    )
-
-    $DeploymentUpdateUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/deployment/update/"   
-    $props = @{ f= 'json'; token = $Token;singleClusterMode = $SingleClusterMode.ToString().ToLowerInvariant(); deploymentConfig = $SingleClusterMode.ToString().ToLowerInvariant()  }
-    try{
-        $response = Invoke-ArcGISWebRequest -Url $DeploymentUpdateUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 150
-        Confirm-ResponseStatus $response -Url $DeploymentUpdateUrl
-        $response 
-    }catch{
-        Write-Verbose "[EXCEPTION] $_"
-    }
-}
-function Get-SingleClusterModeOnServer
-{
-    [CmdletBinding()]
-	param
-	(
-        [System.String]
-        $ServerURL, 
-
-        [System.String]
-        $Token, 
-
-        [System.String]
-        $Referer
-    )
-    
-    $GetDeploymentUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/system/deployment/"   
-    try{
-        $response = Invoke-ArcGISWebRequest -Url $GetDeploymentUrl -HttpFormParameters  @{ f= 'json'; token = $Token; } -Referer $Referer -TimeOutSec 150
-        Confirm-ResponseStatus $response 
-        $response
-    }catch{
-        Write-Verbose "[EXCEPTION] $_"
-    }
-}
-
-function Get-AdminSettings
-{
-    [CmdletBinding()]
-    Param
-    (
-        [System.String]
-        $ServerUrl,
-        
-        [System.String]
-        $SettingUrl,
-        
-        [System.String]
-        $Token
-    )
-    $RequestParams = @{ f= 'json'; token = $Token; }
-    $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
-    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
-    Confirm-ResponseStatus $Response
-    $Response
-}
-
-function Set-AdminSettings
-{
-    [CmdletBinding()]
-    Param
-    (
-        [System.String]
-        $ServerUrl,
-
-        [System.String]
-        $SettingUrl,
-        
-        [System.String]
-        $Token,
-        
-        [System.String]
-        $Properties
-    )
-    $RequestUrl  = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
-    $COProperties = $Properties | ConvertFrom-Json
-    $RequestParams = @{ f= 'json'; token = $Token; }
-    $COProperties.psobject.properties | ForEach-Object { $RequestParams[$_.Name] = $_.Value }
-    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
-    Write-Verbose $Response
-    Confirm-ResponseStatus $Response
-    $Response
-}
-
-function Set-TokenSettings {
-    [CmdletBinding()]
-    Param (
-        [System.String]
-        $ServerUrl,
-
-        [System.String]
-        $SettingUrl,
-        
-        [System.String]
-        $Token,
-        
-        [System.String]
-        $Properties
-    )
-
-    $RequestUrl = $ServerUrl.TrimEnd("/") + "/" + $SettingUrl.TrimStart("/")
-    $RequestParams = @{ f = 'json'; token = $Token; tokenManagerConfig = $Properties }
-    $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams
-    Confirm-ResponseStatus $Response
-    Write-Verbose $Response
-    $Response
 }
 
 Export-ModuleMember -Function *-TargetResource

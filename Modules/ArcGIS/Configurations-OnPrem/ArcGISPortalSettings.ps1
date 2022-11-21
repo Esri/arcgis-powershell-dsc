@@ -21,6 +21,10 @@
         [System.String]
         $InternalLoadBalancer,
 
+        [Parameter(Mandatory=$false)]
+        [System.Int32]
+        $InternalLoadBalancerPort,
+
         [System.Boolean]
         $EnableEmailSettings = $False,
 
@@ -72,7 +76,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
     Import-DscResource -Name ArcGIS_PortalSettings
     
     Node $AllNodes.NodeName
@@ -85,6 +89,16 @@
         }
         
         if($Node.NodeName -ieq $PrimaryPortalMachine){
+            $PortalEndpointPort = 443
+            if($InternalLoadBalancer -or !$ExternalDNSHostName){
+                $PortalEndpointPort = 7443
+                if($InternalLoadBalancer){
+                    if($InternalLoadBalancerPort){
+                        $PortalEndpointPort = $InternalLoadBalancerPort
+                    }
+                }
+            }
+
             ArcGIS_PortalSettings PortalSettings
             {
                 PortalHostName          = $PrimaryPortalMachine
@@ -92,7 +106,7 @@
                 PortalContext           = $PortalContext
                 PortalEndPoint          = if($InternalLoadBalancer){ $InternalLoadBalancer }else{ if($ExternalDNSHostName){ $ExternalDNSHostName }else{ Get-FQDN $PrimaryPortalMachine }}
                 PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $PortalContext }
-                PortalEndPointPort      = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 7443 }else{ 443 }
+                PortalEndPointPort      = $PortalEndpointPort
                 PortalAdministrator     = $PortalAdministratorCredential
                 ADServiceUser           = $ADServiceCredential
                 EnableAutomaticAccountCreation = if($EnableAutomaticAccountCreation) { $true } else { $false }

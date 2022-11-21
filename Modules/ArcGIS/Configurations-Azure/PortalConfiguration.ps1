@@ -431,9 +431,10 @@
                         PortalContext       = $PortalContext
                         PortalHostName      = $LastPortalHostName
                         PortalEndPoint      = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName }
-                        PortalEndPointPort      = 443
-                        PortalEndPointContext   = $PortalContext
+                        PortalEndPointPort  = 443
+                        PortalEndPointContext = $PortalContext
                         PortalAdministrator = $SiteAdministratorCredential
+                        WaitForPortalRestart = $True
                         DependsOn = $PortalDependsOn
                     }
                     $PortalDependsOn = '[ArcGIS_PortalSettings]PortalSettings'

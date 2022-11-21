@@ -76,6 +76,10 @@
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
+        $EnableHSTS = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
         $UsesSSL = $False,
         
         [Parameter(Mandatory=$False)]
@@ -84,7 +88,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
@@ -311,18 +315,17 @@
             DependsOn =  $Depends
         }
         $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"
-
-        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
-            ArcGIS_Portal_TLS ArcGIS_Portal_TLS
-            {
-                PortalHostName          = $Node.NodeName
-                SiteAdministrator       = $PortalAdministratorCredential 
-                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
-                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
-                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
-                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
-                DependsOn               = $Depends
-            }
+        
+        ArcGIS_Portal_TLS ArcGIS_Portal_TLS
+        {
+            PortalHostName          = $Node.NodeName
+            SiteAdministrator       = $PortalAdministratorCredential
+            WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
+            CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
+            CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
+            SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
+            EnableHSTS = $EnableHSTS
+            DependsOn               = $Depends
         }
     }   
 }

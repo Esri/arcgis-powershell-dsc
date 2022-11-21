@@ -15,12 +15,16 @@
 
         [Parameter(Mandatory=$false)]
         [System.String]
-        $ServerContext
+        $ServerContext,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $DisableServiceDirectory = $False
     )
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.0
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
     Import-DscResource -Name ArcGIS_ServerSettings
 
     Node $AllNodes.NodeName
@@ -39,8 +43,7 @@
                 SiteAdministrator= $ServerPrimarySiteAdminCredential
                 ExternalDNSName  = $ExternalDNSHostName
                 ServerContext    = $ServerContext
-                EnableSSL        = $True
-                EnableHTTP       = $True
+                DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
             }
         }
     }
