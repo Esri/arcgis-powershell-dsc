@@ -1,0 +1,52 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name 1]",
+            "Role": [
+                "Desktop"
+            ]
+        },
+        {
+            "NodeName": "[Machine Name 1]",
+            "Role": [
+                "Desktop"
+            ]
+        },
+        {
+            "NodeName": "[Machine Name 2]",
+            "Role": [
+                "LicenseManager"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "DesktopVersion": "[Version of ArcGIS Dektop ]",
+        "LicenseManagerVersion": "[Version of ArcGIS License Manager ]",
+        "Desktop": {
+            "SeatPreference": "Float",
+            "InstallFeatures": "[ALL | <feature1>,<feature2>,]",
+            "ModifyFlexdAcl": "[TRUE | FALSE (Default)]",
+            "BlockAddIns": "[0 (Default All Addins Allowed), 1 (Signed by CA), 2 (Esri Addins Only), 3 (Esri Addins Only from Admin Folder), 4 (No Addins Allowed)]",
+            "DesktopConfig": "[ true - if you supply ESRI_LICENSE_HOST, SOFTWARE_CLASS, and SEAT_PREFERENCE on the command line ]",
+            "EsriLicenseHost": "[ License Host - [Machine Name 3] or Can be an external License Manager Host]",
+            "SoftwareClass": "[Viewer | Editor | Professional]",
+            "EnableEUEI": "[ True (Default enables participation of Esri User Experience Improvement Program) | False ]",
+            "Installer": {
+                "Path": "[Desktop Installer Path]",
+                "InstallDir": "[Desktop Install Dir - Ex. C:\\ArcGIS\\Desktop]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "PatchesDir": "",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            }
+        },
+        "LicenseManager": {
+            "LicenseFilePath": "[License File Path (*.prvs) - License Manager ]",
+            "Installer": {
+                "Path": "[License Manager Installer Path]",
+                "InstallDir": "[License Manager Install Dir - Ex. C:\\ArcGIS\\LicenseManager]"
+            }
+        }
+    }
+}

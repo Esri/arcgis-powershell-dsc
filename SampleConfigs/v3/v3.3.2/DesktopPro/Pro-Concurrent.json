@@ -25,7 +25,7 @@
         "Pro": {
             "AuthorizationType": "CONCURRENT_USE",
             "LockAuthSettings": "[ True(Default) | False ]",
-            "BlockAddIns": "[0 (Default All Addins Allowed), 1 (Signed by CA), 2 (Esri Addins Only), 3 (Esri Addins Only from Admin Folder), 4 (No Addins Allowed), 5 (Only Addins from Addmin Folder)]",
+            "BlockAddIns": "[0 (Default All Addins Allowed), 1 (Signed by CA), 2 (Esri Addins Only), 3 (Esri Addins Only from Admin Folder), 4 (No Addins Allowed), 5 (Only Addins from Admin Folder)]",
             "SoftwareClass": "[Viewer | Editor | Professional]",
             "PortalList": "[List of Portals for Pro]",
             "AllUsers": "[1 (Per Machine Install)]",

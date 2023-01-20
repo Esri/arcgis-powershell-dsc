@@ -614,15 +614,9 @@ function Invoke-CreateSite
     $httpRequestBody = ConvertTo-HttpBody -props $requestParams
     #Write-Verbose $requestParams
     $response = Invoke-RestMethod -Method Post -Uri $createNewSiteUrl -Body $httpRequestBody -TimeoutSec $TimeOut
-
-    if ($response.status -and ($response.status -ieq "error")) { 
-        $response.messages | Out-String
-    }
-    
-    $responseMessages = ($response.messages -join ', ')
-    Write-Verbose "Response from CreateSite:- $responseMessages"
-    
-    if($responseMessages -and (($responseMessages.IndexOf('Failed to create the site') -gt -1) -or ($responseMessages.IndexOf('timeout creating child process') -gt -1))) {
+    Write-Verbose "Response from CreateSite:- $($response | ConvertTo-Json)"
+	$responseMessages = ($response.messages -join ', ')
+	if ($response.status -and ($response.status -ieq "error")) { 
         throw "CreateSite Failed. Error:- $responseMessages"
     }
 }

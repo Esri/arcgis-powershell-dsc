@@ -398,7 +398,11 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.6\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.7\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.8\Updates\*",
-        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.8.1\Updates\*"
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.8\Updates\*",
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.8.1\Updates\*",
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9\Updates\*",
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9.1\Updates\*",
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.0\Updates\*"
     )
     
     foreach($RegPath in $RegPaths){

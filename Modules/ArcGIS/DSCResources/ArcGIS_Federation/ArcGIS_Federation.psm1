@@ -418,7 +418,7 @@ function Set-TargetResource
                     Write-Verbose 'Federation succeeded. Now updating server role and function.'
                     $Done = $true
                 }
-                $NumOfAttempts++
+                $NumAttempts++
             }
         } else {
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl already exists"
