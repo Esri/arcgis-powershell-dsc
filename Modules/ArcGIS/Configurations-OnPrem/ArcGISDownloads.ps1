@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2
     Import-DscResource -Name ArcGIS_RemoteFile
 
     Node $AllNodes.NodeName {
@@ -260,13 +260,15 @@
                 }
                 'Pro'
                 {
+                    $ProDownloadFolder = if($ConfigurationData.ConfigData.ProVersion -ieq "3.0.3"){ "3.0" }else{ $ConfigurationData.ConfigData.ProVersion }
+
                     ArcGIS_RemoteFile "ProDownload$($Node.NodeName)"
                     {
                         Source = $ConfigurationData.ConfigData.Pro.Installer.Path
                         Destination = $ConfigurationData.ConfigData.Pro.Installer.Path 
                         FileSourceType = "ArcGISDownloadsAPI"
                         Credential = $AGOCredential
-                        ArcGISDownloadAPIFolderPath = "software/arcgispro/EXEs/$($ConfigurationData.ConfigData.ProVersion)"
+                        ArcGISDownloadAPIFolderPath = "software/arcgispro/EXEs/$($ProDownloadFolder)"
                         Ensure = $Ensure
                     }
                     if($ConfigurationData.ConfigData.Pro.Extensions){
@@ -278,7 +280,7 @@
                                 Destination = $Extension.Value.Installer.Path 
                                 FileSourceType = "ArcGISDownloadsAPI"
                                 Credential = $AGOCredential
-                                ArcGISDownloadAPIFolderPath = "software/arcgispro/EXEs/$($ConfigurationData.ConfigData.ProVersion)"
+                                ArcGISDownloadAPIFolderPath = "software/arcgispro/EXEs/$($ProDownloadFolder)"
                                 Ensure = $Ensure
                             }
                         }

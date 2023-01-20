@@ -7,7 +7,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2
 	
     Node $AllNodes.NodeName {
         

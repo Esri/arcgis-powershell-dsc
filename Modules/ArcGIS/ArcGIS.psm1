@@ -2261,7 +2261,7 @@ function Invoke-ServerUpgradeScript {
 
     Write-Information -InformationAction Continue "ArcGIS Server Upgrades"
 
-    $cfServiceAccountIsDomainAccount = $cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+    $cfServiceAccountIsDomainAccount =  if($cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount}else{ $false}
     $cfServiceAccountIsMSA = if($cf.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$cf.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false }
     $cfServiceAccountPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
     if(-not($cfServiceAccountIsMSA)){
@@ -2517,7 +2517,7 @@ function Invoke-DataStoreUpgradeScript {
         }
     }
 
-    $DSServiceAccountIsDomainAccount = $DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount
+    $DSServiceAccountIsDomainAccount = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount}else{ $false}
     $DSServiceAccountIsMSA = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$DSConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false}  
     $DSSAPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
     if(-not($DSServiceAccountIsMSA)){

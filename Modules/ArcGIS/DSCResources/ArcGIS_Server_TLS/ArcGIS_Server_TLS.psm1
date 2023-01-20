@@ -810,10 +810,8 @@ function Get-SSLCertificateForMachine
         }else{
             $issuer = $json.issuer
             $thumbprint = $json.sha1Fingerprint
-            $CN = if($issuer) { ($issuer.Split(',') | ConvertFrom-StringData).CN } else { $null }
             @{
                     Issuer = $issuer
-                    CName = $CN
                     Thumbprint = $thumbprint
             }
         }

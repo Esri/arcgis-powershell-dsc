@@ -321,7 +321,7 @@ function Set-TargetResource
         Set-PortalSecurityConfig -PortalHostName $PortalFQDN -Token $token.token -SecurityParameters (ConvertTo-Json $securityConfig -Depth 10) -Referer $Referer -Verbose
     }
 
-    if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $Version -eq "10.8.1"){
+    if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $Info.Version -eq "10.8.1"){
         $UpdateEmailSettingsFlag = $False
         try{
             $PortalEmailSettings = Get-PortalEmailSettings -PortalHostName $PortalFQDN -Token $token.token -Referer $Referer
@@ -592,7 +592,7 @@ function Test-TargetResource
         }
     }
 
-    if($result -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $Version -eq "10.8.1")){
+    if($result -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $Info.Version -eq "10.8.1")){
         Write-Verbose "Checking Portal Email settings."
         try{
             $PortalEmailSettings = Get-PortalEmailSettings -PortalHostName $PortalFQDN -Token $token.token -Referer $Referer
