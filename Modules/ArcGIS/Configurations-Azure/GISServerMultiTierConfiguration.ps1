@@ -3,7 +3,7 @@
 	param(
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.0'
+        $Version = '11.1'
 		
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -147,6 +147,10 @@
         [System.String]
         $EnableLogHarvesterPlugin
 
+		,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsUpdatingCertificates = $False
+
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DebugMode
@@ -216,7 +220,7 @@
 	$IsDebugMode = $DebugMode -ieq 'true'
     $IsMultiMachineServer = (($ServerMachineNames -split ',').Length -gt 1)
 	$ServerFunctionsArray = ($ServerFunctions -split ',')
-
+	
     if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
     {
         $Namespace = $ExternalDNSHostName
@@ -242,6 +246,14 @@
             $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
         }
     }
+
+	$ServicesToStop = @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server')
+	if($ServerFunctionsArray -iContains 'WorkflowManagerServer'){
+		$ServicesToStop += @('ArcGISGeoEvent', 'ArcGISGeoEventGateway')
+	}
+	if($ServerRole -ieq 'GeoEventServer'){
+		$ServicesToStop += 'WorkflowManager'
+	}
 
 	Node localhost
 	{
@@ -274,280 +286,281 @@
 		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
 		if($HasValidServiceCredential) 
         {
-			if(-Not($ServiceCredentialIsDomainAccount)){
-				User ArcGIS_RunAsAccount
-				{
-					UserName				= $ServiceCredential.UserName
-					Password				= $ServiceCredential
-					FullName				= 'ArcGIS Service Account'
-					Ensure					= 'Present'
-					PasswordChangeRequired  = $false
-					PasswordNeverExpires	= $true
+			if(-not($IsUpdatingCertificates)){
+				if(-Not($ServiceCredentialIsDomainAccount)){
+					User ArcGIS_RunAsAccount
+					{
+						UserName				= $ServiceCredential.UserName
+						Password				= $ServiceCredential
+						FullName				= 'ArcGIS Service Account'
+						Ensure					= 'Present'
+						PasswordChangeRequired  = $false
+						PasswordNeverExpires	= $true
+					}
 				}
-			}
 
-			ArcGIS_WindowsService ArcGIS_for_Server_Service
-			{
-				Name            = 'ArcGIS Server'
-				Credential      = $ServiceCredential
-				StartupType     = 'Automatic'
-				State           = 'Running' 
-				DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
-			}
-
-			ArcGIS_Service_Account Server_Service_Account
-			{
-				Name            = 'ArcGIS Server'
-				RunAsAccount    = $ServiceCredential
-				IsDomainAccount = $ServiceCredentialIsDomainAccount
-				Ensure          = 'Present'
-				DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')} 
-			}
-        
-			$ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')  
-			if($ServerLicenseFileName) 
-			{
-				ArcGIS_License ServerLicense
+				ArcGIS_WindowsService ArcGIS_for_Server_Service
 				{
-					LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
+					Name            = 'ArcGIS Server'
+					Credential      = $ServiceCredential
+					StartupType     = 'Automatic'
+					State           = 'Running' 
+					DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
+				}
+
+				ArcGIS_Service_Account Server_Service_Account
+				{
+					Name            = 'ArcGIS Server'
+					RunAsAccount    = $ServiceCredential
+					IsDomainAccount = $ServiceCredentialIsDomainAccount
 					Ensure          = 'Present'
-					Component       = 'Server'
-				} 
-				$ServerDependsOn += '[ArcGIS_License]ServerLicense'
-			}
-		
-			if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
-			{
-				  $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
-				  $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
-              
-				  Script PersistStorageCredentials
-				  {
-					  TestScript = { 
-										$result = cmdkey "/list:$using:AzureFilesEndpoint"
-										$result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
-										if($result -like '*none*')
-										{
-											return $false
-										}
-										return $true
-									}
-					  SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-									$result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
-								  }
-					  GetScript            = { return @{} }                  
-					  DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
-					  PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
-				  }
-				  $ServerDependsOn += '[Script]PersistStorageCredentials'
-			}
+					DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')} 
+				}
 			
-			ArcGIS_xFirewall Server_FirewallRules
-			{
-				Name                  = "ArcGISServer"
-				DisplayName           = "ArcGIS for Server"
-				DisplayGroup          = "ArcGIS for Server"
-				Ensure                = 'Present'
-				Access                = "Allow"
-				State                 = "Enabled"
-				Profile               = ("Domain","Private","Public")
-				LocalPort             = ("6080","6443")
-				Protocol              = "TCP"
-			}
-			$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
-
-			if($ServerFunctionsArray -iContains 'GeoAnalyticsServer')
-			{  
-				ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
+				$ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')  
+				if($ServerLicenseFileName) 
 				{
-					Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
-					DisplayName           = "ArcGIS GeoAnalytics" 
-					DisplayGroup          = "ArcGIS GeoAnalytics" 
-					Ensure                = 'Present' 
-					Access                = "Allow" 
-					State                 = "Enabled" 
-					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
-					Protocol              = "TCP" 
+					ArcGIS_License ServerLicense
+					{
+						LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
+						Ensure          = 'Present'
+						Component       = 'Server'
+					} 
+					$ServerDependsOn += '[ArcGIS_License]ServerLicense'
 				}
-
-				ArcGIS_xFirewall GeoAnalytics_OutboundFirewallRules
+			
+				if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
 				{
-					Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules" 
-					DisplayName           = "ArcGIS GeoAnalytics" 
-					DisplayGroup          = "ArcGIS GeoAnalytics" 
-					Ensure                = 'Present' 
-					Access                = "Allow" 
-					State                 = "Enabled" 
-					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
-					Protocol              = "TCP" 
-					Direction             = "Outbound"    
+					$filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
+					$storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
+				
+					Script PersistStorageCredentials
+					{
+						TestScript = { 
+											$result = cmdkey "/list:$using:AzureFilesEndpoint"
+											$result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
+											if($result -like '*none*')
+											{
+												return $false
+											}
+											return $true
+										}
+						SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
+										$result | ForEach-Object {Write-verbose -Message "cmdkey: $_" -Verbose}
+									}
+						GetScript            = { return @{} }                  
+						DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
+						PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+					}
+					$ServerDependsOn += '[Script]PersistStorageCredentials'
 				}
-
-				ArcGIS_xFirewall GeoAnalyticsCompute_InboundFirewallRules
+				
+				ArcGIS_xFirewall Server_FirewallRules
 				{
-					Name                  = "ArcGISGeoAnalyticsComputeInboundFirewallRules" 
-					DisplayName           = "ArcGIS GeoAnalytics" 
-					DisplayGroup          = "ArcGIS GeoAnalytics" 
-					Ensure                = 'Present' 
-					Access                = "Allow" 
-					State                 = "Enabled" 
-					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("56540-56550")	# GA Compute
-					Protocol              = "TCP" 
-				}
-
-				ArcGIS_xFirewall GeoAnalyticsCompute_OutboundFirewallRules
-				{
-					Name                  = "ArcGISGeoAnalyticsComputeOutboundFirewallRules" 
-					DisplayName           = "ArcGIS GeoAnalytics" 
-					DisplayGroup          = "ArcGIS GeoAnalytics" 
-					Ensure                = 'Present' 
-					Access                = "Allow" 
-					State                 = "Enabled" 
-					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("56540-56550")	# GA Compute
-					Protocol              = "TCP" 
-					Direction             = "Outbound"    
-				}
-				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoAnalyticsCompute_OutboundFirewallRules','[ArcGIS_xFirewall]GeoAnalyticsCompute_InboundFirewallRules','[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules','[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules')
-			}
-
-			if($IsMultiMachineServer) 
-			{
-				ArcGIS_xFirewall Server_FirewallRules_Internal
-				{
-					Name                  = "ArcGISServerInternal"
-					DisplayName           = "ArcGIS for Server Internal RMI"
+					Name                  = "ArcGISServer"
+					DisplayName           = "ArcGIS for Server"
 					DisplayGroup          = "ArcGIS for Server"
 					Ensure                = 'Present'
 					Access                = "Allow"
 					State                 = "Enabled"
 					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("4000-4004")
+					LocalPort             = ("6080","6443")
 					Protocol              = "TCP"
 				}
-				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'				
-			}
-				
-			foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
-			{
-				if(Get-Service $ServiceToStop -ErrorAction Ignore) 
-			    {
-					Service "$($ServiceToStop.Replace(' ','_'))_Service"
+				$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
+
+				if($ServerFunctionsArray -iContains 'GeoAnalytics')
+				{  
+					ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
 					{
-						Name			= $ServiceToStop
-						Credential		= $ServiceCredential
-						StartupType		= 'Manual'
-						State			= 'Stopped'
-						DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
+						Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
+						DisplayName           = "ArcGIS GeoAnalytics" 
+						DisplayGroup          = "ArcGIS GeoAnalytics" 
+						Ensure                = 'Present' 
+						Access                = "Allow" 
+						State                 = "Enabled" 
+						Profile               = ("Domain","Private","Public")
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
+						Protocol              = "TCP" 
 					}
-				}
-			}			
-			
-			$IsGeoEventServer = ($ServerRole -ieq 'GeoEventServer')
-			if($IsGeoEventServer) 
-			{
-				WindowsFeature websockets
-				{
-					Name  = 'Web-WebSockets'
-					Ensure = 'Present'
-				}
 
-				ArcGIS_xFirewall GeoEvent_FirewallRules_External_Port
-				{
-					Name                  = "ArcGISGeoEventFirewallRulesClusterExternal" 
-					DisplayName           = "ArcGIS GeoEvent Extension Cluster External" 
-					DisplayGroup          = "ArcGIS GeoEvent Extension" 
-					Ensure                = 'Present' 
-					Access                = "Allow" 
-					State                 = "Enabled" 
-					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("6143")
-					Protocol              = "TCP" 
-				}
-				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_External_Port')
-
-				$DependsOnGeoevent = @('[User]ArcGIS_RunAsAccount','[ArcGIS_ServerSettings]ServerSettings')
-
-				if(-Not($ServiceCredentialIsDomainAccount)){
-					ArcGIS_Service_Account GeoEvent_RunAs_Account
+					ArcGIS_xFirewall GeoAnalytics_OutboundFirewallRules
 					{
-						Name		 = 'ArcGISGeoEvent'
-						RunAsAccount = $ServiceCredential
-						IsDomainAccount = $ServiceCredentialIsDomainAccount
-						Ensure       = 'Present'
-						DependsOn    = $DependsOnGeoevent
-						DataDir      = '$env:ProgramData\Esri\GeoEvent'
-					}  
-					$DependsOnGeoevent += '[ArcGIS_Service_Account]GeoEvent_RunAs_Account'
-				}
-
-				if(Get-Service 'ArcGISGeoEvent' -ErrorAction Ignore) 
-				{
-					ArcGIS_WindowsService ArcGIS_GeoEvent_Service
-					{
-						Name		= 'ArcGISGeoEvent'
-						Credential  = $ServiceCredential
-						StartupType = if($IsGeoEventServer) { 'Automatic' } else { 'Manual' }
-						State		= if($IsGeoEventServer) { 'Running' } else { 'Stopped' }
-						DependsOn   = $DependsOnGeoevent
+						Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules" 
+						DisplayName           = "ArcGIS GeoAnalytics" 
+						DisplayGroup          = "ArcGIS GeoAnalytics" 
+						Ensure                = 'Present' 
+						Access                = "Allow" 
+						State                 = "Enabled" 
+						Profile               = ("Domain","Private","Public")
+						LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
+						Protocol              = "TCP" 
+						Direction             = "Outbound"    
 					}
-					$DependsOnGeoevent += '[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service'
 
-					if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
+					ArcGIS_xFirewall GeoAnalyticsCompute_InboundFirewallRules
 					{
-						ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
+						Name                  = "ArcGISGeoAnalyticsComputeInboundFirewallRules" 
+						DisplayName           = "ArcGIS GeoAnalytics" 
+						DisplayGroup          = "ArcGIS GeoAnalytics" 
+						Ensure                = 'Present' 
+						Access                = "Allow" 
+						State                 = "Enabled" 
+						Profile               = ("Domain","Private","Public")
+						LocalPort             = ("56540-56550")	# GA Compute
+						Protocol              = "TCP" 
+					}
+
+					ArcGIS_xFirewall GeoAnalyticsCompute_OutboundFirewallRules
+					{
+						Name                  = "ArcGISGeoAnalyticsComputeOutboundFirewallRules" 
+						DisplayName           = "ArcGIS GeoAnalytics" 
+						DisplayGroup          = "ArcGIS GeoAnalytics" 
+						Ensure                = 'Present' 
+						Access                = "Allow" 
+						State                 = "Enabled" 
+						Profile               = ("Domain","Private","Public")
+						LocalPort             = ("56540-56550")	# GA Compute
+						Protocol              = "TCP" 
+						Direction             = "Outbound"    
+					}
+					$ServerDependsOn += @('[ArcGIS_xFirewall]GeoAnalyticsCompute_OutboundFirewallRules','[ArcGIS_xFirewall]GeoAnalyticsCompute_InboundFirewallRules','[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules','[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules')
+				}
+
+				if($IsMultiMachineServer) 
+				{
+					ArcGIS_xFirewall Server_FirewallRules_Internal
+					{
+						Name                  = "ArcGISServerInternal"
+						DisplayName           = "ArcGIS for Server Internal RMI"
+						DisplayGroup          = "ArcGIS for Server"
+						Ensure                = 'Present'
+						Access                = "Allow"
+						State                 = "Enabled"
+						Profile               = ("Domain","Private","Public")
+						LocalPort             = ("4000-4004")
+						Protocol              = "TCP"
+					}
+					$ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'				
+				}
+					
+				foreach($ServiceToStop in $ServicesToStop)
+				{
+					if(Get-Service $ServiceToStop -ErrorAction Ignore) 
+					{
+						Service "$($ServiceToStop.Replace(' ','_'))_Service"
 						{
-							Name		= 'ArcGISGeoEventGateway'
+							Name			= $ServiceToStop
+							Credential		= $ServiceCredential
+							StartupType		= 'Manual'
+							State			= 'Stopped'
+							DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount')}else{ @()} 
+						}
+					}
+				}			
+				
+				$IsGeoEventServer = ($ServerRole -ieq 'GeoEventServer')
+				if($IsGeoEventServer) 
+				{
+					WindowsFeature websockets
+					{
+						Name  = 'Web-WebSockets'
+						Ensure = 'Present'
+					}
+
+					ArcGIS_xFirewall GeoEvent_FirewallRules_External_Port
+					{
+						Name                  = "ArcGISGeoEventFirewallRulesClusterExternal" 
+						DisplayName           = "ArcGIS GeoEvent Extension Cluster External" 
+						DisplayGroup          = "ArcGIS GeoEvent Extension" 
+						Ensure                = 'Present' 
+						Access                = "Allow" 
+						State                 = "Enabled" 
+						Profile               = ("Domain","Private","Public")
+						LocalPort             = ("6143")
+						Protocol              = "TCP" 
+					}
+					$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_External_Port')
+
+					$DependsOnGeoevent = @('[User]ArcGIS_RunAsAccount','[ArcGIS_ServerSettings]ServerSettings')
+
+					if(-Not($ServiceCredentialIsDomainAccount)){
+						ArcGIS_Service_Account GeoEvent_RunAs_Account
+						{
+							Name		 = 'ArcGISGeoEvent'
+							RunAsAccount = $ServiceCredential
+							IsDomainAccount = $ServiceCredentialIsDomainAccount
+							Ensure       = 'Present'
+							DependsOn    = $DependsOnGeoevent
+							DataDir      = '$env:ProgramData\Esri\GeoEvent'
+						}  
+						$DependsOnGeoevent += '[ArcGIS_Service_Account]GeoEvent_RunAs_Account'
+					}
+
+					if(Get-Service 'ArcGISGeoEvent' -ErrorAction Ignore) 
+					{
+						ArcGIS_WindowsService ArcGIS_GeoEvent_Service
+						{
+							Name		= 'ArcGISGeoEvent'
 							Credential  = $ServiceCredential
 							StartupType = if($IsGeoEventServer) { 'Automatic' } else { 'Manual' }
 							State		= if($IsGeoEventServer) { 'Running' } else { 'Stopped' }
 							DependsOn   = $DependsOnGeoevent
 						}
-						$DependsOnGeoevent += '[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service'
-					}
+						$DependsOnGeoevent += '[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service'
 
-					ArcGIS_GeoEvent ArcGIS_GeoEvent
-					{
-						Name	                  = 'ArcGIS GeoEvent'
-						Ensure	                  = 'Present'
-						SiteAdministrator         = $SiteAdministratorCredential
-						WebSocketContextUrl       = "wss://$($ExternalDNSHostName)/$($GeoeventContext)wss"
-						Version					  = $Version
-						DependsOn				  = $DependsOnGeoevent
+						if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
+						{
+							ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
+							{
+								Name		= 'ArcGISGeoEventGateway'
+								Credential  = $ServiceCredential
+								StartupType = if($IsGeoEventServer) { 'Automatic' } else { 'Manual' }
+								State		= if($IsGeoEventServer) { 'Running' } else { 'Stopped' }
+								DependsOn   = $DependsOnGeoevent
+							}
+							$DependsOnGeoevent += '[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service'
+						}
+
+						ArcGIS_GeoEvent ArcGIS_GeoEvent
+						{
+							Name	                  = 'ArcGIS GeoEvent'
+							Ensure	                  = 'Present'
+							SiteAdministrator         = $SiteAdministratorCredential
+							WebSocketContextUrl       = "wss://$($ExternalDNSHostName)/$($GeoeventContext)wss"
+							Version					  = $Version
+							DependsOn				  = $DependsOnGeoevent
+						}
 					}
 				}
+
+				ArcGIS_LogHarvester ServerLogHarvester
+				{
+					ComponentType = "Server"
+					EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
+					Version = $Version
+					LogFormat = "csv"
+					DependsOn = $ServerDependsOn
+				}
+
+				$ServerDependsOn += '[ArcGIS_LogHarvester]ServerLogHarvester'
+
+				ArcGIS_Server Server
+				{
+					Version                                 = $Version
+					Ensure                                  = 'Present'
+					SiteAdministrator                       = $SiteAdministratorCredential
+					ConfigurationStoreLocation              = $ConfigStoreLocation
+					DependsOn                               = $ServerDependsOn
+					ServerDirectoriesRootLocation           = $ServerDirsLocation
+					Join                                    = $Join
+					PeerServerHostName                      = $ServerHostName
+					LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+					ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
+					ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+				}
+				$RemoteFederationDependsOn += @('[ArcGIS_Server]Server') 
 			}
-
-			ArcGIS_LogHarvester ServerLogHarvester
-            {
-                ComponentType = "Server"
-                EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
-				Version = $Version
-                LogFormat = "csv"
-                DependsOn = $ServerDependsOn
-            }
-
-            $ServerDependsOn += '[ArcGIS_LogHarvester]ServerLogHarvester'
-
-			ArcGIS_Server Server
-			{
-				Version                                 = $Version
-				Ensure                                  = 'Present'
-				SiteAdministrator                       = $SiteAdministratorCredential
-				ConfigurationStoreLocation              = $ConfigStoreLocation
-				DependsOn                               = $ServerDependsOn
-				ServerDirectoriesRootLocation           = $ServerDirsLocation
-				Join                                    = $Join
-				PeerServerHostName                      = $ServerHostName
-				LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-				ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-				ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
-			}
-			$RemoteFederationDependsOn += @('[ArcGIS_Server]Server') 
-
 			
 			Script CopyCertificateFileToLocalMachine
 			{
@@ -567,7 +580,7 @@
 				TestScript = {   
 					$false
 				}
-				DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+				DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
 				PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
 			}
 
@@ -579,93 +592,166 @@
 				CertificateFileLocation    = $ServerCertificateLocalFilePath
 				CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
 				ServerType                 = $ServerFunctions
-				DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') 
+				DependsOn                  = if(-not($IsUpdatingCertificates)){ @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') }else{ @('[Script]CopyCertificateFileToLocalMachine') }
 				SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
 			}
-			$RemoteFederationDependsOn += @('[ArcGIS_Server_TLS]Server_TLS')
 
-			if($ServerFunctionsArray -iContains 'WorkflowManagerServer') 
-			{
-				WindowsFeature websockets
+			if(-not($IsUpdatingCertificates)){
+				$RemoteFederationDependsOn += @('[ArcGIS_Server_TLS]Server_TLS')
+
+				if($ServerFunctionsArray -iContains 'WorkflowManagerServer') 
 				{
-					Name  = 'Web-WebSockets'
-					Ensure = 'Present'
-				}
-
-				$DependsOnWfm = @('[User]ArcGIS_RunAsAccount','[ArcGIS_Server_TLS]Server_TLS')
-
-				ArcGIS_xFirewall WorkflowManagerServer_FirewallRules
-				{
-					Name                  = "ArcGISWorkflowManagerServerFirewallRules" 
-					DisplayName           = "ArcGIS Workflow Manager Server" 
-					DisplayGroup          = "ArcGIS Workflow Manager Server Extension" 
-					Ensure                = "Present"
-					Access                = "Allow" 
-					State                 = "Enabled" 
-					Profile               = ("Domain","Private","Public")
-					LocalPort             = ("13443")
-					Protocol              = "TCP"
-				}
-				$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
-	
-				if($IsMultiMachineServer){
-					$WfmPorts = @("9830", "9820", "9840", "9880")
-	
-					ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
+					WindowsFeature websockets
 					{
-						Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 
-						DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Outbound" 
-						DisplayGroup          = "ArcGIS WorkflowManagerServer Extension" 
-						Ensure                =  "Present"
+						Name  = 'Web-WebSockets'
+						Ensure = 'Present'
+					}
+
+					$DependsOnWfm = @('[User]ArcGIS_RunAsAccount','[ArcGIS_Server_TLS]Server_TLS')
+
+					ArcGIS_xFirewall WorkflowManagerServer_FirewallRules
+					{
+						Name                  = "ArcGISWorkflowManagerServerFirewallRules" 
+						DisplayName           = "ArcGIS Workflow Manager Server" 
+						DisplayGroup          = "ArcGIS Workflow Manager Server Extension" 
+						Ensure                = "Present"
 						Access                = "Allow" 
 						State                 = "Enabled" 
 						Profile               = ("Domain","Private","Public")
-						RemotePort            = $WfmPorts
-						Protocol              = "TCP" 
-						Direction             = "Outbound"
-					}
-					$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_OutBound"
-	
-					ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_InBound
-					{
-						Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterInbound"
-						DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Inbound"
-						DisplayGroup          = "ArcGIS WorkflowManagerServer Extension"
-						Ensure                = 'Present'
-						Access                = "Allow"
-						State                 = "Enabled"
-						Profile               = ("Domain","Private","Public")
-						RemotePort            = $WfmPorts
+						LocalPort             = ("13443")
 						Protocol              = "TCP"
-						Direction             = "Inbound"
 					}
-					$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
-				}
+					$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
+		
+					if($IsMultiMachineServer){
+						$WfmPorts = @("9830", "9820", "9840", "9880")
+		
+						ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
+						{
+							Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 
+							DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Outbound" 
+							DisplayGroup          = "ArcGIS WorkflowManagerServer Extension" 
+							Ensure                =  "Present"
+							Access                = "Allow" 
+							State                 = "Enabled" 
+							Profile               = ("Domain","Private","Public")
+							RemotePort            = $WfmPorts
+							Protocol              = "TCP" 
+							Direction             = "Outbound"
+						}
+						$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_OutBound"
+		
+						ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_InBound
+						{
+							Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterInbound"
+							DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Inbound"
+							DisplayGroup          = "ArcGIS WorkflowManagerServer Extension"
+							Ensure                = 'Present'
+							Access                = "Allow"
+							State                 = "Enabled"
+							Profile               = ("Domain","Private","Public")
+							RemotePort            = $WfmPorts
+							Protocol              = "TCP"
+							Direction             = "Inbound"
+						}
+						$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
+					}
 
-				ArcGIS_Service_Account WorkflowManager_RunAs_Account
-				{
-					Name = 'WorkflowManager'
-					RunAsAccount = $ServiceCredential
-					Ensure =  "Present"
-					DependsOn = $DependsOnWfm
-					DataDir = "$env:ProgramData\Esri\workflowmanager"
-					IsDomainAccount = $ServiceCredentialIsDomainAccount
-					SetStartupToAutomatic = $True
-				}
-				$DependsOnWfm += "[ArcGIS_Service_Account]WorkflowManager_RunAs_Account"
-				$RemoteFederationDependsOn += "[ArcGIS_Service_Account]WorkflowManager_RunAs_Account"
-
-				if(Get-Service 'WorkflowManager' -ErrorAction Ignore) 
-				{
-					ArcGIS_WindowsService ArcGIS_WorkflowManager_Service
+					ArcGIS_Service_Account WorkflowManager_RunAs_Account
 					{
-						Name		= 'WorkflowManager'
-						Credential  = $ServiceCredential
-						StartupType = 'Automatic'
-						State		= 'Running'
-						DependsOn   = $DependsOnWfm
+						Name = 'WorkflowManager'
+						RunAsAccount = $ServiceCredential
+						Ensure =  "Present"
+						DependsOn = $DependsOnWfm
+						DataDir = "$env:ProgramData\Esri\workflowmanager"
+						IsDomainAccount = $ServiceCredentialIsDomainAccount
+						SetStartupToAutomatic = $True
 					}
-					$RemoteFederationDependsOn += '[ArcGIS_WindowsService]ArcGIS_WorkflowManager_Service'
+					$DependsOnWfm += "[ArcGIS_Service_Account]WorkflowManager_RunAs_Account"
+					$RemoteFederationDependsOn += "[ArcGIS_Service_Account]WorkflowManager_RunAs_Account"
+
+					if(Get-Service 'WorkflowManager' -ErrorAction Ignore) 
+					{
+						ArcGIS_WindowsService ArcGIS_WorkflowManager_Service
+						{
+							Name		= 'WorkflowManager'
+							Credential  = $ServiceCredential
+							StartupType = 'Automatic'
+							State		= 'Running'
+							DependsOn   = $DependsOnWfm
+						}
+						$RemoteFederationDependsOn += '[ArcGIS_WindowsService]ArcGIS_WorkflowManager_Service'
+					}
+
+					if($IsMultiMachineServer){
+						Script UpdateWorkflowManagerMultiMachineSettings
+						{
+							GetScript = {
+								$null
+							}
+							SetScript = {
+								$WFMConfPath = (Join-Path $env:ProgramData "\esri\workflowmanager\WorkflowManager.conf")
+								if(Test-Path $WFMConfPath) {
+									@('play.modules.disabled', 'play.modules.enabled') | ForEach-Object {
+										$PropertyName = $_
+										$PropertyValue = $null
+										Get-Content $WFMConfPath | ForEach-Object {
+											if($_ -and $_.TrimStart().StartsWith($PropertyName)){
+												$Splits = $_.Split('=')
+												if($Splits.Length -gt 1){
+													$PropertyValue = $Splits[1].Trim()
+												}
+											}
+										}
+										if($null -eq $PropertyValue){
+											if($PropertyName -ieq "play.modules.disabled"){
+												Add-Content $WFMConfPath "`nplay.modules.disabled += `"esri.workflow.utils.inject.LocalDataProvider`""
+											}
+											if($PropertyName -ieq "play.modules.enabled"){
+												Add-Content $WFMConfPath "`nplay.modules.enabled += `"esri.workflow.utils.inject.DistributedDataProvider`""
+											}
+										}
+									}
+								}else{
+									Write-Verbose "[WARNING] Workflow Manager Configuration file not found. Please update this file manually."
+								}
+								$ServiceName = "WorkflowManager"
+								Write-Verbose "Restarting $ServiceName Service in 30 Seconds"
+								Start-Sleep -Seconds 30
+								Write-Verbose "Stop Service '$ServiceName'"
+								Stop-Service -Name $ServiceName -Force 
+								Write-Verbose 'Stopping the service' 
+								Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+								Write-Verbose 'Stopped the service'
+								Write-Verbose "Restarting Service '$ServiceName' to pick up property change"
+								Start-Service $ServiceName 
+								Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+								Write-Verbose "Restarted Service '$ServiceName'"
+							}
+							TestScript = {
+								$result = $True
+								$WFMConfPath = (Join-Path $env:ProgramData "\esri\workflowmanager\WorkflowManager.conf")
+								@('play.modules.disabled', 'play.modules.enabled') | ForEach-Object {
+									$PropertyName = $_
+									$PropertyValue = $null
+									Get-Content $WFMConfPath | ForEach-Object {
+										if($_ -and $_.TrimStart().StartsWith($PropertyName)){
+											$Splits = $_.Split('=')
+											if($Splits.Length -gt 1){
+												$PropertyValue = $Splits[1].Trim()
+											}
+										}
+									}
+									if($null -eq $PropertyValue){
+										$result = $False
+									}
+								}
+								$result
+							}
+							DependsOn = $RemoteFederationDependsOn
+						}
+						$RemoteFederationDependsOn += '[Script]UpdateWorkflowManagerMultiMachineSettings'
+					}
 				}
 			}
 		}
@@ -765,9 +851,8 @@
                 DependsOn                   = if($HasValidServiceCredential) { @('[ArcGIS_Server]Server') } else { $null }
             }
         }
-
         
-		if($HasValidServiceCredential -and ($ServerHostName -ieq $env:ComputerName)) # Federate on first instance, health check prevents request hitting other non initialized nodes behind the load balancer
+		if($HasValidServiceCredential -and ($ServerHostName -ieq $env:ComputerName) -and -not($IsUpdatingCertificates)) # Federate on first instance, health check prevents request hitting other non initialized nodes behind the load balancer
 		{
 			ArcGIS_ServerSettings ServerSettings
 			{
@@ -778,7 +863,7 @@
 				DependsOn 			= $RemoteFederationDependsOn
 			}
 			$RemoteFederationDependsOn += @("[ArcGIS_ServerSettings]ServerSettings")
-			if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsAddingServersOrRegisterEGDB -ieq 'True')) 
+			if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsAddingServersOrRegisterEGDB -ieq 'True') ) 
 			{
 				if($ServerFunctionsArray -iContains 'WorkflowManagerServer'){
 					$ServerFunctionsArray[[array]::IndexOf($ServerFunctionsArray, "WorkflowManagerServer")] = "WorkflowManager"
@@ -802,64 +887,36 @@
 					ServerFunctions = ($ServerFunctionsArray -join ",")
 					DependsOn = $RemoteFederationDependsOn
 				}
+				$RemoteFederationDependsOn += @("[ArcGIS_Federation]Federate")	
+
+				if($ServerFunctionsArray -iContains 'WorkflowManager'){
+					Script RestartWorkflowManagerService
+					{
+						GetScript = {
+							$null
+						}
+						SetScript = {
+							$ServiceName = "WorkflowManager"
+							Write-Verbose "Restarting $ServiceName Service in 30 Seconds"
+							Start-Sleep -Seconds 30
+							Write-Verbose "Stop Service '$ServiceName'"
+							Stop-Service -Name $ServiceName -Force 
+							Write-Verbose 'Stopping the service' 
+							Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
+							Write-Verbose 'Stopped the service'
+							Write-Verbose "Restarting Service '$ServiceName' to pick up property change"
+							Start-Service $ServiceName 
+							Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
+							Write-Verbose "Restarted Service '$ServiceName'"
+						}
+						TestScript = {
+							$false
+						}
+						DependsOn = $RemoteFederationDependsOn
+					}
+				}
 			}
         }
-
-
-		if($HasValidServiceCredential -and $ServerFunctionsArray -iContains 'WorkflowManagerServer'){
-			Script RestartWorkflowManagerService
-			{
-				GetScript = {
-					$null
-				}
-				SetScript = {
-					if($using:IsMultiMachineServer){
-						$WFMConfPath = (Join-Path $env:ProgramData "\esri\workflowmanager\WorkflowManager.conf")
-						if(Test-Path $WFMConfPath) {
-							@('play.modules.disabled', 'play.modules.enabled')| ForEach-Object {
-								$PropertyName = $_
-								$PropertyValue = $null
-								Get-Content $WFMConfPath | ForEach-Object {
-									if($_ -and $_.TrimStart().StartsWith($PropertyName)){
-										$Splits = $_.Split('=')
-										if($Splits.Length -gt 1){
-											$PropertyValue = $Splits[1].Trim()
-										}
-									}
-								}
-								if($null -eq $PropertyValue){
-									if($PropertyName -ieq "play.modules.disabled"){
-										Add-Content $WFMConfPath "`nplay.modules.disabled += `"esri.workflow.utils.inject.LocalDataProvider`""
-									}
-									if($PropertyName -ieq "play.modules.enabled"){
-										Add-Content $WFMConfPath "`nplay.modules.enabled += `"esri.workflow.utils.inject.DistributedDataProvider`""
-									}
-								}
-							}
-						}else{
-							Write-Verbose "[WARNING] Workflow Manager Configuration file not found. Please update this file manually."
-						}
-					}
-					$ServiceName = "WorkflowManager"
-					Write-Verbose "Restarting $ServiceName Service in 30 Seconds"
-					Start-Sleep -Seconds 30
-					Write-Verbose "Stop Service '$ServiceName'"
-					Stop-Service -Name $ServiceName -Force 
-					Write-Verbose 'Stopping the service' 
-					Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
-					Write-Verbose 'Stopped the service'
-					Write-Verbose "Restarting Service '$ServiceName' to pick up property change"
-					Start-Service $ServiceName 
-					Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running'
-					Write-Verbose "Restarted Service '$ServiceName'"
-				}
-				TestScript = {   
-					$false
-				}
-				DependsOn = $RemoteFederationDependsOn
-			}
-		}
-
 
 		# Import TLS certificates from portal machines on the hosting server
 		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)

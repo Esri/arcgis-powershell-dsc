@@ -323,14 +323,16 @@ function Set-TargetResource
             
 			if($InstallDir) {
 				$InstallDir = Join-Path $InstallDir 'GeoEvent'
-                $GeoEventKarafDataFolder = Join-Path $InstallDir 'data'	
-                	
+                $GeoEventKarafDataFolder = Join-Path $InstallDir 'data'		
 				$GeoEventGatewayLogFolder = Join-Path $InstallDir 'gateway\log'		
+                $GeoEventGatewayConfig = Join-Path $InstallDir 'etc\com.esri.ges.gateway.cfg'
 
 				$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'		
-				$GeoEventGatewayProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent-Gateway'		
+				$GeoEventGatewayProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent-Gateway'
+                
+                
 
-				@($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventProgramData, $GeoEventGatewayProgramData) | ForEach-Object{ 
+				@($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventGatewayConfig, $GeoEventProgramData, $GeoEventGatewayProgramData) | ForEach-Object{ 
 					$FolderToDelete = $_
 					Write-Verbose "Clean up Folder:- $FolderToDelete"
 					if(Test-Path $FolderToDelete) {
@@ -368,7 +370,7 @@ function Set-TargetResource
                         Set-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -StartupType "Automatic" -Verbose
                     }
                 }else{
-                    $ServiceStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "Automatic" -Verbose)
+                    $ServiceStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "Automatic" -Verbose) # TODO - why is this check failing ?
                     if(-not($ServiceStartupTypeIsAuto)){
                         Write-Verbose "Setting Startup Type for $Name to Automatic"
                         Set-ServiceStartupType -ServiceName $Name -StartupType "Automatic" -Verbose
@@ -492,6 +494,8 @@ function Test-TargetResource
 				            Write-Verbose "Permissions are not set for $LocalPath"
                             $result = $false
                         }
+                    }else{
+                        # TODO
                     }
                 }
             }
@@ -536,7 +540,8 @@ function Test-ServiceStartupType
     $result = $False
     if($p.ExitCode -eq 0) {
         Write-Verbose "Output - $op"
-        $StartupType = $($op | Select-String "START_TYPE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 })
+        $StartupType = $op -split [Environment]::NewLine | Where-Object { $_ -match "START_TYPE" } | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
+        Write-Verbose "Computed Startup type - $StartupType"
         if($StartupType -ieq "DEMAND_START"){
             $result = $ExpectedStartupType -ieq "Manual"
         }elseif($StartupType -ieq "AUTO_START"){

@@ -387,11 +387,13 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\Server10.8\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.9\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.0\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server11.1\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.6\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.7\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.8\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.9\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.0\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent11.1\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
@@ -403,6 +405,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9.1\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.0\Updates\*"
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.1\Updates\*"
     )
     
     foreach($RegPath in $RegPaths){

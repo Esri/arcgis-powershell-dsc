@@ -89,10 +89,7 @@ function Set-TargetResource
 
         [ValidateSet("SSL", "TLS", "NONE")]
         [System.String]
-        $EmailSettingsEncryptionMethod = "NONE",
-
-        [System.Boolean]
-        $WaitForPortalRestart = $False
+        $EmailSettingsEncryptionMethod = "NONE"
     )
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -159,11 +156,26 @@ function Set-TargetResource
             Write-Verbose "Error setting Portal System Properties :- $_ .Props - $sysProps"
         }
         Write-Verbose "Updated Portal System Properties."
-        if($WaitForPortalRestart){
-            Write-Verbose "Waiting 5 minutes for web server to apply changes before polling for endpoint being available" 
-            Start-Sleep -Seconds 300 # Add a 6 minute wait to allow the web server to go down
+        
+        $MaxWaitTimeInSeconds = 300
+        $SleepTimeInSeconds = 10
+        $TotalElapsedTimeInSeconds = 0
+        Write-Verbose "Waiting for up to $($MaxWaitTimeInSeconds) seconds for portal to restart"
+        while(-not($Done) -and ($TotalElapsedTimeInSeconds -lt $MaxWaitTimeInSeconds)){
+            try{
+                # if available sleep and try again.
+                Wait-ForUrl "https://$($PortalFQDN):7443/arcgis/portaladmin/healthCheck/?f=json" -MaxWaitTimeInSeconds 10 -HttpMethod 'GET' -ThrowErrors
+                Write-Verbose "Portal web server is still available. Trying again in $($SleepTimeInSeconds) seconds"
+                Start-Sleep -Seconds $SleepTimeInSeconds
+                $TotalElapsedTimeInSeconds += $SleepTimeInSeconds
+            }catch{
+                # if error and most likely portal has become unavailable then exit loop
+                Write-Verbose "Portal is most likely restarting as result of update of system properties:- $($_)"
+                $Done = $true
+            }
         }
-        Write-Verbose "Waiting upto 6 minutes for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
+        
+        Write-Verbose "Waiting up to 6 minutes for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"
         Wait-ForUrl "https://$($PortalFQDN):7443/arcgis/portaladmin/healthCheck/?f=json" -MaxWaitTimeInSeconds 360 -HttpMethod 'GET' -Verbose
         Write-Verbose "Finished waiting for portaladmin endpoint 'https://$($PortalFQDN):7443/arcgis/portaladmin/' to come back up"    
     }
@@ -421,10 +433,7 @@ function Test-TargetResource
 
         [ValidateSet("SSL", "TLS", "NONE")]
         [System.String]
-        $EmailSettingsEncryptionMethod = "NONE",
-
-        [System.Boolean]
-        $WaitForPortalRestart = $False
+        $EmailSettingsEncryptionMethod = "NONE"
     )
 
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null

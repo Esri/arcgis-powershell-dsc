@@ -18,7 +18,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
@@ -102,7 +102,7 @@
                     $ServerFeatureSet = @()
                     $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
                     if($ServerTypeName -ieq "Server"){
-                        if($ConfigurationData.ConfigData.Version -ieq "11.0"){
+                        if($ConfigurationData.ConfigData.Version -ieq "11.0" -or $ConfigurationData.ConfigData.Version -ieq "11.1"){
                             $EnableDontet = $True
                             if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
                                 $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
@@ -142,6 +142,7 @@
                         Name = $ServerTypeName
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
+                        Extract = if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Server.Installer.IsSelfExtracting }else{ $True }
                         Arguments = $ServerInstallArguments
                         FeatureSet = $ServerFeatureSet
                         ServiceCredential = $ServiceCredential
@@ -171,6 +172,7 @@
                                 Name = "Server$($Extension.Key)"
                                 Version = $ConfigurationData.ConfigData.Version
                                 Path = $Extension.Value.Installer.Path
+                                Extract = if($Extension.Value.Installer.ContainsKey("IsSelfExtracting")){ $Extension.Value.Installer.IsSelfExtracting }else{ $True }
                                 Arguments = $Arguments
                                 FeatureSet = $ServerExtensionFeatureSet
                                 EnableMSILogging = $EnableMSILogging
@@ -201,6 +203,7 @@
                                 Name = "NotebookServerSamplesData"
                                 Version = $ConfigurationData.ConfigData.Version
                                 Path = $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath
+                                Extract = if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("NotebookServerSamplesDataInstallerIsSelfExtracting")){ $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataInstallerIsSelfExtracting }else{ $True }
                                 Arguments = "/qn"
                                 ServiceCredential = $ServiceCredential
                                 ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
@@ -218,6 +221,7 @@
                             Name = "WorkflowManagerServer"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.Path
+                            Extract = if($ConfigurationData.ConfigData.WorkflowManagerServer.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WorkflowManagerServer.Installer.IsSelfExtracting }else{ $True }
                             Arguments = "/qn"
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
@@ -246,6 +250,7 @@
                             Name = "GeoEvent"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.GeoEventServer.Installer.Path
+                            Extract = if($ConfigurationData.ConfigData.GeoEventServer.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.GeoEventServer.Installer.IsSelfExtracting }else{ $True }
                             Arguments = "/qn"
                             FeatureSet = if($ConfigurationData.ConfigData.GeoEventServer.EnableGeoeventSDK){ @("GeoEvent","SDK") }else{ $null }
                             ServiceCredential = $ServiceCredential
@@ -275,6 +280,7 @@
                         Name = "Portal"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Portal.Installer.Path
+                        Extract = if($ConfigurationData.ConfigData.Portal.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Portal.Installer.IsSelfExtracting }else{ $True }
                         Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.InstallDir)`" CONTENTDIR=`"$($ConfigurationData.ConfigData.Portal.Installer.ContentDir)`""
                         ServiceCredential = $ServiceCredential
                         ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
@@ -290,6 +296,7 @@
                             Name = "WebStyles"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath
+                            Extract = if($ConfigurationData.ConfigData.Portal.Installer.ContainsKey("WebStylesInstallerIsSelfExtracting")){ $ConfigurationData.ConfigData.Portal.Installer.WebStylesInstallerIsSelfExtracting }else{ $True }
                             Arguments = "/qn"
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
@@ -318,6 +325,7 @@
                             Name = "WorkflowManagerWebApp"
                             Version = $ConfigurationData.ConfigData.Version
                             Path = $ConfigurationData.ConfigData.WorkflowManagerWebApp.Installer.Path
+                            Extract = if($ConfigurationData.ConfigData.WorkflowManagerWebApp.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WorkflowManagerWebApp.Installer.IsSelfExtracting }else{ $True }
                             Arguments = "/qn ACCEPTEULA=Yes"
                             ServiceCredential = $ServiceCredential
                             ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
@@ -334,6 +342,7 @@
                         Name = "Insights"
                         Version = $ConfigurationData.ConfigData.InsightsVersion
                         Path = $ConfigurationData.ConfigData.Insights.Installer.Path
+                        Extract = if($ConfigurationData.ConfigData.Insights.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Insights.Installer.IsSelfExtracting }else{ $True }
                         Arguments = "/qn ACCEPTEULA=YES"
                         ServiceCredential = $ServiceCredential
                         ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
@@ -359,7 +368,7 @@
                     $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
 
                     $DsFeatureSet = $Null
-                    if($ConfigurationData.ConfigData.Version -ieq "11.0") {
+                    if($ConfigurationData.ConfigData.Version -ieq "11.0" -or $ConfigurationData.ConfigData.Version -ieq "11.1") {
                         $DsFeatureSet = $Node.DataStoreTypes
                         if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
                             $DsFeatureSet = @("ALL")
@@ -371,6 +380,7 @@
                         Name = "DataStore"
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.DataStore.Installer.Path
+                        Extract = if($ConfigurationData.ConfigData.DataStore.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.DataStore.Installer.IsSelfExtracting }else{ $True }
                         Arguments = $Arguments
                         FeatureSet = $DsFeatureSet
                         ServiceCredential = $ServiceCredential
@@ -418,8 +428,11 @@
                                 Name = "PortalWebAdaptor"
                                 Version = $ConfigurationData.ConfigData.Version
                                 Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
+                                Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
                                 Arguments = $PortalWAArguments
                                 WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
+                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+	                            WebAdaptorWebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
                                 EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
                             }
@@ -436,8 +449,11 @@
                                 Name = "ServerWebAdaptor"
                                 Version = $ConfigurationData.ConfigData.Version
                                 Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
+                                Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
                                 Arguments = $ServerWAArguments
                                 WebAdaptorContext = $Node.ServerContext
+                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+	                            WebAdaptorWebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
                                 EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
                             }
@@ -509,6 +525,7 @@
                         Name = "Desktop"
                         Version = $ConfigurationData.ConfigData.DesktopVersion
                         Path = $ConfigurationData.ConfigData.Desktop.Installer.Path
+                        Extract = if($ConfigurationData.ConfigData.Desktop.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Desktop.Installer.IsSelfExtracting }else{ $True }
                         FeatureSet = @( $ConfigurationData.ConfigData.Desktop.InstallFeatures )
                         Arguments = $Arguments
                         EnableMSILogging = $EnableMSILogging
@@ -537,6 +554,7 @@
                                 Name = "Desktop$($Extension.Key)"
                                 Version = $ConfigurationData.ConfigData.DesktopVersion
                                 Path = $Extension.Value.Installer.Path
+                                Extract = if($Extension.Value.Installer.ContainsKey("IsSelfExtracting")){ $Extension.Value.Installer.IsSelfExtracting }else{ $True }
                                 Arguments = $Arguments
                                 FeatureSet = $DesktopExtensionFeatureSet
                                 EnableMSILogging = $EnableMSILogging
@@ -601,6 +619,8 @@
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion
                         Path = $ConfigurationData.ConfigData.Pro.Installer.Path
+                        ProDotnetDesktopRuntimePath = if($ConfigurationData.ConfigData.ProVersion.Split(".")[0] -ge 3){ $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath }else{ $null }
+                        Extract = if($ConfigurationData.ConfigData.Pro.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Pro.Installer.IsSelfExtracting }else{ $True }
                         Arguments = $Arguments
                         EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"
@@ -629,6 +649,7 @@
                                 Name = "Pro$($Extension.Key)"
                                 Version = $ConfigurationData.ConfigData.ProVersion
                                 Path = $Extension.Value.Installer.Path
+                                Extract = if($Extension.Value.Installer.ContainsKey("IsSelfExtracting")){ $Extension.Value.Installer.IsSelfExtracting }else{ $True }
                                 Arguments = $Arguments
                                 FeatureSet = $ProExtensionFeatureSet
                                 EnableMSILogging = $EnableMSILogging
@@ -655,6 +676,7 @@
                         Name = "LicenseManager"
                         Version = $ConfigurationData.ConfigData.LicenseManagerVersion
                         Path = $ConfigurationData.ConfigData.LicenseManager.Installer.Path
+                        Extract = if($ConfigurationData.ConfigData.LicenseManager.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.LicenseManager.Installer.IsSelfExtracting }else{ $True }
                         Arguments = "/qn ACCEPTEULA=YES INSTALLDIR=`"$($ConfigurationData.ConfigData.LicenseManager.Installer.InstallDir)`""
                         EnableMSILogging = $EnableMSILogging
                         Ensure = "Present"

@@ -41,6 +41,10 @@ function Get-TargetResource
 		[parameter(Mandatory = $false)]
 		[System.String]
 		$Path,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $Extract = $True,
 
 		[parameter(Mandatory = $true)]
 		[System.String]
@@ -54,8 +58,21 @@ function Get-TargetResource
 		[System.Array]
 		$FeatureSet,
 
+        [parameter(Mandatory = $false)]
 		[System.String]
         $WebAdaptorContext,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorDotnetHostingBundlePath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorWebDeployPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProDotnetDesktopRuntimePath,
 
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -94,6 +111,10 @@ function Set-TargetResource
 		[System.String]
         $Path,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $Extract = $True,
+
         [parameter(Mandatory = $false)]
 		[System.String]
 		$ProductId,
@@ -113,6 +134,18 @@ function Set-TargetResource
         [parameter(Mandatory = $false)]
 		[System.String]
         $WebAdaptorContext,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorDotnetHostingBundlePath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorWebDeployPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProDotnetDesktopRuntimePath,
 
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -146,30 +179,26 @@ function Set-TargetResource
         }
 
         if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
-            Write-Verbose "Installing Pre-Requsites: $pr"
-            $PreRequisiteWindowsFeatures = @("IIS-ManagementConsole", "IIS-ManagementScriptingTools",
-                                        "IIS-ManagementService", "IIS-ISAPIExtensions",
-                                        "IIS-ISAPIFilter", "IIS-RequestFiltering",
-                                        "IIS-WindowsAuthentication", "IIS-StaticContent",
-                                        "IIS-ASPNET45", "IIS-NetFxExtensibility45", "IIS-WebSockets")
+            Invoke-WebAdaptorIISPreRequsitesInstallation -Verbose
 
-            foreach($pr in $PreRequisiteWindowsFeatures){
-                if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
-                {
-                    if(-not((Get-WindowsOptionalFeature -FeatureName $pr -online).State -ieq "Enabled")){
-                        Write-Verbose "Installing Windows Feature: $pr"
-                        Enable-WindowsOptionalFeature -Online -FeatureName $pr -All
-                    }else{
-                        Write-Verbose "Windows Feature: $pr already exists."
-                    }
-                }else{
-                    Write-Verbose "Please check the Machine Operating System Compatatbilty"
-                }
+            # Install Web Deploy - msi package
+            if($WebAdaptorWebDeployPath -and (Test-Path $WebAdaptorWebDeployPath)){
+                Invoke-StartProcess -ExecPath "msiexec" -Arguments "/i `"$WebAdaptorWebDeployPath`" ADDLOCAL=ALL /qn /norestart LicenseAccepted=`"0`"" -Verbose
+            }                
+
+            # Install DotNet Hosting bundle - exe package
+            if($WebAdaptorDotnetHostingBundlePath -and (Test-Path $WebAdaptorDotnetHostingBundlePath)){
+                Invoke-StartProcess -ExecPath $WebAdaptorDotnetHostingBundlePath -Arguments "/install /quiet /norestart" -Verbose
             }
         }
 
+        if($Name -ieq 'Pro' -and $ProDotnetDesktopRuntimePath -and (Test-Path $ProDotnetDesktopRuntimePath)){
+            # Install DotNet Desktop Runtime - exe package
+            Invoke-StartProcess -ExecPath $ProDotnetDesktopRuntimePath -Arguments "/install /quiet /norestart" -Verbose
+        }
+
         $ExecPath = $null
-        if((Get-Item $Path).length -gt 5mb)
+        if($Extract)
         {
             Write-Verbose 'Self Extracting Installer'
 
@@ -216,14 +245,15 @@ function Set-TargetResource
                         throw "Neither .exe nor .msi found in extracted contents to install"
                    }               
                }               
-            }
-            if($ExecPath -iMatch ".msi"){
-                $Arguments = "/i `"$ExecPath`" $Arguments"
-                $ExecPath = "msiexec"
-            }
+            }   
         }else{
             Write-Verbose "Installing Software using installer at $Path"
             $ExecPath = $Path
+        }
+
+        if($ExecPath -iMatch ".msi"){
+            $Arguments = "/i `"$ExecPath`" $Arguments"
+            $ExecPath = "msiexec"
         }
 
         if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","WorkflowManagerWebApp","NotebookServerSamplesData", "Insights") -icontains $ComponentName)){
@@ -241,7 +271,7 @@ function Set-TargetResource
         if($FeatureSet.Count -gt 0){
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
-                    if($Version -ieq "11.0"){
+                    if($Version -ieq "11.0" -or $Version -ieq "11.1"){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
@@ -258,7 +288,7 @@ function Set-TargetResource
                 }
             }else{
                 if($Name -ieq "DataStore"){
-                    if($Version -ieq "11.0"){
+                    if($Version -ieq "11.0" -or $Version -ieq "11.1"){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -277,28 +307,17 @@ function Set-TargetResource
             $Arguments += " /L*v $MSILogPath";
         }
             
-        Write-Verbose "Executing $ExecPath"
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $ExecPath
-        $psi.Arguments = $Arguments
-        $psi.UseShellExecute = $false #start the process from it's own executable file    
-        $psi.RedirectStandardOutput = $true #enable the process to read from standard output
-        $psi.RedirectStandardError = $true #enable the process to read from standard error 
-        $p = [System.Diagnostics.Process]::Start($psi)
-        $p.WaitForExit()
-        $op = $p.StandardOutput.ReadToEnd()
-        if($op -and $op.Length -gt 0) {
-            Write-Verbose "Output of execution:- $op"
-        }
-        $err = $p.StandardError.ReadToEnd()
-        if($err -and $err.Length -gt 0) {
-            Write-Verbose $err
-        }
-        if($p.ExitCode -eq 0) {                    
-            Write-Verbose "Install process finished successfully."
-        }else {
-            throw "Install failed. Process exit code:- $($p.ExitCode). Error - $err"
-        }
+        #Install arcgis setup
+        Invoke-StartProcess -ExecPath $ExecPath -Arguments $Arguments -Verbose
+
+        Write-Verbose "Validating the $Name Installation"
+        $result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
+
+        if(-not($result)){
+			throw "Failed to Install $Name"
+		}else{
+			Write-Verbose "$Name installation was successful!"
+		}
 
         if(($Name -ieq "Portal") -or ($Name -ieq "Portal for ArcGIS")){
             Write-Verbose "Waiting just in case for Portal to finish unpacking any additional dependecies - 120 Seconds"
@@ -325,14 +344,6 @@ function Set-TargetResource
             Set-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/$($IISWebSiteName)/$($WebAdaptorContext)"  -filter "system.web/httpRuntime" -name "executionTimeout" -value "01:00:00"
         }
 
-        Write-Verbose "Validating the $Name Installation"
-        $result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
-        
-		if(-not($result)){
-			throw "Failed to Install $Name"
-		}else{
-			Write-Verbose "$Name installation was successful!"
-		}
     }
     elseif($Ensure -eq 'Absent') {
         $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
@@ -410,6 +421,10 @@ function Test-TargetResource
 		[System.String]
         $Path,
         
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $Extract = $True,
+        
         [parameter(Mandatory = $false)]
 		[System.String]
 		$ProductId,
@@ -429,6 +444,18 @@ function Test-TargetResource
         [parameter(Mandatory = $false)]
 		[System.String]
         $WebAdaptorContext,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorDotnetHostingBundlePath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $WebAdaptorWebDeployPath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProDotnetDesktopRuntimePath,
 
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -454,7 +481,7 @@ function Test-TargetResource
 	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
-            if($Version -ieq "11.0"){
+            if($Version -ieq "11.0" -or $Version -ieq "11.1"){
                 $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
@@ -462,9 +489,7 @@ function Test-TargetResource
             if($Version -ieq "10.9.1"){
                 # Get all the feature that are installed.
                 # Create an add and remove feature list
-
-
-            }elseif($Version -ieq "11.0"){
+            }elseif($Version -ieq "11.0" -or $Version -ieq "11.1"){
                 #Get all the feature that are installed.
                 #Create an add and remove feature list
             }
@@ -584,5 +609,66 @@ function Test-DataStoreFeautureSet {
     return $AddLocalFeatureSet,$RemoveFeatureSet
 }
 
+function Invoke-WebAdaptorIISPreRequsitesInstallation
+{
+    Write-Verbose "Installing Pre-Requsites"
+    $PreRequisiteWindowsFeatures = @("IIS-ManagementConsole", "IIS-ManagementScriptingTools",
+                                "IIS-ManagementService", "IIS-ISAPIExtensions",
+                                "IIS-ISAPIFilter", "IIS-RequestFiltering",
+                                "IIS-WindowsAuthentication", "IIS-StaticContent",
+                                "IIS-ASPNET45", "IIS-NetFxExtensibility45", "IIS-WebSockets")
+
+    foreach($pr in $PreRequisiteWindowsFeatures){
+        if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
+        {
+            if(-not((Get-WindowsOptionalFeature -FeatureName $pr -online).State -ieq "Enabled")){
+                Write-Verbose "Installing Windows Feature: $pr"
+                Enable-WindowsOptionalFeature -Online -FeatureName $pr -All
+            }else{
+                Write-Verbose "Windows Feature: $pr already exists."
+            }
+        }else{
+            Write-Verbose "Please check the Machine Operating System Compatatbilty"
+        }
+    }
+}
+
+function Invoke-StartProcess
+{
+    [CmdletBinding()]
+	param
+	(
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$ExecPath,
+
+		[parameter(Mandatory = $false)]
+		[System.String]
+        $Arguments
+    )
+
+    Write-Verbose "Executing $ExecPath"
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $ExecPath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false #start the process from it's own executable file    
+    $psi.RedirectStandardOutput = $true #enable the process to read from standard output
+    $psi.RedirectStandardError = $true #enable the process to read from standard error 
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+    $op = $p.StandardOutput.ReadToEnd()
+    if($op -and $op.Length -gt 0) {
+        Write-Verbose "Output of execution:- $op"
+    }
+    $err = $p.StandardError.ReadToEnd()
+    if($err -and $err.Length -gt 0) {
+        Write-Verbose $err
+    }
+    if($p.ExitCode -eq 0) {                    
+        Write-Verbose "Install process finished successfully."
+    }else {
+        throw "Install failed. Process exit code:- $($p.ExitCode). Error - $err"
+    }
+}
 
 Export-ModuleMember -Function *-TargetResource

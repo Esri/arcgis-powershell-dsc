@@ -197,61 +197,24 @@ function Test-TargetResource
         Write-Verbose "TODO:- Check for License Manger license. For now forcing Software Authorization Tool to License."
     }
     else {
-        Write-Verbose "License Check Component:- $Component"
-        $file = "$env:SystemDrive\Program Files\ESRI\License$($LicenseVersion)\sysgen\keycodes"
-        if(-not($Force) -and (Test-Path $file)){ 
-            $searchtexts = @()
-            if($Component -ieq 'Portal') {
-                $searchtext += 'portal_'
-                $searchtexts += 'portal1_'
-                $searchtexts += 'portal2_'
-            }elseif($Component -ieq 'Server'){
-                Write-Verbose "ServerRole:- $ServerRole"
-                $searchtexts += if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }
-                if($ServerRole -ieq 'ImageServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "ImageServer")) {
-                    $searchtexts += 'imgsvr'
-                    $searchtexts += 'imgsvr_4'
-                }
-                if($ServerRole -ieq 'GeoEvent' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) {
-                    $searchtexts += 'geoesvr'
-                    $searchtexts += 'geoesvr_4'
-                }
-                if($ServerRole -ieq 'WorkflowManagerServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "WorkflowManagerServer")) {
-                    $searchtexts += 'workflowsvr_4'
-                    $searchtexts += 'workflowsvr'
-                }
-                if($ServerRole -ieq 'GeoAnalytics' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoAnalytics")) {
-                    $searchtexts += 'geoasvr'
-                    $searchtexts += 'geoasvr_4'
-                }
-                if($ServerRole -ieq 'KnowledgeServer' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "KnowledgeServer")){ 
-                    $searchtexts += 'knwldgsvr'
-                }
-                if($ServerRole -ieq 'NotebookServer') {
-                    $searchtexts += 'notebooksstdsvr'
-                    $searchtexts += 'notebooksadvsvr'
-                }
-                if($ServerRole -ieq 'MissionServer') {
-                    $searchtexts += 'missionsvr_4'
-                    $searchtexts += 'missionsvr'
-                }
-            }
-            
-            foreach($text in $searchtexts) {
-                Write-Verbose "Looking for text '$text' in $file"
-                $result = $false
-                $KeyCodesFileContents = Get-Content $file
-                foreach($KeyCodeLine in $KeyCodesFileContents){
-                    if($KeyCodeLine -and $KeyCodeLine.ToString().StartsWith($text)) {
-                        Write-Verbose "Text '$text' found"
-                        $result = $true
-                        break
+        if(-not($Force)){
+            Write-Verbose "License Check Component:- $Component"
+            $result = Test-LicenseForRole -LicenseVersion $LicenseVersion -Component $Component -ServerRole $ServerRole
+            if($result){
+                if($Component -ieq "Server"){
+                    Write-Verbose "$Component is licensed correctly for $ServerRole"
+                    foreach($AdditionalRole in $AdditionalServerRoles){
+                        $result = Test-LicenseForRole -LicenseVersion $LicenseVersion -Component $Component -ServerRole $AdditionalRole
+                        if($result -eq $False){
+                            Write-Verbose "$Component is not licensed correctly for server role $AdditionalRole"
+                            break
+                        }
                     }
+                }else{
+                    Write-Verbose "$Component is licensed correctly"
                 }
-                if($result -ieq $False){
-                    Write-Verbose "Text '$text' not found"
-                    break
-                }
+            }else{
+                Write-Verbose "$Component is not licensed correctly"
             }
         }
     }
@@ -399,6 +362,81 @@ function Invoke-LicenseSoftware
         }
 	}
     Write-Verbose "Finished Licensing Product [$Product]" -Verbose
+}
+
+function Test-LicenseForRole{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param
+    (
+        [System.String]
+        $LicenseVersion,
+
+        [System.String]
+        $Component,
+
+        [System.String]
+        $ServerRole
+    )
+    
+    $file = "$env:SystemDrive\Program Files\ESRI\License$($LicenseVersion)\sysgen\keycodes"
+    if(Test-Path $file){ 
+        $result = $true
+        $KeyCodesFileContents = Get-Content $file
+
+        $searchtexts = @()
+        if($Component -ieq 'Portal') {
+            $searchtext += 'portal_'
+            $searchtexts += 'portal1_'
+            $searchtexts += 'portal2_'
+        }elseif($Component -ieq 'Server'){
+            Write-Verbose "ServerRole:- $ServerRole"
+            $searchtexts += if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }
+            if($ServerRole -ieq 'ImageServer') {
+                $searchtexts += 'imgsvr'
+            }
+            if($ServerRole -ieq 'GeoEvent') {
+                $searchtexts += 'geoesvr'
+            }
+            if($ServerRole -ieq 'WorkflowManagerServer') {
+                $searchtexts += 'workflowsvr'
+            }
+            if($ServerRole -ieq 'GeoAnalytics') {
+                $searchtexts += 'geoasvr'
+            }
+            if($ServerRole -ieq 'KnowledgeServer'){ 
+                $searchtexts += 'knwldgsvr'
+            }
+            if($ServerRole -ieq 'NotebookServer') {
+                $searchtexts += 'notebooksstdsvr'
+                $searchtexts += 'notebooksadvsvr'
+            }
+            if($ServerRole -ieq 'MissionServer') {
+                $searchtexts += 'missionsvr'
+            }
+        }
+        
+        # All of the search texts should exist in the keygen
+        foreach($text in $searchtexts) {
+            Write-Verbose "Looking for text '$text' in $file"
+            $TextFound = $False
+            foreach($KeyCodeLine in $KeyCodesFileContents){
+                if($KeyCodeLine -and $KeyCodeLine.ToString().StartsWith($text)) {
+                    Write-Verbose "Text '$text' found"
+                    $TextFound = $True
+                    break
+                }
+            }
+            if($TextFound -ieq $False){
+                Write-Verbose "Text '$text' not found"
+                $result = $False
+                break
+            }
+        }
+        $result
+    }else{
+        $False
+    }
 }
 
 Export-ModuleMember -Function *-TargetResource

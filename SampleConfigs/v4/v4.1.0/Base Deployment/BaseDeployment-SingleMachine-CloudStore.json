@@ -1,0 +1,216 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "DataStoreTypes": [
+                "Relational",
+                "TileCache",
+                "SpatioTemporal"
+            ],
+            "Role": [
+                "Server",
+                "Portal",
+                "DataStore",
+                "ServerWebAdaptor",
+                "PortalWebAdaptor"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerContext": "server",
+        "PortalContext": "portal",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "Password": "[ServiceAccount Password]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            },
+            "ADServiceUser": {
+                "UserName": "[ADServiceUser Username - Active Directory Service user for enabling use of Integrated Windows Authentication with your portal.]",
+                "Password": "[ADServiceUser Password]"
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "PatchesDir": "[Path to Directory with Patches for Server]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ],
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "LocalRepositoryPath": "C:\\arcgisserver\\local",
+            "ServerLogsLocation": "C:\\arcgisserver\\logs",
+            "ServerDirectories": [
+                {
+                    "name": "arcgiscache",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgiscache",
+                    "directoryType": "CACHE",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                },
+                {
+                    "name": "arcgisjobs",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisjobs",
+                    "directoryType": "JOBS",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 360
+                },
+                {
+                    "name": "arcgisoutput",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisoutput",
+                    "directoryType": "OUTPUT",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 10
+                },
+                {
+                    "name": "arcgissystem",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgissystem",
+                    "directoryType": "SYSTEM",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                }
+            ],
+            "RegisteredDirectories": [
+                {
+                    "name": "BasemapsCacheDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
+                    "directoryType": "CACHE"
+                },
+                {
+                    "name": "TestOutputDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testOutput",
+                    "directoryType": "OUTPUT"
+                },
+                {
+                    "name": "TestJobsDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testJobs",
+                    "directoryType": "JOBS"
+                }
+            ],
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            },
+            "ConfigStoreCloudStorageAccount":{
+                "UserName": "[CloudStorageAccount Account Name/ Access Id]",
+                "Password": "[CloudStorageAccount SAS Token/Secret Key/Password ]",
+                "CloudStorageType": "[Required - 'AzureBlob','AzureFiles','AWSS3DynamoDB']",
+                "AzureFileShareName": "[Required if CloudStorageType is 'AzureFiles']",
+                "CloudNamespace": "[Required if using cloud storage - Unique identifiable string for your deployment to avoid conflicts.The namespace used for the S3 bucket/Azure Blob Storage Container must be unique for this ArcGIS Server site. ArcGIS appends the text arcgis-config-store- to the name you provide]",
+                "AWSRegion": "[Required if CloudStorageType is 'AWSS3DynamoDB']"
+            },
+            "ServerDirectoriesCloudStorageAccount":{
+                "UserName": "[CloudStorageAccount Account Name/ Access Id]",
+                "Password": "[CloudStorageAccount SAS Token/Secret Key/Password ]",
+                "CloudStorageType": "AzureFiles",
+                "AzureFileShareName": "[Required if CloudStorageType is 'AzureFiles']",
+                "CloudNamespace": "[Required id using cloud storage - Unique identifiable string for your deployment to avoid conflicts]"
+            }
+        },
+        "Portal": {
+            "LicenseFilePath": "[License File Path - Portal ]",
+            "PortalLicenseUserTypeId": "[Portal License User Type Id- Required for 10.7 and above]",
+            "Installer": {
+                "Path": "[Portal Installer Path]",
+                "WebStylesPath": "[Optional Parameter starting ArcGIS Enterprise 10.7.1 - Portal Web Styles Installer Path]",
+                "InstallDir": "[Portal Install Dir - Ex. C:\\ArcGIS\\Portal]",
+                "ContentDir": "[Portal Content Dir for Install- Ex. C:\\arcgisportal",
+                "PatchesDir": "[Path to Directory with Patches for Portal]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "ContentDirectoryLocation":"C:\\arcgisportal\\content",
+            "EnableAutomaticAccountCreation": true,
+            "DefaultRoleForUser": "[Optional - Values: account_user | account_publisher | <custom role ID>]",
+            "DefaultUserLicenseTypeIdForUser": "[Optional (Valid for 10.7 and later) - Values: fieldWorkerUT | GISProfessionalStdUT | GISProfessionalBasicUT | GISProfessionalAdvUT | creatorUT | editorUT | viewerUT]",
+            "PortalAdministrator": {
+                "UserName": "[PortalAdministrator Username]",
+                "Email": "[PortalAdministrator Email]",
+                "Password": "[PortalAdministrator Password]",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswer": "vanilla"
+            },
+            "PortalContentCloudStorageAccount":{
+                "UserName": "[CloudStorageAccount Account Name/ Access Id]",
+                "Password": "[CloudStorageAccount SAS Token/Secret Key/Password ]",
+                "CloudStorageType": "[Required - 'AzureBlob','AzureFiles','AWSS3DynamoDB']",
+                "AzureFileShareName": "[Required if CloudStorageType is 'AzureFiles']",
+                "CloudNamespace": "[Required if using cloud storage - Unique identifiable string for your deployment to avoid conflicts. The namespace used for the Azure Blob Storage Container must be unique for this ArcGIS portal site. For Azure, Powershell DSC Module will prepend the text arcgis-portal-content- to the name you provide. For AWS, this variable corresponds to Bucket Name which should have been created before running this module]",
+                "AWSRegion": "[Required if CloudStorageType is 'AWSS3DynamoDB']"
+                
+            }
+        },
+        "DataStore": {
+            "ContentDirectoryLocation": "[Content Dir DataStore - C:\\arcgisdatastore]",
+            "EnableFailoverOnPrimaryStop": false,
+            "Installer": {
+                "Path": "[DataStore Installer Path]",
+                "InstallDir": "[DataStore Install Dir - Ex. C:\\ArcGIS\\DataStore]",
+                "PatchesDir": "[Path to Directory with Patches for DataStore]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "Backups":{
+                "Relational":[{
+                    "Name": "[Required - Backup Name]",
+                    "Type": "[Required - fs / s3 /Azure]",
+                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
+                    "ForceBackupLocationUpdate": false,
+                    "IsDefault": false,
+                    "CloudStorageAccount":{
+                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
+                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "ForceUpdate": false
+                    }
+                }],
+                "TileCache":[{
+                    "Name": "[Required - Backup Name]",
+                    "Type": "[Required - fs / s3 /Azure]",
+                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure -Container Name ]",
+                    "IsDefault": false,
+                    "CloudStorageAccount":{
+                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
+                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "ForceUpdate": false
+                    }
+                }],
+                "SpatioTemporal":[{
+                    "Name": "[Required - Backup Name]",
+                    "Type": "[Required - fs / s3 /Azure]",
+                    "Location": "[ fs - fileshare location / s3 - Bucket Name / Azure -Container Name ]",
+                    "IsDefault": false,
+                    "CloudStorageAccount":{
+                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
+                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "ForceUpdate": false
+                    }
+                }]
+            }
+        },
+        "WebAdaptor": {
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "[WebAdaptor Installer Path]",
+                "PatchesDir": "[Path to Directory with Patches for Web Adaptor]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            }
+        }
+    }
+}

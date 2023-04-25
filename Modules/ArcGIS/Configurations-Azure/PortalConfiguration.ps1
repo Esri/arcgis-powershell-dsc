@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.0'
+        $Version = '11.1'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -89,7 +89,11 @@
         
          ,[Parameter(Mandatory=$false)]
         [System.String]
-        $FileShareName = 'fileshare'         
+        $FileShareName = 'fileshare'
+        
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsUpdatingCertificates = $False
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -220,175 +224,182 @@
         if($HasValidServiceCredential) 
         {
             $PortalDependsOn = @()
-            if(-Not($ServiceCredentialIsDomainAccount)){
-                User ArcGIS_RunAsAccount
-                {
-                    UserName       = $ServiceCredential.UserName
-                    Password       = $ServiceCredential
-                    FullName       = 'ArcGIS Service Account'
-                    Ensure         = 'Present'
-                    PasswordChangeRequired = $false
-                    PasswordNeverExpires = $true
+
+            if(-not($IsUpdatingCertificates))
+            {
+                if(-Not($ServiceCredentialIsDomainAccount)){
+                    User ArcGIS_RunAsAccount
+                    {
+                        UserName       = $ServiceCredential.UserName
+                        Password       = $ServiceCredential
+                        FullName       = 'ArcGIS Service Account'
+                        Ensure         = 'Present'
+                        PasswordChangeRequired = $false
+                        PasswordNeverExpires = $true
+                    }
+                    $PortalDependsOn += '[User]ArcGIS_RunAsAccount'
                 }
-                $PortalDependsOn += '[User]ArcGIS_RunAsAccount'
+           
+                if($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) ) 
+                {
+                    if([string]::IsNullOrEmpty($PortalLicenseUserTypeId)){
+                        ArcGIS_License PortalLicense
+                        {
+                            LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName)
+                            Ensure          = 'Present'
+                            Component       = 'Portal'
+                        } 
+                        $PortalDependsOn += '[ArcGIS_License]PortalLicense'
+                    }
+
+                    ArcGIS_WindowsService Portal_for_ArcGIS_Service
+                    {
+                        Name            = 'Portal for ArcGIS'
+                        Credential      = $ServiceCredential
+                        StartupType     = 'Automatic'
+                        State           = 'Running' 
+                        DependsOn       = $PortalDependsOn
+                    }
+                    $PortalDependsOn += '[ArcGIS_WindowsService]Portal_for_ArcGIS_Service'
+
+                    ArcGIS_Service_Account Portal_Service_Account
+                    {
+                        Name            = 'Portal for ArcGIS'
+                        RunAsAccount    = $ServiceCredential
+                        IsDomainAccount = $ServiceCredentialIsDomainAccount
+                        Ensure          = 'Present'
+                        DependsOn       = $PortalDependsOn
+                        DataDir         = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')  
+                    }
+                    $PortalDependsOn += '[ArcGIS_Service_Account]Portal_Service_Account'
+            
+                
+                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True'))
+                    {    
+                        $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
+                        $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
+                
+                        Script PersistStorageCredentials
+                        {
+                            TestScript = { 
+                                            $result = cmdkey "/list:$using:AzureFilesEndpoint"
+                                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                            if($result -like '*none*')
+                                            {
+                                                return $false
+                                            }
+                                            return $true
+                                        }
+                            SetScript = { 
+                                            $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
+                                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                        }
+                            GetScript            = { return @{} }                  
+                            DependsOn            = $PortalDependsOn
+                            PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                        }              
+                        $PortalDependsOn += '[Script]PersistStorageCredentials'
+
+                        $RootPathOfFileShare = "\\$($AzureFilesEndpoint)\$FileShareName"
+                        Script CreatePortalContentFolder
+                        {
+                            TestScript = { 
+                                            Test-Path $using:ContentStoreLocation
+                                        }
+                            SetScript = {                   
+                                            Write-Verbose "Mount to $using:RootPathOfFileShare"
+                                            $DriveInfo = New-PSDrive -Name 'Z' -PSProvider FileSystem -Root $using:RootPathOfFileShare
+                                            if(-not(Test-Path $using:ContentStoreLocation)) {
+                                                Write-Verbose "Creating folder $using:ContentStoreLocation"
+                                                New-Item $using:ContentStoreLocation -ItemType directory
+                                            }else {
+                                                Write-Verbose "Folder '$using:ContentStoreLocation' already exists"
+                                            }
+                                        }
+                            GetScript            = { return @{} }     
+                            DependsOn            = $PortalDependsOn
+                            PsDscRunAsCredential = $ServiceCredential # This is important, only arcgis account has access to the file share on AFS
+                        }             
+                        $PortalDependsOn += '[Script]CreatePortalContentFolder'
+                    } 
+
+                    ArcGIS_xFirewall Portal_FirewallRules
+                    {
+                        Name                  = "PortalforArcGIS" 
+                        DisplayName           = "Portal for ArcGIS" 
+                        DisplayGroup          = "Portal for ArcGIS" 
+                        Ensure                = 'Present'
+                        Access                = "Allow" 
+                        State                 = "Enabled" 
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("7080","7443","7654")                         
+                        Protocol              = "TCP" 
+                        DependsOn             = $PortalDependsOn
+                    }
+                    $PortalDependsOn += '[ArcGIS_xFirewall]Portal_FirewallRules'
+
+                    if($IsHAPortal) 
+                    {
+                        ArcGIS_xFirewall Portal_Database_OutBound
+                        {
+                            Name                  = "PortalforArcGIS-Outbound" 
+                            DisplayName           = "Portal for ArcGIS Outbound" 
+                            DisplayGroup          = "Portal for ArcGIS Outbound" 
+                            Ensure                = 'Present'
+                            Access                = "Allow" 
+                            State                 = "Enabled" 
+                            Profile               = ("Domain","Private","Public")
+                            RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication
+                            Direction             = "Outbound"                       
+                            Protocol              = "TCP" 
+                            DependsOn             = $PortalDependsOn
+                        } 
+                        $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Database_OutBound')
+                        
+                        ArcGIS_xFirewall Portal_Database_InBound
+                        {
+                            Name                  = "PortalforArcGIS-Inbound" 
+                            DisplayName           = "Portal for ArcGIS Inbound" 
+                            DisplayGroup          = "Portal for ArcGIS Inbound" 
+                            Ensure                = 'Present'
+                            Access                = "Allow" 
+                            State                 = "Enabled" 
+                            Profile               = ("Domain","Private","Public")
+                            LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701, 5702 and 5703
+                            Protocol              = "TCP" 
+                            DependsOn             = $PortalDependsOn
+                        }  
+                        $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Database_InBound')
+                    }     
+
+                    ArcGIS_Portal Portal
+                    {
+                        PortalHostName                        = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
+                        Version                               = $Version
+                        Ensure                                = 'Present'
+                        LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
+                        UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
+                        PortalAdministrator                   = $SiteAdministratorCredential 
+                        DependsOn                             = $PortalDependsOn
+                        AdminEmail                            = 'portaladmin@admin.com'
+                        AdminFullName                         = $SiteAdministratorCredential.UserName
+                        AdminDescription                      = 'Portal Administrator'
+                        AdminSecurityQuestionIndex            = 1
+                        AdminSecurityAnswer                   = 'timbukto'
+                        Join                                  = $Join
+                        IsHAPortal                            = $IsHAPortal
+                        PeerMachineHostName                   = if($Join) { $PortalHostName } else { $PeerMachineName }
+                        ContentDirectoryLocation              = $ContentStoreLocation
+                        EnableDebugLogging                    = $IsDebugMode
+                        LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+                        ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
+                        ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                    } 
+                    $PortalDependsOn += @('[ArcGIS_Portal]Portal')
+                }
             }
 
-           
-            if($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) ) 
-            {
-                if([string]::IsNullOrEmpty($PortalLicenseUserTypeId)){
-                    ArcGIS_License PortalLicense
-                    {
-                        LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName)
-                        Ensure          = 'Present'
-                        Component       = 'Portal'
-                    } 
-                    $PortalDependsOn += '[ArcGIS_License]PortalLicense'
-                }
-
-                ArcGIS_WindowsService Portal_for_ArcGIS_Service
-                {
-                    Name            = 'Portal for ArcGIS'
-                    Credential      = $ServiceCredential
-                    StartupType     = 'Automatic'
-                    State           = 'Running' 
-                    DependsOn       = $PortalDependsOn
-                }
-                $PortalDependsOn += '[ArcGIS_WindowsService]Portal_for_ArcGIS_Service'
-
-                ArcGIS_Service_Account Portal_Service_Account
-		        {
-			        Name            = 'Portal for ArcGIS'
-                    RunAsAccount    = $ServiceCredential
-                    IsDomainAccount = $ServiceCredentialIsDomainAccount
-			        Ensure          = 'Present'
-			        DependsOn       = $PortalDependsOn
-                    DataDir         = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')  
-                }
-                $PortalDependsOn += '[ArcGIS_Service_Account]Portal_Service_Account'
-        
-            
-                if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True'))
-                {    
-                    $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
-                    $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
-              
-                    Script PersistStorageCredentials
-                    {
-                        TestScript = { 
-                                        $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                        $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                                        if($result -like '*none*')
-                                        {
-                                            return $false
-                                        }
-                                        return $true
-                                    }
-                        SetScript = { 
-                                        $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-                                        $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                                    }
-                        GetScript            = { return @{} }                  
-                        DependsOn            = $PortalDependsOn
-                        PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
-                    }              
-                    $PortalDependsOn += '[Script]PersistStorageCredentials'
-
-                    $RootPathOfFileShare = "\\$($AzureFilesEndpoint)\$FileShareName"
-                    Script CreatePortalContentFolder
-                    {
-                        TestScript = { 
-                                        Test-Path $using:ContentStoreLocation
-                                    }
-                        SetScript = {                   
-                                        Write-Verbose "Mount to $using:RootPathOfFileShare"
-                                        $DriveInfo = New-PSDrive -Name 'Z' -PSProvider FileSystem -Root $using:RootPathOfFileShare
-                                        if(-not(Test-Path $using:ContentStoreLocation)) {
-                                            Write-Verbose "Creating folder $using:ContentStoreLocation"
-                                            New-Item $using:ContentStoreLocation -ItemType directory
-                                        }else {
-                                            Write-Verbose "Folder '$using:ContentStoreLocation' already exists"
-                                        }
-                                    }
-                        GetScript            = { return @{} }     
-                        DependsOn            = $PortalDependsOn
-                        PsDscRunAsCredential = $ServiceCredential # This is important, only arcgis account has access to the file share on AFS
-                    }             
-                    $PortalDependsOn += '[Script]CreatePortalContentFolder'
-                } 
-
-                ArcGIS_xFirewall Portal_FirewallRules
-		        {
-                    Name                  = "PortalforArcGIS" 
-                    DisplayName           = "Portal for ArcGIS" 
-                    DisplayGroup          = "Portal for ArcGIS" 
-                    Ensure                = 'Present'
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("7080","7443","7654")                         
-                    Protocol              = "TCP" 
-                    DependsOn             = $PortalDependsOn
-		        }
-                $PortalDependsOn += '[ArcGIS_xFirewall]Portal_FirewallRules'
-
-                if($IsHAPortal) 
-                {
-                    ArcGIS_xFirewall Portal_Database_OutBound
-		            {
-                        Name                  = "PortalforArcGIS-Outbound" 
-                        DisplayName           = "Portal for ArcGIS Outbound" 
-                        DisplayGroup          = "Portal for ArcGIS Outbound" 
-                        Ensure                = 'Present'
-                        Access                = "Allow" 
-                        State                 = "Enabled" 
-                        Profile               = ("Domain","Private","Public")
-                        RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication
-                        Direction             = "Outbound"                       
-                        Protocol              = "TCP" 
-                        DependsOn             = $PortalDependsOn
-                    } 
-                    $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Database_OutBound')
-                    
-                    ArcGIS_xFirewall Portal_Database_InBound
-			        {
-                        Name                  = "PortalforArcGIS-Inbound" 
-                        DisplayName           = "Portal for ArcGIS Inbound" 
-                        DisplayGroup          = "Portal for ArcGIS Inbound" 
-                        Ensure                = 'Present'
-                        Access                = "Allow" 
-                        State                 = "Enabled" 
-                        Profile               = ("Domain","Private","Public")
-                        LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701, 5702 and 5703
-                        Protocol              = "TCP" 
-                        DependsOn             = $PortalDependsOn
-                    }  
-                    $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Database_InBound')
-                }     
-
-		        ArcGIS_Portal Portal
-		        {
-                    PortalHostName                        = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
-                    Version                               = $Version
-                    Ensure                                = 'Present'
-                    LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
-                    UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
-                    PortalAdministrator                   = $SiteAdministratorCredential 
-			        DependsOn                             = $PortalDependsOn
-			        AdminEmail                            = 'portaladmin@admin.com'
-			        AdminSecurityQuestionIndex            = 1
-			        AdminSecurityAnswer                   = 'timbukto'
-                    Join                                  = $Join
-                    IsHAPortal                            = $IsHAPortal
-			        PeerMachineHostName                   = if($Join) { $PortalHostName } else { $PeerMachineName }
-                    ContentDirectoryLocation              = $ContentStoreLocation
-                    EnableDebugLogging                    = $IsDebugMode
-                    LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                    ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
-                    ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
-                } 
-                $PortalDependsOn += @('[ArcGIS_Portal]Portal')
-
+            if($IsUpdatingCertificates -or ($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) )){ #On add of new machine or update certificate op
                 Script CopyCertificateFileToLocalMachine
                 {
                     GetScript = {
@@ -406,74 +417,74 @@
                     TestScript = {   
                         $false
                     }
-                    DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                    DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
                 }
                 $PortalDependsOn += '[Script]CopyCertificateFileToLocalMachine'
                 
-		        ArcGIS_Portal_TLS ArcGIS_Portal_TLS
+                ArcGIS_Portal_TLS ArcGIS_Portal_TLS
                 {
                     PortalHostName = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
                     SiteAdministrator       = $SiteAdministratorCredential 
                     WebServerCertificateAlias= "ApplicationGateway"
-			        CertificateFileLocation = $PortalCertificateLocalFilePath 
+                    CertificateFileLocation = $PortalCertificateLocalFilePath 
                     CertificatePassword     = if($PortalInternalCertificatePassword -and ($PortalInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $PortalInternalCertificatePassword } else { $null }
                     DependsOn               = $PortalDependsOn
-                    SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                    SslRootOrIntermediate	= if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
                 }
                 $PortalDependsOn += '[ArcGIS_Portal_TLS]ArcGIS_Portal_TLS'
+            }
 
-                if($env:ComputerName -ieq $LastPortalHostName) # Perform on Last machine
+            if($env:ComputerName -ieq $PortalHostName -and (-not($IsUpdatingCertificates) -and ($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0)))) #On add of new machine and not on update certificate op, Perform on First machine
+            {
+                ArcGIS_PortalSettings PortalSettings
                 {
-                    ArcGIS_PortalSettings PortalSettings
+                    ExternalDNSName     = $ExternalDNSHostName
+                    PortalContext       = $PortalContext
+                    PortalHostName      = $PortalHostName
+                    PortalEndPoint      = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName }
+                    PortalEndPointPort  = 443
+                    PortalEndPointContext = $PortalContext
+                    PortalAdministrator = $SiteAdministratorCredential
+                    DependsOn = $PortalDependsOn
+                }
+                $PortalDependsOn = '[ArcGIS_PortalSettings]PortalSettings'
+                
+                ArcGIS_Federation Federate
+                {
+                    PortalHostName = $PortalHostName
+                    ServiceUrlHostName = $ExternalDNSHostName
+                    ServiceUrlContext = $ServerContext
+                    ServiceUrlPort = 443
+                    ServerSiteAdminUrlHostName = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName }
+                    ServerSiteAdminUrlPort = 443
+                    ServerSiteAdminUrlContext =$ServerContext
+                    Ensure = 'Present'
+                    RemoteSiteAdministrator = $SiteAdministratorCredential
+                    SiteAdministrator = $SiteAdministratorCredential
+                    ServerRole = 'HOSTING_SERVER'
+                    ServerFunctions = 'GeneralPurposeServer'
+                    DependsOn = $PortalDependsOn
+                }
+            }
+            
+            if(-not($IsUpdatingCertificates))
+            {
+                foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server', 'WorkflowManager'))
+                {
+                    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
                     {
-                        ExternalDNSName     = $ExternalDNSHostName
-                        PortalContext       = $PortalContext
-                        PortalHostName      = $LastPortalHostName
-                        PortalEndPoint      = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName }
-                        PortalEndPointPort  = 443
-                        PortalEndPointContext = $PortalContext
-                        PortalAdministrator = $SiteAdministratorCredential
-                        WaitForPortalRestart = $True
-                        DependsOn = $PortalDependsOn
-                    }
-                    $PortalDependsOn = '[ArcGIS_PortalSettings]PortalSettings'
-                    
-                    ArcGIS_Federation Federate
-                    {
-                        PortalHostName = $ExternalDNSHostName
-                        PortalPort = 443
-                        PortalContext = $PortalContext
-                        ServiceUrlHostName = $ExternalDNSHostName
-                        ServiceUrlContext = $ServerContext
-                        ServiceUrlPort = 443
-                        ServerSiteAdminUrlHostName = if($PrivateDNSHostName){ $PrivateDNSHostName }else{ $ExternalDNSHostName }
-                        ServerSiteAdminUrlPort = 443
-                        ServerSiteAdminUrlContext =$ServerContext
-                        Ensure = 'Present'
-                        RemoteSiteAdministrator = $SiteAdministratorCredential
-                        SiteAdministrator = $SiteAdministratorCredential
-                        ServerRole = 'HOSTING_SERVER'
-                        ServerFunctions = 'GeneralPurposeServer'
-                        DependsOn = $PortalDependsOn
+                        Service "$($ServiceToStop.Replace(' ','_'))_Service"
+                        {
+                            Name			= $ServiceToStop
+                            Credential		= $ServiceCredential
+                            StartupType		= 'Manual'
+                            State			= 'Stopped'
+                            DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                        }
                     }
                 }
             }
-
-            foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server'))
-		    {
-			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
-			    {
-				    Service "$($ServiceToStop.Replace(' ','_'))_Service"
-				    {
-					    Name			= $ServiceToStop
-					    Credential		= $ServiceCredential
-					    StartupType		= 'Manual'
-					    State			= 'Stopped'
-					    DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-				    }
-			    }
-		    }
         }
 	}
 }

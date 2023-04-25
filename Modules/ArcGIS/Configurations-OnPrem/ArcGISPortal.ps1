@@ -40,6 +40,14 @@
         $AdminEmail,
 
         [Parameter(Mandatory=$False)]
+        [System.String]
+		$AdminFullName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+		$AdminDescription,
+
+        [Parameter(Mandatory=$False)]
         [System.Byte]
         $AdminSecurityQuestionIndex,
         
@@ -88,7 +96,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
@@ -273,9 +281,9 @@
                 ArcGIS_WaitForComponent "WaitForPortal$($PrimaryPortalMachine)"{
                     Component = "Portal"
                     InvokingComponent = "Portal"
-                    ComponentHostName = $PrimaryServerMachine
+                    ComponentHostName = $PrimaryPortalMachine
                     ComponentContext = "arcgis"
-                    Credential = $ServerPrimarySiteAdminCredential
+                    Credential = $PortalAdministratorCredential
                     Ensure = "Present"
                     RetryIntervalSec = 60
                     RetryCount = 100
@@ -302,6 +310,8 @@
             UserLicenseTypeId = $UserLicenseTypeId
             PortalAdministrator = $PortalAdministratorCredential 
             AdminEmail = $AdminEmail
+            AdminFullName = $AdminFullName
+            AdminDescription = $AdminDescription
             AdminSecurityQuestionIndex = $AdminSecurityQuestionIndex
             AdminSecurityAnswer = $AdminSecurityAnswer
             ContentDirectoryLocation = $ContentDirectoryLocation

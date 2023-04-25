@@ -21,6 +21,10 @@
         [System.String]
         $InstallerPath,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $InstallerIsSelfExtracting = $True,
+
         [System.String]
         $PatchesDir,
 
@@ -32,6 +36,10 @@
 
         [System.String]
         $GeoEventServerInstaller,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $GeoEventServerInstallerIsSelfExtracting = $True,
 
         [System.String]
         $GeoEventServerPatchesDir,
@@ -45,6 +53,10 @@
         [System.String]
         $WorkflowManagerServerInstaller,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $WorkflowManagerInstallerIsSelfExtracting = $True,
+
         [System.String]
         $WorkflowManagerServerPatchesDir,
 
@@ -56,6 +68,10 @@
 
         [System.String]
         $NotebookServerSamplesDataPath,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $NotebookServerSamplesDataInstallerIsSelfExtracting = $True,
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -81,7 +97,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
@@ -147,10 +163,11 @@
             Name = $ServerTypeName
             Version = $Version
             Path = $InstallerPath
+            Extract = $InstallerIsSelfExtracting
             Arguments = $ServerUpgradeInstallArguments
             FeatureSet = $ServerFeatureSet
             ServiceCredential = $ServiceAccount
-            ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+            ServiceCredentialIsDomainAccount = $IsServiceAccountDomainAccount
             ServiceCredentialIsMSA = $IsServiceAccountMSA
             EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
@@ -201,6 +218,7 @@
                     Name = "Server$($Extension.Key)"
                     Version = $Version
                     Path = $Extension.Value.Installer.Path
+                    Extract = if($Extension.Value.Installer.IsSelfExtracting){ $Extension.Value.Installer.IsSelfExtracting }else{ $True }
                     Arguments = $Arguments
                     FeatureSet = $ServerExtensionFeatureSet
                     EnableMSILogging = $EnableMSILogging
@@ -229,9 +247,10 @@
                 Name = "NotebookServerSamplesData"
                 Version = $Version
                 Path = $NotebookServerSamplesDataPath
+                Extract = $NotebookServerSamplesDataInstallerIsSelfExtracting
                 Arguments = "/qn"
                 ServiceCredential = $ServiceAccount
-                ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+                ServiceCredentialIsDomainAccount = $IsServiceAccountDomainAccount
                 ServiceCredentialIsMSA = $IsServiceAccountMSA
                 EnableMSILogging = $EnableMSILogging
                 Ensure = "Present"
@@ -366,9 +385,10 @@
                 Name = "WorkflowManagerServer"
                 Version = $Version
                 Path = $WorkflowManagerServerInstaller
+                Extract = $WorkflowManagerInstallerIsSelfExtracting
                 Arguments = "/qn"
                 ServiceCredential = $ServiceAccount
-                ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
+                ServiceCredentialIsDomainAccount = $IsServiceAccountDomainAccount
                 ServiceCredentialIsMSA = $IsServiceAccountMSA
                 EnableMSILogging = $EnableMSILogging
                 Ensure = "Present"
@@ -404,6 +424,7 @@
                 Name = "GeoEvent"
                 Version = $Version
                 Path = $GeoEventServerInstaller
+                Extract = $GeoEventServerInstallerIsSelfExtracting
                 Arguments = $GEArguments
                 ServiceCredential = $ServiceAccount
                 ServiceCredentialIsDomainAccount = $IsServiceAccountDomainAccount

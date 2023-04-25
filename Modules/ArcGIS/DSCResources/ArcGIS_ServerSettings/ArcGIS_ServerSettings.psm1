@@ -122,16 +122,17 @@ function Set-TargetResource
 	}
 	
 	if($SharedKey){
-		Write-Verbose "Get Token Setting"
-		$TokenSettings = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens" -Token $serverToken.token -Referer $Referer
-		if($TokenSettings.properties.sharedKey -ine $SharedKey) {
-			Write-Verbose "Updating shared key"
+		Write-Verbose "Get Token and Shared Key Setting"
+		$TokenSettings = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens" -Token $serverToken.token -Referer $Referer	
+		if($TokenSettings.properties.sharedKey -ine $SharedKey){
+			Write-Verbose "Shared Key is not set as expected. Updating shared key."	
 			$TokenSettings.properties.sharedKey = $SharedKey
 			$TokenSettings = ConvertTo-Json $TokenSettings
 			Set-TokenSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens/update" -Token $serverToken.token -Properties $TokenSettings -Referer $Referer
+		}else{
+			Write-Verbose "Shared Key is set as expected"
 		}
 	}
-
     
     Write-Verbose "Waiting for Url 'https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck' to respond"
 	Wait-ForUrl -Url "https://$($ServerFQDN):6443/arcgis/rest/info/healthCheck?f=json" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
@@ -212,11 +213,14 @@ function Test-TargetResource
     }
 
 	if($result -and $SharedKey) {
-        Write-Verbose "Get Token Setting"
+		Write-Verbose "Get Token and Shared Key Setting"
         $TokenSettings = Get-AdminSettings -ServerUrl $ServerHttpsUrl -SettingUrl "arcgis/admin/security/tokens" -Token $serverToken.token -Referer $Referer
-        if($TokenSettings.properties.sharedKey -ine $SharedKey) {
-            $result = $false
-        }
+		if($TokenSettings.properties.sharedKey -ine $SharedKey){
+			Write-Verbose "Shared Key is not set as expected"
+			$result = $false
+		}else{
+			Write-Verbose "Shared Key is set as expected"
+		}
     }
 
 	$result    

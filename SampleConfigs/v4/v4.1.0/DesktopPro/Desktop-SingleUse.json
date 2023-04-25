@@ -1,0 +1,87 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name 1]",
+            "Role": [
+                "Desktop"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "DesktopVersion": "[Version of ArcGIS Dektop ]",
+        "Desktop": {
+            "LicenseFilePath": "[License File Path - Desktop ]",
+            "SeatPreference": "Fixed",
+            "InstallFeatures": "[ALL | <feature1>,<feature2>,]",
+            "ModifyFlexdAcl": "[TRUE | FALSE (Default)]",
+            "DesktopConfig": true,
+            "EnableEUEI": "[ True (Default enables participation of Esri User Experience Improvement Program) | False ]",
+            "Installer": {
+                "Path": "[Desktop Installer Path]",
+                "IsSelfExtracting": "[ Optional - True (Default) | False ]",
+                "InstallDir": "[Desktop Install Dir - Ex. C:\\ArcGIS\\Desktop]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "PatchesDir": "",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "Extensions":{
+                "DataInteroperability":{
+                    "Installer": {
+                        "Path": "[Data Interoperability Installer Path]",
+                        "IsSelfExtracting": "[ Optional - True (Default) | False ]"
+                    }
+                },
+                "DataReviewer":{
+                    "Installer": {
+                        "Path": "[Data Reviewer Installer Path]",
+                        "IsSelfExtracting": "[ Optional - True (Default) | False ]"
+                    }
+                },
+                "WorkflowManagerClassic":{
+                    "Installer": {
+                        "Path": "[Workflow Manager Classic Installer Path]",
+                        "IsSelfExtracting": "[ Optional - True (Default) | False ]"
+                    },
+                    "Features":[
+                        "Desktop",
+                        "TAM",
+                        "ALL"
+                    ]
+                },
+                "LocationReferencing":{
+                    "Installer": {
+                        "Path": "[Location Referencing Installer Path]",
+                        "IsSelfExtracting": "[ Optional - True (Default) | False ]"
+                    },
+                    "Features":[
+                        "PipelineReferencing",
+                        "Roads"
+                    ]
+                },
+                "MappingChartingSolution":{
+                    "Installer": {
+                        "Path": "[Mapping and Charting Solutions Installer Path]",
+                        "IsSelfExtracting": "[ Optional - True (Default) | False ]"
+                    },
+                    "Features":[
+                        "EsriProductionMapping",
+                        "TAM",
+                        "AviationCharting",
+                        "FederalCharting",
+                        "MaritimeBathymetry",
+                        "MaritimeCharting",
+                        "EsriDefenseMapping"
+                    ]
+                },
+                "BackgroundGP64Bit":{
+                    "Installer": {
+                        "Path": "[Desktop Background Geoprocessing (64-bit) Installer Path]",
+                        "IsSelfExtracting": "[ Optional - True (Default) | False ]"
+                    }
+                }
+            }
+        }
+    }
+}

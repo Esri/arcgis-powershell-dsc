@@ -18,6 +18,10 @@ Import-Module -Name (Join-Path -Path $modulePath `
          A MSFT_Credential Object - Initial Administrator Account
     .PARAMETER AdminEmail
         Additional User Details - Email of the Administrator.
+    .PARAMETER AdminFullName
+        Additional User Details - Full Name of the Administrator.
+    .PARAMETER AdminDescription
+        Additional User Details - Description for the Administrator.
     .PARAMETER AdminSecurityQuestionIndex
         Additional User Details - Security Questions Index
         0 - What city were you born in?
@@ -86,8 +90,11 @@ function Invoke-CreatePortalSite {
         $FullName, 
 
         [System.String]
-        $Email, 
-        
+        $Email,
+
+        [System.String]
+        $Description,
+
         [System.String]
         $SecurityQuestionAnswer, 
         
@@ -101,10 +108,7 @@ function Invoke-CreatePortalSite {
         $ContentDirectoryCloudContainerName,
         
         [System.Int32]
-        $SecurityQuestionIdx = 1, 
-        
-        [System.String]
-        $Description,
+        $SecurityQuestionIdx = 1,
 
 		[System.String]
 		$LicenseFilePath = $null,
@@ -431,6 +435,12 @@ function Set-TargetResource {
 		[System.String]
 		$AdminEmail,
 
+        [System.String]
+		$AdminFullName,
+
+        [System.String]
+		$AdminDescription,
+
 		[System.Byte]
 		$AdminSecurityQuestionIndex,
 
@@ -581,10 +591,11 @@ function Set-TargetResource {
                     } else {
                         Write-Verbose "Creating Portal Site" 
                         Invoke-CreatePortalSite -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
-                                            -FullName $PortalAdministrator.UserName -ContentDirectoryLocation $ContentDirectoryLocation `
-                                            -Email $AdminEmail -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
-                                            -Description 'Portal Administrator' -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
-                                            -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath -UserLicenseTypeId $UserLicenseTypeId
+                                            -FullName $AdminFullName -ContentDirectoryLocation $ContentDirectoryLocation `
+                                            -Email $AdminEmail -Description $AdminDescription -UserLicenseTypeId $UserLicenseTypeId `
+                                            -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
+                                            -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
+                                            -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath
                         Write-Verbose 'Created Portal Site'
                     }
                 }else{
@@ -694,6 +705,12 @@ function Test-TargetResource {
 
 		[System.String]
 		$AdminEmail,
+
+        [System.String]
+		$AdminFullName,
+
+        [System.String]
+		$AdminDescription,
 
 		[System.Byte]
 		$AdminSecurityQuestionIndex,

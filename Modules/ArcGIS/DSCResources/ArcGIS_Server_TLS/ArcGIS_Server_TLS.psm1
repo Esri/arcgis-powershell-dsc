@@ -477,7 +477,7 @@ function Test-TargetResource
         }
     }
 
-    if($result -and $null -ne $SslRootOrIntermediate){ #Check RootOrIntermediateCertificate
+    if($result -and $null -ne $SslRootOrIntermediate){
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
             if ($Certs.certificates -icontains $key.Alias){
@@ -644,7 +644,7 @@ function Import-RootOrIntermediateCertificate
     }
 }
 
-function Update-SSLCertificate 
+function Update-SSLCertificate
 {
     [CmdletBinding()]
     param(
@@ -719,7 +719,7 @@ function Update-SSLCertificate
     $response
 }
 
-function Get-Machines 
+function Get-Machines
 {
     [CmdletBinding()]
     param(
@@ -736,7 +736,7 @@ function Get-Machines
     Invoke-ArcGISWebRequest -Url $GetMachinesUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -TimeoutSec 150
 }
 
-function Get-MachineDetails 
+function Get-MachineDetails
 {
     [CmdletBinding()]
     param(
@@ -756,7 +756,7 @@ function Get-MachineDetails
     Invoke-ArcGISWebRequest -Url $GetMachineDetailsUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -TimeoutSec 150
 }
 
-function Get-AllSSLCertificateForMachine 
+function Get-AllSSLCertificateForMachine
 {
     [CmdletBinding()]
     param(
@@ -811,8 +811,8 @@ function Get-SSLCertificateForMachine
             $issuer = $json.issuer
             $thumbprint = $json.sha1Fingerprint
             @{
-                    Issuer = $issuer
-                    Thumbprint = $thumbprint
+                Issuer = $issuer
+                Thumbprint = $thumbprint
             }
         }
     }
@@ -866,7 +866,7 @@ function Update-SecurityConfig
     Invoke-ArcGISWebRequest -Url $UpdateSecurityConfigUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 300 -Verbose
 }
 
-function Get-SecurityConfig 
+function Get-SecurityConfig
 {
     [CmdletBinding()]
     param(
@@ -887,4 +887,3 @@ function Get-SecurityConfig
 
 
 Export-ModuleMember -Function *-TargetResource
-
