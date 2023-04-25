@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.0'
+        $Version = '11.1'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -155,8 +155,7 @@
 		    {
 			    Name            = 'ArcGIS Data Store'
                 RunAsAccount    = $ServiceCredential
-                ForceRunAsAccountUpdate = $True
-			    Ensure          = 'Present'
+                Ensure          = 'Present'
 			    DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){ @('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}else{ @('[ArcGIS_WindowsService]ArcGIS_DataStore_Service')}
                 DataDir         = $DataStoreContentDirectory  
                 IsDomainAccount = $ServiceCredentialIsDomainAccount
@@ -223,7 +222,7 @@
 			    DependsOn                  = $DataStoreDependsOn
 		    } 
 
-		    foreach($ServiceToStop in  @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server'))
+		    foreach($ServiceToStop in  @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'WorkflowManager'))
 		    {
 			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {

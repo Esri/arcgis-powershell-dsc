@@ -37,7 +37,10 @@ function Get-TargetResource
         
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $SiteAdministrator
+        $SiteAdministrator,
+        
+		[System.Boolean]
+        $DisableServiceDirectory
     )
     
     $null
@@ -63,7 +66,10 @@ function Set-TargetResource
         
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $SiteAdministrator
+        $SiteAdministrator,
+
+        [System.Boolean]
+        $DisableServiceDirectory
 	)
     
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -107,6 +113,16 @@ function Set-TargetResource
         $AdminSettingsModified = $True
     }
 
+    if($systemProperties.disableServicesDirectory -ine $DisableServiceDirectory){
+        if(Get-Member -InputObject $systemProperties -name "disableServicesDirectory" -Membertype NoteProperty){
+            $systemProperties.disableServicesDirectory = $DisableServiceDirectory
+        }else{
+            Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name "disableServicesDirectory" -Value $DisableServiceDirectory
+        }
+    
+        $AdminSettingsModified = $True
+    }
+
     if($AdminSettingsModified){
         Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/update" -Token $token.token -Properties $systemProperties
     }    
@@ -132,7 +148,10 @@ function Test-TargetResource
         
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $SiteAdministrator
+        $SiteAdministrator,
+
+        [System.Boolean]
+        $DisableServiceDirectory
     )
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -151,20 +170,26 @@ function Test-TargetResource
     }
    
     $result = $true
+    $systemProperties = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/" -Token $token.token
     if($result){
-        $systemProperties = Get-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/" -Token $token.token
         if($WebContextURL){
             if(-not($systemProperties.WebContextURL) -or $systemProperties.WebContextURL -ine $WebContextURL){
                 Write-Verbose "Web Context URL '$($systemProperties.WebContextURL)' doesn't match expected value '$WebContextURL'"
                 $result = $false
             }
         }
+        
         if($result -and $WebSocketContextUrl){
             if(-not($systemProperties.WebSocketContextURL) -or $systemProperties.WebSocketContextURL -ine $WebContextURL){
                 Write-Verbose "Web Socket Context URL '$($systemProperties.WebSocketContextURL)' doesn't match expected value '$WebSocketContextUrl'"
                 $result = $false
             }
         }
+    }
+
+    if($result -and $systemProperties.disableServicesDirectory -ine $DisableServiceDirectory){
+        Write-Verbose "DisableServicesDirectory for Mission Server doesn't match expected value '$DisableServiceDirectory'"
+        $result = $false
     }
 
     $result

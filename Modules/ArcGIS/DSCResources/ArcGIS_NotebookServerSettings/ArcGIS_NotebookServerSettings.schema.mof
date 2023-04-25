@@ -4,5 +4,6 @@ class ArcGIS_NotebookServerSettings : OMI_BaseResource
 {
     [Write] String ServerHostName;
     [Key] String WebContextURL;
-	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;   
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+    [Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
 };

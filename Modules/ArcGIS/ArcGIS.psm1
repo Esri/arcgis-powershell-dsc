@@ -357,11 +357,10 @@ function Invoke-BuildArcGISAzureImage
     $Pro3Installer = ($InstallersConfig.Installers | Where-Object { $_.Name -ieq "ArcGIS Pro" -and $_.Version -ieq "3.0" })
     if(($Pro3Installer | Measure-Object).Count -gt 0)
     {
-        $Path = $ExecutionContext.InvokeCommand.ExpandString($Pro3Installer.LocalPath)
+        $Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Pro3Installer.LocalPath) $Pro3Installer.RemotePath)
         $TempFolder = Join-Path ([System.IO.Path]::GetTempPath()) "Pro3Installer"
         New-Item $TempFolder -ItemType directory            
-            
-        
+
         Write-Host "Extracting $Path to $TempFolder"
         $SetupExtractProc = (Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait -NoNewWindow  -Verbose -PassThru)
         if($SetupExtractProc.ExitCode -ne 0){
@@ -401,8 +400,7 @@ function Invoke-BuildArcGISAzureImage
         }else {
             throw "Install failed. Process exit code:- $($p.ExitCode). Error - $err"
         }
-    }
-    
+    }    
 }
 
 function Invoke-CreateNodeToAdd
@@ -1154,8 +1152,6 @@ function Invoke-ArcGISConfiguration
                             ServerDirectoriesRootLocation = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
                             ServerDirectories = if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){$ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories}else{$null}
                             ServerLogsLocation = if($ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation){$ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation}else{$null}
-                            EnableHTTPSOnly = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
-                            EnableHSTS = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS }else{ $False }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
@@ -1170,6 +1166,9 @@ function Invoke-ArcGISConfiguration
                             }                        
                         }else{
                             $ServerArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
+                            $ServerArgs["EnableHTTPSOnly"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
+                            $ServerArgs["EnableHSTS"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS }else{ $False }
+                            
                             if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeneralPurposeServer" -and $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles){
                                 $ServerArgs["AdditionalServerRoles"] = $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles
                             }
@@ -1287,6 +1286,8 @@ function Invoke-ArcGISConfiguration
                             $ConfigurationName = "ArcGISMissionServerSettings"
                         }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){
                             $ConfigurationName = "ArcGISNotebookServerSettings"
+                        }else{
+                            $ServerSettingsArgs["SharedKey"] = if($ConfigurationParamsHashtable.ConfigData.Server.SharedKey){ $ConfigurationParamsHashtable.ConfigData.Server.SharedKey }else{ $null }
                         }
                         
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerSettingsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -1305,6 +1306,8 @@ function Invoke-ArcGISConfiguration
                             PrimaryPortalMachine = $PrimaryPortalMachine.NodeName
                             ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation
                             AdminEmail = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Email
+                            AdminFullName = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.FullName){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.FullName }else{ $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.UserName }
+                            AdminDescription = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Description){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Description }else{ "Portal Administrator" }
                             AdminSecurityQuestionIndex = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex
                             AdminSecurityAnswer = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswer
                             LicenseFilePath = if($ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath){ $ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath }else{ $null }
@@ -1400,7 +1403,7 @@ function Invoke-ArcGISConfiguration
                             PrimaryServerMachine        = $PrimaryServerMachine.NodeName
                             PrimaryPortalMachine        = $PrimaryPortalMachine.NodeName
                             WebSiteId                   = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
-                            OverrideHTTPSBinding        = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding }else{ $True } 
+                            OverrideHTTPSBinding = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding }else{ $True }
                         }
                         if($ServerCheck){
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
@@ -1877,13 +1880,12 @@ function Invoke-ArcGISConfiguration
         }
     }elseif($Mode -ieq "Upgrade"){
         $HostingConfig = $null
-
         $OtherConfigs = @()
-        
+        $UpgradeVersion = ""
         foreach($cf in $ConfigurationParametersFile){
             $cfJSON = (ConvertFrom-Json (Get-Content $cf -Raw))
             $cfHashtable = Convert-PSObjectToHashtable $cfJSON
-            
+            $UpgradeVersion = $cfHashtable.ConfigData.Version
             $VersionArray = $cfHashtable.ConfigData.Version.Split(".")
             if(-not(($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 7) -or $VersionArray[0] -eq 11)){
                 throw "[ERROR] DSC Module only supports upgrades to ArcGIS Enterprise 10.7.x and later versions. Configuration File Name - $cf"
@@ -1956,7 +1958,7 @@ function Invoke-ArcGISConfiguration
             }
             $NonEnterpiseConfig = $OtherConfigs[0]
             if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0){
-                $JobFlag = Invoke-PortalUpgradeScript -PortalConfig $NonEnterpiseConfig -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode   
+                $JobFlag = Invoke-PortalUpgradeScript -PortalConfig $NonEnterpiseConfig -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode
             }
             if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
                 $JobFlag = Invoke-ServerUpgradeScript -cf $NonEnterpiseConfig -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode
@@ -2023,6 +2025,7 @@ function Invoke-ArcGISConfiguration
                     ConfigurationData = $InsightsUpgradeCD
                     Version = $HostingConfig.ConfigData.InsightsVersion
                     InstallerPath = $HostingConfig.ConfigData.Insights.Installer.Path
+                    InstallerIsSelfExtracting = if($HostingConfig.ConfigData.Insights.Installer.ContainsKey("IsSelfExtracting")){ $HostingConfig.ConfigData.Insights.Installer.IsSelfExtracting }else{ $True }
                     PatchesDir = $HostingConfig.ConfigData.Insights.Installer.PatchesDir
                     PatchInstallOrder = $HostingConfig.ConfigData.Insights.Installer.PatchInstallOrder
                     ServiceAccount = $ServiceAccountCredential
@@ -2034,7 +2037,7 @@ function Invoke-ArcGISConfiguration
 
                 $JobFlag = Invoke-DSCJob -ConfigurationName "InsightsUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $InsightsInstallUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                 if($JobFlag[$JobFlag.Count - 1] -ne $True){
-                    throw "Uninstall of ArcGIS Insights failed while upgrading"
+                    throw "Install of ArcGIS Insights failed while upgrading"
                 }
             }
 
@@ -2044,16 +2047,16 @@ function Invoke-ArcGISConfiguration
                 for ( $i = 0; $i -lt $OtherConfigs.count; $i++ ){
                     if($JobFlag[$JobFlag.Count - 1] -and ($OtherConfigs[$i].AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
                         $JobFlag = Invoke-ServerUpgradeScript -cf $OtherConfigs[$i] -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode
+			            if($JobFlag[$JobFlag.Count - 1] -ne $True){
+	                        throw "Upgrade of Federated ArcGIS Server failed"
+        	            }
                     }
                 }
+                
             }
-        }
+        }        
         
-        if($JobFlag[$JobFlag.Count - 1]){
-            Write-Information "Upgrade Successful!"
-        }else{
-            throw "Upgrade Unsuccessful!"
-        }
+        Write-Information -InformationAction Continue "Upgrade to version $($UpgradeVersion) is complete."
     }
 }
 
@@ -2155,6 +2158,7 @@ function Invoke-PortalUpgradeScript {
         Version = $PortalVersion
         OldVersion = $PortalConfig.ConfigData.OldVersion
         InstallerPath = $PortalConfig.ConfigData.Portal.Installer.Path
+        InstallerIsSelfExtracting = if($PortalConfig.ConfigData.Portal.Installer.ContainsKey("IsSelfExtracting")){ $PortalConfig.ConfigData.Portal.Installer.IsSelfExtracting }else{ $True }
         PatchesDir = $PortalConfig.ConfigData.Portal.Installer.PatchesDir
         PatchInstallOrder = $PortalConfig.ConfigData.Portal.Installer.PatchInstallOrder
         ServiceAccount = $PortalServiceAccountCredential
@@ -2165,6 +2169,9 @@ function Invoke-PortalUpgradeScript {
     }
     if((($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or ($PortalVersion -ieq "10.7.1")) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
         $PortalUpgradeArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
+        if($PortalConfig.ConfigData.Portal.Installer.ContainsKey("WebStylesInstallerIsSelfExtracting")){
+            $PortalUpgradeArgs.Add("WebStylesInstallerIsSelfExtracting", $PortalConfig.ConfigData.Portal.Installer.WebStylesInstallerIsSelfExtracting)
+        }
     }
 
     $JobFlag = Invoke-DSCJob -ConfigurationName "PortalUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2210,19 +2217,28 @@ function Invoke-PortalUpgradeScript {
         Write-Information -InformationAction Continue "Portal WebAdaptor Upgrade"
         ForEach($WANode in ($PortalConfig.AllNodes | Where-Object {$_.Role -icontains 'PortalWebAdaptor'})){
             $NodeToAdd = (Invoke-CreateNodeToAdd -Node $WANode -TargetComponent 'WebAdaptor' -PortalContext $PortalConfig.ConfigData.PortalContext)
+            $VersionArray = $PortalConfig.ConfigData.Version.Split('.')
             $WebAdaptorUpgradeArgs = @{
                 ConfigurationData = @{ AllNodes = @($NodeToAdd) }
                 WebAdaptorRole = "PortalWebAdaptor"
                 Component = "Portal"
                 Version = $PortalConfig.ConfigData.Version
                 OldVersion = $PortalConfig.ConfigData.OldVersion 
-                InstallerPath = $PortalConfig.ConfigData.WebAdaptor.Installer.Path 
+                InstallerPath = $PortalConfig.ConfigData.WebAdaptor.Installer.Path
+                InstallerIsSelfExtracting = if($PortalConfig.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $PortalConfig.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
+                DotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $PortalConfig.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+                WebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $PortalConfig.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
                 PatchesDir = $PortalConfig.ConfigData.WebAdaptor.Installer.PatchesDir
                 PatchInstallOrder = $PortalConfig.ConfigData.WebAdaptor.Installer.PatchInstallOrder
                 ComponentHostName = $PrimaryNodeToAdd.NodeName
                 SiteAdministratorCredential = $PortalSiteAdministratorCredential
                 WebSiteId = if($PortalConfig.ConfigData.WebAdaptor.WebSiteId){ $PortalConfig.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
                 EnableMSILogging =  $EnableMSILoggingMode
+            }
+
+            if($PortalConfig.ConfigData.Version -ieq "11.1"){
+                $NodeToAdd["DotnetHostingBundlePath"] = $PortalConfig.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath
+                $NodeToAdd["WebDeployPath"] = $PortalConfig.ConfigData.WebAdaptor.Installer.WebDeployPath
             }
 
             $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2410,14 +2426,13 @@ function Invoke-ServerUpgradeScript {
                 IsServiceAccountDomainAccount = $cfServiceAccountIsDomainAccount
                 IsServiceAccountMSA = $cfServiceAccountIsMSA
                 InstallerPath = $cf.ConfigData.Server.Installer.Path
+                InstallerIsSelfExtracting = if($cf.ConfigData.Server.Installer.ContainsKey("IsSelfExtracting")){ $cf.ConfigData.Server.Installer.IsSelfExtracting }else{ $True }
                 PatchesDir = $cf.ConfigData.Server.Installer.PatchesDir
                 PatchInstallOrder = $cf.ConfigData.Server.Installer.PatchInstallOrder
-                ContainerImagePaths = if($cf.ConfigData.ServerRole -ieq "NotebookServer"){ $cf.ConfigData.Server.ContainerImagePaths }else{ $null }
                 InstallDir = $cf.ConfigData.Server.Installer.InstallDir
-                NotebookServerSamplesDataPath = if(($cf.ConfigData.ServerRole -ieq "NotebookServer") -and ($cf.ConfigData.Version.Split(".")[1] -gt 8) -and $cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath){ $cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath }else{ $null }
                 IsMultiMachineServerSite = ($cf.AllNodes.count -gt 1)
                 EnableMSILogging = $EnableMSILogging
-                EnableDotnetSupport = if($Version -ieq "10.9.1" -or $Version -eq "11.0"){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
+                EnableDotnetSupport = if($Version -ieq "10.9.1" -or $Version -eq "11.0" -or $Version -eq "11.1"){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
                 Extensions = if($cf.ConfigData.Server.Extensions){ $cf.ConfigData.Server.Extensions }else{ $null }
                 DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
             }
@@ -2426,8 +2441,26 @@ function Invoke-ServerUpgradeScript {
                 $ServerUpgradeArgs['EnableArcMapRuntime'] = if($cf.ConfigData.Server.Installer.ContainsKey("EnableArcMapRuntime")){ $cf.ConfigData.Server.Installer.EnableArcMapRuntime } else { $True }
             }
 
+            if($ServerRole -ieq "NotebookServer"){
+                if($cf.ConfigData.Server.ContainerImagePaths){
+                    $ServerUpgradeArgs.Add("ContainerImagePaths", $cf.ConfigData.Server.ContainerImagePaths)
+                } 
+                if($cf.ConfigData.Version.Split(".")[1] -gt 8){
+                    if($cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
+                        $ServerUpgradeArgs.Add("NotebookServerSamplesDataPath",  $cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath)
+                    }
+                    if($cf.ConfigData.Server.Installer.ContainsKey("NotebookServerSamplesDataInstallerIsSelfExtracting")){
+                        $ServerUpgradeArgs.Add("NotebookServerSamplesDataInstallerIsSelfExtracting", $cf.ConfigData.Server.Installer.NotebookServerSamplesDataInstallerIsSelfExtracting)
+                    }
+                }
+            }
+
             if(($ServerRole -ieq "GeoEvent" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) -and $cf.ConfigData.GeoEventServer){
                 $ServerUpgradeArgs.Add("GeoEventServerInstaller",$cf.ConfigData.GeoEventServer.Installer.Path)
+                if($cf.ConfigData.GeoEventServer.Installer.ContainsKey("IsSelfExtracting")){
+                    $ServerUpgradeArgs.Add("GeoEventServerInstallerIsSelfExtracting", $cf.ConfigData.GeoEventServer.Installer.IsSelfExtracting)
+                }
+                
                 $ServerUpgradeArgs.Add("GeoEventServerPatchesDir",$cf.ConfigData.GeoEventServer.Installer.PatchesDir)
                 $ServerUpgradeArgs.Add("GeoEventServerPatchInstallOrder",$cf.ConfigData.GeoEventServer.Installer.PatchInstallOrder)
                 if($cf.ConfigData.Version.StartsWith("11.") -and $cf.ConfigData.GeoEventServer.UserBackupConfigFiles){
@@ -2437,6 +2470,9 @@ function Invoke-ServerUpgradeScript {
 
             if(($ServerRole -ieq "WorkflowManagerServer" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "WorkflowManagerServer")) -and $cf.ConfigData.WorkflowManagerServer){
                 $ServerUpgradeArgs.Add("WorkflowManagerServerInstaller",$cf.ConfigData.WorkflowManagerServer.Installer.Path)
+                if($cf.ConfigData.WorkflowManagerServer.Installer.ContainsKey("IsSelfExtracting")){
+                    $ServerUpgradeArgs.Add("WorkflowManagerInstallerIsSelfExtracting", $cf.ConfigData.WorkflowManagerServer.Installer.IsSelfExtracting)
+                }
                 $ServerUpgradeArgs.Add("WorkflowManagerServerPatchesDir",$cf.ConfigData.WorkflowManagerServer.Installer.PatchesDir)
                 $ServerUpgradeArgs.Add("WorkflowManagerServerPatchInstallOrder",$cf.ConfigData.WorkflowManagerServer.Installer.PatchInstallOrder)
             }
@@ -2458,6 +2494,7 @@ function Invoke-ServerUpgradeScript {
         ForEach($WANode in ($cf.AllNodes | Where-Object {$_.Role -icontains 'ServerWebAdaptor'})){
             $WAAdminAccessEnabled = if($cf.ConfigData.WebAdaptor.AdminAccessEnabled){ $cf.ConfigData.WebAdaptor.AdminAccessEnabled }else{ $False }
             $NodeToAdd = (Invoke-CreateNodeToAdd -Node $WANode -TargetComponent 'WebAdaptor' -ServerContext $cf.ConfigData.ServerContext -WebAdaptorAdminAccessEnabled $WAAdminAccessEnabled)
+            $VersionArray = $cf.ConfigData.Version.Split('.')
             $WebAdaptorUpgradeArgs = @{
                 ConfigurationData = @{ AllNodes = @($NodeToAdd) }
                 WebAdaptorRole = "ServerWebAdaptor"
@@ -2465,6 +2502,9 @@ function Invoke-ServerUpgradeScript {
                 Version = $cf.ConfigData.Version
                 OldVersion = $cf.ConfigData.OldVersion 
                 InstallerPath = $cf.ConfigData.WebAdaptor.Installer.Path
+                InstallerIsSelfExtracting = if($cf.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $cf.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
+                DotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $cf.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+                WebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $cf.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
                 PatchesDir = $cf.ConfigData.WebAdaptor.Installer.PatchesDir
                 PatchInstallOrder = $cf.ConfigData.WebAdaptor.Installer.PatchInstallOrder
                 ComponentHostName = $cfPrimaryServerMachine
@@ -2472,6 +2512,11 @@ function Invoke-ServerUpgradeScript {
                 WebSiteId = if($cf.ConfigData.WebAdaptor.WebSiteId){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
                 EnableMSILogging = $EnableMSILoggingMode
                 DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
+            }
+
+            if($cf.ConfigData.Version -ieq "11.1"){
+                $NodeToAdd["DotnetHostingBundlePath"] = $cf.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath
+                $NodeToAdd["WebDeployPath"] = $cf.ConfigData.WebAdaptor.Installer.WebDeployPath
             }
 
             $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2600,6 +2645,7 @@ function Invoke-DataStoreUpgradeScript {
                 IsServiceAccountDomainAccount = $DSServiceAccountIsDomainAccount
                 IsServiceAccountMSA =   $DSServiceAccountIsMSA
                 InstallerPath = $DSConfig.ConfigData.DataStore.Installer.Path
+                InstallerIsSelfExtracting = if($DSConfig.ConfigData.DataStore.Installer.ContainsKey("IsSelfExtracting")){ $DSConfig.ConfigData.DataStore.Installer.IsSelfExtracting }else{ $True }
                 PatchesDir = $DSConfig.ConfigData.DataStore.Installer.PatchesDir
                 PatchInstallOrder = $DSConfig.ConfigData.DataStore.Installer.PatchInstallOrder
                 InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir

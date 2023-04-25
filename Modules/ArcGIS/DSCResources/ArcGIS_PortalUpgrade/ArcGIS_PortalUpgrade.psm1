@@ -254,9 +254,9 @@ function Set-TargetResource
 
             Write-Verbose "Post Upgrade Step"
             [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
-            $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose 
+            $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
             $ResponseJSON = (ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)
-            Write-Verbose "Response received from post upgrade step $ResponseJSON"  
+            Write-Verbose "Response received from post upgrade step $ResponseJSON" 
             if($postUpgradeResponse.status -ieq "success"){
                 Write-Verbose "Sleeping for $($postUpgradeResponse.recheckAfterSeconds*3) seconds"
                 Start-Sleep -Seconds ($postUpgradeResponse.recheckAfterSeconds*3)

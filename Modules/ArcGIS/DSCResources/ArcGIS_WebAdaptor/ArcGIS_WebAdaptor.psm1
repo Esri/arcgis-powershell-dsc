@@ -110,6 +110,8 @@ function Set-TargetResource
         $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
         $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
 		$Version = ""
+        $WAConfigureToolParentPath = ${env:CommonProgramFiles(x86)}
+
         foreach($wa in $WAInstalls){
             if($wa.InstallLocation -match "\\$($Context)\\"){
 				$Version = $wa.Version
@@ -126,15 +128,22 @@ function Set-TargetResource
                     $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
 				    break
                 }elseif($wa.Version.StartsWith("11.0")){	
-                    $Version = if($wa.Name -match "11.0.1"){ "11.0.1" }else{ "11.0" }
+                    $Version = "11.0"
+                    $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
+				    break
+                }elseif($wa.Version.StartsWith("11.1")){	
+                    $Version = "11.1"
                     $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
 				    break
                 }
-
             }        
         }
-
+        
         $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
+        if($Version.StartsWith("11.1")){
+            $ExecPath = Join-Path ${env:CommonProgramFiles} $ConfigureToolPath
+        }
+
         try{
             Start-RegisterWebAdaptorCMDLineTool -ExecPath $ExecPath -Component $Component -ComponentHostName $ComponentHostName -HostName $HostName -Context $Context -SiteAdministrator $SiteAdministrator -AdminAccessEnabled $AdminAccessEnabled -Version $Version
         }catch{
@@ -219,58 +228,45 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
     $result = $false
+
+    $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}else{"https://$($ComponentHostName):6443"}
+    $PortalSiteUrl = "https://$($ComponentHostName):7443"
+
     foreach($wa in $WAInstalls){
         if($wa.InstallLocation -match "\\$($Context)\\"){
             $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
-            [xml]$WAConfig = Get-Content $WAConfigPath
-            $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}else{"https://$($ComponentHostName):6443"}
-            $PortalSiteUrl = "https://$($ComponentHostName):7443"
-            if(($Component -ieq "Server") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
-                if($OverwriteFlag){
-                    $result = $false
-                }else{
-                    if (URLAvailable("https://$Hostname/$Context/admin")){
-                        if(-not($AdminAccessEnabled)){
-                            $result = $false
-                        }else{
-                            $result = $true
-                        } 
-                    }else{
-                        if($AdminAccessEnabled){
-                            $result = $false
-                        }else{
-                            $result = $true
-                        } 
-                    }
-                }
+            $WAConfigSiteUrl = $null
+            if($wa.Version.StartsWith("11.1")){
+                $WAConfig = (Get-Content $WAConfigPath | ConvertFrom-Json)
+                $WAConfigSiteUrl = $WAConfig.url
+            }else{
+                [xml]$WAConfig = Get-Content $WAConfigPath
+                $WAConfigSiteUrl = if($Component -ieq "Portal"){ $WAConfig.Config.Portal.URL }else{ $WAConfig.Config.GISServer.SiteURL }
             }
-            if(($Component -ieq "NotebookServer") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
+            
+            if((@("Server", "NotebookServer", "MissionServer") -iContains $Component) -and ($WAConfigSiteUrl -like $ServerSiteURL)){
                 if($OverwriteFlag){
                     $result =  $false
                 }else{
-                    if(URLAvailable("https://$Hostname/$Context/admin")){
-                        $result =  $true
+                    if (Test-URL "https://$Hostname/$Context/admin"){
+                        if($Component -ieq "Server"){
+                            $result = if(-not($AdminAccessEnabled)){ $false }else{ $true }
+                        }else{
+                            $result =  $true
+                        }
                     }else{
-                        $result =  $false
+                        if($Component -ieq "Server"){
+                            $result = if($AdminAccessEnabled){ $false }else{ $true }
+                        }else{
+                            $result =  $false
+                        }
                     }
                 }
-            }
-            elseif(($Component -ieq "MissionServer") -and ($WAConfig.Config.GISServer.SiteURL -like $ServerSiteURL)){
+            }elseif(($Component -ieq "Portal") -and ($WAConfigSiteUrl -like $PortalSiteUrl)){
                 if($OverwriteFlag){
                     $result =  $false
                 }else{
-                    if(URLAvailable("https://$Hostname/$Context/admin")){
-                        $result =  $true
-                    }else{
-                        $result =  $false
-                    }
-                }
-            }
-            elseif(($Component -ieq "Portal") -and ($WAConfig.Config.Portal.URL -like $PortalSiteUrl)){
-                if($OverwriteFlag){
-                  $result =  $false
-                }else{
-                    if(URLAvailable("https://$Hostname/$Context/portaladmin")){
+                    if(Test-URL "https://$Hostname/$Context/portaladmin"){
                         $result =  $true
                     }else{
                         $result =  $false
@@ -281,7 +277,7 @@ function Test-TargetResource
             }
             break
         }
-    } 
+    }
     $result
 }
 
@@ -364,7 +360,7 @@ function Start-RegisterWebAdaptorCMDLineTool{
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
         $VersionArray = $Version.Split('.')
-        if(($VersionArray[0] -eq 11) -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")){
+        if(($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")){
             $Arguments += " /r false"
         }
     }
@@ -393,8 +389,8 @@ function Start-RegisterWebAdaptorCMDLineTool{
 }
 
 
-function URLAvailable([string]$Url){
-    Write-Verbose "Checking URLAvailable : $Url"
+function Test-URL([string]$Url){
+    Write-Verbose "Checking url: $Url"
 
     try{
         $HTTP_Response_Available = Invoke-ArcGISWebRequest -Url $Url -HttpMethod GET -HttpFormParameters @{ f = 'json'; }

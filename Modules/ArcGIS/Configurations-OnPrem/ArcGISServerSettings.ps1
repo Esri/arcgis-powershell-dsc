@@ -19,12 +19,16 @@
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
-        $DisableServiceDirectory = $False
+        $DisableServiceDirectory = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $SharedKey = $null
     )
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_ServerSettings
 
     Node $AllNodes.NodeName
@@ -44,6 +48,7 @@
                 ExternalDNSName  = $ExternalDNSHostName
                 ServerContext    = $ServerContext
                 DisableServiceDirectory = if($DisableServiceDirectory) { $true } else { $false }
+                SharedKey = $SharedKey
             }
         }
     }

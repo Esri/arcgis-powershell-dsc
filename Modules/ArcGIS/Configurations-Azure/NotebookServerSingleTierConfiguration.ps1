@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.0'
+        $Version = '11.1'
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -99,6 +99,10 @@
 
 		,[Parameter(Mandatory=$false)]
 		$PortalMachineNamesOnHostingServer
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsUpdatingCertificates = $False
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -137,6 +141,7 @@
 	Import-DscResource -Name ArcGIS_xDisk  
 	Import-DscResource -Name ArcGIS_Disk  
     Import-DscResource -Name ArcGIS_TLSCertificateImport
+    Import-DscResource -Name ArcGIS_PendingReboot
 	
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1
     $FileShareHostName = $ServerHostName
@@ -169,8 +174,6 @@
     $IsMultiMachineServer = (($ServerMachineNames -split ',').Length -gt 1)
 	$LastServerHostName = ($ServerMachineNames -split ',') | Select-Object -Last 1
     $FileShareLocalPath = (Join-Path $env:SystemDrive $FileShareName)  
-
-    
 
     if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
     {
@@ -233,12 +236,35 @@
 				DependsOn 	= $DependsOn
 			}
 			$DependsOn += '[ArcGIS_xDisk]DataDisk' 
-        }    
-        
-		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
-        if($HasValidServiceCredential) 
+        }
+
+        $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
+        if(-not($IsUpdatingCertificates)){ #Prepare machine to install mirantis
+            WindowsFeature websockets
+            {
+                Name  = 'Web-WebSockets'
+                Ensure = 'Present'
+            }
+            $DependsOn += '[WindowsFeature]websockets'
+
+            WindowsFeature InstallContainers
+            {
+                Name  = 'Containers'
+                Ensure = 'Present'
+                DependsOn 	= $DependsOn
+            }
+            $DependsOn += '[WindowsFeature]InstallContainers' 
+
+            ArcGIS_PendingReboot ContainerFeatureRebootNeeded {
+                Name      = 'ContainerFeatureRebootNeeded'
+                DependsOn 	= $DependsOn
+            }
+            $DependsOn += '[ArcGIS_PendingReboot]ContainerFeatureRebootNeeded' 
+        }
+        		
+        if($HasValidServiceCredential -and -not($IsUpdatingCertificates)) 
         {
-			if(-Not($ServiceCredentialIsDomainAccount)){
+            if(-Not($ServiceCredentialIsDomainAccount)){
 				User ArcGIS_RunAsAccount
 				{
 					UserName				= $ServiceCredential.UserName
@@ -348,7 +374,7 @@
 		    }
 			$DependsOn += '[ArcGIS_xFirewall]NotebookServer_FirewallRules'
             
-			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Mission Server'))
+			foreach($ServiceToStop in @('ArcGIS Server', 'Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Mission Server', 'WorkflowManager'))
 			{
                 if(Get-Service $ServiceToStop -ErrorAction Ignore) 
 			    {
@@ -383,6 +409,7 @@
             {
                 WebContextURL                           = "https://$ExternalDNSHostName/$($Context)"
                 SiteAdministrator                       = $SiteAdministratorCredential
+                DependsOn                               = $DependsOn
             }
             $DependsOn += '[ArcGIS_NotebookServerSettings]NotebookServerSettings'
 
@@ -395,13 +422,6 @@
             }
             $DependsOn += '[ArcGIS_NotebookPostInstall]NotebookPostInstallSamples'
         }
-        
-        WindowsFeature websockets
-        {
-            Name  = 'Web-WebSockets'
-            Ensure = 'Present'
-        }
-        $DependsOn += '[WindowsFeature]websockets'
         
         Script CopyCertificateFileToLocalMachine
         {
@@ -421,7 +441,7 @@
             TestScript = {   
                 $false
             }
-            DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+            DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
             PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
         }
 
@@ -433,12 +453,12 @@
             CertificateFileLocation    = $ServerCertificateLocalFilePath
             CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
             ServerType                 = $ServerFunctions
-            DependsOn                  = @('[ArcGIS_NotebookServer]NotebookServer','[ArcGIS_NotebookServerSettings]NotebookServerSettings','[Script]CopyCertificateFileToLocalMachine') 
+            DependsOn                  =  if(-not($IsUpdatingCertificates)){ @('[ArcGIS_NotebookServer]NotebookServer','[ArcGIS_NotebookServerSettings]NotebookServerSettings','[Script]CopyCertificateFileToLocalMachine') }else{ @('[Script]CopyCertificateFileToLocalMachine')  }
             SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
         }
         $DependsOn += @('[ArcGIS_Server_TLS]Server_TLS') 
 
-		if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential) 
+		if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsUpdatingCertificates)) 
         {
 			ArcGIS_Federation Federate
 			{
@@ -476,6 +496,7 @@
                     StoreName			= 'Root'
                     SiteAdministrator	= $PortalSiteAdministratorCredential
                     ServerType          = $ServerFunctions
+                    DependsOn = $DependsOn
                 }
 			}
 		}
@@ -496,6 +517,7 @@
                     StoreName			= 'Root'
                     SiteAdministrator	= $PortalSiteAdministratorCredential
                     ServerType          = $ServerFunctions
+                    DependsOn = $DependsOn
                 }
 			}
 		}

@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.0',
+        $Version = '11.1',
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -314,10 +314,24 @@
             }
             $ServerDependsOn += '[Script]ArcGIS_GeoEvent_Service_Stop_for_Upgrade'
 
+            $GeoEventInstallerFileName = Split-Path $GeoEventServerInstallerPath -Leaf
+            $GeoEventInstallerPathOnMachine = "$env:TEMP\Server\$GeoEventInstallerFileName"
+
+            File GeoeventDownloadInstallerFromFileShare      
+            {            	
+                Ensure = "Present"              	
+                Type = "File"             	
+                SourcePath = $GeoEventServerInstallerPath 	
+                DestinationPath = $GeoEventInstallerPathOnMachine     
+                Credential = $FileshareMachineCredential     
+                DependsOn = $Depends  
+            }
+            $Depends += '[File]GeoeventDownloadInstallerFromFileShare'
+
             ArcGIS_Install GeoEventServerUpgrade{
                 Name = "GeoEvent"
                 Version = $Version
-                Path = $GeoEventServerInstallerPath
+                Path = $GeoEventInstallerPathOnMachine
                 Arguments = "/qn USERBACKUPCONFIGFILES=YES";
                 ServiceCredential = $ServiceCredential
                 ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount

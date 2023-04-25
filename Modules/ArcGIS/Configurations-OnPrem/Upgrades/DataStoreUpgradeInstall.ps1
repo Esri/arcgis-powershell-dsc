@@ -17,6 +17,10 @@
         [System.String]
         $InstallerPath,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $InstallerIsSelfExtracting = $True,
+
         [System.String]
         $PatchesDir,
 
@@ -35,7 +39,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
@@ -59,6 +63,7 @@
             Name = "DataStore"
             Version = $Version
             Path = $InstallerPath
+            Extract = $InstallerIsSelfExtracting
             Arguments = if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){ "/qn ACCEPTEULA=YES"}else{ "/qn" }
             ServiceCredential = $ServiceAccount
             ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount

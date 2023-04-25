@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_RemoteFile
 
     Node $AllNodes.NodeName {
@@ -231,6 +231,24 @@
                             ArcGISDownloadAPIFolderPath = "software/arcgis/$($ConfigurationData.ConfigData.Version)"
                             Ensure = $Ensure
                         }
+                        
+                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployDownloadUrl){
+                            ArcGIS_RemoteFile "WebDeployDownload$($Node.NodeName)"{
+                                Source = $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployDownloadUrl
+                                Destination = $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath
+                                FileSourceType = "Default"
+                                Ensure = $Ensure
+                            }
+                        }
+
+                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundleDownloadUrl){
+                            ArcGIS_RemoteFile "DotnetHostingBundleDownload$($Node.NodeName)"{
+                                Source = $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundleDownloadUrl
+                                Destination = $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath
+                                FileSourceType = "Default"
+                                Ensure = $Ensure
+                            }
+                        }
                     }
                 }
                 'Desktop' {
@@ -260,8 +278,16 @@
                 }
                 'Pro'
                 {
-                    $ProDownloadFolder = if($ConfigurationData.ConfigData.ProVersion -ieq "3.0.3"){ "3.0" }else{ $ConfigurationData.ConfigData.ProVersion }
+                    if($ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimeDownloadUrl){
+                        ArcGIS_RemoteFile "DotnetDesktopRuntimeDownload$($Node.NodeName)"{
+                            Source = $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimeDownloadUrl
+                            Destination = $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath 
+                            FileSourceType = "Default"
+                            Ensure = $Ensure
+                        }
+                    }
 
+                    $ProDownloadFolder = if($ConfigurationData.ConfigData.ProVersion -ieq "3.0.3"){ "3.0" }else{ $ConfigurationData.ConfigData.ProVersion }
                     ArcGIS_RemoteFile "ProDownload$($Node.NodeName)"
                     {
                         Source = $ConfigurationData.ConfigData.Pro.Installer.Path

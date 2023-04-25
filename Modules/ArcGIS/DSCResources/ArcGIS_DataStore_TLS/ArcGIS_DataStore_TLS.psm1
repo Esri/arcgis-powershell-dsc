@@ -172,7 +172,7 @@ function Invoke-DataStoreUpdateSSLCertificateTool
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $UpdateDataStoreSSLCertificateToolPath
-    $psi.Arguments = "$CertificateFileLocation $($CertificatePassword.GetNetworkCredential().Password) $CertAlias --prompt no"
+    $psi.Arguments = "$CertificateFileLocation `"$($CertificatePassword.GetNetworkCredential().Password)`" $CertAlias --prompt no"
     $psi.UseShellExecute = $false #start the process from it's own executable file    
     $psi.RedirectStandardOutput = $true #enable the process to read from standard output
     $psi.RedirectStandardError = $true #enable the process to read from standard error

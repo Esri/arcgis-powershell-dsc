@@ -9,6 +9,8 @@ class ArcGIS_Portal : OMI_BaseResource
 	[Write] String UserLicenseTypeId;
 	[Write, EmbeddedInstance("MSFT_Credential")] String PortalAdministrator;
 	[Write] String AdminEmail;
+	[Write] String AdminFullName;
+	[Write] String AdminDescription;
 	[Write] Uint8 AdminSecurityQuestionIndex;
 	[Write] String AdminSecurityAnswer;
 	[Write, Description("Is Joining Existing site")] Boolean Join;

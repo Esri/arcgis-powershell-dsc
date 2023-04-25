@@ -806,7 +806,7 @@ function Update-FederatedServer
     
     try{
         $UpdateUrl = "https://$($PortalHostName):$Port/$($SiteName)" + "/portaladmin/federation/servers/"+$ServerId+"/update"
-        $response = Invoke-ArcGISWebRequest -Url $UpdateUrl -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 300 -Verbose
+        $response = Invoke-ArcGISWebRequest -Url $UpdateUrl -HttpMethod 'POST' -HttpFormParameters @{ f = 'json'; token = $Token; serverRole = $ServerRole; serverFunction = $ServerFunction } -Referer $Referer -TimeOutSec 300 -Verbose 
         Write-Verbose ($response | ConvertTo-Json -Depth 5 -Compress)
         $response
     }catch{

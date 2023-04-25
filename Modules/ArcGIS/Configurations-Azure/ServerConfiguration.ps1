@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.0'
+        $Version = '11.1'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -73,7 +73,11 @@
 
          ,[Parameter(Mandatory=$false)]
         [System.String]
-        $FileShareName = 'fileshare' 
+        $FileShareName = 'fileshare'
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsUpdatingCertificates = $False
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -196,131 +200,139 @@
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
-            if(-Not($ServiceCredentialIsDomainAccount)){
-                User ArcGIS_RunAsAccount
+            $ServerDependsOn = @()
+            if(-not($IsUpdatingCertificates))
+            {
+                if(-Not($ServiceCredentialIsDomainAccount)){
+                    User ArcGIS_RunAsAccount
+                    {
+                        UserName       = $ServiceCredential.UserName
+                        Password       = $ServiceCredential
+                        FullName       = 'ArcGIS Service Account'
+                        Ensure         = 'Present'
+                        PasswordChangeRequired = $false
+                        PasswordNeverExpires = $true
+                    }
+                    $ServerDependsOn += '[User]ArcGIS_RunAsAccount'
+                }
+
+                if($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0)) 
                 {
-                    UserName       = $ServiceCredential.UserName
-                    Password       = $ServiceCredential
-                    FullName       = 'ArcGIS Service Account'
-                    Ensure         = 'Present'
-                    PasswordChangeRequired = $false
-                    PasswordNeverExpires = $true
+                    ArcGIS_License ServerLicense
+                    {
+                        LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
+                        Ensure          = 'Present'
+                        Component       = 'Server'
+                    } 
+                    $ServerDependsOn += '[ArcGIS_License]ServerLicense'
+
+                    ArcGIS_WindowsService ArcGIS_for_Server_Service
+                    {
+                        Name            = 'ArcGIS Server'
+                        Credential      = $ServiceCredential
+                        StartupType     = 'Automatic'
+                        State           = 'Running' 
+                        DependsOn       = $ServerDependsOn
+                    }
+                    $ServerDependsOn += '[ArcGIS_WindowsService]ArcGIS_for_Server_Service'
+
+                    ArcGIS_Service_Account Server_Service_Account
+                    {
+                        Name            = 'ArcGIS Server'
+                        RunAsAccount    = $ServiceCredential
+                        IsDomainAccount = $ServiceCredentialIsDomainAccount
+                        Ensure          = 'Present'
+                        DependsOn       = $ServerDependsOn
+                    }
+                    $ServerDependsOn += '[ArcGIS_Service_Account]Server_Service_Account'
+                
+                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
+                    {
+                        $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
+                        $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
+                
+                        Script PersistStorageCredentials
+                        {
+                            TestScript = { 
+                                                $result = cmdkey "/list:$using:AzureFilesEndpoint"
+                                                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                                if($result -like '*none*')
+                                                {
+                                                    return $false
+                                                }
+                                                return $true
+                                            }
+                            SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
+                                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
+                                        }
+                            GetScript            = { return @{} }                  
+                            DependsOn            = $ServerDependsOn
+                            PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
+                        }
+                        $ServerDependsOn += '[Script]PersistStorageCredentials'
+                    } 
+
+                    ArcGIS_xFirewall Server_FirewallRules
+                    {
+                        Name                  = "ArcGISServer"
+                        DisplayName           = "ArcGIS for Server"
+                        DisplayGroup          = "ArcGIS for Server"
+                        Ensure                = 'Present'
+                        Access                = "Allow"
+                        State                 = "Enabled"
+                        Profile               = ("Domain","Private","Public")
+                        LocalPort             = ("6080","6443")
+                        Protocol              = "TCP"
+                    }
+                    $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
+
+                    if($IsMultiMachineServer) 
+                    {
+                        ArcGIS_xFirewall Server_FirewallRules_Internal
+                        {
+                            Name                  = "ArcGISServerInternal"
+                            DisplayName           = "ArcGIS for Server Internal RMI"
+                            DisplayGroup          = "ArcGIS for Server"
+                            Ensure                = 'Present'
+                            Access                = "Allow"
+                            State                 = "Enabled"
+                            Profile               = ("Domain","Private","Public")
+                            LocalPort             = ("4000-4004")
+                            Protocol              = "TCP"
+                        }
+                        $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'
+                    }
+                    
+                    ArcGIS_LogHarvester ServerLogHarvester
+                    {
+                        ComponentType = "Server"
+                        EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
+                        Version = $Version
+                        LogFormat = "csv"
+                        DependsOn = $ServerDependsOn
+                    }
+
+                    $ServerDependsOn += '[ArcGIS_LogHarvester]ServerLogHarvester'
+
+                    ArcGIS_Server Server
+                    {
+                        Version                                 = $Version
+                        Ensure                                  = 'Present'
+                        SiteAdministrator                       = $SiteAdministratorCredential
+                        ConfigurationStoreLocation              = $ConfigStoreLocation
+                        DependsOn                               = $ServerDependsOn
+                        ServerDirectoriesRootLocation           = $ServerDirsLocation
+                        Join                                    = $Join
+                        PeerServerHostName                      = $ServerHostName
+                        LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+                        ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
+                        ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+                    }
+                    $ServerDependsOn += '[ArcGIS_Server]Server'
                 }
             }
-
-		    $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')    
-            if($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0)) 
-            {
-                ArcGIS_License ServerLicense
-                {
-                    LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
-                    Ensure          = 'Present'
-                    Component       = 'Server'
-                } 
-			    $ServerDependsOn += '[ArcGIS_License]ServerLicense'
             
-
-                ArcGIS_WindowsService ArcGIS_for_Server_Service
-                {
-                    Name            = 'ArcGIS Server'
-                    Credential      = $ServiceCredential
-                    StartupType     = 'Automatic'
-                    State           = 'Running' 
-                    DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-                }
-
-                ArcGIS_Service_Account Server_Service_Account
-		        {
-			        Name            = 'ArcGIS Server'
-                    RunAsAccount    = $ServiceCredential
-                    IsDomainAccount = $ServiceCredentialIsDomainAccount
-			        Ensure          = 'Present'
-			        DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}else{@('[ArcGIS_WindowsService]ArcGIS_for_Server_Service')}
-		        }
-             
-                if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
-                {
-                      $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
-                      $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
-              
-                      Script PersistStorageCredentials
-                      {
-                          TestScript = { 
-                                            $result = cmdkey "/list:$using:AzureFilesEndpoint"
-                                            $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-                                            if($result -like '*none*')
-                                            {
-                                                return $false
-                                            }
-                                            return $true
-                                        }
-                          SetScript = { $result = cmdkey "/add:$using:AzureFilesEndpoint" "/user:$using:filesStorageAccountName" "/pass:$using:storageAccountKey" 
-						                $result | ForEach-Object{Write-verbose -Message "cmdkey: $_" -Verbose}
-					                  }
-                          GetScript            = { return @{} }                  
-                          DependsOn            = @('[ArcGIS_Service_Account]Server_Service_Account')
-                          PsDscRunAsCredential = $ServiceCredential # This is critical, cmdkey must run as the service account to persist property
-                      }
-                      $ServerDependsOn += '[Script]PersistStorageCredentials'
-                } 
-
-                ArcGIS_xFirewall Server_FirewallRules
-		        {
-			        Name                  = "ArcGISServer"
-			        DisplayName           = "ArcGIS for Server"
-			        DisplayGroup          = "ArcGIS for Server"
-			        Ensure                = 'Present'
-			        Access                = "Allow"
-			        State                 = "Enabled"
-			        Profile               = ("Domain","Private","Public")
-			        LocalPort             = ("6080","6443")
-			        Protocol              = "TCP"
-		        }
-		        $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules'
-
-		        if($IsMultiMachineServer) 
-                {
-                    ArcGIS_xFirewall Server_FirewallRules_Internal
-		            {
-			            Name                  = "ArcGISServerInternal"
-			            DisplayName           = "ArcGIS for Server Internal RMI"
-			            DisplayGroup          = "ArcGIS for Server"
-			            Ensure                = 'Present'
-			            Access                = "Allow"
-			            State                 = "Enabled"
-			            Profile               = ("Domain","Private","Public")
-			            LocalPort             = ("4000-4004")
-			            Protocol              = "TCP"
-		            }
-			        $ServerDependsOn += '[ArcGIS_xFirewall]Server_FirewallRules_Internal'
-                }
-                
-                ArcGIS_LogHarvester ServerLogHarvester
-                {
-                    ComponentType = "Server"
-                    EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
-                    Version = $Version
-                    LogFormat = "csv"
-                    DependsOn = $ServerDependsOn
-                }
-
-                $ServerDependsOn += '[ArcGIS_LogHarvester]ServerLogHarvester'
-
-		        ArcGIS_Server Server
-		        {
-                    Version                                 = $Version
-			        Ensure                                  = 'Present'
-			        SiteAdministrator                       = $SiteAdministratorCredential
-			        ConfigurationStoreLocation              = $ConfigStoreLocation
-			        DependsOn                               = $ServerDependsOn
-			        ServerDirectoriesRootLocation           = $ServerDirsLocation
-			        Join                                    = $Join
-			        PeerServerHostName                      = $ServerHostName
-			        LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-			        ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-                    ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
-		        }
-                
+            if($IsUpdatingCertificates -or ($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0))){ #On add of new machine or update certificate op
                 Script CopyCertificateFileToLocalMachine
                 {
                     GetScript = {
@@ -339,9 +351,10 @@
                     TestScript = {   
                         $false
                     }
-                    DependsOn             = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                    DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-                }                 
+                }
+                $ServerDependsOn += '[Script]CopyCertificateFileToLocalMachine'
 
                 ArcGIS_Server_TLS Server_TLS
                 {
@@ -351,37 +364,39 @@
                     CertificateFileLocation    = $ServerCertificateLocalFilePath
                     CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
                     ServerType                 = "GeneralPurposeServer"
-			        DependsOn                  = @('[ArcGIS_Server]Server','[Script]CopyCertificateFileToLocalMachine') 
+                    DependsOn                  = $ServerDependsOn
                     SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
                 }
+                $ServerDependsOn += '[ArcGIS_Server_TLS]Server_TLS'
+            }
 
-                if($env:ComputerName -ieq $ServerHostName) # Perform on First machine
+            if($env:ComputerName -ieq $ServerHostName -and (-not($IsUpdatingCertificates) -and ($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0)))){ #On add of new machine and not on update certificate op, Perform on First machine
+                ArcGIS_ServerSettings ServerSettings
                 {
-                    ArcGIS_ServerSettings ServerSettings
+                    ServerContext       = $ServerContext
+                    ServerHostName      = $ServerHostName
+                    ExternalDNSName     = $ExternalDNSHostName
+                    SiteAdministrator   = $SiteAdministratorCredential
+                    DependsOn = $ServerDependsOn
+                }
+            }
+
+            if(-not($IsUpdatingCertificates)){
+                foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'WorkflowManager'))
+                {
+                    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
                     {
-                        ServerContext       = $ServerContext
-                        ServerHostName      = $ServerHostName
-                        ExternalDNSName     = $ExternalDNSHostName
-                        SiteAdministrator   = $SiteAdministratorCredential
-                        DependsOn = @('[ArcGIS_Server_TLS]Server_TLS')
+                        Service "$($ServiceToStop.Replace(' ','_'))_Service"
+                        {
+                            Name			= $ServiceToStop
+                            Credential		= $ServiceCredential
+                            StartupType		= 'Manual'
+                            State			= 'Stopped'
+                            DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
+                        }
                     }
                 }
             }
-            
-		    foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server'))
-		    {
-			    if(Get-Service $ServiceToStop -ErrorAction Ignore) 
-			    {
-				    Service "$($ServiceToStop.Replace(' ','_'))_Service"
-				    {
-					    Name			= $ServiceToStop
-					    Credential		= $ServiceCredential
-					    StartupType		= 'Manual'
-					    State			= 'Stopped'
-					    DependsOn		= if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-				    }
-			    }
-		    }
         }
 	}
 }

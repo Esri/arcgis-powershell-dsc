@@ -77,7 +77,6 @@ function Set-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     if($Ensure -ieq 'Present') {
-       try{ 
         $ServerUrl = "https://$($ServerHostName):6443"   
         $Referer = $ServerUrl
 
@@ -106,14 +105,18 @@ function Set-TargetResource
         $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
 
         #Hit the server endpoint to get the replication role
-        $info = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator `
-                                    -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" -Token $token.token -Referer $Referer 
-
-        $VersionArray = $info.currentVersion.split('.')                                                               
+        $DSInfoResponse = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator `
+                                    -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" -Token $token.token -Referer $Referer
+        if($DSInfoResponse.error) {
+            Write-Verbose "Error Response - $($response.error | ConvertTo-Json)"
+            throw [string]::Format("ERROR: failed. {0}" , $response.error.message)
+        }
+        
+        $VersionArray = $DSInfoResponse.currentVersion.split('.')                                                               
         $dstypesarray = [System.Collections.ArrayList]@()
         
-        if($info.relational.registered) {
-            if($VersionArray[0] -eq 11 -or (($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $info.currentVersion -ieq "10.8.1" )){
+        if($DSInfoResponse.relational.registered) {
+            if($VersionArray[0] -eq 11 -or (($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $DSInfoResponse.currentVersion -ieq "10.8.1" )){
                 $datastoreConfigFilePath = "$ContentDirectory\\etc\\relational-config.json"
                 $datastoreConfigJSONObject = (ConvertFrom-Json (Get-Content $datastoreConfigFilePath -Raw))
                 $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
@@ -128,7 +131,7 @@ function Set-TargetResource
                 }
             }
         }
-        if($info.tileCache.registered) {
+        if($DSInfoResponse.tileCache.registered) {
             if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){
                 if($VersionArray[0] -eq 10 -and $VersionArray[1] -eq 8 -and $VersionArray[2] -eq 0){
                     Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
@@ -151,7 +154,7 @@ function Set-TargetResource
                 }
             }
         }
-        if($info.spatioTemporal.registered) {
+        if($DSInfoResponse.spatioTemporal.registered) {
             $dstypesarray.Add('spatiotemporal')
         }
         
@@ -188,10 +191,6 @@ function Set-TargetResource
                 }
             }
         }   
-    }
-    catch{
-        write-verbose "[Error] - $($_)"
-    } 
     }else{
         Write-Verbose "Do Nothing for now"
     }
@@ -230,7 +229,7 @@ function Test-TargetResource
     Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5
     $result = $true
     $info = Invoke-ArcGISWebRequest -Url "https://localhost:2443/arcgis/datastoreadmin/configure" -HttpFormParameters @{ f = 'json'}  -Referer $Referer -HttpMethod 'GET' -Verbose 
-    
+
     if($info.upgrading -and (($info.upgrading -ieq 'outplace') -or ($info.upgrading -ieq 'inplace'))){
         Write-Verbose "Upgrade in progress - $($info.upgrading)"
         $result = $false

@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.0"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.1"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -92,14 +92,14 @@
             $Installer = $Installers[$i]
             if($Installer.LocalPath -and $Installer.Name)
             {
-                if($Installer.IsMsi -and -not($Installer.LocalPath.EndsWith('exe')))
+                if($Installer.IsMsi -and -not($Installer.RemotePath.EndsWith('exe')))
                 {
-                    if($Installer.LocalPath.EndsWith('msu')) # Is a windows update package?
+                    if($Installer.RemotePath.EndsWith('msu')) # Is a windows update package?
                     {
                         ArcGIS_xWindowsUpdate "xWU_$($Installer.Name.Replace(' ', '_'))"
                         {
                             Ensure = $Ensure
-                            Path = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath)
+                            Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
                             Id = $Installer.ProductId
                             DependsOn = $Depends
                         }
@@ -110,7 +110,7 @@
                         ArcGIS_InstallMsiPackage "AIMP_$($Installer.Name.Replace(' ', '_'))"
                         {
                             Name = $Installer.Name
-                            Path = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath)
+                            Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
                             Ensure = $Ensure
                             ProductId = $Installer.ProductId
                             Arguments = $ExecutionContext.InvokeCommand.ExpandString($Installer.Arguments)
@@ -125,7 +125,7 @@
                         ArcGIS_Install "AI_$($Installer.Name.Replace(' ', '_'))"
                         {
                             Name = $Installer.Name
-                            Path = $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath)
+                            Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
                             Version = "00"
                             Ensure = $Ensure
                             ProductId = $Installer.ProductId
@@ -134,13 +134,13 @@
                         }
                         $Depends += "[ArcGIS_Install]AI_$($Installer.Name.Replace(' ', '_'))"
 
-                        if((($Installer.Patches).Length -gt 0) -and $Installer.PatchesLocalDir) {
+                        if(($Installer.Patches).Length -gt 0) {
                             ArcGIS_InstallPatch "$($Installer.Name)InstallPatch"
                             {
                                 Name = $Installer.Name
                                 Version = "00"
                                 ProductId = $Installer.ProductId
-                                PatchesDir = $ExecutionContext.InvokeCommand.ExpandString($Installer.PatchesLocalDir)
+                                PatchesDir = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) "Patches")
                                 PatchInstallOrder = $Installer.Patches
                                 Ensure = "Present"
                             }

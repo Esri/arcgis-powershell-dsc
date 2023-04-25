@@ -16,6 +16,16 @@
         [System.String]
         $InstallerPath,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $InstallerIsSelfExtracting = $True,
+
+        [System.String]
+        $DotnetHostingBundlePath,
+
+        [System.String]
+        $WebDeployPath,
+
         [parameter(Mandatory = $false)]
         [System.String]
         $PatchesDir,
@@ -42,7 +52,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.0.2 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptor
 
@@ -91,7 +101,10 @@
             Name = $WebAdaptorRole
             Version = $Version
             Path = $InstallerPath
+            Extract = $InstallerIsSelfExtracting
             WebAdaptorContext = $Context
+            WebAdaptorDotnetHostingBundlePath = $DotnetHostingBundlePath
+	        WebAdaptorWebDeployPath = $WebDeployPath
             Arguments = $WAArguments
             EnableMSILogging = $EnableMSILogging
             Ensure = "Present"
