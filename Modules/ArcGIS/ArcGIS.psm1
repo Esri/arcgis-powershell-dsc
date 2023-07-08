@@ -2902,6 +2902,6 @@ function Get-ArcGISProductDetails
     $ResultsArray
 }
 
-Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `
+Export-ModuleMember -Function Get-FQDN, Invoke-DSCJob, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `
                                 Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, `
                                 Get-ArcGISProductDetails, Wait-ForServiceToReachDesiredState
