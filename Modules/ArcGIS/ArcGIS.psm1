@@ -588,6 +588,34 @@ function Get-DownloadsInstallsConfigurationData
     return $ConfigData
 }
 
+function Invoke-ArcGISModule
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    Param(
+        [ValidateSet("Install","InstallLicense","InstallLicenseConfigure","Uninstall","Upgrade")]
+        [Parameter(Position = 1)]
+        [System.String]
+        $Mode = 'InstallLicenseConfigure',
+
+        [System.Collections.Hashtable]
+        $Arguments,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $Credential,
+        
+        [System.Boolean]
+        $DebugMode = $False,
+
+        [System.Boolean]
+        $UseWinRMSSL = $False
+    )
+
+    Arguments | ConvertTo-Json -Depth $Arguments.PSObject.Properties['Count'].Value | Out-File ".\deployment.json"
+    Invoke-ArcGISConfiguration -ConfigurationParametersFile ".\deployment.json" -Mode $Mode -Credential $Credential
+}
+
 function Invoke-ArcGISConfiguration
 {
     [CmdletBinding()]
@@ -2904,4 +2932,4 @@ function Get-ArcGISProductDetails
 
 Export-ModuleMember -Function Get-FQDN, Invoke-DSCJob, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `
                                 Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, `
-                                Get-ArcGISProductDetails, Wait-ForServiceToReachDesiredState
+                                Get-ArcGISProductDetails, Wait-ForServiceToReachDesiredState, Get-DownloadsInstallsConfigurationData
