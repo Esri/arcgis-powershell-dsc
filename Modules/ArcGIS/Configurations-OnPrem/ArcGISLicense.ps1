@@ -89,7 +89,7 @@
                     ArcGIS_License "ProLicense$($Node.NodeName)"
                     {
                         LicenseFilePath =  $Node.ProLicenseFilePath
-                        LicensePassword = $null
+                        LicensePassword = $Node.ProLicensePassword
                         IsSingleUse = $True
                         Ensure = "Present"
                         Component = 'Pro'

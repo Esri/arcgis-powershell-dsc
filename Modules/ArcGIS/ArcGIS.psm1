@@ -578,8 +578,13 @@ function Get-DownloadsInstallsConfigurationData
     if($ConfigData.ConfigData.WebAdaptor -and $ConfigData.ConfigData.WebAdaptor.AdminAccessEnabled){
         $ConfigData.ConfigData.WebAdaptor.Remove("AdminAccessEnabled")
     }
-    if($ConfigData.ConfigData.Pro -and $ConfigData.ConfigData.Pro.LicenseFilePath){
-        $ConfigData.ConfigData.Pro.Remove("LicenseFilePath")
+    if($ConfigData.ConfigData.Pro){
+		if ($ConfigData.ConfigData.Pro.LicenseFilePath){
+			$ConfigData.ConfigData.Pro.Remove("LicenseFilePath")
+		}
+		if ($ConfigData.ConfigData.Pro.LicensePassword){
+			$ConfigData.ConfigData.Pro.Remove("LicensePassword")
+		}
     }
     if($ConfigData.ConfigData.Desktop -and $ConfigData.ConfigData.Desktop.LicenseFilePath){
         $ConfigData.ConfigData.Desktop.Remove("LicenseFilePath")
@@ -860,12 +865,34 @@ function Invoke-ArcGISConfiguration
                             $NodeToAdd["DesktopLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Desktop.LicenseFilePath
                         }
                     }
-                    if($Node.Role -icontains "Pro"){
-                        if($ConfigurationParamsHashtable.ConfigData.Pro.AuthorizationType -ieq "SINGLE_USE"){
-                            $NodeToAdd.Role += "Pro"
-                            $NodeToAdd["ProLicenseFilePath"] = $ConfigurationParamsHashtable.ConfigData.Pro.LicenseFilePath
-                        }
-                    }
+					
+					if ($Node.Role -icontains "Pro") {
+						$ProLicenseFilePath = $ConfigurationParamsHashtable.ConfigData.Pro.LicenseFilePath
+						$ProLicensePassword = $null
+						if($ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordFilePath){
+							$ProLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordFilePath | ConvertTo-SecureString )
+						}elseif($ConfigurationParamsHashtable.ConfigData.Pro.LicensePassword){
+							$ProLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Pro.LicensePassword -AsPlainText -Force)
+							Write-Verbose $ProLicensePassword
+						}
+
+						if($Node.ProLicenseFilePath)
+						{
+							$ProLicenseFilePath = $Node.ProLicenseFilePath
+							$ProLicensePassword = $null
+							if($Node.ProLicensePasswordFilePath){
+								$ProLicensePassword = (Get-Content $Node.ProLicensePasswordFilePath | ConvertTo-SecureString )
+							}elseif($Node.ProLicensePassword){
+								$ProLicensePassword = (ConvertTo-SecureString $Node.ProLicensePassword -AsPlainText -Force)
+							}
+						}
+						$NodeToAdd.Role += "Pro"
+						$NodeToAdd["ProLicenseFilePath"] = $ProLicenseFilePath
+						if($null -ne $ProLicensePassword){
+							$NodeToAdd["ProLicensePassword"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("PlaceHolder", $ProLicensePassword)
+						}
+					}
+
                     if($Node.Role -icontains "LicenseManager"){
                         $NodeToAdd.Role += "LicenseManager"
                         if($ConfigurationParamsHashtable.ConfigData.LicenseManager -and $ConfigurationParamsHashtable.ConfigData.LicenseManager.LicenseFilePath){

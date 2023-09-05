@@ -89,6 +89,11 @@ function Set-TargetResource
 	if(-not(Test-Path $LicenseFilePath)){
         throw "License file not found at $LicenseFilePath"
     }
+	if($null -ne $LicensePassword){
+		Write-Verbose $LicensePassword.GetNetworkCredential().Password
+	}else{
+		Write-Verbose "No password for license set!"
+	}
 
     if($Ensure -ieq 'Present') {
         [string]$RealVersion = @()
@@ -287,6 +292,7 @@ function Invoke-LicenseSoftware
         }
     }
     Write-Verbose "Licensing Product [$Product] using Software Authorization Utility at $SoftwareAuthExePath" -Verbose
+	Write-Verbose $LicensePassword.GetNetworkCredential().Password
     
     $Params = '-s -ver {0} -lif "{1}"' -f $Version,$licenseFilePath
     if($null -ne $LicensePassword){
