@@ -157,7 +157,7 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("25672","44369","45671","45672")                      
+                    LocalPort             = ("45671","45672")                      
                     Protocol              = "TCP" 
                     DependsOn             = $Depends
                 }
