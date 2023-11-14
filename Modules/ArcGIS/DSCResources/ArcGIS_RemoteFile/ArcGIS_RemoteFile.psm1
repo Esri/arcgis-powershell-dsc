@@ -91,7 +91,7 @@ function Set-TargetResource
         }	      
           
         if($FileSourceType -ieq "AzureFiles"){
-            $AvailableDriveLetter = AvailableDriveLetter
+            $AvailableDriveLetter = Get-AvailableDriveLetter
             New-PSDrive -Name $AvailableDriveLetter -PSProvider FileSystem -Root $AzureFilesEndpoint -Credential $Credential -Persist
             $FileSharePath = "$($AvailableDriveLetter):\\$($Source)"
             Write-Verbose "Copying file $FileSharePath to $Destination"
@@ -214,27 +214,13 @@ function Test-TargetResource
     }	
 }
 
-function AvailableDriveLetter
-{
-    param (
-        [char]
-        $ExcludedLetter
-    )
-    $Letter = [int][char]'C'
-    $i = @()
-    #getting all the used Drive letters reported by the Operating System
-    $(Get-PSDrive -PSProvider filesystem) | ForEach-Object{$i += $_.name}
-    #Adding the excluded letter
-    $i+=$ExcludedLetter
-    while($i -contains $([char]$Letter)){$Letter++}
-    return $([char]$Letter)
-}
 
 function Get-ManagedIdentityAccessToken
 {
     $wc = New-Object System.Net.WebClient
     $wc.Headers.Add('Metadata', "true")
     $response = $wc.DownloadString('http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F')
+    $wc.Dispose()
     return ($response | ConvertFrom-Json).access_token
 }
 
@@ -257,7 +243,9 @@ function Invoke-DownloadFile
             $wc.Headers.Add('Authorization', "Bearer $ManagedIdentityAccessToken")
             $wc.Headers.Add("x-ms-version", "2017-11-09")
         }
-        $wc.DownloadFile($RemoteFileUrl, $DestinationFilePath)        
+        $response = $wc.DownloadFile($RemoteFileUrl, $DestinationFilePath)
+        $wc.Dispose()
+        $response
     }
     catch {
         throw "Error downloading remote file. Error - $_"
@@ -308,6 +296,7 @@ function Get-ArcGISDownloadAPIUrl
     $UrlWithQueryString += $HttpBody
     $wc = New-Object System.Net.WebClient
     $res = $wc.DownloadString($UrlWithQueryString)
+    $wc.Dispose()
     if($res) {
         $response = $res | ConvertFrom-Json
         if($response.code -eq 200){

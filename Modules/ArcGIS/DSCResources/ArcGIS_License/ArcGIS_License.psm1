@@ -65,11 +65,11 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
 
-        [ValidateSet("Server","Portal","Desktop","Pro","LicenseManager")]
+        [ValidateSet("Server","Portal","Desktop","Pro","LicenseManager","Monitor")]
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer","VideoServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -146,11 +146,11 @@ function Test-TargetResource
 		[System.String]
 		$Ensure,
 
-		[ValidateSet("Server","Portal","Desktop","Pro","LicenseManager")]
+		[ValidateSet("Server","Portal","Desktop","Pro","LicenseManager","Monitor")]
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer")]
+		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer","VideoServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -271,7 +271,7 @@ function Invoke-LicenseSoftware
         }
     }else{
         $VersionArray = $Version.Split('.')
-        if($Product -ieq "Server" -and ($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8))){
+        if($Product -ieq "Server"){
             $ServerTypeName = "ArcGIS Server"
             if($ServerRole -ieq "NotebookServer"){ 
                 $ServerTypeName = "ArcGIS Notebook Server" 
@@ -279,10 +279,16 @@ function Invoke-LicenseSoftware
                 $ServerTypeName = "ArcGIS Mission Server"
             }
             $InstallLocation = (Get-ArcGISProductDetails -ProductName $ServerTypeName).InstallLocation
-            if($ServerRole -ieq "MissionServer"){
-                $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorization.exe"
+            if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 2){
+                $SoftwareAuthExePath = "$($InstallLocation)tools\SoftwareAuthorization\SoftwareAuthorization.exe"
             }else{
-                $SoftwareAuthExePath = "$($InstallLocation)framework\bin\SoftwareAuthorization.exe"
+                if(($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8))){
+                    if($ServerRole -ieq "MissionServer"){
+                        $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorization.exe"
+                    }else{
+                        $SoftwareAuthExePath = "$($InstallLocation)framework\bin\SoftwareAuthorization.exe"
+                    }
+                }
             }
         }
     }
@@ -386,52 +392,53 @@ function Test-LicenseForRole{
 
         $searchtexts = @()
         if($Component -ieq 'Portal') {
-            $searchtext += 'portal_'
-            $searchtexts += 'portal1_'
-            $searchtexts += 'portal2_'
-        }elseif($Component -ieq 'Server'){
+            $searchtexts = @('portal_', 'portal1_', 'portal2_')
+        }
+        elseif($Component -ieq 'Monitor') {
+            $searchtexts = @('arcsysmon')
+        }
+        elseif($Component -ieq 'Server'){
             Write-Verbose "ServerRole:- $ServerRole"
-            $searchtexts += if($RealVersion.StartsWith('10.4')) { 'server' } else { 'svr' }
+            $searchtexts = $searchtexts = @('svr')
             if($ServerRole -ieq 'ImageServer') {
-                $searchtexts += 'imgsvr'
+                $searchtexts = @('imgsvr')
             }
             if($ServerRole -ieq 'GeoEvent') {
-                $searchtexts += 'geoesvr'
+                $searchtexts = @('geoesvr')
             }
             if($ServerRole -ieq 'WorkflowManagerServer') {
-                $searchtexts += 'workflowsvr'
+                $searchtexts = @('workflowsvr','workflowsvradv')
             }
             if($ServerRole -ieq 'GeoAnalytics') {
-                $searchtexts += 'geoasvr'
+                $searchtexts = @('geoesvr')
             }
             if($ServerRole -ieq 'KnowledgeServer'){ 
-                $searchtexts += 'knwldgsvr'
+                $searchtexts = @('knwldgsvr')
             }
             if($ServerRole -ieq 'NotebookServer') {
-                $searchtexts += 'notebooksstdsvr'
-                $searchtexts += 'notebooksadvsvr'
+                $searchtexts = @('notebooksstdsvr','notebooksadvsvr')
             }
             if($ServerRole -ieq 'MissionServer') {
-                $searchtexts += 'missionsvr'
+                $searchtexts = @('missionsvr')
+            }
+            if($ServerRole -ieq 'VideoServer') {
+                $searchtexts = @('videosvr')
             }
         }
         
         # All of the search texts should exist in the keygen
-        foreach($text in $searchtexts) {
-            Write-Verbose "Looking for text '$text' in $file"
-            $TextFound = $False
-            foreach($KeyCodeLine in $KeyCodesFileContents){
-                if($KeyCodeLine -and $KeyCodeLine.ToString().StartsWith($text)) {
-                    Write-Verbose "Text '$text' found"
-                    $TextFound = $True
-                    break
-                }
-            }
-            if($TextFound -ieq $False){
-                Write-Verbose "Text '$text' not found"
-                $result = $False
+        $TextFound = $False
+        foreach($KeyCodeLine in $KeyCodesFileContents){
+            if($null -ne ($searchtexts | Where-Object { $KeyCodeLine -imatch $_ })){
+                Write-Verbose "License search keywords found."
+                $TextFound = $True
                 break
             }
+        }
+        if($TextFound -ieq $False){
+            Write-Verbose "License search keywords not found."
+            $result = $False
+            break
         }
         $result
     }else{

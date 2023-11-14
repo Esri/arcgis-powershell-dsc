@@ -1,0 +1,96 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "Role": [
+                "Server",
+                "SQLServerClient"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Server]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "Databases": [
+                {
+                    "DatabaseServerHostName": "[SQL Server Node Name]",
+                    "DatabaseName": "[Name of the Database to target]",
+                    "DatabaseType": "SQLServerDatabase",
+                    "DatabaseAdminUser": {
+                        "UserName": "[DatabaseAdminUser UserName]",
+                        "Password": "[DatabaseAdminUser Password]"
+                    },
+                    "SDEUser": {
+                        "UserName": "[SDEUser UserName]",
+                        "Password": "[SDEUser Password]"
+                    },
+                    "DatabaseUser": {
+                        "UserName": "[DatabaseUser UserName]",
+                        "Password": "[DatabaseUser Password]"
+                    },
+                    "IsManaged": true,
+                    "EnableGeodatabase": true
+                },
+                {
+                    "DatabaseServerHostName": "[External DB Host Name]",
+                    "DatabaseName": "[Name of the Database to target]",
+                    "DatabaseType": "Can be one of the following ['SQLServerDatabase','AzureSQLDatabase','AzurePostgreSQLDatabase','AzureMISQLDatabase']",
+                    "DatabaseAdminUser": {
+                        "UserName": "[DatabaseAdminUser UserName]",
+                        "Password": "[DatabaseAdminUser Password]"
+                    },
+                    "SDEUser": {
+                        "UserName": "[SDEUser UserName]",
+                        "Password": "[SDEUser Password]"
+                    },
+                    "DatabaseUser": {
+                        "UserName": "[DatabaseUser UserName]",
+                        "Password": "[DatabaseUser Password]"
+                    },
+                    "IsManaged": true,
+                    "EnableGeodatabase": true
+                }
+            ],
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
+        },
+        "SQLServerClient": [
+            {
+                "Name": "Microsoft ODBC Driver 17 for SQL Server",
+                "InstallerPath": "C:\\Setups\\msodbcsql_17.4.1.1_x64.msi",
+                "ProductId": "72AFAF21-33FB-45A5-9468-A9EC07427F82",
+                "Arguments": " /quiet /qn IACCEPTMSODBCSQLLICENSETERMS=YES ADDLOCAL=ALL"
+            }
+        ],
+        "Federation": {
+            "PortalHostName": "[Portal Host Name (FQDN) with which this site needs to be federated]",
+            "PortalPort": "[Port on which Portal is listening ex. - 443]",
+            "PortalContext": "[Context of the Portal ex. - portal]",
+            "PortalAdministrator": {
+                "UserName": "admin",
+                "Password": "changeit"
+            }
+        }
+    }
+}

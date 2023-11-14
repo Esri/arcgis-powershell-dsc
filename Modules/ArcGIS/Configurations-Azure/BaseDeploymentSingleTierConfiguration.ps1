@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -40,8 +40,24 @@
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudStorageAuthenticationType = "AccessKey"
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountUserAssignedIdentityClientId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $StorageAccountServicePrincipalCredential
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -223,10 +239,33 @@
             $DataStoreBackupLocation = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\datastore\dbbackups"    
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($ServerContext)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($AccountKey)"
-            $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName);AccountKey=$($AccountKey)$($EndpointSuffix)"
-		    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)$($PortalContext)"
+            if(-not($Join)){
+                $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)$($PortalContext)"
+                $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName)$($EndpointSuffix)"
+                $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($ServerContext)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($AccountName)"
+                
+                if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
+                    $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+                    $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
+                    $ContentDirectoryCloudConnectionString += ";tenantId=$($StorageAccountServicePrincipalTenantId);clientId=$($StorageAccountServicePrincipalCredential.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
+    
+                }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
+                    $ConfigStoreCloudStorageConnectionSecret = ""
+    
+                    $ContentDirectoryCloudConnectionString += ";managedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId);CredentialType=userAssignedIdentity"
+                }elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+                    $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($AccountKey)"
+    
+                    $SASToken = $CloudStorageCredentials.GetNetworkCredential().Password
+                    $ContentDirectoryCloudConnectionString += ";sasToken=$($SASToken);CredentialType=sasToken"
+                }else{
+                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($AccountKey)"
+                    $ContentDirectoryCloudConnectionString += ";AccountKey=$($AccountKey);CredentialType=accessKey"
+                }
+            }
         }
     }
 
@@ -448,14 +487,14 @@
                     Version                                 = $Version
                     Ensure                                  = 'Present'
                     SiteAdministrator                       = $SiteAdministratorCredential
-                    ConfigurationStoreLocation              = $ConfigStoreLocation
+                    ConfigurationStoreLocation              = if(-not($Join)){ $ConfigStoreLocation }else { $null }
                     DependsOn                               = $ServerDependsOn
                     ServerDirectoriesRootLocation           = $ServerDirsLocation
                     Join                                    = $Join
                     PeerServerHostName                      = $MachineName
                     LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                    ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-                    ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+                    ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
+                    ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
                 }
             }
             
@@ -631,7 +670,7 @@
                     Version                               = $Version
                     Ensure                                = 'Present'
                     LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
-                    UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
+                    UserLicenseTypeId                     = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
                     PortalAdministrator                   = $SiteAdministratorCredential 
                     DependsOn                             = $PortalDependsOn
                     AdminEmail                            = 'portaladmin@admin.com'
@@ -642,11 +681,11 @@
                     Join                                  = $Join
                     PeerMachineHostName                   = if($Join) { $MachineName } else { $PeerMachineName }
                     IsHAPortal                            = $IsDualMachineDeployment
-                    ContentDirectoryLocation              = $ContentStoreLocation
+                    ContentDirectoryLocation              = if(-not($Join)){ $ContentStoreLocation }else{ $null }
                     EnableDebugLogging                    = $IsDebugMode
                     LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                    ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString			
-                    ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                    ContentDirectoryCloudConnectionString = if(-not($Join)){ $ContentDirectoryCloudConnectionString }else{ $null }
+                    ContentDirectoryCloudContainerName    = if(-not($Join)){ $ContentDirectoryCloudContainerName }else{ $null }
                 }
             }
             

@@ -161,7 +161,8 @@ function Invoke-TestDownloadInstallPatch
         try {
             Write-Verbose "Downloading Patch $($Patch.Name) with QFE Id $QFEId"
             $wc = New-Object System.Net.WebClient;
-            $wc.DownloadFile($Patch.PatchFileUrl, $PatchLocation)        
+            $wc.DownloadFile($Patch.PatchFileUrl, $PatchLocation)
+            $wc.Dispose()
         }
         catch {
             throw "Error downloading remote file. Error - $_"
@@ -210,16 +211,15 @@ function Test-TargetResource
 	)
 
     $result = $false
-
     if(-not($ProductId)){
         $FullProductName = Get-ArcGISProductName -Name $Name -Version $Version
         $InstallObject = (Get-ArcGISProductDetails -ProductName $FullProductName)
-        if($Name -ieq 'WebAdaptor'){
+        if($Name -ieq 'WebAdaptorIIS'){
             if($InstallObject.Length -gt 1){
                 Write-Verbose "Multiple Instances of Web Adaptor are already installed - $($InstallObject.Version)"
             }
             foreach($wa in $InstallObject){
-                $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
+                $result = Test-Install -Name $Name -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
                 if($result -ieq $True){
                     Write-Verbose "Found Web Adaptor Installed for Version $Version"
                     break
@@ -313,8 +313,10 @@ function Get-PatchManifestFromESRIDownloads
         $ProductNameArray += "Portal for ArcGIS"
     }elseif($ProductName -ieq "Server"){
         $ProductNameArray += "ArcGIS Server"
-    }elseif($ProductName -ieq "WebAdaptor"){
+    }elseif($ProductName -ieq "WebAdaptorIIS"){
         $ProductNameArray += "ArcGIS Web Adaptor (IIS)"
+    }elseif($ProductName -ieq "WebAdaptorJava"){
+        $ProductNameArray += "ArcGIS Web Adaptor (Java Platform)"
     }elseif($ProductName -ieq "WorkflowManagerServer"){
         $ProductNameArray += "ArcGIS Workflow Manager Server"
     }elseif($ProductName -ieq "MissionServer"){
@@ -329,6 +331,7 @@ function Get-PatchManifestFromESRIDownloads
     $MinifiedVersion = $Version.Replace(".","")
     $wc = New-Object System.Net.WebClient
     $PatchManifestJsonString = $wc.DownloadString("https://downloads.esri.com/patch_notification/patches.json")
+    $wc.Dispose()
     $AllPatches = ConvertFrom-Json $PatchManifestJsonString
 	$ParsedPatchesObject = [ordered]@{}
 	$AllPatchesForVersion = ($AllPatches.Product | Where-Object { $_.Version -ieq $Version })
@@ -337,6 +340,7 @@ function Get-PatchManifestFromESRIDownloads
 		if($null -ne $PatchesForProduct){
 			$PatchesForProductSorted = $PatchesForProduct | Sort-Object {[System.DateTime]::ParseExact($_.ReleaseDate, "MM/dd/yyyy", $null)}
 			foreach($Patch in $PatchesForProductSorted){
+                Write-Verbose "Processing Patch $($Patch.Name)"
 				if($Patch.PatchFiles.Length -gt 0){
 					try{ 
 						foreach($PatchFileUrl in $Patch.PatchFiles){
@@ -388,12 +392,14 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\Server10.9\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.0\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.1\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server11.2\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.6\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.7\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.8\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.9\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.0\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.1\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent11.2\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
@@ -404,8 +410,9 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.8.1\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9.1\Updates\*",
-        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.0\Updates\*"
-        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.1\Updates\*"
+        "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.0\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.1\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.2\Updates\*"
     )
     
     foreach($RegPath in $RegPaths){

@@ -6,4 +6,5 @@ class ArcGIS_NotebookServerSettings : OMI_BaseResource
     [Key] String WebContextURL;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
     [Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
+    [Write, Description("Is Service Directory Disabled")] Boolean DisableDockerHealthCheck;
 };

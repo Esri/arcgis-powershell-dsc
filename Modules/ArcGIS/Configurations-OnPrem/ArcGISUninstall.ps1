@@ -14,7 +14,7 @@
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_FileShare
     Import-DscResource -Name ArcGIS_InstallMsiPackage
@@ -133,29 +133,48 @@
                         Ensure = "Absent"
                     }
                 }
-                { 'ServerWebAdaptor' -or 'PortalWebAdaptor' }{
-                    
-                    $WebAdaptorRole = $NodeRole
-                    $WebSiteId = if($ConfigurationData.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationData.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
-                    if(($WebAdaptorRole -ieq "PortalWebAdaptor") -and $ConfigurationData.ConfigData.PortalContext){
-                        ArcGIS_Install WebAdaptorUninstallPortal
+                'WebAdaptor'{
+                    $IsJavaWebAdaptor =if($ConfigurationData.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $ConfigurationData.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
+                    if($IsJavaWebAdaptor){
+                        # Uninstall tomcat ?
+                        # Remove tomcat service ?
+                        ArcGIS_Install WebAdaptorJavaUninstall
                         { 
-                            Name = "PortalWebAdaptor"
+                            Name = "WebAdaptorJava"
                             Version = $ConfigurationData.ConfigData.Version
-                            WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
-                            Arguments = "WEBSITE_ID=$($WebSiteId)"
                             Ensure = "Absent"
                         }
-                    }
+                    }else{
+                        foreach($WA in $Node.WebAdaptorConfig){
+                            $Context = "arcgis"
+                            if($WA.ContainsKey("Context")){
+                                $Context = $WA.Context
+                            }else{
+                                if($WA.Role -ieq "Server"){
+                                    $Context = $ConfigurationData.ConfigData.ServerContext
+                                }elseif($WA.Role -ieq "Portal"){
+                                    $Context = $ConfigurationData.ConfigData.PortalContext
+                                }
+                            }
 
-                    if(($WebAdaptorRole -ieq "ServerWebAdaptor") -and $Node.ServerContext){
-                        ArcGIS_Install WebAdaptorUninstallServer
-                        { 
-                            Name = "ServerWebAdaptor"
-                            Version = $ConfigurationData.ConfigData.Version
-                            WebAdaptorContext = $Node.ServerContext
-                            Arguments = "WEBSITE_ID=$($WebSiteId)"
-                            Ensure = "Absent"
+                            $WebSiteId = 1
+                            if($WA.ContainsKey("WebSiteId")){
+                                $WebSiteId = $WA.WebSiteId
+                            }else{
+                                if($ConfigurationData.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){
+                                    $WebsiteId = $ConfigurationData.ConfigData.WebAdaptor.WebSiteId 
+                                }
+                            }
+
+                            $WAName = "WebAdaptorIIS-$($WA.Role)-$($Context)"
+                            ArcGIS_Install "$($WAName)Install"
+                            {
+                                Name = $WAName
+                                Version = $ConfigurationData.ConfigData.Version
+                                WebAdaptorContext = $Context
+                                Arguments = "WEBSITE_ID=$($WebSiteId)"
+                                Ensure = "Absent"
+                            }
                         }
                     }
                 }

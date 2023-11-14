@@ -25,15 +25,15 @@
 
         ArcGIS_xFirewall Server_FirewallRule_Database
 		{
-				Name                  = "SQL Server Database IN" 
-				DisplayName           = "SQL Server Database 1433" 
-				DisplayGroup          = "SQL Server" 
-				Ensure                = 'Present'
-				Access                = "Allow" 
-				State                 = "Enabled" 
-				Profile               = @("Domain","Private","Public") 
-				LocalPort             = "1433"                         
-				Protocol              = "TCP" 
+            Name                  = "SQL Server Database IN" 
+            DisplayName           = "SQL Server Database 1433" 
+            DisplayGroup          = "SQL Server" 
+            Ensure                = 'Present'
+            Access                = "Allow" 
+            State                 = "Enabled" 
+            Profile               = @("Domain","Private","Public") 
+            LocalPort             = "1433"                         
+            Protocol              = "TCP" 
 		}
 
         Script SetMixedModeAuthentication

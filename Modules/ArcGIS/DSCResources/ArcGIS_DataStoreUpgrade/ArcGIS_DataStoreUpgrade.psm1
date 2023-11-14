@@ -178,7 +178,7 @@ function Set-TargetResource
             $p.WaitForExit()
             $op = $p.StandardOutput.ReadToEnd()
             if($op -and $op.Length -gt 0) {
-                Write-Verbose "Output of execution:- $op"
+                Write-Verbose "Output:- $op"
             }
             $err = $p.StandardError.ReadToEnd()
             if($p.ExitCode -eq 0) {                    

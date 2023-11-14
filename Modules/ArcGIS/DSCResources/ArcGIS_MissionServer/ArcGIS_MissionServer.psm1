@@ -49,16 +49,19 @@ function Get-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
         
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageAccountName,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 
@@ -112,16 +115,19 @@ function Set-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageAccountName,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 
@@ -303,16 +309,19 @@ function Test-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageAccountName,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 

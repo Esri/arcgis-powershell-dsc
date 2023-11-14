@@ -151,7 +151,11 @@ function Set-TargetResource
                         $psi = New-Object System.Diagnostics.ProcessStartInfo
                         $ExecPath = $InstallDir
                         if($Name -ieq 'ArcGIS Server'){
-                            $ExecPath = Join-Path $ExecPath '\\bin\\ServerConfigurationUtility.exe'
+                            $ExecPath = Join-Path $InstallDir '\\framework\\runtime\\ArcGIS\\bin\\ServerConfigurationUtility.exe'
+                            if(-not(Test-Path "$ExecPath")){
+                                $ExecPath = Join-Path $InstallDir '\\bin\\ServerConfigurationUtility.exe'    
+                            }
+                            
                             $psi.EnvironmentVariables["AGSSERVER"] = [environment]::GetEnvironmentVariable("AGSSERVER","Machine")
                         }
                         elseif(@('Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server') -icontains $Name){
@@ -191,12 +195,12 @@ function Set-TargetResource
                         $p.WaitForExit()
                         $op = $p.StandardOutput.ReadToEnd()
                         if($op -and $op.Length -gt 0) {
-                            Write-Verbose "Output of execution:- $op"
+                            Write-Verbose "Output:- $op"
                         }
                         $err = $p.StandardError.ReadToEnd()
                         
                         if($p.ExitCode -eq 0) {                    
-                            Write-Verbose "Initialized correctly indicating successful desktop initialization"
+                            Write-Verbose "Account Configuration Utility ran successfully."
                         }else {
                             throw "Service Account Update did not succeed. Process exit code:- $($p.ExitCode). Error - $err"
                         }

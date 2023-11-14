@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]

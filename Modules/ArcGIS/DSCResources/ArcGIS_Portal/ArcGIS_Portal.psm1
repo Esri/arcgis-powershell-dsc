@@ -120,78 +120,56 @@ function Invoke-CreatePortalSite {
     if ($ContentDirectoryCloudConnectionString -and $ContentDirectoryCloudConnectionString.Length -gt 0) {
         $Splits = $ContentDirectoryCloudConnectionString.Split(';')
         
-        if($ContentDirectoryCloudConnectionString.IndexOf('AccountName=') -gt -1){
-            $StorageEndpointSuffix = $null
-            $StorageAccessKey = $null
-            $StorageAccountName = $null
-            $Splits | ForEach-Object {
-                if(-not([string]::IsNullOrEmpty($_))){
-                    $Pos = $_.IndexOf('=')
-                    $Key = $_.Substring(0, $Pos)
-                    $Value = $_.Substring($Pos + 1)
-                    if ($Key -ieq 'AccountName') {             
-                        $StorageAccountName = $Value
-                    }
-                    elseif ($Key -ieq 'EndpointSuffix') {
-                        $StorageEndpointSuffix = $Value
-                    }
-                    elseif ($Key -ieq 'AccountKey') {
-                        $StorageAccessKey = $Value
-                    }
-                }
+        $ConnectionObj = @{}
+        $Splits | ForEach-Object {
+            if(-not([string]::IsNullOrEmpty($_))){
+                $Pos = $_.IndexOf('=')
+                $Key = $_.Substring(0, $Pos)
+                $Value = $_.Substring($Pos + 1)
+                $ConnectionObj[$Key] = $Value
             }
-    
-            $objectStoreLocation = "https://$($StorageAccountName).blob.$($StorageEndpointSuffix)/$ContentDirectoryCloudContainerName"
+        }
+
+        if($ContentDirectoryCloudConnectionString.IndexOf('AccountName=') -gt -1){
+            $CredentialType = $ConnectionObj["CredentialType"]
+            $ConnectionString = @{
+                accountName = $ConnectionObj["AccountName"]
+                accountEndpoint = 'blob.' + $ConnectionObj["EndpointSuffix"] 
+                credentialType = $CredentialType
+            }
+            
+            if($CredentialType -ieq "accessKey"){
+                $ConnectionString["accountKey"] = $ConnectionObj["AccountKey"]
+            }elseif($CredentialType -ieq "userAssignedIdentity"){
+                $ConnectionString["managedIdentityClientId"] = $ConnectionObj["managedIdentityClientId"]
+            }elseif($CredentialType -ieq "sasToken"){
+                $ConnectionString["sasToken"] = $ConnectionObj["sasToken"]
+            }elseif($CredentialType -ieq "servicePrincipal"){
+                $ConnectionString["tenantId"] = $ConnectionObj["tenantId"]
+                $ConnectionString["clientId"] = $ConnectionObj["clientId"]
+                $ConnectionString["clientSecret"] = $ConnectionObj["clientSecret"]
+            }
+ 
             Write-Verbose "Using Content Store on Azure Cloud Storage $objectStoreLocation"
             $contentStore = @{ 
                 type = 'cloudStore'
                 provider = 'Azure'
-                connectionString = @{
-                    accountName = $StorageAccountName
-                    accountKey = $StorageAccessKey
-                    accountEndpoint = 'blob.' + $StorageEndpointSuffix
-                    credentialType = 'accessKey'
-                }
-                objectStore = $objectStoreLocation
-            }
-        
+                connectionString = $ConnectionString
+                objectStore = "https://$($ConnectionObj["AccountName"]).blob.$($ConnectionObj["EndpointSuffix"])/$ContentDirectoryCloudContainerName"
+            }        
         } else {
-            $AWSRegionName = $null
-            $AWSAccessKeyId = $null
-            $AWSSecretKey = $null
-            $AWSS3BucketName = $null
-            $Splits | ForEach-Object { 
-                if(-not([string]::IsNullOrEmpty($_))){
-                    $Pos = $_.IndexOf('=')
-                    $Key = $_.Substring(0, $Pos)
-                    $Value = $_.Substring($Pos + 1)
-                    if ($Key -ieq 'REGION') {                 
-                        $AWSRegionName = $Value
-                    }
-                    elseif ($Key -ieq 'ACCESS_KEY_ID') {
-                        $AWSAccessKeyId = $Value 
-                    }
-                    elseif ($Key -ieq 'SECRET_KEY') {
-                        $AWSSecretKey = $Value
-                    }
-                    elseif ($Key -ieq 'NAMESPACE') {
-                        $AWSS3BucketName = $Value
-                    }
-                }
-            }
-
-            Write-Verbose "Using Content Store in AWS S3 Storage $AWSS3BucketName"
+            Write-Verbose "Using Content Store in AWS S3 Storage $($ConnectionObj["NAMESPACE"])"
             $AWSConnectionString = @{}
-            if($null -ne $AWSAccessKeyId -and $null -ne $AWSSecretKey){
+            if($ConnectionObj.ContainsKey("ACCESS_KEY_ID") -and $ConnectionObj.ContainsKey("SECRET_KEY")){
                 $AWSConnectionString = @{
-                    region = $AWSRegionName
+                    region = $ConnectionObj["REGION"]
                     credentialType = "accessKey"
-                    accessKeyId = $AWSAccessKeyId
-                    secretAccessKey = $AWSSecretKey
+                    accessKeyId = $ConnectionObj["ACCESS_KEY_ID"]
+                    secretAccessKey = $ConnectionObj["SECRET_KEY"]
                 }
             }else{
                 $AWSConnectionString = @{
-                    region = $AWSRegionName
+                    region = $ConnectionObj["REGION"]
                     credentialType = "IAMRole"
                 }
             }
@@ -200,7 +178,7 @@ function Invoke-CreatePortalSite {
                 type = 'cloudStore'
                 provider = 'Amazon'
                 connectionString = $AWSConnectionString
-                objectStore = $AWSS3BucketName
+                objectStore = $ConnectionObj["NAMESPACE"]
             }
         }
     }else{

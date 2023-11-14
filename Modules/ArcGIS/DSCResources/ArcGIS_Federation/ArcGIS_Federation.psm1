@@ -135,6 +135,9 @@ function Test-TargetResource
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Write-Verbose "Get Portal Token from Deployment '$PortalFQDN'"
     $Referer = "https://$($PortalFQDN):$($PortalPort)/$PortalContext"
+    if($PortalPort -eq 443){
+        $Referer = "https://$($PortalFQDN)/$PortalContext"
+    }
     $waitForToken = $true
     $waitForTokenCounter = 0 
     while ($waitForToken -and $waitForTokenCounter -lt 25) {
@@ -335,6 +338,9 @@ function Set-TargetResource
 
     Write-Verbose "Get Portal Token from Deployment '$PortalFQDN'"
     $Referer = "https://$($PortalFQDN):$($PortalPort)/$PortalContext"
+    if($PortalPort -eq 443){
+        $Referer = "https://$($PortalFQDN)/$PortalContext"
+    }
     $waitForToken = $true
     $waitForTokenCounter = 0 
     while ($waitForToken -and $waitForTokenCounter -lt 25) {

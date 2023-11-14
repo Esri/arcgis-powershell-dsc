@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -36,8 +36,24 @@
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudStorageAuthenticationType = "AccessKey"
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountUserAssignedIdentityClientId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $StorageAccountServicePrincipalCredential
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -187,9 +203,23 @@
             $ContentStoreLocation = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($PortalContext)\content"    
         }
         else {
-            $AccountKey = $StorageAccountCredential.GetNetworkCredential().Password
-            $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName);AccountKey=$($AccountKey)$($EndpointSuffix)"
-		    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)$($PortalContext)"
+            if(-not($Join)){
+                $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)$($PortalContext)"
+                $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName)$($EndpointSuffix)"
+                
+                if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
+                    $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
+                    $ContentDirectoryCloudConnectionString += ";tenantId=$($StorageAccountServicePrincipalTenantId);clientId=$($StorageAccountServicePrincipalCredential.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
+                }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
+                    $ContentDirectoryCloudConnectionString += ";managedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId);CredentialType=userAssignedIdentity"
+                }elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
+                    $SASToken = $CloudStorageCredentials.GetNetworkCredential().Password
+                    $ContentDirectoryCloudConnectionString += ";sasToken=$($SASToken);CredentialType=sasToken"
+                }else{
+                    $AccountKey = $StorageAccountCredential.GetNetworkCredential().Password
+                    $ContentDirectoryCloudConnectionString += ";AccountKey=$($AccountKey);CredentialType=accessKey"
+                }
+            }
         }
     }
 
@@ -378,7 +408,7 @@
                         Version                               = $Version
                         Ensure                                = 'Present'
                         LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
-                        UserLicenseTypeId                       = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
+                        UserLicenseTypeId                     = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
                         PortalAdministrator                   = $SiteAdministratorCredential 
                         DependsOn                             = $PortalDependsOn
                         AdminEmail                            = 'portaladmin@admin.com'
@@ -389,11 +419,11 @@
                         Join                                  = $Join
                         IsHAPortal                            = $IsHAPortal
                         PeerMachineHostName                   = if($Join) { $PortalHostName } else { $PeerMachineName }
-                        ContentDirectoryLocation              = $ContentStoreLocation
+                        ContentDirectoryLocation              = if(-not($Join)){ $ContentStoreLocation }else{ $null }
                         EnableDebugLogging                    = $IsDebugMode
                         LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                        ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
-                        ContentDirectoryCloudContainerName    = $ContentDirectoryCloudContainerName
+                        ContentDirectoryCloudConnectionString = if(-not($Join)){ $ContentDirectoryCloudConnectionString }else{ $null }
+                        ContentDirectoryCloudContainerName    = if(-not($Join)){ $ContentDirectoryCloudContainerName }else{ $null }
                     } 
                     $PortalDependsOn += @('[ArcGIS_Portal]Portal')
                 }

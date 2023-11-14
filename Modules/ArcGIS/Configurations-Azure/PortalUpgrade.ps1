@@ -3,7 +3,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1',
+        $Version = '11.2',
 
 		[parameter(Mandatory = $true)]
         [System.String]
@@ -27,7 +27,7 @@
 
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $DebugMode		
+        $DebugMode
     )
 
 	function Get-FileNameFromUrl
@@ -51,7 +51,6 @@
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
-    
     $IsDebugMode = $DebugMode -ieq 'true'
 
     Node localhost {
@@ -97,6 +96,7 @@
             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
+            EnableMSILogging = $IsDebugMode
             DependsOn = $Depends
         }
 
@@ -116,6 +116,7 @@
 
         $WebStylesInstallerFileName = Split-Path $WebStylesInstallerPath -Leaf
         $WebStylesInstallerPathOnMachine = "$env:TEMP\webstyles\$WebStylesInstallerFileName"
+        
         File DownloadWebStylesInstallerFromFileShare      
         {            	
             Ensure = "Present"              	
@@ -134,6 +135,7 @@
             Path = $WebStylesInstallerPathOnMachine
             Arguments = "/qn"
             Ensure = "Present"
+            EnableMSILogging = $IsDebugMode
             DependsOn = $Depends
         }
 

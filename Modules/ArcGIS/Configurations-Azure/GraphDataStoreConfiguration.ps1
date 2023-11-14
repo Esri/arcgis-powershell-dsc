@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -137,7 +137,7 @@
 			    Access                = "Allow" 
 			    State                 = "Enabled" 
 			    Profile               = ("Domain","Private","Public")
-			    LocalPort             = ("2443","9829")                        
+			    LocalPort             = if($GraphDataStoreHostNames.Length -gt 1){ ("2443","9829", "9831") }else{ ("2443","9829") }
 			    Protocol              = "TCP" 
 		    }    
 

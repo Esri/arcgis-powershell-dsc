@@ -397,7 +397,7 @@ function Get-SSLCertificatesForPortal
 	    Invoke-ArcGISWebRequest -Url $URL -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
 	}
 	catch {
-		Write-Verbose "[WARNING]:- Get-SSLCertificatesForPortal encountered an error during execution. Error:- $_"
+		Write-Verbose "[WARNING]:- Error running Get-SSLCertificatesForPortal:- $_"
 	}
 }
 
@@ -426,7 +426,7 @@ function Invoke-DeletePortalCertificate{
         $URL = if($VersionGreaterThan1071){ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/machines/$MachineName/sslCertificates/$($WebServerCertificateAlias)/delete" }else{ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/security/sslCertificates/$($WebServerCertificateAlias)/delete" }
         Invoke-ArcGISWebRequest -Url $URL -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'POST' -TimeOutSec 120
     }catch{
-        Write-Verbose "[WARNING]:- Invoke-DeletePortalCertificate encountered an error during execution. Error:- $_"
+        Write-Verbose "[WARNING]:- Error running Invoke-DeletePortalCertificate. Error:- $_"
     }
 }
 

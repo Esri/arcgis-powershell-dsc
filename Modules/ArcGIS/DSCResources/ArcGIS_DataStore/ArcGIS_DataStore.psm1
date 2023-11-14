@@ -559,7 +559,7 @@ function Invoke-RegisterOrConfigureDataStore
                 $StartTime = get-date 
                 $response = Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 600 -Verbose
                 $RunTime = New-TimeSpan -Start $StartTime -End (get-date) 
-                Write-Verbose "Execution time was $($RunTime.Hours) hours, $($RunTime.Minutes) minutes, $($RunTime.Seconds) seconds"
+                Write-Verbose "Run time was $($RunTime.Hours) hours, $($RunTime.Minutes) minutes, $($RunTime.Seconds) seconds"
                 if($response.error) {
                     Write-Verbose "Error Response - $($response.error | ConvertTo-Json)"
                     throw [string]::Format("ERROR: failed. {0}" , $response.error.message)

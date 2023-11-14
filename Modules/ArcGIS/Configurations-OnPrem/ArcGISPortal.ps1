@@ -69,6 +69,23 @@
         [System.String]
         $CloudStorageType,
 
+        [Parameter(Mandatory=$False)]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken")]
+        [AllowNull()] 
+        $ContentStoreAzureBlobAuthenticationType,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ContentStoreAzureBlobUserAssignedIdentityId = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ContentStoreAzureBlobServicePrincipalTenantId = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ContentStoreAzureBlobServicePrincipalCredentials = $null,
+
         [System.String]
         $AzureFileShareName,
 
@@ -96,7 +113,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
@@ -124,11 +141,21 @@
                     $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}
                     $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
                     $ContentDirectoryLocation = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\portal\content"    
-                }
-                else {
-                    $AccountKey = $CloudStorageCredentials.GetNetworkCredential().Password
-                    $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName);AccountKey=$($AccountKey)$($EndpointSuffix)"
+                } else {
                     $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($CloudNamespace)portal"
+                    $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName)$($EndpointSuffix)"
+                    if($ContentStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
+                        $ClientSecret = $ContentStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password
+                        $ContentDirectoryCloudConnectionString += ";tenantId=$($ContentStoreAzureBlobServicePrincipalTenantId);clientId=$($ContentStoreAzureBlobServicePrincipalCredentials.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
+                    }elseif($ContentStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
+                        $ContentDirectoryCloudConnectionString += ";managedIdentityClientId=$($ContentStoreAzureBlobUserAssignedIdentityId);CredentialType=userAssignedIdentity"
+                    }elseif($ContentStoreAzureBlobAuthenticationType -ieq 'SASToken'){
+                        $SASToken = $CloudStorageCredentials.GetNetworkCredential().Password
+                        $ContentDirectoryCloudConnectionString += ";sasToken=$($SASToken);CredentialType=sasToken"
+                    }else{
+                        $AccountKey = $CloudStorageCredentials.GetNetworkCredential().Password
+                        $ContentDirectoryCloudConnectionString += ";AccountKey=$($AccountKey);CredentialType=accessKey"
+                    }
                 }
             }
         }

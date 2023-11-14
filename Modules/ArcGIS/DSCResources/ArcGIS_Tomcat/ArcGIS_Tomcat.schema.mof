@@ -1,0 +1,14 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Tomcat")]
+class ArcGIS_Tomcat : OMI_BaseResource
+{
+	[Key] String ExternalDNSName;	
+	[Key] String Version;	
+	[Key] String ServiceName;
+	[Key] String InstallDirectory;
+    [Write] String InstallerArchivePath;
+	[Write] String InstallerArchiveOverrideFolderName;
+    [Write, Description("Location of the .pfx certificate file")] String CertificateFileLocation;
+	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
+	[Write] String SSLProtocols;
+};

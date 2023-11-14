@@ -49,16 +49,19 @@ function Get-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
         
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageAccountName,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 
@@ -112,16 +115,19 @@ function Set-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageAccountName,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 
@@ -261,7 +267,7 @@ function Set-TargetResource
         $logSettings = Get-LogSettings -ServerURL $ServerUrl -Token $token.token -Referer $Referer
         Write-Verbose "Current Log Level:- $($logSettings.logLevel)"
 
-        if(($logSettings.logLevel -ine $LogLevel) -or (-not([string]::IsNullOrEmpty($ServerLogsLocation)) -and ($logSettings.logDir -ne $ServerLogsLocation))){
+        if(($logSettings.logLevel -ine $LogLevel) -or (-not([string]::IsNullOrEmpty($ServerLogsLocation)) -and $logSettings.logDir.TrimEnd("\") -ine $ServerLogsLocation.TrimEnd("\"))){
             if(-not([string]::IsNullOrEmpty($ServerLogsLocation))){
                 $logSettings.logDir = $ServerLogsLocation
             }
@@ -301,7 +307,7 @@ function Test-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
@@ -371,8 +377,9 @@ function Test-TargetResource
             Write-Verbose "Current Log Level $($logSettings.logLevel) not set to '$LogLevel'"
             $result = $false
         }
-        if($result -and -not([string]::IsNullOrEmpty($ServerLogsLocation)) -and ($logSettings.logDir -ne $ServerLogsLocation)){
-            Write-Verbose "Current Server Log Level $($logSettings.logDir) not set to '$ServerLogsLocation'"
+        #TODO - Path match
+        if($result -and -not([string]::IsNullOrEmpty($ServerLogsLocation)) -and $logSettings.logDir.TrimEnd("\") -ine $ServerLogsLocation.TrimEnd("\")){
+            Write-Verbose "Current Server Log Path $($logSettings.logDir) not set to '$ServerLogsLocation'"
             $result = $false
         }
     }

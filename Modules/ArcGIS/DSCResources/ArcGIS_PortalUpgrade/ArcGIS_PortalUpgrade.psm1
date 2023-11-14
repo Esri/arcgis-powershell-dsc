@@ -296,7 +296,8 @@ function Set-TargetResource
             try { $webRequest.GetResponse() } catch {}
             $cert = $webRequest.ServicePoint.Certificate
             $bytes = $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
-            $CertOnDiskPath = Join-Path $env:TEMP "$($cert.Thumbprint).cer"
+            $ExternalCertAlias = "AppGW-ExternalDNSCerCert"
+            $CertOnDiskPath = Join-Path $env:TEMP "$($ExternalCertAlias).cer"
             Set-Content -value $bytes -encoding byte -path $CertOnDiskPath
 
             $Machines = Invoke-ArcGISWebRequest -Url ("https://$($FQDN):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
@@ -304,19 +305,22 @@ function Set-TargetResource
                 $MachineName = $m.machineName
                 $CertsUrl = "https://$($FQDN):7443/arcgis/portaladmin/machines/$MachineName/sslCertificates"
                 $Certs = Invoke-ArcGISWebRequest -Url $CertsUrl -HttpFormParameters @{ f = 'json'; token = $token.token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
-                $ExternalCertAlias = "AppGW-ExternalDNSCerCert"
                 if($Certs.sslCertificates -icontains $ExternalCertAlias) {
                     Write-Verbose "Public key of External Certificate used by App Gateway already imported as a root certificate."
                 } else {
                     Write-Verbose "Importing Public key of External Certificate used by App Gateway as a root certificate."
                     $ImportCertUrl = "https://$($FQDN):7443/arcgis/portaladmin/machines/$MachineName/sslCertificates/importRootOrIntermediate"
                     $props = @{ f= 'json'; token = $token.token; alias = $ExternalCertAlias; norestart = $true  } 
-                    $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertOnDiskPath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
-                    if($res) {
-                        $response = $res | ConvertFrom-Json
-                        Confirm-ResponseStatus $response -Url $ImportCertUrl
-                    } else {
-                        Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
+                    try{
+                        $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertOnDiskPath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
+                        if($res) {
+                            $response = $res | ConvertFrom-Json
+                            Confirm-ResponseStatus $response -Url $ImportCertUrl
+                        } else {
+                            Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
+                        }
+                    }catch{
+                        Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
                     }
                 }
             }
