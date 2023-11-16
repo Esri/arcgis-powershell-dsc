@@ -40,6 +40,14 @@
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
+        $IsNotebookServerDeployment
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerContext
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
         $DebugMode
     )
 
@@ -110,6 +118,7 @@
                     DestinationPath				= (Join-Path $FileShareLocalPath "$FolderName/$($PortalContext)/content")
                     Ensure						= 'Present'
                     Force						= $true
+                    DependsOn					= @('[File]FileShareLocationPath')
                 }
 
                 $DataStoreBackupsLocalPath = (Join-Path $FileShareLocalPath "$FolderName/datastore/dbbackups")
@@ -119,7 +128,19 @@
                     DestinationPath				= $DataStoreBackupsLocalPath
                     Ensure						= 'Present'
                     Force						= $true
+                    DependsOn					= @('[File]FileShareLocationPath')
                 }        
+            }
+
+            if($IsNotebookServerDeployment -ieq 'True'){
+                File ArcGISWorkspaceFileShareLocationPath
+                {
+                    Type						= 'Directory'
+                    DestinationPath				= (Join-Path $FileShareLocalPath "$FolderName\$($ServerContext)\server-dirs\arcgisworkspace")
+                    Ensure						= 'Present'
+                    Force						= $true
+                    DependsOn					= @('[File]FileShareLocationPath')
+                }
             }
 
             $Accounts = @('NT AUTHORITY\SYSTEM')

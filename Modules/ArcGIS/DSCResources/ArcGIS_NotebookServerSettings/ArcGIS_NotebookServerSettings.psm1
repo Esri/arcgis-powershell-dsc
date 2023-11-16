@@ -14,6 +14,10 @@ Import-Module -Name (Join-Path -Path $modulePath `
         External Enpoint when using a reverse proxy server and the URL to your site does not end with the default string /arcgis (all lowercase). 
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Administrator
+    .PARAMETER DisableServiceDirectory
+        Boolean to Disable Service Directory
+    .PARAMETER DisableDockerHealthCheck
+        Boolean to Disable Docker Health Checks for Notebook Server to available through web adaptor
 #>
 function Get-TargetResource
 {
@@ -34,7 +38,10 @@ function Get-TargetResource
         $SiteAdministrator,
         
 		[System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $DisableDockerHealthCheck
     )
     
     $null
@@ -59,7 +66,10 @@ function Set-TargetResource
         $SiteAdministrator,
         
 		[System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $DisableDockerHealthCheck
 	)
     
     
@@ -103,6 +113,15 @@ function Set-TargetResource
         }
         $AdminSettingsModified = $True
     }
+
+    if($systemProperties.disableDockerHealthCheck -ine $DisableDockerHealthCheck){
+        if(Get-Member -InputObject $systemProperties -name "disableDockerHealthCheck" -Membertype NoteProperty){
+            $systemProperties.disableDockerHealthCheck = $DisableDockerHealthCheck
+        }else{
+            Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name "disableDockerHealthCheck" -Value $DisableDockerHealthCheck
+        }
+        $AdminSettingsModified = $True
+    }
     
     if($AdminSettingsModified){
         Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/update" -Token $token.token -Properties $systemProperties
@@ -128,7 +147,10 @@ function Test-TargetResource
         $SiteAdministrator,
 
 		[System.Boolean]
-        $DisableServiceDirectory
+        $DisableServiceDirectory,
+
+        [System.Boolean]
+        $DisableDockerHealthCheck
     )
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -156,8 +178,13 @@ function Test-TargetResource
         }
     }
 
-    if($result -and  $systemProperties.disableServicesDirectory -ine $DisableServiceDirectory){
+    if($result -and  $systemProperties.DisableDockerHealthCheck -ine $DisableServiceDirectory){
         Write-Verbose "DisableServicesDirectory for Notebook Server doesn't match expected value '$DisableServiceDirectory'"
+        $result = $false
+    }
+
+    if($result -and  $systemProperties.DisableDockerHealthCheck -ine $DisableDockerHealthCheck){
+        Write-Verbose "DisableServicesDirectory for Notebook Server doesn't match expected value '$DisableDockerHealthCheck'"
         $result = $false
     }
 

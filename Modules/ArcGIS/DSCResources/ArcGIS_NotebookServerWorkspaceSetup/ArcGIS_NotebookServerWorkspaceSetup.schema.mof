@@ -1,0 +1,13 @@
+﻿
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_NotebookServerWorkspaceSetup")]
+class ArcGIS_NotebookServerWorkspaceSetup : OMI_BaseResource
+{
+	[Write, EmbeddedInstance("MSFT_Credential")] String FileShareCredential;
+	[Key] String ArcGISWorkspaceLocation;
+	[Key] String FileShareEndpoint;
+	[Key] String FileShareName;
+	[Write] String UserAccountsWithPermissions[];
+	[Write] Boolean IsSingleTier;
+	[Write] Boolean Join;
+	[Write] Boolean UseAzureFiles;
+};

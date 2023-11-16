@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1',
+        $Version = '11.2',
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -45,7 +45,7 @@
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_WindowsService
-
+    
     Node localhost {
         LocalConfigurationManager
         {
@@ -57,7 +57,7 @@
         $Depends = @()
         $InstallerFileName = Split-Path $InstallerPath -Leaf
         $InstallerPathOnMachine = "$env:TEMP\datastore\$InstallerFileName" 
-
+        
 		File DownloadInstallerFromFileShare      
 		{            	
 			Ensure = "Present"              	
@@ -79,6 +79,7 @@
             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
+            EnableMSILogging = $IsDebugMode
             DependsOn = $Depends
         }
         $Depends += '[ArcGIS_Install]DataStoreUpgrade'

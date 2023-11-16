@@ -169,8 +169,10 @@ function Set-TargetResource
 	)
     
     $ComponentName = $Name
-    if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
-        $ComponentName = "WebAdaptor"
+    $IsWebAdaptorIIS = $False
+    if($Name.StartsWith('WebAdaptorIIS')){
+        $ComponentName = "WebAdaptorIIS"
+        $IsWebAdaptorIIS = $true
     }
 
     if($Ensure -eq 'Present') {
@@ -178,7 +180,7 @@ function Set-TargetResource
             throw "$Path is not found or inaccessible"
         }
 
-        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        if($IsWebAdaptorIIS){
             Invoke-WebAdaptorIISPreRequsitesInstallation -Verbose
 
             # Install Web Deploy - msi package
@@ -205,7 +207,7 @@ function Set-TargetResource
             $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
             $ProdId = $ProductId
             if(-not($ProductId)){
-                if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+                if($IsWebAdaptorIIS){
                     $ProdId =  $ProdIdObject[0] 
                 }else{
                     $ProdId = $ProdIdObject
@@ -271,7 +273,7 @@ function Set-TargetResource
         if($FeatureSet.Count -gt 0){
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
-                    if($Version -ieq "11.0" -or $Version -ieq "11.1"){
+                    if(@("11.0","11.1","11.2") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
@@ -288,7 +290,7 @@ function Set-TargetResource
                 }
             }else{
                 if($Name -ieq "DataStore"){
-                    if($Version -ieq "11.0" -or $Version -ieq "11.1"){
+                    if(@("11.0","11.1","11.2") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -324,7 +326,7 @@ function Set-TargetResource
             Start-Sleep -Seconds 120
         }
         
-        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        if($IsWebAdaptorIIS){
             Write-Verbose "Giving Permissions to Folders for IIS_IUSRS"
             foreach($p in (Get-ChildItem "$($env:SystemDrive)\Windows\Microsoft.NET\Framework*\v*\Temporary ASP.NET Files").FullName){
                 icacls $p /grant 'IIS_IUSRS:(OI)(CI)F' /T
@@ -343,11 +345,10 @@ function Set-TargetResource
             $IISWebSiteName = (Get-Website | Where-Object {$_.ID -eq $WebSiteId}).Name
             Set-WebConfigurationProperty -pspath "MACHINE/WEBROOT/APPHOST/$($IISWebSiteName)/$($WebAdaptorContext)"  -filter "system.web/httpRuntime" -name "executionTimeout" -value "01:00:00"
         }
-
     }
     elseif($Ensure -eq 'Absent') {
         $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
-        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        if($IsWebAdaptorIIS){
             $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
             $prodIdSetFlag = $False
             foreach($wa in $WAInstalls){
@@ -377,7 +378,7 @@ function Set-TargetResource
             Write-Verbose "Uninstallation successful."
         }
 
-        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        if($IsWebAdaptorIIS){
             Import-Module WebAdministration | Out-Null
             $WebSiteId = 1
             $Arguments.Split(' ') | Foreach-Object {
@@ -481,7 +482,7 @@ function Test-TargetResource
 	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
-            if($Version -ieq "11.0" -or $Version -ieq "11.1"){
+            if(@("11.0","11.1","11.2") -iContains $Version){
                 $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
@@ -489,7 +490,7 @@ function Test-TargetResource
             if($Version -ieq "10.9.1"){
                 # Get all the feature that are installed.
                 # Create an add and remove feature list
-            }elseif($Version -ieq "11.0" -or $Version -ieq "11.1"){
+            }elseif(@("11.0","11.1","11.2") -iContains $Version){
                 #Get all the feature that are installed.
                 #Create an add and remove feature list
             }
@@ -530,10 +531,16 @@ function Test-ProductInstall
     $result = $False
 
     if(-not($ProductId)){
-        $trueName = Get-ArcGISProductName -Name $Name -Version $Version
-        
+        $IsWebAdaptorIIS = $False
+        $ComponentName = $Name
+        if($Name.StartsWith('WebAdaptorIIS')){
+            $ComponentName = "WebAdaptorIIS"
+            $IsWebAdaptorIIS = $true
+        }
+
+        $trueName = Get-ArcGISProductName -Name $ComponentName -Version $Version
         $InstallObject = (Get-ArcGISProductDetails -ProductName $trueName)
-        if($Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
+        if($IsWebAdaptorIIS){
             if($InstallObject.Length -gt 1){
                 Write-Verbose "Multiple Instances of Web Adaptor are already installed"
             }
@@ -541,7 +548,7 @@ function Test-ProductInstall
             Write-Verbose "Checking if any of the installed Web Adaptor are installed with context $($WebAdaptorContext)"
             foreach($wa in $InstallObject){
                 if($wa.InstallLocation -match "\\$($WebAdaptorContext)\\"){
-                    $result = Test-Install -Name 'WebAdaptor' -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
+                    $result = Test-Install -Name $ComponentName -Version $Version -ProductId $wa.IdentifyingNumber.TrimStart("{").TrimEnd("}") -Verbose
 					break
                 }else{
                     Write-Verbose "Component with $($WebAdaptorContext) is not installed on this machine"
@@ -658,7 +665,7 @@ function Invoke-StartProcess
     $p.WaitForExit()
     $op = $p.StandardOutput.ReadToEnd()
     if($op -and $op.Length -gt 0) {
-        Write-Verbose "Output of execution:- $op"
+        Write-Verbose "Output:- $op"
     }
     $err = $p.StandardError.ReadToEnd()
     if($err -and $err.Length -gt 0) {

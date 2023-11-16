@@ -1,6 +1,6 @@
 ﻿Configuration WebAdaptorUpgrade{
     param(
-        [ValidateSet("ServerWebAdaptor","PortalWebAdaptor")]
+        [ValidateSet("Server","Portal")]
         [System.String]
         $WebAdaptorRole,
 
@@ -12,13 +12,22 @@
 
         [System.String]
         $OldVersion,
-        
+
         [System.String]
         $InstallerPath,
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $InstallerIsSelfExtracting = $True,
+
+        [System.Boolean]
+        $IsJavaWebAdaptor = $False,
+
+        [System.String]
+        $JavaInstallDir,
+
+        [System.String]
+        $JavaWebServerWebAppDirectory,
 
         [System.String]
         $DotnetHostingBundlePath,
@@ -33,7 +42,7 @@
         [parameter(Mandatory = $false)]
         [System.Array]
         $PatchInstallOrder,
-        
+
         [System.String]
         $ComponentHostName,
 
@@ -52,7 +61,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptor
 
@@ -66,77 +75,137 @@
 
         $VersionArray = $Version.Split('.')
 
-        if($WebAdaptorRole -ieq "PortalWebAdaptor"){
-            $AdminAccessEnabled = $False
-            $Context = $Node.PortalContext
-        }
-        if($WebAdaptorRole -ieq "ServerWebAdaptor"){
-            $AdminAccessEnabled = if($Node.AdminAccessEnabled) { $true } else { $false }
-            $Context = $Node.ServerContext
-        }
+        if($IsJavaWebAdaptor){
+            $LastWAName = ""
+            foreach($WA in $Node.WebAdaptorConfig){
+                if($WA.Role -ieq $WebAdaptorRole){
+                    $LastWAName = "UnregisterWebAdaptor$($Node.NodeName)-$($WA.Context)"
 
-        $Depends = @()
-
-        ArcGIS_Install WebAdaptorUninstall
-        { 
-            Name = $WebAdaptorRole
-            Version = $OldVersion
-            WebAdaptorContext = $Context
-            Arguments = "WEBSITE_ID=$($WebSiteId)"
-            Ensure = "Absent"
-        }
-        $Depends += '[ArcGIS_Install]WebAdaptorUninstall'
-
-        $WAArguments = "/qn VDIRNAME=$($Context) WEBSITE_ID=$($WebSiteId)"
-        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 5)){
-            $WAArguments += " CONFIGUREIIS=TRUE"
-        }
-
-        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
-            $WAArguments += " ACCEPTEULA=YES"
-        }
-
-        ArcGIS_Install WebAdaptorInstall
-        { 
-            Name = $WebAdaptorRole
-            Version = $Version
-            Path = $InstallerPath
-            Extract = $InstallerIsSelfExtracting
-            WebAdaptorContext = $Context
-            WebAdaptorDotnetHostingBundlePath = $DotnetHostingBundlePath
-	        WebAdaptorWebDeployPath = $WebDeployPath
-            Arguments = $WAArguments
-            EnableMSILogging = $EnableMSILogging
-            Ensure = "Present"
-            DependsOn = $Depends
-        }
-        $Depends += '[ArcGIS_Install]WebAdaptorInstall'
-        
-        if($PatchesDir){
-            ArcGIS_InstallPatch WebAdaptorInstallPatch
-            {
-                Name = "WebAdaptor"
-                Version = $Version
-                DownloadPatches = $DownloadPatches
-                PatchesDir = $PatchesDir
-                PatchInstallOrder = $PatchInstallOrder
-                Ensure = "Present"
-                DependsOn = $Depends
+                    ArcGIS_WebAdaptor $LastWAName
+                    {
+                        Version             = $OldVersion
+                        Ensure              = "Absent"
+                        Component           = $Component
+                        HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ (Get-FQDN $Node.NodeName) } 
+                        ComponentHostName   = (Get-FQDN $ComponentHostName)
+                        Context             = $WA.Context
+                        OverwriteFlag       = $False
+                        SiteAdministrator   = $SiteAdministratorCredential
+                        AdminAccessEnabled  = $WA.AdminAccessEnabled
+                        IsJavaWebAdaptor    = $IsJavaWebAdaptor
+                        JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    }
+                }
             }
-            $Depends += '[ArcGIS_InstallPatch]WebAdaptorInstallPatch'
+            
+            # Uninstall of old Java Web Adaptor handled separately
+            
+            # Install Java Web Adaptor
+            $WAArguments = "/qn ACCEPTEULA=YES"
+            if($JavaInstallDir){
+                $WAArguments += " INSTALLDIR=`"$($JavaInstallDir)`""
+            }
+
+            ArcGIS_Install WebAdaptorJavaInstall
+            { 
+                Name = "WebAdaptorJava"
+                Version = $Version
+                Path = $InstallerPath
+                Extract = $InstallerIsSelfExtracting
+                Arguments = $WAArguments
+                EnableMSILogging = $EnableMSILogging
+                Ensure = "Present"
+                DependsOn  = "[ArcGIS_WebAdaptor]$LastWAName"
+            }
+
+            if ($PatchesDir) { 
+                #TODO - this is not working (Even if the patch is installed, we will have to update the war file manually to get the patch applied)
+                ArcGIS_InstallPatch WebAdaptorJavaInstallPatch
+                {
+                    Name = "WebAdaptorJava"
+                    Version = $Version
+                    DownloadPatches = $DownloadPatches
+                    PatchesDir = $PatchesDir
+                    PatchInstallOrder = $PatchInstallOrder
+                    Ensure = "Present"
+                    DependsOn  = "[ArcGIS_InstallPatch]WebAdaptorJavaInstallPatch"
+                }
+            }
+        }else{
+            $Depends = $null
+            foreach($WA in $Node.WebAdaptorConfig){
+                if($WA.Role -ieq $WebAdaptorRole){
+                    $WAName = "WebAdaptorIIS-$($WA.Role)-$($WA.Context)"
+                    ArcGIS_Install "$($WAName)Uninstall"
+                    { 
+                        Name = $WAName
+                        Version = $OldVersion
+                        WebAdaptorContext = $WA.Context
+                        Arguments = "WEBSITE_ID=$($WA.WebSiteId)"
+                        Ensure = "Absent"
+                        DependsOn = if($Depends){$Depends}else{$null}
+                    }
+
+                    $VersionArray = $Version.Split(".")
+                    $WAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($WA.Context) WEBSITE_ID=$($WA.WebSiteId)"
+                    if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
+                        $WAArguments += " CONFIGUREIIS=TRUE"
+                    }
+                    
+                    $WAName = "WebAdaptorIIS-$($WA.Role)-$($WA.Context)"
+                    ArcGIS_Install "$($WAName)Install"
+                    {
+                        Name = $WAName
+                        Version = $Version
+                        Path = $InstallerPath
+                        Extract = $InstallerIsSelfExtracting
+                        Arguments = $WAArguments
+                        WebAdaptorContext = $WA.Context
+                        WebAdaptorDotnetHostingBundlePath = $DotnetHostingBundlePath
+                        WebAdaptorWebDeployPath = $WebDeployPath
+                        EnableMSILogging = $EnableMSILogging
+                        Ensure = "Present"
+                        DependsOn = @("[ArcGIS_Install]$($WAName)Uninstall")
+                    }
+
+                    if ($PatchesDir) {
+                        ArcGIS_InstallPatch "$($WAName)InstallPatch"
+                        {
+                            Name = "WebAdaptorIIS"
+                            Version = $Version
+                            DownloadPatches = $DownloadPatches
+                            PatchesDir = $PatchesDir
+                            PatchInstallOrder = $PatchInstallOrder
+                            Ensure = "Present"
+                            DependsOn = @("[ArcGIS_Install]$($WAName)Install")
+                        }
+                        $Depends = @("[ArcGIS_InstallPatch]$($WAName)InstallPatch")
+                    }else{
+                        $Depends = @("[ArcGIS_Install]$($WAName)Install")
+                    }
+                }
+            }
         }
 
-        ArcGIS_WebAdaptor "Configure$($Component)-$($Node.NodeName)"
-        {
-            Ensure = "Present"
-            Component = $Component
-            HostName =  if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ (Get-FQDN $Node.NodeName) }
-            ComponentHostName = (Get-FQDN $ComponentHostName)
-            Context = $Context
-            OverwriteFlag = $False
-            SiteAdministrator = $SiteAdministratorCredential
-            AdminAccessEnabled  = $AdminAccessEnabled
-            DependsOn = $Depends
+        foreach($WA in $Node.WebAdaptorConfig){
+            if($WA.Role -ieq $WebAdaptorRole){
+                ArcGIS_WebAdaptor "ConfigureWebAdaptor$($Node.NodeName)-$($WA.Context)"
+                {
+                    Version             = $Version
+                    Ensure              = "Present"
+                    Component           = $Component
+                    HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ (Get-FQDN $Node.NodeName) } 
+                    ComponentHostName   = (Get-FQDN $ComponentHostName)
+                    Context             = $WA.Context
+                    OverwriteFlag       = $False
+                    SiteAdministrator   = $SiteAdministratorCredential
+                    AdminAccessEnabled  = $WA.AdminAccessEnabled
+                    IsJavaWebAdaptor    = $IsJavaWebAdaptor
+                    JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    DependsOn           = $Depends
+                }
+                $Depends += @("[ArcGIS_WebAdaptor]ConfigureWebAdaptor$($Node.NodeName)-$($WA.Context)")
+            }
         }
     }
 }

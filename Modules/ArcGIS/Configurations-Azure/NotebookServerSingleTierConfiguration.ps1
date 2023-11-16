@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -47,8 +47,24 @@
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudStorageAuthenticationType = "AccessKey"
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountUserAssignedIdentityClientId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $StorageAccountServicePrincipalCredential
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -103,6 +119,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseArcGISWebAdaptorForNotebookServer = $False
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -142,6 +162,10 @@
 	Import-DscResource -Name ArcGIS_Disk  
     Import-DscResource -Name ArcGIS_TLSCertificateImport
     Import-DscResource -Name ArcGIS_PendingReboot
+    Import-DscResource -Name ArcGIS_Install
+    Import-DscResource -Name ArcGIS_WebAdaptor
+    Import-DscResource -Name ArcGIS_IIS_TLS
+    Import-DscResource -Name ArcGIS_NotebookServerWorkspaceSetup
 	
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1
     $FileShareHostName = $ServerHostName
@@ -165,10 +189,11 @@
     $ipaddress = (Resolve-DnsName -Name $FileShareHostName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
     if(-not($ipaddress)) { $ipaddress = $FileShareHostName }
     $FileShareRootPath = "\\$ipaddress\$FileShareName"
+    $FileSharePath = "\\$($FileShareHostName)\$FileShareName"
     
     $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $ConfigStoreLocation  = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($Context)\config-store"
-    $ServerDirsLocation   = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($Context)\server-dirs" 
+    $ConfigStoreLocation  = "$($FileSharePath)\$FolderName\$($Context)\config-store"
+    $ServerDirsLocation   = "$($FileSharePath)\$FolderName\$($Context)\server-dirs" 
     $Join = ($env:ComputerName -ine $ServerHostName)
 	$IsDebugMode = $DebugMode -ieq 'true'
     $IsMultiMachineServer = (($ServerMachineNames -split ',').Length -gt 1)
@@ -193,19 +218,36 @@
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')   
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case       
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($Context)\config-store"
-            $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($Context)\server-dirs" 
+            $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($Context)\server-dirs"
+            $FileSharePath = "\\$($AzureFilesEndpoint)\$FileShareName"
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($Context)$($EndpointSuffix);DefaultEndpointsProtocol=https;"
-            $ConfigStoreCloudStorageAccountName = "AccountName=$AccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
+            if(-not($Join)){
+                $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($Context)$($EndpointSuffix);DefaultEndpointsProtocol=https;"
+                $ConfigStoreCloudStorageAccountName = "AccountName=$($AccountName)"
+                if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
+                    $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+                    $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
+                }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
+                    $ConfigStoreCloudStorageConnectionSecret = ""
+                }elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+                    $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($StorageAccountCredential.GetNetworkCredential().Password)"
+                }else{
+                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
+                }
+            }
         }
     }
-
+    
     #Since fileshare location sharing or mapped network locations not supported for Docker Desktop, we use local directories for server-dirs.
-    $ServerDirsLocation = Join-Path $env:SystemDrive "arcgisnotebookserver\server-dirs"
+    if(-not($UseArcGISWebAdaptorForNotebookServer)){
+        $ServerDirsLocation = Join-Path $env:SystemDrive "arcgisnotebookserver\server-dirs"
+    }
 
-	Node localhost
+    Node localhost
 	{       
         LocalConfigurationManager
         {
@@ -213,8 +255,8 @@
             ConfigurationMode = 'ApplyOnly'    
             RebootNodeIfNeeded = $true
         }
-         
-		$DependsOn = @()
+        
+        $DependsOn = @()
 		
 		if($OSDiskSize -gt 0) 
         {
@@ -239,29 +281,6 @@
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
-        if(-not($IsUpdatingCertificates)){ #Prepare machine to install mirantis
-            WindowsFeature websockets
-            {
-                Name  = 'Web-WebSockets'
-                Ensure = 'Present'
-            }
-            $DependsOn += '[WindowsFeature]websockets'
-
-            WindowsFeature InstallContainers
-            {
-                Name  = 'Containers'
-                Ensure = 'Present'
-                DependsOn 	= $DependsOn
-            }
-            $DependsOn += '[WindowsFeature]InstallContainers' 
-
-            ArcGIS_PendingReboot ContainerFeatureRebootNeeded {
-                Name      = 'ContainerFeatureRebootNeeded'
-                DependsOn 	= $DependsOn
-            }
-            $DependsOn += '[ArcGIS_PendingReboot]ContainerFeatureRebootNeeded' 
-        }
-        		
         if($HasValidServiceCredential -and -not($IsUpdatingCertificates)) 
         {
             if(-Not($ServiceCredentialIsDomainAccount)){
@@ -278,28 +297,105 @@
 				$DependsOn += '[User]ArcGIS_RunAsAccount'
 			}
 
-            File FileShareLocationPath
-		    {
-			    Type						= 'Directory'
-			    DestinationPath				= $FileShareLocalPath
-			    Ensure						= 'Present'
-			    Force						= $true
-			}
-			$DependsOn += '[File]FileShareLocationPath'
+            $Accounts = @('NT AUTHORITY\SYSTEM')
+            if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
+            if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) 
+            { 
+                $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName 
+            }
 
-			$Accounts = @('NT AUTHORITY\SYSTEM')
-			if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
-			if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-            ArcGIS_xSmbShare FileShare 
-		    { 
-			    Ensure						= 'Present' 
-			    Name						= $FileShareName
-			    Path						= $FileShareLocalPath
-			    FullAccess					= $Accounts
-				DependsOn					= $DependsOn
-			}
-			$DependsOn += '[ArcGIS_xSmbShare]FileShare'
-    
+            if(-not($Join)){
+                File FileShareLocationPath
+                {
+                    Type						= 'Directory'
+                    DestinationPath				= $FileShareLocalPath
+                    Ensure						= 'Present'
+                    Force						= $true
+                }
+
+                File ArcGISWorkspaceFileShareLocationPath
+                {
+                    Type						= 'Directory'
+                    DestinationPath				= "$($FileShareLocalPath)\$FolderName\$($Context)\server-dirs\arcgisworkspace"
+                    Ensure						= 'Present'
+                    Force						= $true
+                }
+                
+                ArcGIS_xSmbShare FileShare 
+                { 
+                    Ensure						= 'Present' 
+                    Name						= $FileShareName
+                    Path						= $FileShareLocalPath
+                    FullAccess					= $Accounts
+                    DependsOn					= @('[File]FileShareLocationPath')
+                }
+                $DependsOn += '[ArcGIS_xSmbShare]FileShare'
+            }
+
+            if($UseArcGISWebAdaptorForNotebookServer){
+                ArcGIS_NotebookServerWorkspaceSetup GlobalSMBMappingSetup
+                {
+                    FileShareCredential = if($UseAzureFiles -ieq 'True'){ $StorageAccountCredential }else{ $MachineAdministratorCredential}
+                    ArcGISWorkspaceLocation = "$($ServerDirsLocation)\arcgisworkspace"
+                    FileShareEndpoint = if($UseAzureFiles -ieq 'True'){ $AzureFilesEndpoint }else{ $FileShareHostName }
+                    FileShareName = $FileShareName
+                    UserAccountsWithPermissions = $Accounts
+                    IsSingleTier = $True
+                    Join = $Join
+                    UseAzureFiles = ($UseAzureFiles -ieq 'True')
+                    DependsOn = $DependsOn
+                }
+                $DependsOn += '[ArcGIS_NotebookServerWorkspaceSetup]GlobalSMBMappingSetup'
+            }
+
+            Script CopyCertificateFileToLocalMachine
+            {
+                GetScript = {
+                    $null
+                }
+                SetScript = {    
+                    Write-Verbose "Copying from $using:ServerCertificateFileLocation to $using:ServerCertificateLocalFilePath"      
+                    $PsDrive = New-PsDrive -Name X -Root $using:FileShareRootPath -PSProvider FileSystem                 
+                    Write-Verbose "Mapped Drive $($PsDrive.Name) to $using:FileShareRootPath"              
+                    Copy-Item -Path $using:ServerCertificateFileLocation -Destination $using:ServerCertificateLocalFilePath -Force  
+                    if($PsDrive) {
+                        Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
+                        Remove-PsDrive -Name $PsDrive.Name -Force       
+                    }       
+                }
+                TestScript = {   
+                    $false
+                }
+                DependsOn             = $DependsOn
+                PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+            }
+
+            if($UseArcGISWebAdaptorForNotebookServer){
+                ArcGIS_Install "WebAdaptorInstall"
+                {
+                    Name = "WebAdaptorIIS"
+                    Version = $Version 
+                    Path = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\WebAdaptorIIS.exe"
+                    Extract = $True
+                    Arguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Context) WEBSITE_ID=1 CONFIGUREIIS=TRUE "
+                    WebAdaptorContext = $Context
+                    WebAdaptorDotnetHostingBundlePath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\AdditionalFiles\\dotnet-hosting-6.0.23-win.exe"
+                    WebAdaptorWebDeployPath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\AdditionalFiles\\WebDeploy_amd64_en-US.msi"
+                    Ensure = "Present"
+                }
+
+                ArcGIS_IIS_TLS "WebAdaptorCertificateInstall"
+                {
+                    WebSiteId               = 1
+                    ExternalDNSName         = $ExternalDNSHostName
+                    Ensure                  = 'Present'
+                    CertificateFileLocation = $ServerCertificateLocalFilePath
+                    CertificatePassword     = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
+                    DependsOn               = @('[ArcGIS_Install]WebAdaptorInstall', '[Script]CopyCertificateFileToLocalMachine')
+                }
+                $DependsOn += @('[ArcGIS_IIS_TLS]WebAdaptorCertificateInstall') 
+            }
+
             ArcGIS_WindowsService ArcGIS_for_NotebookServer_Service
             {
                 Name            = 'ArcGIS Notebook Server'
@@ -368,7 +464,7 @@
 			    Access                = "Allow"
 			    State                 = "Enabled"
 			    Profile               = ("Domain","Private","Public")
-			    LocalPort             = ("11443")
+			    LocalPort             = ("80","443","11443")
 				Protocol              = "TCP"
 				DependsOn       	   = $DependsOn
 		    }
@@ -394,14 +490,16 @@
                 Version                                 = $Version
 			    Ensure                                  = 'Present'
 			    SiteAdministrator                       = $SiteAdministratorCredential
-			    ConfigurationStoreLocation              = $ConfigStoreLocation
+			    ConfigurationStoreLocation              = if(-not($Join)){ $ConfigStoreLocation }else{ $null }
 			    DependsOn                               = $DependsOn
 			    ServerDirectoriesRootLocation           = $ServerDirsLocation
+                ServerDirectories                       = if($UseArcGISWebAdaptorForNotebookServer){'[{"path":"G:\\","name":"arcgisworkspace","type":"WORKSPACE"}]'}else{$null}
 			    LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-                ConfigStoreCloudStorageAccountName      = $ConfigStoreCloudStorageAccountName
-                ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
-                Join                                    = $False
+                ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
+                ConfigStoreCloudStorageAccountName      = if(-not($Join)){ $ConfigStoreCloudStorageAccountName }else{ $null }
+                ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
+                Join                                    = $Join
+                PeerServerHostName                      = $ServerHostName
 		    }
             $DependsOn += '[ArcGIS_NotebookServer]NotebookServer'
             
@@ -409,6 +507,7 @@
             {
                 WebContextURL                           = "https://$ExternalDNSHostName/$($Context)"
                 SiteAdministrator                       = $SiteAdministratorCredential
+                DisableDockerHealthCheck                = $True
                 DependsOn                               = $DependsOn
             }
             $DependsOn += '[ArcGIS_NotebookServerSettings]NotebookServerSettings'
@@ -423,28 +522,6 @@
             $DependsOn += '[ArcGIS_NotebookPostInstall]NotebookPostInstallSamples'
         }
         
-        Script CopyCertificateFileToLocalMachine
-        {
-            GetScript = {
-                $null
-            }
-            SetScript = {    
-                Write-Verbose "Copying from $using:ServerCertificateFileLocation to $using:ServerCertificateLocalFilePath"      
-                $PsDrive = New-PsDrive -Name X -Root $using:FileShareRootPath -PSProvider FileSystem                 
-                Write-Verbose "Mapped Drive $($PsDrive.Name) to $using:FileShareRootPath"              
-                Copy-Item -Path $using:ServerCertificateFileLocation -Destination $using:ServerCertificateLocalFilePath -Force  
-                if($PsDrive) {
-                    Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
-                    Remove-PsDrive -Name $PsDrive.Name -Force       
-                }       
-            }
-            TestScript = {   
-                $false
-            }
-            DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-            PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-        }
-
         ArcGIS_Server_TLS Server_TLS
         {
             ServerHostName             = $env:ComputerName
@@ -457,6 +534,26 @@
             SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
         }
         $DependsOn += @('[ArcGIS_Server_TLS]Server_TLS') 
+
+        if($UseArcGISWebAdaptorForNotebookServer){
+            
+            $MachineFQDN = Get-FQDN $env:ComputerName
+
+            ArcGIS_WebAdaptor "ConfigureWebAdaptor"
+            {
+                Version             = $Version
+                Ensure              = "Present"
+                Component           = 'NotebookServer'
+                HostName            = $MachineFQDN
+                ComponentHostName   = $MachineFQDN
+                Context             = $Context
+                OverwriteFlag       = $False
+                SiteAdministrator   = $SiteAdministratorCredential
+                AdminAccessEnabled  = $True
+                DependsOn           = $DependsOn
+            }
+            $DependsOn += @('[ArcGIS_WebAdaptor]ConfigureWebAdaptor') 
+        }
 
 		if(($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsUpdatingCertificates)) 
         {

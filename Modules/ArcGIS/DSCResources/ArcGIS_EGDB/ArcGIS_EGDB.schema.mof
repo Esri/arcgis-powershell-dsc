@@ -10,7 +10,7 @@ class ArcGIS_EGDB : OMI_BaseResource
 	[Write, EmbeddedInstance("MSFT_Credential")] String DatabaseUser;
 	[Write] Boolean IsManaged;
 	[Write] Boolean EnableGeodatabase;
-	[Write, ValueMap{"AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase"}] String DatabaseType;
+	[Write, ValueMap{"SQLServerDatabase","AzureSQLDatabase","AzureMISQLDatabase","AzurePostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase"}] String DatabaseType;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 };
 

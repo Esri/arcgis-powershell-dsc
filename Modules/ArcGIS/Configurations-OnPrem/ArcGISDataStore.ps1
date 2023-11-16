@@ -77,7 +77,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_DataStore
@@ -250,7 +250,8 @@
             $Depends += '[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules'
         }
 
-        if(($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'GraphStore' }  | Measure-Object).Count -gt 0){
+        $GraphStoreMachineCount = ($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'GraphStore' } | Measure-Object).Count
+        if($GraphStoreMachineCount -gt 0){
             ArcGIS_xFirewall GraphDataStore_FirewallRules
             {
                 Name                  = "ArcGISGraphDataStore" 
@@ -260,7 +261,7 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = ("9829")
+                LocalPort             = if($GraphStoreMachineCount -gt 1){ ("9829","9831") }else{("9829")}
                 Protocol              = "TCP" 
                 DependsOn             = $Depends
             } 
@@ -397,36 +398,35 @@
 
         if(($PrimaryGraphDataStore -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'GraphStore'))
         {
-            # if($UsesSSL){
-            #     ArcGIS_WaitForComponent "WaitForGraphDataStore$($PrimaryGraphDataStore)"{
-            #         Component = "Graph"
-            #         InvokingComponent = "DataStore"
-            #         ComponentHostName = $PrimaryServerMachine
-            #         ComponentContext = "arcgis"
-            #         Credential = $ServerPrimarySiteAdminCredential
-            #         Ensure = "Present"
-            #         RetryIntervalSec = 60
-            #         RetryCount = 100
-            #     }
-            #     $DependsOn += "[ArcGIS_WaitForComponent]WaitForGraphDataStore$($PrimaryGraphDataStore)"
-            # }else{
-            #     WaitForAll "WaitForGraphDataStore$($PrimaryGraphDataStore)"{
-            #         ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryGraphDataStore)"
-            #         NodeName = $WaitForGraphDataStore
-            #         RetryIntervalSec = 60
-            #         RetryCount = 100
-            #         DependsOn = $Depends
-            #     }
-            #     $Depends += "[WaitForAll]WaitForGraphDataStore$($PrimaryGraphDataStore)"
-            # }
-            throw "Graph DataStore only support single machine deployment."
+            if($UsesSSL){
+                ArcGIS_WaitForComponent "WaitForGraphDataStore$($PrimaryGraphDataStore)"{
+                    Component = "Graph"
+                    InvokingComponent = "DataStore"
+                    ComponentHostName = $PrimaryServerMachine
+                    ComponentContext = "arcgis"
+                    Credential = $ServerPrimarySiteAdminCredential
+                    Ensure = "Present"
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                }
+                $DependsOn += "[ArcGIS_WaitForComponent]WaitForGraphDataStore$($PrimaryGraphDataStore)"
+            }else{
+                WaitForAll "WaitForGraphDataStore$($PrimaryGraphDataStore)"{
+                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryGraphDataStore)"
+                    NodeName = $PrimaryGraphDataStore
+                    RetryIntervalSec = 60
+                    RetryCount = 100
+                    DependsOn = $Depends
+                }
+                $Depends += "[WaitForAll]WaitForGraphDataStore$($PrimaryGraphDataStore)"
+            }
         }
 
         if(($PrimaryObjectDataStore -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'ObjectStore')) {
             if($EnableObjectDataStoreClustering){
                 if($UsesSSL){
                     ArcGIS_WaitForComponent "WaitForObjectDataStore$($PrimaryObjectDataStore)"{
-                        Component = "Graph"
+                        Component = "Object"
                         InvokingComponent = "DataStore"
                         ComponentHostName = $PrimaryServerMachine
                         ComponentContext = "arcgis"

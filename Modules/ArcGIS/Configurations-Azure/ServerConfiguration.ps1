@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -32,8 +32,24 @@
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudStorageAuthenticationType = "AccessKey"
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountUserAssignedIdentityClientId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $StorageAccountServicePrincipalCredential
                 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -165,8 +181,22 @@
             $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\server-dirs"   
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($ServerContext)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
+            if(-not($Join)){
+                $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($ServerContext)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($AccountName)"
+                if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
+                    $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+                    $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
+                }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
+                    $ConfigStoreCloudStorageConnectionSecret = ""
+                }elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
+                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+                    $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($StorageAccountCredential.GetNetworkCredential().Password)"
+                }else{
+                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
+                }
+            }
         }
     }    
 
@@ -319,14 +349,14 @@
                         Version                                 = $Version
                         Ensure                                  = 'Present'
                         SiteAdministrator                       = $SiteAdministratorCredential
-                        ConfigurationStoreLocation              = $ConfigStoreLocation
+                        ConfigurationStoreLocation              = if(-not($Join)){ $ConfigStoreLocation }else{ $null }
                         DependsOn                               = $ServerDependsOn
                         ServerDirectoriesRootLocation           = $ServerDirsLocation
                         Join                                    = $Join
                         PeerServerHostName                      = $ServerHostName
                         LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-                        ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-                        ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+                        ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
+                        ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
                     }
                     $ServerDependsOn += '[ArcGIS_Server]Server'
                 }

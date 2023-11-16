@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1',
+        $Version = '11.2',
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -30,6 +30,10 @@
         [Parameter(Mandatory=$false)]
         [System.String]
         $NotebookSamplesDataInstallerPath = "",
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $WorkflowManagerServerInstallerPath = "",
 		
 		[Parameter(Mandatory=$false)]
         [System.String]
@@ -40,7 +44,7 @@
         $IsMultiMachineServerSite
     )
 
-	function Get-FileNameFromUrl
+    function Get-FileNameFromUrl
     {
         param(
             [string]$Url
@@ -66,7 +70,6 @@
     Import-DscResource -Name ArcGIS_MissionServerUpgrade
     Import-DscResource -Name ArcGIS_NotebookPostInstall 
     Import-DscResource -Name ArcGIS_xFirewall 
-
     $IsDebugMode = $DebugMode -ieq 'true'
 
     Node localhost {
@@ -92,7 +95,7 @@
 		$InstallerFileName = Split-Path $ServerInstallerPath -Leaf
 		$InstallerPathOnMachine = "$env:TEMP\Server\$InstallerFileName"
 
-		File DownloadInstallerFromFileShare      
+        File DownloadInstallerFromFileShare      
 		{            	
 			Ensure = "Present"              	
 			Type = "File"             	
@@ -136,6 +139,7 @@
             ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
+            EnableMSILogging = $IsDebugMode
             DependsOn = $Depends
         }
 
@@ -176,6 +180,7 @@
                 ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
                 Ensure = "Present"
+                EnableMSILogging = $IsDebugMode
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_Install]NotebookInstallSamplesData'
@@ -239,6 +244,12 @@
         }
         if($ServerRole -ieq "MissionServer"){
             $ServerLicenseRole = "MissionServer"
+        }
+        if($ServerRole -ieq "MissionServer"){
+            $ServerLicenseRole = "MissionServer"
+        }
+        if($ServerRole -ieq "WorkflowManagerServer"){
+            $ServerLicenseRole = "WorkflowManagerServer"
         }
         
 		## Download license file
@@ -337,6 +348,7 @@
                 ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
                 Ensure = "Present"
+                EnableMSILogging = $IsDebugMode
                 DependsOn = $Depends
             }
 
@@ -393,6 +405,49 @@
                 }
                 $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service_Start"
             }
+        }
+
+        if($ServerRole -ieq "WorkflowManagerServer"){
+            $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
+
+            $WorkflowManagerServerInstallerFileName = Split-Path $WorkflowManagerServerInstallerPath -Leaf
+            $WorkflowManagerServerInstallerPathOnMachine = "$env:TEMP\NBServer\$WorkflowManagerServerInstallerFileName"
+
+            File DownloadWorkflowManagerInstallerFromFileShare      
+            {            	
+                Ensure = "Present"              	
+                Type = "File"             	
+                SourcePath = $WorkflowManagerServerInstallerPath 	
+                DestinationPath = $WorkflowManagerServerInstallerPathOnMachine     
+                Credential = $FileshareMachineCredential     
+                DependsOn = $Depends  
+            }
+            $Depends += '[File]DownloadWorkflowManagerInstallerFromFileShare'
+            
+            ArcGIS_Install WorkflowManagerServerUpgrade
+            {
+                Name = "WorkflowManagerServer"
+                Version = $Version
+                Path = $WorkflowManagerServerInstallerPathOnMachine
+                Arguments = "/qn"
+                ServiceCredential = $ServiceCredential
+                ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                ServiceCredentialIsMSA = $False
+                EnableMSILogging = $IsDebugMode
+                DependsOn = $Depends
+            }
+            $Depends += '[ArcGIS_Install]WorkflowManagerInstall'
+
+            Script RemoveWorkflowManagerServerInstaller
+            {
+                SetScript = 
+                { 
+                    Remove-Item $using:WorkflowManagerServerInstallerPathOnMachine -Force
+                }
+                TestScript = { -not(Test-Path $using:WorkflowManagerServerInstallerPathOnMachine) }
+                GetScript = { $null }          
+            }
+            $Depends += '[Script]RemoveWorkflowManagerServerInstaller'
         }
     }
 }

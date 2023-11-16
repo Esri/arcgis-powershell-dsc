@@ -3,7 +3,7 @@
 	param(
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.1'
+        $Version = '11.2'
 		
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -55,8 +55,24 @@
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudStorageAuthenticationType = "AccessKey"
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
-		$StorageAccountCredential
+        $StorageAccountCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountUserAssignedIdentityClientId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $StorageAccountServicePrincipalCredential
 
 		,[Parameter(Mandatory=$false)]
         [System.String]
@@ -183,10 +199,11 @@
     Import-DscResource -Name ArcGIS_xSmbShare
 	Import-DscResource -Name ArcGIS_xDisk  
 	Import-DscResource -Name ArcGIS_Disk  
-	Import-DscResource -Name ArcGIS_DataStoreItem
+	Import-DscResource -Name ArcGIS_DataStoreItemServer
 	Import-DscResource -Name ArcGIS_TLSCertificateImport
 	Import-DscResource -Name ArcGIS_GeoEvent	
     Import-DscResource -Name ArcGIS_LogHarvester
+	Import-DscResource -Name ArcGIS_Server_RegisterDirectories
 	
     ##
     ## Download license files
@@ -241,8 +258,22 @@
             $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($Context)\server-dirs" 
         }
         else {
-            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($Context)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$AccountName"
-            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
+			if(-not($Join)){
+				$ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($Context)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($AccountName)"
+				if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
+					$ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
+					$ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+					$ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
+				}elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
+					$ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
+					$ConfigStoreCloudStorageConnectionSecret = ""
+				}elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
+					$ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+					$ConfigStoreCloudStorageConnectionSecret = "SASToken=$($StorageAccountCredential.GetNetworkCredential().Password)"
+				}else{
+					$ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
+				}
+			}
         }
     }
 
@@ -602,14 +633,14 @@
 					Version                                 = $Version
 					Ensure                                  = 'Present'
 					SiteAdministrator                       = $SiteAdministratorCredential
-					ConfigurationStoreLocation              = $ConfigStoreLocation
+					ConfigurationStoreLocation              = if(-not($Join)){ $ConfigStoreLocation }else { $null }
 					DependsOn                               = $ServerDependsOn
 					ServerDirectoriesRootLocation           = $ServerDirsLocation
 					Join                                    = $Join
 					PeerServerHostName                      = $ServerHostName
 					LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-					ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-					ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+					ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else { $null }
+					ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else { $null }
 				}
 				$RemoteFederationDependsOn += @('[ArcGIS_Server]Server') 
 			}
@@ -824,83 +855,97 @@
             }
         }  
 
-        if($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0) 
+        if($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0 -and ($ServerHostName -ieq $env:ComputerName)) 
 		{
             $DataStoreItems = @()
+			$CacheDirectories = @()
             foreach($cloudStore in $CloudStores.stores) 
 			{
-                $DataStorePath = $cloudStore.ContainerName
-                if($cloudStore.FolderPath) {
-                    $DataStorePath += "/$($cloudStore.FolderPath)"
-                }
+                $AuthType = $cloudStore.AzureStorageAuthenticationType
+				$AzureConnectionObject = @{
+					AccountName = $cloudStore.AccountName
+					AccountEndpoint = $cloudStore.AccountEndpoint
+					DefaultEndpointsProtocol = "https"
+					OverrideEndpoint = if($cloudStore.OverrideEndpoint){ $cloudStore.OverrideEndpoint }else{ $null }
+					ContainerName = $cloudStore.ContainerName
+					FolderPath = if($cloudStore.Path){ $cloudStore.Path }else{ $null } 
+					AuthenticationType = $AuthType
+				}
+
+				$ConnectionPassword = $null
+				if($AuthType -ieq "AccessKey"){
+					$ConnectionPassword = ConvertTo-SecureString $cloudStore.AccessKey -AsPlainText -Force 
+				}elseif($AuthType -ieq "SASToken"){
+					$ConnectionPassword = ConvertTo-SecureString $cloudStore.SASToken -AsPlainText -Force 
+				}elseif($AuthType -ieq "ServicePrincipal"){
+					$AzureConnectionObject["ServicePrincipalTenantId"] = $cloudStore.ServicePrincipal.TenantId
+					$AzureConnectionObject["ServicePrincipalClientId"] = $cloudStore.ServicePrincipal.ClientId
+					$ConnectionPassword = (ConvertTo-SecureString $AzureStorageObject.ServicePrincipal.ClientSecret -AsPlainText -Force)
+				}elseif($AuthType -ieq "UserAssignedIdentity"){
+					$AzureConnectionObject["UserAssignedIdentityClientId"] = $cloudStore.UserAssignedIdentityClientId
+				}
+				$ConnectionSecret = $null
+				if($null -ne $ConnectionPassword){
+					$ConnectionSecret = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( "PlaceHolder", $ConnectionPassword )
+				}
+
+				$ConnectionStringObject = @{
+					CloudStoreType = "Azure"
+					AzureStorage = $AzureConnectionObject
+				}
+				
+				$CloudStoreName = $cloudStore.Name
                 $DataStoreItems += @{
-                    Name = $cloudStore.Name
+                    Name = $CloudStoreName
                     DataStoreType = 'CloudStore'
-                    DataStorePath = $DataStorePath
-                    DataStoreConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($cloudStore.AccountName);AccountKey=$($cloudStore.AccountKey)"
-                    DataStoreEndpoint = $cloudStore.AccountEndpoint
+					ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
+					ConnectionSecret = $ConnectionSecret
                 }
                 if($cloudStore.StoreType -ieq 'Raster') {
-                    $DataStoreItems += @{
-                        Name = ('Raster ' + $cloudStore.Name).Replace(' ', '_') # Replace spaces with underscores (not allowed for Cloud Stores and Raster Stores)
-                        DataStoreType = 'RasterStore'
-                        DataStorePath = "/cloudStores/$($cloudStore.Name)"                  
-                    }
-                }elseif($cloudStore.StoreType -ieq 'GeoAnalyticsBigDataFileShare'){
-                    $DataStoreItems += @{
-                        Name = ('Big Data File Share for ' + $cloudStore.Name)
-                        DataStoreType = 'BigDataFileShare'
-                        DataStorePath = "/bigDataFileShares/$($cloudStore.Name)"    
-                        DataStoreEndpoint = "/cloudStores/$($cloudStore.Name)"              
-                    }
-                }
+					$ConnectionStringObject = @{
+						DataStorePath = "/cloudStores/$($CloudStoreName)"   
+					}
+
+					$DataStoreItems += @{
+						Name = ('Raster ' + $CloudStoreName).Replace(' ', '_') # Replace spaces with underscores (not allowed for Cloud Stores and Raster Stores)
+						DataStoreType = 'RasterStore'
+						ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
+					}
+                }elseif($cloudStore.StoreType -ieq 'CacheDirectory'){
+					$CacheDirectories += @{
+						name = ('Cache Directory ' + $CloudStoreName).Replace(' ', '_')
+						physicalPath = "/cloudStores/$($CloudStoreName)"
+						directoryType = "CACHE"
+					}
+				}
             }
 
             foreach($dataStoreItem in $DataStoreItems)
             {
-                $depends = @()
-                if(($dataStoreItem.DataStoreType -ieq 'Folder') -or ($dataStoreItem.DataStoreType -ieq 'BigDataFileShare')) 
-                {
-                    if($dataStoreItem.DataStorePath -and $dataStoreItem.DataStoreEndpoint -and $dataStoreItem.DataStorePath.IndexOf(':') -gt 0) # Not a cloud store, but a local path
-                    {                        
-                        $FolderDsc = "Folder-$($dataStoreItem.Name)"
-                        $depends += "[File]$FolderDsc"
-                        File $FolderDsc
-                        {
-                            Type			= 'Directory'
-                            DestinationPath = $dataStoreItem.DataStorePath
-                            Ensure			= 'Present'
-                        }
+				ArcGIS_DataStoreItemServer $dataStoreItem.Name
+				{
+					Name = $dataStoreItem.Name
+					ServerHostName = $ServerHostName
+					SiteAdministrator = $SiteAdministratorCredential
+					DataStoreType = $dataStoreItem.DataStoreType
+					ConnectionString = $dataStoreItem.ConnectionString
+					ConnectionSecret = $dataStoreItem.ConnectionSecret
+					DependsOn = $RemoteFederationDependsOn
+				}
+				$RemoteFederationDependsOn += @("[ArcGIS_DataStoreItemServer]$($dataStoreItem.Name)")				
+			}
 
-                        if($dataStoreItem.DataStoreEndpoint -and $dataStoreItem.DataStoreType -ieq 'BigDataFileShare')
-                        {
-                            $FileShareDSC = "Folder-$($dataStoreItem.Name)"
-                            $depends += "[ArcGIS_xSmbShare]$FileShareDSC"
-                            ArcGIS_xSmbShare $FileShareDSC 
-					        { 
-						        Ensure		= 'Present' 
-						        Name		= $dataStoreItem.DataStoreEndpoint.Substring($dataStoreItem.DataStoreEndpoint.LastIndexOf('\')+1)
-						        Path		= $dataStoreItem.DataStorePath
-						        FullAccess	= $DataStoreItemsFullControlAccessAccounts                          
-						        DependsOn	= @("[File]$FolderDsc")          
-					        }
-                        }
-                    }
-                }
-            
-                ArcGIS_DataStoreItem $dataStoreItem.Name
-                {
-                    Name						= $dataStoreItem.Name
-                    SiteAdministrator			= $SiteAdministratorCredential 
-                    DataStoreType				= $dataStoreItem.DataStoreType
-                    DataStoreConnectionString	= $dataStoreItem.DataStoreConnectionString
-                    DataStoreEndpoint			= $dataStoreItem.DataStoreEndpoint
-                    DataStorePath				= $dataStoreItem.DataStorePath
-                    Ensure						= 'Present'
-                    DependsOn					= $depends
-                }   
-				$RemoteFederationDependsOn += @("[ArcGIS_DataStoreItem]$($dataStoreItem.Name)")	
-            }        
+			if($CacheDirectories.Length -gt 0){
+				ArcGIS_Server_RegisterDirectories "RegisterCacheDirectory"
+				{ 
+					ServerHostName = $ServerHostName
+					Ensure = 'Present'
+					SiteAdministrator = $SiteAdministratorCredential
+					DirectoriesJSON = ($CacheDirectories | ConvertTo-Json)
+					DependsOn = $RemoteFederationDependsOn
+				}
+				$RemoteFederationDependsOn += @("[ArcGIS_Server_RegisterDirectories]RegisterCacheDirectory")		
+			}
 		}
 		
 

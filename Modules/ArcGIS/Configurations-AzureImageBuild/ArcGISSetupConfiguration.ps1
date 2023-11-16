@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.1"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.2"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -57,8 +57,26 @@
         }
         $Depends += "[Script]SetAutomaticPageFileManagement"
 
+        Script CleanInstallDotNetCore6HostingBunde
+        {
+            TestScript = { $false }
+            GetScript = { $null }
+            SetScript = {
+                $url = "https://github.com/dotnet/cli-lab/releases/download/1.6.0/dotnet-core-uninstall-1.6.0.msi"
+                Start-BitsTransfer -Source $url -Destination "c:/temp"
+                Start-Process "msiexec.exe" -Wait -Verbose -ArgumentList "/I C:\temp\dotnet-core-uninstall-1.6.0.msi /norestart /qn" -NoNewWindow -PassThru
+                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --sdk 
+                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --runtime
+                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --aspnet-runtime
+                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --hosting-bundle
+                Get-Package -Name "*SDK Uninstall Tool*" |  Uninstall-Package   
+                Start-Process "msiexec.exe" -Wait -Verbose -ArgumentList "/x C:\temp\dotnet-core-uninstall-1.6.0.msi /qn" -NoNewWindow -PassThru
+            }
+        }
+        $Depends += "[Script]CleanInstallDotNetCore6HostingBunde"
+
         $ProImage = $false
-        if($Installers.Length -eq 3){
+        if($Installers.Length -eq 3 -or $Installers.Length -eq 4){
             foreach($Installer in $Installers){
                 if($Installer.Name -ieq "ArcGIS Pro"){
                     $ProImage = $true
@@ -90,49 +108,69 @@
         for($i = 0; $i -lt $Installers.Length; $i++)
         {
             $Installer = $Installers[$i]
-            if($Installer.LocalPath -and $Installer.Name)
+            if($Installer.LocalPath -and $Installer.Name -and -not($Installer.SkipInstall))
             {
-                if($Installer.IsMsi -and -not($Installer.RemotePath.EndsWith('exe')))
+                $Extract = $True
+                $RemoteInstallerPath = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
+                $SetupInstallerPath = $RemoteInstallerPath
+                $InstallerPrefix = $Installer.Name.Replace(' ', '_')
+
+                if($Installer.RemotePath.EndsWith('zip')){
+                    $Extract = $False
+                    $SetupInstallerFolderPath = (Join-Path $ENV:Temp $InstallerPrefix)
+                    $SetupInstallerPath = (Join-Path $SetupInstallerFolderPath $Installer.SetupName)
+
+                    Archive "Extract-$($InstallerPrefix)"
+                    {
+                        Destination = $SetupInstallerFolderPath
+                        Path = $RemoteInstallerPath
+                        Ensure = 'Present'
+                        DependsOn = $Depends           
+                    }
+                }
+
+                if($Installer.IsMsi -and -not($SetupInstallerPath.EndsWith('exe')))
                 {
                     if($Installer.RemotePath.EndsWith('msu')) # Is a windows update package?
                     {
-                        ArcGIS_xWindowsUpdate "xWU_$($Installer.Name.Replace(' ', '_'))"
+                        ArcGIS_xWindowsUpdate "xWU_$($InstallerPrefix)"
                         {
                             Ensure = $Ensure
-                            Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
+                            Path = $SetupInstallerPath
                             Id = $Installer.ProductId
                             DependsOn = $Depends
                         }
-                        $Depends += "[ArcGIS_xWindowsUpdate]xWU_$($Installer.Name.Replace(' ', '_'))"
+                        $Depends += "[ArcGIS_xWindowsUpdate]xWU_$($InstallerPrefix)"
                     }
                     else
                     {
-                        ArcGIS_InstallMsiPackage "AIMP_$($Installer.Name.Replace(' ', '_'))"
+                        ArcGIS_InstallMsiPackage "AIMP_$($InstallerPrefix)"
                         {
                             Name = $Installer.Name
-                            Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
+                            Path = $SetupInstallerPath
                             Ensure = $Ensure
                             ProductId = $Installer.ProductId
                             Arguments = $ExecutionContext.InvokeCommand.ExpandString($Installer.Arguments)
                             DependsOn = $Depends
                         }
-                        $Depends += "[ArcGIS_InstallMsiPackage]AIMP_$($Installer.Name.Replace(' ', '_'))"
+                        $Depends += "[ArcGIS_InstallMsiPackage]AIMP_$($InstallerPrefix)"
                     }
                 }
                 else
                 {
                     if(-not($Installer.Name -eq "ArcGIS Pro" -and $Installer.Version -eq '3.0')){
-                        ArcGIS_Install "AI_$($Installer.Name.Replace(' ', '_'))"
+                        ArcGIS_Install "AI_$($InstallerPrefix)"
                         {
                             Name = $Installer.Name
-                            Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $Installer.RemotePath)
+                            Path = $SetupInstallerPath
                             Version = "00"
                             Ensure = $Ensure
                             ProductId = $Installer.ProductId
                             Arguments = $ExecutionContext.InvokeCommand.ExpandString($Installer.Arguments)
+                            Extract = $Extract
                             DependsOn = $Depends
                         }
-                        $Depends += "[ArcGIS_Install]AI_$($Installer.Name.Replace(' ', '_'))"
+                        $Depends += "[ArcGIS_Install]AI_$($InstallerPrefix)"
 
                         if(($Installer.Patches).Length -gt 0) {
                             ArcGIS_InstallPatch "$($Installer.Name)InstallPatch"
@@ -225,6 +263,18 @@
                     DependsOn       = $Depends
                 }
                 $Depends += "[File]RemoveFile-$FileNameResourceName"
+            }
+
+            @("C:\\arcgismissionserver", "C:\\arcgisnotebookserver","C:\\portalforarcgis") | ForEach-Object {
+                $FileNameResourceName = $_.Replace('\', '_').Replace(':', '_')
+                File "RemoveFolder-$FileNameResourceName"
+                {
+                    Ensure          = "Absent"
+                    Type            = "File"
+                    DestinationPath = $_
+                    DependsOn       = $Depends
+                }
+                $Depends += "[File]RemoveFolder-$FileNameResourceName"
             }
         }
     }

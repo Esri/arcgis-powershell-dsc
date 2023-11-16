@@ -97,7 +97,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_ServerUpgrade 

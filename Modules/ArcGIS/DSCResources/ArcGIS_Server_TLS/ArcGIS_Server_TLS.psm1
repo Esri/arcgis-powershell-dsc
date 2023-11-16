@@ -93,8 +93,8 @@ function Set-TargetResource
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
 	$ServerUrl = "https://$($FQDN):$($SitePort)"
     
-    Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin/" 
-    Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+    Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin/"
+    Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
     $Referer = $ServerUrl
                       
     $token = Get-ServerToken -ServerEndPoint $ServerURL -Credential $SiteAdministrator -Referer $Referer
@@ -103,7 +103,7 @@ function Set-TargetResource
     }
 
     # Get the current security configuration
-    if($ServerType -ine "NotebookServer" -or $ServerType -ine "MissionServer"){
+    if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer"){
         $UpdateSecurityConfig = $False
         Write-Verbose 'Getting security config for site'
         $secConfig = Get-SecurityConfig -ServerURL $ServerURL -Token $token.token -Referer $Referer
@@ -146,7 +146,7 @@ function Set-TargetResource
 
             Write-Verbose "Waiting for Url '$($ServerUrl)/arcgis/admin' to respond"
             Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin/" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 90 
-            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
         }
     }
 
@@ -205,7 +205,7 @@ function Set-TargetResource
                     Start-Sleep -Seconds 30
                     Write-Verbose "Waiting for Url '$ServerUrl/arcgis/admin' to respond"
                     Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
-                    Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+                    Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
                 }
 
                 #Delete Certificate
@@ -234,7 +234,7 @@ function Set-TargetResource
 
         if($ImportCert){
             Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
-            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
 
             # Import the Supplied Certificate  
             Write-Verbose "Importing Supplied Certificate with Alias $WebServerCertificateAlias"
@@ -252,10 +252,10 @@ function Set-TargetResource
             Start-Sleep -Seconds 30
             Write-Verbose "Waiting for Url '$ServerUrl/arcgis/admin' to respond"
             Wait-ForUrl -Url "$ServerUrl/arcgis/admin" -SleepTimeInSeconds 15 -MaxWaitTimeInSeconds 150 -HttpMethod 'GET' -Verbose
-            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
 
             # Restart Geoevent
-            if($ServerType -ine "NotebookServer" -or $ServerType -ine "MissionServer"){ #TODO - This will cause issues in Azure, where we have Geoevent and WFM running.
+            if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer"){ #TODO - This will cause issues in Azure, where we have Geoevent and WFM running.
                 ### If the SSL Certificate is changed. Restart the GeoEvent Service so that it will pick up the new certificate 
                 $GeoEventServiceName = 'ArcGISGeoEvent' 
                 $GeoEventService = Get-Service -Name $GeoEventServiceName -ErrorAction Ignore
@@ -286,18 +286,19 @@ function Set-TargetResource
     if($null -ne $SslRootOrIntermediate){ #RootOrIntermediateCertificate
         $RestartRequired = $false
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
+        $AllCertificates = if($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer"){ $Certs.sslCertificates }else{ $Certs.certificates}
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
             $UploadRootOrIntermediateCertificate = $False
-            if ($Certs.certificates -icontains $key.Alias){
+            if ($AllCertificates -icontains $key.Alias){
                 Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates."
-                $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias -Verbose
+                $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias.ToLower() -Verbose
                 Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.Thumbprint)"
                 $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $key.Path
                 Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."
                 if($RootOrIntermediateCertForMachine.Thumbprint -ine $NewCert.Thumbprint){
                     Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) doesn't match that of existing cetificate. Deleting existing certificate and uploading a new one"
                     $UploadRootOrIntermediateCertificate = $True
-                    $res = Invoke-DeleteSSLCertForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias
+                    $res = Invoke-DeleteSSLCertForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias.ToLower()
                     Write-Verbose "Delete existing Certificate Operation result - $($res | ConvertTo-Json)"
                 }else{
                     Write-Verbose "Thumbprints for Certificate with Alias $($key.Alias) match that of existing cetificate."
@@ -309,7 +310,7 @@ function Set-TargetResource
 
             if($UploadRootOrIntermediateCertificate){
                 try{
-                    Import-RootOrIntermediateCertificate -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -CertAlias $key.Alias -CertificateFilePath $key.Path
+                    Import-RootOrIntermediateCertificate -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -CertAlias $key.Alias.ToLower() -CertificateFilePath $key.Path
                     if(-not($RestartRequired)){
                         $RestartRequired = $True
                     }
@@ -327,7 +328,7 @@ function Set-TargetResource
             Start-Sleep -Seconds 30
             Write-Verbose "Waiting for Url '$ServerURL/arcgis/admin' to respond"
             Wait-ForUrl -Url "$ServerURL/arcgis/admin" -SleepTimeInSeconds 10 -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
-            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+            Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healtcheck?f=json" -HttpMethod 'GET'
         }
     }
 }
@@ -384,7 +385,7 @@ function Test-TargetResource
     $ServerUrl = "https://$($FQDN):$($SitePort)"
         
     Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin/" -MaxWaitTimeInSeconds 60 -HttpMethod 'GET'
-    Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
+    Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
 
     $Referer = $ServerUrl
     $token = Get-ServerToken -ServerEndPoint $ServerUrl -Credential $SiteAdministrator -Referer $Referer 
@@ -392,7 +393,7 @@ function Test-TargetResource
         throw "Unable to retrieve token for Site Administrator"
     }
 
-    if($ServerType -ine "NotebookServer" -or $ServerType -ine "MissionServer"){
+    if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer"){
         $secConfig = Get-SecurityConfig -ServerURL $ServerURL -Token $token.token -Referer $Referer
         if($result){
             if($EnableHTTPSOnly){
@@ -435,54 +436,52 @@ function Test-TargetResource
         }
     }
 
-    if($CertificateFileLocation){
-        if(-not(Test-Path $CertificateFileLocation)){
-            throw "Certificate File '$CertificateFileLocation' is not found"
-        }
-        
-        $CertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $WebServerCertificateAlias.ToLower() -Verbose
-        if($null -ne $CertForMachine){ # Certificate with Alias Found
-            $NewCertIssuer = $null
-            $NewCertThumbprint = $null
-            if($CertificateFileLocation -and ($null -ne $CertificatePassword)) {
-                $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-                $cert.Import($CertificateFileLocation,$CertificatePassword.GetNetworkCredential().Password,'DefaultKeySet')
-                $NewCertIssuer = $cert.Issuer
-                $NewCertThumbprint = $cert.Thumbprint
-                Write-Verbose "Issuer for the supplied certificate is $NewCertIssuer"
-                Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
+    if($result){
+        if($CertificateFileLocation){
+            if(-not(Test-Path $CertificateFileLocation)){
+                throw "Certificate File '$CertificateFileLocation' is not found"
             }
-            $ExistingCertIssuer = $CertForMachine.Issuer    
-            $ExistingCertThumbprint = $CertForMachine.Thumbprint
-            Write-Verbose "Existing Cert Issuer $ExistingCertIssuer and Thumbprint $ExistingCertThumbprint"
-            $machineDetails = Get-MachineDetails -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName
-            if($ExistingCertThumbprint -ine $NewCertThumbprint){ #Certificate Thumbprint doesn't match
-                Write-Verbose "Thumbprints for Certificate with Alias $WebServerCertificateAlias doesn't match that of existing cetificate."
-                if($WebServerCertificateAlias -ieq $machineDetails.webServerCertificateAlias){
-                    Write-Verbose "Certificate with alias $WebServerCertificateAlias matches the WebServerCertificateAlias."
+            
+            $CertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $WebServerCertificateAlias.ToLower() -Verbose
+            if($null -ne $CertForMachine){ # Certificate with Alias Found
+                $NewCertIssuer = $null
+                $NewCertThumbprint = $null
+                if($CertificateFileLocation -and ($null -ne $CertificatePassword)) {
+                    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+                    $cert.Import($CertificateFileLocation,$CertificatePassword.GetNetworkCredential().Password,'DefaultKeySet')
+                    $NewCertIssuer = $cert.Issuer
+                    $NewCertThumbprint = $cert.Thumbprint
+                    Write-Verbose "Issuer for the supplied certificate is $NewCertIssuer"
+                    Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
                 }
-                $result = $False
-
-            }else{ # Thumbprint matches
-                if($WebServerCertificateAlias -ine $machineDetails.webServerCertificateAlias){
-                    Write-Verbose "Certificate with alias $WebServerCertificateAlias already exists for machine $MachineName, but web server certificate alias $($machineDetails.webServerCertificateAlias) doesn't match."
+                $ExistingCertIssuer = $CertForMachine.Issuer    
+                $ExistingCertThumbprint = $CertForMachine.Thumbprint
+                Write-Verbose "Existing Cert Issuer $ExistingCertIssuer and Thumbprint $ExistingCertThumbprint"
+                $machineDetails = Get-MachineDetails -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName
+                if($ExistingCertThumbprint -ine $NewCertThumbprint){ #Certificate Thumbprint doesn't match
+                    Write-Verbose "Thumbprints for Certificate with Alias $WebServerCertificateAlias doesn't match that of existing cetificate."
                     $result = $False
-                } else { #Everything Matches
-                    Write-Verbose "Certificate with alias $WebServerCertificateAlias already exists for machine $MachineName and matches all the requirements."
+                }else{ # Thumbprint matches
+                    if($WebServerCertificateAlias -ine $machineDetails.webServerCertificateAlias){
+                        Write-Verbose "Certificate with alias $WebServerCertificateAlias already exists for machine $MachineName, but web server certificate alias $($machineDetails.webServerCertificateAlias) doesn't match."
+                        $result = $False
+                    } else { #Everything Matches
+                        Write-Verbose "Certificate with alias $WebServerCertificateAlias already exists for machine $MachineName and matches all the requirements."
+                    }
                 }
+            }else{ #Certificate with CName/Alias not found
+                Write-Verbose "Certificate with Alias $WebServerCertificateAlias not found for machine $MachineName"
+                $result = $False
             }
-        }else{ #Certificate with CName/Alias not found
-            Write-Verbose "Certificate with Alias $WebServerCertificateAlias not found for machine $MachineName"
-            $result = $False
         }
     }
-
     if($result -and $null -ne $SslRootOrIntermediate){
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
+        $AllCertificates = if($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer"){ $Certs.sslCertificates }else{ $Certs.certificates}
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
-            if ($Certs.certificates -icontains $key.Alias){
+            if ($AllCertificates -icontains $key.Alias){
                 Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates. Validating if thumbprint matches the existing certificate"
-                $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias -Verbose
+                $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName -SSLCertName $key.Alias.ToLower() -Verbose
                 Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.Thumbprint)"
                 $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $key.Path
                 Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."

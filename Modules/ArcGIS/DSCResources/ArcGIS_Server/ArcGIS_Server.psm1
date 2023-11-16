@@ -57,13 +57,15 @@ function Get-TargetResource
         [System.String]
         $Ensure,    
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 
@@ -120,13 +122,15 @@ function Set-TargetResource
 		[System.String]
 		$Ensure,
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
 		[System.String]
 		$ConfigurationStoreLocation,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionString,
 
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigStoreCloudStorageConnectionSecret,
 
@@ -340,7 +344,7 @@ function Test-TargetResource
         [System.String]
         $ServerHostName,
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
         [System.String]
         $ConfigurationStoreLocation,
         
@@ -518,10 +522,13 @@ function Invoke-CreateSite
         if($ConfigStoreCloudStorageConnectionString.IndexOf('AccountName=') -gt -1){
             Write-Verbose "Using Azure Cloud Storage for the config store"
             $configStoreConnection = @{ 
-                                        type= "AZURE"; 
-                                        connectionString = $ConfigStoreCloudStorageConnectionString;
-                                        connectionSecret = $ConfigStoreCloudStorageConnectionSecret
-                                    }
+                type= "AZURE"; 
+                connectionString = $ConfigStoreCloudStorageConnectionString;
+            }
+
+            if($ConfigStoreCloudStorageConnectionSecret -and $ConfigStoreCloudStorageConnectionSecret.Length -gt 0){
+                $configStoreConnection.Add("connectionSecret",$ConfigStoreCloudStorageConnectionSecret)
+            }
         }else{
             Write-Verbose "Using AWS Cloud Storage for the config store"
             $configStoreConnection = @{ 

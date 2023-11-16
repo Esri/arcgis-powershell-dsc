@@ -18,11 +18,12 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -Name ArcGIS_Tomcat
 
     Node $AllNodes.NodeName {
 
@@ -66,13 +67,9 @@
         {
             $NodeRoleArray += "DataStore"
         }
-        if($Node.Role -icontains "ServerWebAdaptor")
+        if($Node.Role -icontains "WebAdaptor")
         {
-            $NodeRoleArray += "ServerWebAdaptor"
-        }
-        if($Node.Role -icontains "PortalWebAdaptor")
-        {
-            $NodeRoleArray += "PortalWebAdaptor"
+            $NodeRoleArray += "WebAdaptor"
         }
         if($Node.Role -icontains "Desktop")
         {
@@ -102,7 +99,7 @@
                     $ServerFeatureSet = @()
                     $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
                     if($ServerTypeName -ieq "Server"){
-                        if($ConfigurationData.ConfigData.Version -ieq "11.0" -or $ConfigurationData.ConfigData.Version -ieq "11.1"){
+                        if(@("11.0","11.1","11.2") -iContains $ConfigurationData.ConfigData.Version){
                             $EnableDontet = $True
                             if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
                                 $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
@@ -368,7 +365,7 @@
                     $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
 
                     $DsFeatureSet = $Null
-                    if($ConfigurationData.ConfigData.Version -ieq "11.0" -or $ConfigurationData.ConfigData.Version -ieq "11.1") {
+                    if(@("11.0","11.1","11.2") -iContains $ConfigurationData.ConfigData.Version) {
                         $DsFeatureSet = $Node.DataStoreTypes
                         if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
                             $DsFeatureSet = @("ALL")
@@ -402,73 +399,109 @@
                         }
                     } 
                 }
-                {($_ -eq "ServerWebAdaptor") -or ($_ -eq "PortalWebAdaptor")}
-                {
-                    $PortalWebAdaptorSkip = $False
-                    if(($Node.Role -icontains 'ServerWebAdaptor') -and ($Node.Role -icontains 'PortalWebAdaptor'))
-                    {
-                        if($NodeRole -ieq "PortalWebAdaptor")
-                        {
-                            $PortalWebAdaptorSkip = $True
-                        }
-                    }
-                    
-                    if(-not($PortalWebAdaptorSkip))
-                    {
-                        $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                        $WebsiteId = if($ConfigurationData.ConfigData.WebAdaptor.WebSiteId){ $ConfigurationData.ConfigData.WebAdaptor.WebSiteId }else{ 1 } 
-                        if(($Node.Role -icontains 'PortalWebAdaptor') -and $ConfigurationData.ConfigData.PortalContext)
-                        {
-                            $PortalWAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($ConfigurationData.ConfigData.PortalContext) WEBSITE_ID=$($WebSiteId)"
-                            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
-                                $PortalWAArguments += " CONFIGUREIIS=TRUE"
-                            }
-                            ArcGIS_Install WebAdaptorInstallPortal
-                            { 
-                                Name = "PortalWebAdaptor"
-                                Version = $ConfigurationData.ConfigData.Version
-                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
-                                Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
-                                Arguments = $PortalWAArguments
-                                WebAdaptorContext = $ConfigurationData.ConfigData.PortalContext
-                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
-	                            WebAdaptorWebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
-                                EnableMSILogging = $EnableMSILogging
-                                Ensure = "Present"
+                'WebAdaptor'
+                {   
+                    $IsJavaWebAdaptor =if($ConfigurationData.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $ConfigurationData.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
+                    if($IsJavaWebAdaptor){
+                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("ApacheTomcat")){
+                            $MachineFQDN = Get-FQDN $Node.NodeName
+                            $ApacheTomcatConfig = $ConfigurationData.ConfigData.WebAdaptor.Installer.ApacheTomcat
+                            ArcGIS_Tomcat InstallApacheTomcat
+                            {
+                                Version = $ApacheTomcatConfig.Version
+                                ServiceName = $ApacheTomcatConfig.ServiceName
+                                InstallerArchivePath = $ApacheTomcatConfig.Path
+                                InstallDirectory = $ApacheTomcatConfig.InstallDir
+                                SSLProtocols = $ApacheTomcatConfig.SSLProtocols
+                                ExternalDNSName = if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{ $MachineFQDN }
+                                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{ $null}
+                                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{ $null}
                             }
                         }
 
-                        if(($Node.Role -icontains 'ServerWebAdaptor') -and $Node.ServerContext)
-                        {
-                            $ServerWAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Node.ServerContext) WEBSITE_ID=$($WebSiteId)"
-                            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
-                                $ServerWAArguments += " CONFIGUREIIS=TRUE"
-                            }
-                            ArcGIS_Install WebAdaptorInstallServer
-                            { 
-                                Name = "ServerWebAdaptor"
-                                Version = $ConfigurationData.ConfigData.Version
-                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
-                                Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
-                                Arguments = $ServerWAArguments
-                                WebAdaptorContext = $Node.ServerContext
-                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
-	                            WebAdaptorWebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
-                                EnableMSILogging = $EnableMSILogging
-                                Ensure = "Present"
-                            }
+                        $WAArguments = "/qn ACCEPTEULA=YES"
+                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("InstallDir")){
+                            $WAArguments += " INSTALLDIR=`"$($ConfigurationData.ConfigData.WebAdaptor.Installer.InstallDir)`""
                         }
-                    }
 
-                    if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir -and -not($PortalWebAdaptorSkip)) {
-                        ArcGIS_InstallPatch WebAdaptorInstallPatch
-                        {
-                            Name = "WebAdaptor"
+                        ArcGIS_Install WebAdaptorJavaInstall
+                        { 
+                            Name = "WebAdaptorJava"
                             Version = $ConfigurationData.ConfigData.Version
-                            DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
-                            PatchesDir = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir
-                            PatchInstallOrder = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchInstallOrder
+                            Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
+                            Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
+                            Arguments = $WAArguments
+                            EnableMSILogging = $EnableMSILogging
                             Ensure = "Present"
+                        }
+
+                        if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir) { 
+                            #TODO - this is not working (Even if the patch is installed, we will have to update the war file manually to get the patch applied)
+                            ArcGIS_InstallPatch WebAdaptorJavaInstallPatch
+                            {
+                                Name = "WebAdaptorJava"
+                                Version = $ConfigurationData.ConfigData.Version
+                                DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
+                                PatchesDir = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir
+                                PatchInstallOrder = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchInstallOrder
+                                Ensure = "Present"
+                            }
+                        }
+                    }
+                    else
+                    {
+                        foreach($WA in $Node.WebAdaptorConfig){
+                            $Context = "arcgis"
+                            if($WA.ContainsKey("Context")){
+                                $Context = $WA.Context
+                            }else{
+                                if($WA.Role -ieq "Server"){
+                                    $Context = $ConfigurationData.ConfigData.ServerContext
+                                }elseif($WA.Role -ieq "Portal"){
+                                    $Context = $ConfigurationData.ConfigData.PortalContext
+                                }
+                            }
+                            $WebSiteId = 1
+                            if($WA.ContainsKey("WebSiteId")){
+                                $WebSiteId = $WA.WebSiteId
+                            }else{
+                                if($ConfigurationData.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){
+                                    $WebsiteId = $ConfigurationData.ConfigData.WebAdaptor.WebSiteId 
+                                }
+                            }
+                            
+                            $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                            $WAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Context) WEBSITE_ID=$($WebSiteId)"
+                            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
+                                $WAArguments += " CONFIGUREIIS=TRUE"
+                            }
+                            
+                            $WAName = "WebAdaptorIIS-$($WA.Role)-$($Context)"
+                            ArcGIS_Install "$($WAName)Install"
+                            {
+                                Name = $WAName
+                                Version = $ConfigurationData.ConfigData.Version
+                                Path = $ConfigurationData.ConfigData.WebAdaptor.Installer.Path
+                                Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
+                                Arguments = $WAArguments
+                                WebAdaptorContext = $Context
+                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+                                WebAdaptorWebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
+                                EnableMSILogging = $EnableMSILogging
+                                Ensure = "Present"
+                            }
+                        }
+
+                        if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir) {
+                            ArcGIS_InstallPatch "WebAdaptorIIS-InstallPatches"
+                            {
+                                Name = "WebAdaptorIIS"
+                                Version = $ConfigurationData.ConfigData.Version
+                                DownloadPatches = if($ConfigurationData.ConfigData.DownloadPatches){ $ConfigurationData.ConfigData.DownloadPatches }else{ $False }
+                                PatchesDir = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir
+                                PatchInstallOrder = $ConfigurationData.ConfigData.WebAdaptor.Installer.PatchInstallOrder
+                                Ensure = "Present"
+                            }
                         }
                     }
                 }

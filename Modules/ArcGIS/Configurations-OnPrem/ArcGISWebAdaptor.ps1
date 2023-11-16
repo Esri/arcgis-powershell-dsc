@@ -1,6 +1,10 @@
 ﻿Configuration ArcGISWebAdaptor
 {
     param(
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $Version,
+
         [System.Management.Automation.PSCredential]
         $ServerPrimarySiteAdminCredential,
 
@@ -19,8 +23,11 @@
         [System.String]
         $ServerRole,
 
-        [System.Int32]
-		$WebSiteId = 1,
+        [System.Boolean]
+		$IsJavaWebAdaptor = $False,
+
+        [System.String]
+        $JavaWebServerWebAppDirectory,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -28,7 +35,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
@@ -48,9 +55,9 @@
 
         ArcGIS_xFirewall "WebAdaptorFirewallRules$($Node.NodeName)"
         {
-            Name                  = "IIS-ARR" 
-            DisplayName           = "IIS-ARR" 
-            DisplayGroup          = "IIS-ARR" 
+            Name                  = "WebAdaptor-ARR" 
+            DisplayName           = "WebAdaptor-ARR" 
+            DisplayGroup          = "WebAdaptor-ARR" 
             Ensure                = 'Present'  
             Access                = "Allow" 
             State                 = "Enabled" 
@@ -60,66 +67,83 @@
         }
         $Depends += "[ArcGIS_xFirewall]WebAdaptorFirewallRules$($Node.NodeName)"
 
-        Service "StartW3SVC$($Node.NodeName)"
-        {
-            Name = 'W3SVC'
-            StartupType = 'Automatic'
-            Ensure = 'Present'
-            State = 'Running'
-            DependsOn = $Depends
-        }
-        $Depends += "[Service]StartW3SVC$($Node.NodeName)"
-        
-        if($OverrideHTTPSBinding){
-            if($Node.SSLCertificate){
-                ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
-                {
-                    WebSiteId               = $WebSiteId
-                    ExternalDNSName         = $Node.SSLCertificate.CName
-                    Ensure                  = 'Present'
-                    CertificateFileLocation = $Node.SSLCertificate.Path
-                    CertificatePassword     = $Node.SSLCertificate.Password
-                    DependsOn               = $Depends
-                }
-            }else{
-                ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)"
-                {
-                    WebSiteId       = $WebSiteId
-                    ExternalDNSName = $MachineFQDN 
-                    Ensure          = 'Present'
-                    DependsOn       = $Depends
-                }
-            }
-            $Depends += "[ArcGIS_IIS_TLS]WebAdaptorCertificateInstall$($Node.NodeName)"
-        }
-        
-        if($Node.IsServerWebAdaptorEnabled -and $PrimaryServerMachine){
-            ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)"
+        if($IsJavaWebAdaptor){
+            Write-Verbose "Java Web Server is assumed to be already configured!"
+        }else{
+            Service "StartW3SVC$($Node.NodeName)"
             {
-                Ensure              = "Present"
-                Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }else{ 'Server' }
-                HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN } 
-                ComponentHostName   = (Get-FQDN $PrimaryServerMachine)
-                Context             = $Node.ServerContext
-                OverwriteFlag       = $False
-                SiteAdministrator   = $ServerPrimarySiteAdminCredential
-                AdminAccessEnabled  = if($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer"){ $true }else{ if($Node.AdminAccessEnabled) { $true } else { $false } }
-                DependsOn           = $Depends
+                Name = 'W3SVC'
+                StartupType = 'Automatic'
+                Ensure = 'Present'
+                State = 'Running'
+                DependsOn = $Depends
             }
-            $Depends += "[ArcGIS_WebAdaptor]ConfigureServerWebAdaptor$($Node.NodeName)"
+            $Depends += "[Service]StartW3SVC$($Node.NodeName)"
+
+            if($OverrideHTTPSBinding){
+                $UniqueWebsiteIds = $Node.WebAdaptorConfig.WebSiteId | Select-Object -Unique 
+                foreach($WebSiteId in $UniqueWebsiteIds){
+                    if($Node.SSLCertificate){
+                        ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)$($WebSiteId)"
+                        {
+                            WebSiteId               = $WebSiteId
+                            ExternalDNSName         = $Node.SSLCertificate.CName
+                            Ensure                  = 'Present'
+                            CertificateFileLocation = $Node.SSLCertificate.Path
+                            CertificatePassword     = $Node.SSLCertificate.Password
+                            DependsOn               = $Depends
+                        }
+                    }else{
+                        ArcGIS_IIS_TLS "WebAdaptorCertificateInstall$($Node.NodeName)$($WebSiteId)"
+                        {
+                            WebSiteId       = $WebSiteId
+                            ExternalDNSName = $MachineFQDN 
+                            Ensure          = 'Present'
+                            DependsOn       = $Depends
+                        }
+                    }
+                    $Depends += "[ArcGIS_IIS_TLS]WebAdaptorCertificateInstall$($Node.NodeName)$($WebSiteId)"
+                }
+            }
         }
 
-        if($Node.IsPortalWebAdaptorEnabled -and $PrimaryPortalMachine){
-            ArcGIS_WebAdaptor "ConfigurePortalWebAdaptor$($Node.NodeName)"
-            {
-                Ensure              = "Present"
-                Component           = 'Portal'
-                HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN }  
-                ComponentHostName   = (Get-FQDN $PrimaryPortalMachine)
-                Context             = $Node.PortalContext
-                OverwriteFlag       = $False
-                SiteAdministrator   = $PortalAdministratorCredential
-                DependsOn           = $Depends
+        foreach($WA in $Node.WebAdaptorConfig){
+            if($WA.Role -ieq "Server" -and $PrimaryServerMachine){
+                ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)-$($WA.Context)"
+                {
+                    Version             = $Version
+                    Ensure              = "Present"
+                    Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }else{ 'Server' }
+                    HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN } 
+                    ComponentHostName   = (Get-FQDN $PrimaryServerMachine)
+                    Context             = $WA.Context
+                    OverwriteFlag       = $False
+                    SiteAdministrator   = $ServerPrimarySiteAdminCredential
+                    AdminAccessEnabled  = if($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer"){ $true }else{ $WA.AdminAccessEnabled }
+                    IsJavaWebAdaptor    = $IsJavaWebAdaptor
+                    JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    DependsOn           = $Depends
+                }
+                $Depends += "[ArcGIS_WebAdaptor]ConfigureServerWebAdaptor$($Node.NodeName)-$($WA.Context)"
+            }
+
+            if($WA.Role -ieq "Portal" -and $PrimaryPortalMachine){
+                ArcGIS_WebAdaptor "ConfigurePortalWebAdaptor$($Node.NodeName)-$($WA.Context)"
+                {
+                    Version             = $Version
+                    Ensure              = "Present"
+                    Component           = 'Portal'
+                    HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN }  
+                    ComponentHostName   = (Get-FQDN $PrimaryPortalMachine)
+                    Context             = $WA.Context
+                    OverwriteFlag       = $False
+                    SiteAdministrator   = $PortalAdministratorCredential
+                    IsJavaWebAdaptor    = $IsJavaWebAdaptor
+                    JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    DependsOn           = $Depends
+                }
+
+                $Depends += "[ArcGIS_WebAdaptor]ConfigurePortalWebAdaptor$($Node.NodeName)-$($WA.Context)"
             }
         }
     }

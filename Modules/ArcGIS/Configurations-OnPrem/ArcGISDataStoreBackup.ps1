@@ -17,6 +17,10 @@
         [System.String]
         $PrimaryGraphStore,
 
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $PrimaryObjectStore,
+
         [Parameter(Mandatory=$false)]
         [System.Object]
         $RelationalBackups = $null,
@@ -31,11 +35,15 @@
 
         [Parameter(Mandatory=$false)]
         [System.Object]
-        $GraphStoreBackups = $null
+        $GraphStoreBackups = $null,
+
+        [Parameter(Mandatory=$false)]
+        [System.Object]
+        $ObjectStoreBackups = $null
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_DataStoreBackup
 
     Node $AllNodes.NodeName 
@@ -57,6 +65,7 @@
                     BackupType = $Backup.Type
                     BackupName = $Backup.Name
                     BackupLocation = $Backup.Location
+                    AWSS3Region = if($Backup.AWSS3Region){ $Backup.AWSS3Region }else{ $null}
                     CloudBackupCredential = $Backup.CloudCredential
                     IsDefault = $Backup.IsDefault
                     ForceDefaultRelationalBackupUpdate = $Backup.ForceDefaultRelationalBackupUpdate
@@ -75,6 +84,7 @@
                     BackupType = $Backup.Type
                     BackupName = $Backup.Name
                     BackupLocation = $Backup.Location
+                    AWSS3Region = if($Backup.AWSS3Region){ $Backup.AWSS3Region }else{ $null}
                     CloudBackupCredential = $Backup.CloudCredential
                     IsDefault = $Backup.IsDefault
                     ForceCloudCredentialsUpdate = $Backup.ForceCloudCredentialsUpdate
@@ -92,6 +102,7 @@
                     BackupType = $Backup.Type
                     BackupName = $Backup.Name
                     BackupLocation = $Backup.Location
+                    AWSS3Region = if($Backup.AWSS3Region){ $Backup.AWSS3Region }else{ $null}
                     CloudBackupCredential = $Backup.CloudCredential
                     IsDefault = $Backup.IsDefault
                     ForceCloudCredentialsUpdate = $Backup.ForceCloudCredentialsUpdate
@@ -109,6 +120,25 @@
                     BackupType = $Backup.Type
                     BackupName = $Backup.Name
                     BackupLocation = $Backup.Location
+                    AWSS3Region = if($Backup.AWSS3Region){ $Backup.AWSS3Region }else{ $null}
+                    CloudBackupCredential = $Backup.CloudCredential
+                    IsDefault = $Backup.IsDefault
+                    ForceCloudCredentialsUpdate = $Backup.ForceCloudCredentialsUpdate
+                }
+            }
+        }
+
+        if(($PrimaryObjectStore -ieq $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'ObjectStore') -and ($null -ne $ObjectStoreBackups))
+        {
+            foreach($Backup in $ObjectStoreBackups) 
+			{
+                ArcGIS_DataStoreBackup "ObjectStoreBackup-$($Backup.Name)"
+                {
+                    DataStoreType = 'ObjectStore'
+                    BackupType = $Backup.Type
+                    BackupName = $Backup.Name
+                    BackupLocation = $Backup.Location
+                    AWSS3Region = if($Backup.AWSS3Region){ $Backup.AWSS3Region }else{ $null}
                     CloudBackupCredential = $Backup.CloudCredential
                     IsDefault = $Backup.IsDefault
                     ForceCloudCredentialsUpdate = $Backup.ForceCloudCredentialsUpdate

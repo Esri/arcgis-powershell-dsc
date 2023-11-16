@@ -385,6 +385,7 @@ function Invoke-ArcGISWebRequest
             $wc.Headers.Add('Referer', $Referer)
         }
         $res = $wc.DownloadString($UrlWithQueryString)
+        $wc.Dispose()
 		Write-Verbose "Response:- $res"
 		if($res) {
 			$response = $res | ConvertFrom-Json
@@ -810,6 +811,8 @@ function Get-ArcGISProductName
         $ProductName = 'ArcGIS Server'
     }elseif($Name -ieq 'ServerDeepLearningLibraries'){
         $ProductName = 'Deep Learning Libraries for ArcGIS Server'
+    }elseif($Name -ieq 'ProDeepLearningLibraries'){
+        $ProductName = 'Deep Learning Libraries for ArcGIS Pro'
     }elseif($Name -ieq "Mission Server" -or $Name -ieq 'MissionServer'){
         $ProductName = 'ArcGIS Mission Server'
     }elseif($Name -ieq "Notebook Server" -or $Name -ieq 'NotebookServer'){
@@ -820,8 +823,10 @@ function Get-ArcGISProductName
         $ProductName = 'ArcGIS Workflow Manager Server'
     }elseif($Name -ieq "Workflow Manager WebApp" -or $Name -ieq 'WorkflowManagerWebApp'){
         $ProductName = 'ArcGIS Workflow Manager WebApp'
-    }elseif($Name -ieq "WebAdaptor" -or $Name -ieq 'ServerWebAdaptor' -or $Name -ieq 'PortalWebAdaptor'){
-        $ProductName = 'ArcGIS Web Adaptor'
+    }elseif($Name -ieq "WebAdaptorIIS"){
+        $ProductName = 'ArcGIS Web Adaptor (IIS)'
+    }elseif($Name -ieq "WebAdaptorJava"){
+        $ProductName = 'ArcGIS Web Adaptor (Java Platform)'
     }elseif($Name -ieq 'NotebookServerSamplesData'){
         $ProductName = 'ArcGIS Notebook Server Samples Data'
     }elseif($Name -ieq 'Insights'){
@@ -868,12 +873,12 @@ function Get-ComponentCode
        [CmdletBinding()]
        param
        (
-        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer", "WorkflowManagerWebApp","Monitor","WebStyles", "WebAdaptor","Desktop","Pro","LicenseManager","NotebookServerSamplesData","Insights","ServerDataInteroperability","DesktopDataInteroperability","ProDataInteroperability","ServerDataReviewer","DesktopDataReviewer","ServerWorkflowManagerClassic","DesktopWorkflowManagerClassic","ProWorkflowMangerClassic", "ServerLocationReferencing","DesktopLocationReferencing","ServerMappingChartingSolution","DesktopMappingChartingSolution","DesktopBackgroundGP64Bit","VideoServer")]
+        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer", "WorkflowManagerWebApp","Monitor", "WebStyles", "WebAdaptorIIS", "WebAdaptorJava","Desktop","Pro","LicenseManager","NotebookServerSamplesData","Insights","ServerDataInteroperability","DesktopDataInteroperability","ProDataInteroperability","ServerDataReviewer","DesktopDataReviewer","ServerWorkflowManagerClassic","DesktopWorkflowManagerClassic","ProWorkflowMangerClassic", "ServerLocationReferencing","DesktopLocationReferencing","ServerMappingChartingSolution","DesktopMappingChartingSolution","DesktopBackgroundGP64Bit","VideoServer","ServerDeepLearningLibraries","ProDeepLearningLibraries")]
         [parameter(Mandatory = $true)]
         [System.String]
         $ComponentName,
 
-        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","2.6","2.7","2.8","2.9","3.0","3.0.3","3.1","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","10.8.1","10.8.2","10.9","10.9.1","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0","2020.1","2020.2","2020.3","2021.0","2022.0","3.4","3.4.1","2021.1","2021.1.1","2021.2.1", "2021.2", "2021.3.1", "2021.3","2022.1","2022.1.1","2022.2","2022.3","2023.1","11.0","11.1")]
+        [ValidateSet("2.0","2.1","2.2","2.3","2.4","2.5","2.6","2.7","2.8","2.9","3.0","3.0.3","3.1","3.2","10.4","10.4.1","10.5","10.5.1","10.6","10.6.1","10.7","10.7.1","10.8","10.8.1","10.8.2","10.9","10.9.1","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0","2020.1","2020.2","2020.3","2021.0","2022.0","3.4","3.4.1","2021.1","2021.1.1","2021.2.1", "2021.2", "2021.3.1", "2021.3","2022.1","2022.1.1","2022.2","2022.3","2023.0","2023.1","11.0","11.1","11.2")]
         [parameter(Mandatory = $true)]
         [System.String]
         $Version
@@ -895,6 +900,7 @@ function Get-ComponentCode
             '10.9.1' = 'E4A5FD24-5C61-4846-B084-C7AD4BB1CF19'
             '11.0' = 'A14CF942-415B-461C-BE3C-5B37E34BC6AE'
             '11.1' = '0F6C2D4F-9D41-4D25-A8AF-51E328D7CD8F'
+            '11.2' = '4130E39E-FD8C-4DE0-AE91-AFEC71063B2D'
         }
         Portal = @{      
             '10.4' = 'FA6FCD2D-114C-4C04-A8DF-C2E43979560E'
@@ -911,6 +917,7 @@ function Get-ComponentCode
             '10.9.1' = 'B5C5195E-2446-45F9-B49E-CC0E1C358E7C'
             '11.0' = 'EB809599-C650-486A-85C6-D37618754AE4'
             '11.1' = 'BED48866-C615-4790-AD87-01F114C1A999'
+            '11.2' = 'F03C23C1-1F2C-42D0-85C4-38F49B710035'
         }
         WebStyles = @{ 
             '10.7.1' = 'B2E42A8D-1EE9-4610-9932-D0FCFD06D2AF'
@@ -920,6 +927,7 @@ function Get-ComponentCode
             '10.9.1' = '2E63599E-08C2-4401-8FD7-95AAA64EA087'
             '11.0' = 'CCA0635D-E306-4C42-AB81-F4032D731397'
             '11.1' = '67EDD399-CBD8-48C8-8B72-D79FBBBD79B2'
+            '11.2' = '0508DE8B-B6B2-42AD-B955-77451C3ACB60'
         }
         DataStore = @{             
             '10.4' = 'C351BC6D-BF25-487D-99AB-C963D590A8E8'
@@ -936,6 +944,7 @@ function Get-ComponentCode
             '10.9.1' = '30BB3697-7815-406B-8F0C-EAAFB723AA97'
             '11.0' = 'ABCEFF81-861D-482A-A20E-8542814C03BD'
             '11.1' = '391B3A39-0951-43E3-991D-82C82CA6E4A4'
+            '11.2' = 'FE7F4A14-4D96-4B31-8937-BA19C0A92DDB'
         }        
         GeoEvent = @{             
             '10.4' = '188191AE-5A83-49E8-88CB-1F1DB05F030D'
@@ -952,6 +961,7 @@ function Get-ComponentCode
             '10.9.1' = 'F5C3D729-0B74-419D-9154-D05C63606A94'
             '11.0' = '98B0A1CC-5CE4-4311-85DD-46ABD08232C5'
             '11.1' = '475EA5B0-E454-4870-BB1F-AB81EDDEC2A7'
+            '11.2' = '7CBB01F9-90D3-42A6-99A8-70E773B5E8C5'
         }
         NotebookServer = @{
             '10.7' = '3721E3C6-6302-4C74-ACA4-5F50B1E1FE3A'
@@ -962,12 +972,14 @@ function Get-ComponentCode
             '10.9.1' = '39DA210D-DE33-4223-8268-F81D2674B501'
             '11.0' = '62777D3B-5F08-4945-8EA2-C2B518D88AEA'
             '11.1' = 'B449287C-6C2B-4D83-BD27-B416A2171FD5'
+            '11.2' = '7CF68441-8657-48C3-93C2-DB2DC3EFA9E5'
         }
         NotebookServerSamplesData = @{
             '10.9' = 'C2ECEE9C-961A-4EAF-9BD4-9FB0EBCFA535'
             '10.9.1' = '02AB631F-4427-4426-B515-8895F9315D22'
             '11.0' = '2F9BC4EA-B2D9-43C6-98CA-06A9DDFB6A63'
             '11.1' = 'A8752FEB-3783-44FC-AC1D-A9DACA94822E'
+            '11.2' = '3A9E12F6-7D4B-4DA2-BA2C-C9D0E900CF94'
         }
         MissionServer = @{
             '10.8' = 'A1A58B32-2ADF-4EAD-AC84-BE97318CA569'
@@ -976,9 +988,11 @@ function Get-ComponentCode
             '10.9.1' = '2BE7F20D-572A-4D3E-B989-DC9BDFFB75AA'
             '11.0' = 'A0E25148-B33D-442F-9EE4-B35AEC2DEA6D'
             '11.1' = 'C8723ED4-272B-43B5-88D6-98F484DFFF09'
+            '11.2' = '5721BCA3-D4BB-42D3-A719-787D0B11F478'
         }
         VideoServer = @{
             '11.1' = 'B64FE410-AAEF-489D-8818-6007AFCBF9F2'
+            '11.2' = 'D68D1CBB-990B-4F5B-916A-A7B89EE33716'
         }
         WorkflowManagerServer = @{
             '10.8.1' = 'C0F0FCAB-2B65-4B8E-8614-531690B7CF9C'
@@ -986,6 +1000,7 @@ function Get-ComponentCode
             '10.9.1' = '9EF4FCC5-64EE-4719-B050-41E5AB85857B'
             '11.0' = '1B27C0F2-81E9-4F1F-9506-46F937605674'
             '11.1' = 'BCCADE20-4363-4D62-AE55-BB51329210CF'
+            '11.2' = '434D85E9-9CFB-4683-9FFF-5C38CDEBD676'
         }
         WorkflowManagerWebApp = @{
             '10.8.1' = '96A58AC8-C040-4E4A-A118-BE963BF1A8CF'
@@ -996,6 +1011,8 @@ function Get-ComponentCode
             '10.7.1' = 'FF811F17-42F9-4539-A879-FC8EDB9D6C46'
             '10.8' = '98AA3E79-18C5-4D51-9477-C844C6EBC6F3'
             '10.8.1' = 'F2E2767F-B7FB-43DD-A682-31544DF29D48'
+            '2023.0' = '42C82D46-F055-4D45-A6DC-44A32E48016F'
+            '2023.1' = '52D96DC7-0776-47BB-8ACA-B6BE70692D9F'
         }
         Desktop = @{
             '10.4' = '72E7DF0D-FFEE-43CE-A5FA-43DFC25DC087'
@@ -1022,6 +1039,7 @@ function Get-ComponentCode
             '2021.1' = 'DA36A877-1BF2-4E28-9CE3-D3A07FB645A3'
             '2022.0' = 'A3AC9C93-E045-4CAE-AAE4-F62A8E669E02'
             '2022.1' = '96804860-2C2F-4448-AE47-76CB160AD043'
+            '2023.0' = 'C5E546F7-5E07-4AAB-A367-15FF52D0C683'
         }
         Pro = @{
             '2.0' = '28A4967F-DE0D-4076-B62D-A1A9EA62FF0A'
@@ -1037,8 +1055,9 @@ function Get-ComponentCode
             '3.0' = 'FE78CD1B-4B17-4634-BBF7-3A597FFFAA69'
             '3.0.3' = '690B606E-8A38-4CB9-B088-241F60A86072'
             '3.1' = 'A61AD307-865F-429F-B2A3-5618BD333F7E'
+            '3.2' = '76DFAD3E-96C5-4544-A6B4-3774DBF88B4E'
         }
-        WebAdaptor = @{
+        WebAdaptorIIS = @{
             '10.4' = @('B83D9E06-B57C-4B26-BF7A-004BE10AB2D5','E2C783F3-6F85-4B49-BFCD-6D6A57A2CFCE','901578F9-BC82-498D-A008-EC3F53F6C943','E3849BEC-6CAF-463F-8EFA-169116A32554','EE889E4F-85C7-4B8A-9DAA-5103C9E14FD6','89D96D88-CC2F-4E9B-84DD-5C976A4741EE','0913DB77-F27B-4FDE-9F51-01BB97BBEBB9','99B6A03C-D208-4E2E-B374-BA7972334396','A0F3D072-0CD1-43D7-AFDA-8F47B15C217C','0FE26871-21C3-4561-B52E-A8FED5C8E821','1D1F3C15-F368-44AF-9728-6CF031D478AF','CE5EC52D-B54D-4381-9F6E-2C08F7721620','E71AEC5B-25F0-47E5-B52C-847A1B779E48','5DA1F056-A3F1-46D5-8F2E-74E72F85B51B','1EB3D37A-902A-43E2-9EAA-1B43BA10C369','839FFEB7-76B5-4CBB-A05E-E2276FC3421D','594E1C33-1C6D-49B4-A83F-2A780193B75F','34330B0C-34CD-4DCF-A68D-FDE7A1834659','42A96EC7-7CA9-4F68-B946-E9BF84713605','A1A8DAE4-B6F9-446F-8F6A-487F1E07A434','3BF277C6-6A88-4F72-A08C-54F1E45F44E5')
             '10.4.1' = @('F53FEE2B-54DD-4A6F-8545-6865F4FBF6DC','475ACDE5-D140-4F10-9006-C804CA93D2EF','0547D7D8-7188-4103-9387-A99FE15215AF','25DFAFFF-07CE-42A2-B157-541D7980A3DA','771998A8-A440-4F5F-B55A-0FE2C594208B','C120DC32-DBEA-4CB1-94E4-F50A7EE09F5C','3294151B-CA4C-4A89-BBC7-DCE521D8A327','E04FB941-248D-4806-9871-04DB306EEA91','66CD667D-440D-4CF1-9ECB-C6C77A7A0520','7938463B-E744-4332-8617-39E91B10FC15','C22C2AF5-D58E-4A4D-85DF-E3A38C83F37A','9AF62D15-755B-43DE-878A-DBA23D33B28A','D4F22207-C5FA-49B0-9466-9E4D37435882','C8ADE9B2-3BC8-4417-97D0-785BA0CD86D9','C85A40C5-00B9-4CDE-9299-397BFD5A2EAF','E0BD73FB-4028-4A5D-9A24-9FA0BD614D4B','83CF76EC-F959-46B3-9067-F59B2A846D2F','F7D6BD55-8D07-4A57-8284-ADACE0F567D8','C56A0E47-D4E1-4762-9BAF-07A19A154EE6','09AC608B-7CE4-4280-9F4E-F2988A58428D','5695B2B6-A25E-4013-B5F8-30686FDDFE0D')
             '10.5' = @('87B4BD93-A5E5-469E-9224-8A289C6B2F10','604CF558-B7E1-4271-8543-75E260080DFA','9666ABD8-8485-4383-B3DD-4D1598F582A3','58264BBA-5F61-41D9-839A-00B6C2C66A63','5988C905-772F-4F62-8339-1796C38674B7','ADD5FF4F-EB57-4460-BD33-D55562AE6FA7','3294151B-CA4C-4A89-BBC7-DCE521D8A327','EF65064A-96C8-4EA1-B76D-B9BCC97EF76A','6B2FA0A8-6F2C-4359-B7A4-D2F9FD63EE97','ACF59C57-A613-44CC-A927-1D8C2B280516','2E5E4CDE-9964-4B40-A1F1-843C62AC789E','2901A5D3-C16D-4993-A306-86261B0430B1','AC910B51-6077-4055-B042-D72CA0D23D69','8F36D583-35F0-43F2-8F8F-5B696F87183A','37C2CAE2-4A81-4289-B318-93D63C63AA47','CC345B69-1E26-4C56-B640-92BCBADBDF06','F0FAE80D-0C51-4D9D-A79B-057396A2456D','5BA355D1-D9B6-4CA0-B1C6-694377084464','25118D44-AD2D-423F-85F0-5D730A2691B7','D4855344-CEE0-47A3-BD50-D7E2A674D04E','9CD66AA3-F0DA-46CC-A5DD-0BB5B23499AD')
@@ -1053,6 +1072,20 @@ function Get-ComponentCode
             '10.9.1' = @('BC399DA9-62A6-4978-9B75-32F46D3737F7', 'F48C3ABF-AF5F-4326-9876-E748DB244DB7','AC4AD5BF-E0B4-4EE6-838E-93EE66D986EF', 'F96ECEFD-2015-4275-B15D-363F53407390','21B1638E-47E7-4147-B739-EB341F99986F', '78ABEA6E-4832-4087-B7BB-04746D1E83E8','A624163D-A110-4959-BD82-98CB7CE6ECBE', '7A6E0537-43A2-4925-8F8A-E19715B21392','4AE1AE3D-2471-4393-B0D9-ECB4D1368EB9', 'C72DE321-E19C-4737-9513-AE39B1A32953','49F98C43-955D-4BD8-A585-07BA45D72D0A', '5DD68937-54F9-4015-A8DA-4602AFCA8986','D3C16E17-DAB1-4025-A029-46C7598DCA4A', 'A2CBD39F-C2DE-4983-9C70-7F108B52F402','CA174887-E7C6-4DE9-8797-72CBD7FC4B1C', 'B658575F-82ED-49BE-980C-D4A5089FCA7A','CBEE526A-29B6-46FE-B7F8-B930A785CFF8', '76618450-9F2C-4FCC-9CDA-01A61F9E1953','17591EF3-221C-4DD1-B773-6C9617925B5F','566920BF-1EF3-4E62-B2BF-029475E35AAB','4A3B27C6-7CB1-4DE8-BCB1-221B9A23E2E1')
             '11.0' = @('FCC01D4A-1159-41FC-BDB4-4B4E05B3436F','920A1EFA-D4DC-4C6D-895A-93FDD1EDE394','258F0D35-985B-4104-BCC4-B8F9A4BB89B4','7B128234-C3D8-4274-917F-BC0BCE90887F','CD160BB2-3AA9-42CE-8BA0-4BFF906E81DE','BBBD3910-2CBB-4418-B5CE-FB349E1E74F0','594D4267-E702-4BA8-9DF4-DB91DCF94B3E','D2538F6E-E852-4BE0-9D20-61730D977410','BAB5BA8A-DE70-4F79-9926-D6849C218BF2','E37D4B50-05EC-4128-AC65-10E299693A3C','2BD1FC31-CFB0-488A-83B3-BEC066423FAA','AA378242-0C2C-4CC2-9E33-B44E0F92577C','F00D0401-C60F-4AB1-BCF2-ADA00DF40AA9','5AE7F499-C7A3-4477-BBED-3D8B21FF6322','5147A262-75C3-4CAE-BCF0-09D9EBBF4A24','7D3F3C7C-A40D-42EC-BA38-E04E6B3CFA16','36305F97-388A-4427-AF76-C4BA8BC2A3DC','BB3F184D-C512-4544-8A7D-76A1F600AEC2','A4CEFD65-D3DF-4992-AC4A-2CED8894F0BF','36B75654-E4C2-4FF3-B9F7-0D202D1ECAC8','0E14FDF9-3D6C-48E4-B362-B248B61FC971')
             '11.1' = @('E2F2DE02-86AC-42EE-B90D-544206717C9E','A4082192-FA68-4150-8EB7-ACCF12F634C4','7A467DB0-DE13-40A6-9213-7F336C28456E','4C3342AC-45D7-417A-8DFC-54604649A97C','8B8A2734-BEC8-476F-B99D-3E13C9F0BAA8','62FCD139-C853-4944-809C-967835510785','65E3E662-67D0-4608-A522-5C10C59CA2DC','614E9ADA-CE81-44DB-BB04-C2A0E02C6458','83F624D7-ED01-48A1-8E3A-6CEDD4CDEBF2','F2D7F6E9-DB46-4B39-994A-FCA32EA5CF15','4A6C5251-C1E3-4ADD-A442-773C110701E6','E09C05F7-8E85-4402-A1A8-C53B6926D0CD','5E664C01-5D5B-4CAA-A03F-145B69FFF6EA','DC9156D0-13CE-4981-B0EB-3C55B1997632','3A5F0EB2-B721-4E5F-9576-47F02A5F77F6','09AFD321-FD2A-4D22-AEEB-C858E0691386','B14810D6-F62D-4581-BBDB-80B739A504DB','8A2CE94A-6340-4AA4-AE83-62A4FA8C5AC2','90E8E4D4-DDE0-4743-AA83-CBDD1827F307','7C10E922-35BD-4A1B-87B0-6346AF5D1462','1EA1484D-962A-4923-9CD1-BC074031E25F')
+            '11.2' = @('3F2DF3A0-0EB7-4DED-BA7F-A33B7B106252','CAB137C6-98F0-4569-9484-719632E81CF6','899B1E0C-4675-4E52-BFBC-4FFF69DBAF8E','4DE50EC3-6CB8-4EE5-B634-1AE53499F6D4','A0ABE60F-0E01-4D84-A08B-EE34EFF96584','066DEFEE-E71D-42F5-859E-225825268720','53A32CFB-A012-4546-9A7F-09E489442A0A','34AD67CC-2BA2-4EAA-B2A5-777036B0104E','08CF83CB-FC1E-4F7C-8960-96C7D8A0B733','D3803AB3-1C2F-4AD9-80EB-901685912599','6671DEEE-CEE8-4FBD-B2DC-430F268225AF','F92DED6B-B2B4-4E4F-A65B-ACE4973C0A9A','6EDAB5E0-FD24-4427-82BE-134DB0FF9D37','EFA6EC36-1A4B-481D-8A2E-C3B9098179F1','CB1CA2A3-D209-462D-947A-AE5DCAACDC54','D8D5A0CB-3F4F-4863-8EB2-6D24C0D0F093','AE62DBD4-44A1-4E67-BAAC-4A5B2AC8830E','8C323710-4026-4A8C-8DCF-5EFF6EE3F39B','3232DC1F-00C3-4247-B354-FA022F1504C0','3D0E95E1-BDA7-47BF-A967-3E889D3C79D9','151724F6-2228-4A46-B710-88A6BAFEDCB4')
+        }
+        WebAdaptorJava = @{
+            '10.6' = '5DC6A1FB-1D21-432F-BED1-546FFB47EA33'
+            '10.6.1' = 'A0D0C945-C2A6-4106-A19E-449C60BB8D59'
+            '10.7' = '2A142568-10C4-4947-A6CE-28FB3B9F964F'
+            '10.7.1' = '48A845A4-5730-4802-9CF0-D7AE3DA87BAF'
+            '10.8' = 'AD40AAC6-0368-436A-A9B8-2D4B443A8C2B'
+            '10.8.1' = '7B686207-6B76-4A38-97DA-29D00F42AC37'
+            '10.9' = '15FB5714-9373-43BF-87C6-C18664ABF309'
+            '10.9.1' = 'B9138950-F155-4754-9510-678B2B523A35'
+            '11.0' = '05060E31-277F-49DA-B284-A0F16D60949A'
+            '11.1' = '9D76C3E5-4F36-4E65-94E8-AC3D45E0722D'
+            '11.2' = 'C737C573-7676-462F-B612-3150F8FE4F8E'
         }
         Insights = @{
             '3.4' = '4230C365-8713-4A13-93BA-6016BE47ECAE'
@@ -1083,6 +1116,7 @@ function Get-ComponentCode
             '10.9.1' = '26A934BC-212C-4F90-8DFF-9900437D303B'
             '11.0' = '338D8E88-3791-4578-A9DC-82D83CF0806B'
             '11.1' = '4D7379B9-E6B5-4B5C-A8CC-82DE30EA9329'
+            '11.2' = '58AE1C52-2096-4708-8B38-196E866E845B'
         }
         DesktopDataInteroperability = @{
             '10.6' = 'DD635BA7-E87B-4FD6-9315-3AD9873E1961'
@@ -1107,6 +1141,7 @@ function Get-ComponentCode
             '3.0' = '3AFB366C-9CA0-483B-A773-680216789FE6'
             '3.0.3' = '78E79722-2A97-4CA9-A3FF-B45D3DD7D7FA'
             '3.1' = 'D7189FF4-999B-4783-8B3D-01B900BFF16C'
+            '3.2' = '7FFFFCBC-0C97-4B5A-9A5D-74A79D0C43AF'
         }
         ServerDataReviewer = @{
             '10.6' = '1659E374-3210-48F9-856F-7AC959D2EB6F'
@@ -1174,6 +1209,7 @@ function Get-ComponentCode
             '10.9.1' = 'D461F83B-0FFB-4AB0-92FE-F82DA370E5F3'
             '11.0' = '12F0B974-5A37-4902-8CFA-C28C2938A7C2'
             '11.1' = '9082A706-E68B-46E2-B22F-0A9E0975055C'
+            '11.2' = '96982D34-F3DA-43F4-9168-97B778E25111'
         }
         DesktopMappingChartingSolution = @{
             '10.6' = '5B03CF31-A5D5-47E4-A90F-9DB96B347542'
@@ -1192,6 +1228,17 @@ function Get-ComponentCode
             '10.8' = 'C28E8BF1-8707-40D3-A048-15C965475A09'
             '10.8.1' = '1EBC0FD8-8A64-4E8C-9565-F9784A3B96D2'
             '10.8.2' = 'DE0069B6-F646-49BB-82EC-8E29F5CE8937'
+        }
+        ServerDeepLearningLibraries = @{
+            "11.0" = "23FC1804-7B41-4271-8734-8C78C9B8CEF9" 
+            "11.1" = "55A9B498-55AD-4AB9-812F-E29303FC14FE" 
+            "11.2" = "A21D9C29-93F6-47FF-B1E3-C5735BAAE028"
+        }
+        ProDeepLearningLibraries = @{
+            "3.0" = "16BAC979-0868-4E94-AAFC-3FEA47375F9E"
+            "3.0.3" = "95D49671-B5D7-41E4-8139-130B7AE88E22"
+            "3.1" = "D28543DB-AF91-4CFE-9720-AE0F796DA43C"
+            "3.2" = "713C97D1-F666-4EFE-A370-718646B23459"
         }
     }
     $ProductCodes[$ComponentName][$Version]    
@@ -1222,7 +1269,7 @@ Function Test-Install{
     if(-not([string]::IsNullOrEmpty($ProductId))){
         if(-not([string]::IsNullOrEmpty($Version))){
             $ProdIdObject = Get-ComponentCode -ComponentName $Name -Version $Version
-            if($Name -ieq "WebAdaptor"){
+            if($Name -ieq "WebAdaptorIIS"){
                 if($ProdIdObject -icontains $ProductId){
                     $ProdId = $ProductId
                 }else{
@@ -1244,7 +1291,7 @@ Function Test-Install{
         }
     }else{
         if(-not([string]::IsNullOrEmpty($Version))){
-            if($Name -ieq "WebAdaptor"){
+            if($Name -ieq "WebAdaptorIIS"){
                 throw "Product Id is required for Component $Name"
             }else{
                 $ProdId = Get-ComponentCode -ComponentName $Name -Version $Version
@@ -1326,7 +1373,7 @@ function Get-DataStoreBackupLocation
         [System.String]
         $DataStoreInstallDirectory,
 
-        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore","ObjectStore")]
         [System.String]
         $DataStoreType,
 
@@ -1336,7 +1383,7 @@ function Get-DataStoreBackupLocation
 
     $BackupLocations = [System.Collections.ArrayList]@()
     
-    $TypeString = if($DataStoreType -ieq "Relational"){ "relational" }elseif($DataStoreType -ieq "TileCache"){ "tile cache" }elseif($DataStoreType -ieq "GraphStore"){ "graph" }else{ "spatiotemporal" }
+    $TypeString = if($DataStoreType -ieq "Relational"){ "relational" }elseif($DataStoreType -ieq "TileCache"){ "tile cache" }elseif($DataStoreType -ieq "GraphStore"){ "graph" }elseif($DataStoreType -ieq "ObjectStore"){ "objectStore" }else{ "spatiotemporal" }
     if($UseDescibeDatastore){
         $op = Invoke-DescribeDataStore -DataStoreInstallDirectory $DataStoreInstallDirectory -Verbose
         if($null -ne $op ){
@@ -1452,7 +1499,7 @@ function Invoke-DataStoreConfigureBackupLocationTool
         [System.String]
         $DataStoreInstallDirectory,
         
-        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore", "ObjectStore")]
         [System.String]
         $DataStoreType,
 
@@ -1469,7 +1516,7 @@ function Invoke-DataStoreConfigureBackupLocationTool
         throw "$ConfigureBackupToolPath not found"
     }
 
-    $DataStoreTypeAsString = if($DataStoreType -ieq "Relational"){ "relational" }elseif($DataStoreType -ieq "TileCache"){ "tileCache" }elseif($DataStoreType -ieq "GraphStore"){ "graph" }else{ "spatiotemporal" }
+    $DataStoreTypeAsString = if($DataStoreType -ieq "Relational"){ "relational" }elseif($DataStoreType -ieq "TileCache"){ "tileCache" }elseif($DataStoreType -ieq "GraphStore"){ "graph" }elseif($DataStoreType -ieq "ObjectStore"){ "objectStore" }else{ "spatiotemporal" }
     $Arguments = "--operation $OperationType --store $DataStoreTypeAsString --prompt no"
     if($OperationType -ne "list"){
         $Arguments += " --location $BackupLocationString"
@@ -1493,7 +1540,7 @@ function Invoke-DataStoreConfigureBackupLocationTool
     if($p.ExitCode -eq 0) {                    
         Write-Host "Backup location tool executed successfully."
         # if($op -and $op.Length -gt 0) {
-        #     Write-Verbose "Output of execution:- $op"
+        #     Write-Verbose "Output:- $op"
         # }
         if($op -ccontains 'failed') {
             throw "Configure Backup Tool Failed. Output - $op."
@@ -1536,6 +1583,23 @@ function Restart-ArcGISService
     }
 }
 
+function Get-AvailableDriveLetter
+{
+    param (
+        [char]
+        $ExcludedLetter
+    )
+    $Letter = [int][char]'C'
+    $i = @()
+    #getting all the used Drive letters reported by the Operating System
+    $(Get-PSDrive -PSProvider filesystem) | ForEach-Object{$i += $_.name}
+    #Adding the excluded letter
+    $i+=$ExcludedLetter
+    while($i -contains $([char]$Letter)){$Letter++}
+    return $([char]$Letter)
+}
+
+
 Export-ModuleMember -Function @(
     'Invoke-ArcGISWebRequest'
     'ConvertTo-HttpBody'
@@ -1564,4 +1628,5 @@ Export-ModuleMember -Function @(
     'Invoke-DataStoreConfigureBackupLocationTool'
     'Invoke-DescribeDataStore'
     'Restart-ArcGISService'
+    'Get-AvailableDriveLetter'
 )

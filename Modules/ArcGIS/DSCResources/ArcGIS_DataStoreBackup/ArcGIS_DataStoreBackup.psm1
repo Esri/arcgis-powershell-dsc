@@ -12,7 +12,7 @@ function Get-TargetResource
 	param
 	(
         [parameter(Mandatory = $True)]
-        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore","ObjectStore")]
         [System.String]
         $DataStoreType,
 
@@ -28,6 +28,10 @@ function Get-TargetResource
         [parameter(Mandatory = $True)]
         [System.String]
         $BackupLocation,
+
+        [parameter(Mandatory = $False)]
+        [System.String]
+        $AWSS3Region,
 
         [parameter(Mandatory = $False)]
         [System.Management.Automation.PSCredential]
@@ -57,7 +61,7 @@ function Set-TargetResource
 	param
 	(
         [parameter(Mandatory = $True)]
-        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore","ObjectStore")]
         [System.String]
         $DataStoreType,
 
@@ -73,6 +77,10 @@ function Set-TargetResource
         [parameter(Mandatory = $True)]
         [System.String]
         $BackupLocation,
+
+        [parameter(Mandatory = $False)]
+        [System.String]
+        $AWSS3Region,
 
         [parameter(Mandatory = $False)]
         [System.Management.Automation.PSCredential]
@@ -151,7 +159,7 @@ function Set-TargetResource
         }else{
             $Flag = $true
         }
-    }elseif($DataStoreType -eq "SpatioTemporal" -or $DataStoreType -eq "GraphStore"){
+    }elseif($DataStoreType -eq "SpatioTemporal" -or $DataStoreType -eq "GraphStore" -or $DataStoreType -eq "ObjectStore"){
         $Flag = $true  
     }
       
@@ -159,23 +167,32 @@ function Set-TargetResource
         $ExpectedBackupLocationString = "type=$($BackupType);name=$($BackupName);location=$($BackupLocation)"
         if($BackupType -ne "fs"){
             $EndpointSuffix = $null
-            $CloudCredentialUserName = $CloudBackupCredential.UserName
-            if($BackupType -ieq "azure"){
-                $Pos = $CloudBackupCredential.UserName.IndexOf('.blob.')
-                if($Pos -gt -1) 
-                {
-                    $CloudCredentialUserName = $CloudCredentialUserName.Substring(0, $Pos)
-                    $EndpointSuffix = $CloudCredentialUserName.Substring($Pos + 6)
-                }
-                else
-                {
-                    throw "Error - Invalid Backup Azure Blob Storage Account"
-                } 
-            }
 
-            $ExpectedBackupLocationString += ";username=$($CloudCredentialUserName);password=$($CloudBackupCredential.GetNetworkCredential().Password)"
-            if($BackupType -ieq "azure"){
-                $ExpectedBackupLocationString += ";endpointsuffix=$EndpointSuffix"
+            if($BackupType  -ieq "s3" -and $null -eq $CloudBackupCredential){
+                Write-Verbose "Using IAM Role to authenticate AWS S3 Backup '$BackupName'"
+            }else{
+                $CloudCredentialUserName = $CloudBackupCredential.UserName
+                if($BackupType -ieq "azure"){
+                    $Pos = $CloudBackupCredential.UserName.IndexOf('.blob.')
+                    if($Pos -gt -1) 
+                    {
+                        $CloudCredentialUserName = $CloudCredentialUserName.Substring(0, $Pos)
+                        $EndpointSuffix = $CloudCredentialUserName.Substring($Pos + 6)
+                    }
+                    else
+                    {
+                        throw "Error - Invalid Backup Azure Blob Storage Account"
+                    } 
+                }
+    
+                $ExpectedBackupLocationString += ";username=$($CloudCredentialUserName);password=$($CloudBackupCredential.GetNetworkCredential().Password)"
+                if($BackupType -ieq "azure"){
+                    $ExpectedBackupLocationString += ";endpointsuffix=$EndpointSuffix"
+                }
+            }
+            
+            if($BackupType -ieq "s3" -and -not([string]::IsNullOrEmpty($AWSS3Region))){
+                $ExpectedBackupLocationString += ";region=$AWSS3Region"
             }
         }
 
@@ -220,7 +237,7 @@ function Test-TargetResource
 	param
 	(
         [parameter(Mandatory = $True)]
-        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore")]
+        [ValidateSet("Relational","TileCache","SpatioTemporal","GraphStore","ObjectStore")]
         [System.String]
         $DataStoreType,
 
@@ -236,6 +253,10 @@ function Test-TargetResource
         [parameter(Mandatory = $True)]
         [System.String]
         $BackupLocation,
+
+        [parameter(Mandatory = $False)]
+        [System.String]
+        $AWSS3Region,
 
         [parameter(Mandatory = $False)]
         [System.Management.Automation.PSCredential]
@@ -307,7 +328,7 @@ function Test-TargetResource
         }else{
             $Flag = $true
         }
-    }elseif($DataStoreType -eq "SpatioTemporal" -or $DataStoreType -eq "GraphStore"){
+    }elseif($DataStoreType -eq "SpatioTemporal" -or $DataStoreType -eq "GraphStore" -or $DataStoreType -eq "ObjectStore"){
         $Flag = $true  
     }
 

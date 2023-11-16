@@ -74,6 +74,23 @@
         $ConfigStoreCloudStorageType,
 
         [Parameter(Mandatory=$False)]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken")]
+        [AllowNull()] 
+        $ConfigStoreAzureBlobAuthenticationType,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAzureBlobUserAssignedIdentityId = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAzureBlobServicePrincipalTenantId = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ConfigStoreAzureBlobServicePrincipalCredentials = $null,
+
+        [Parameter(Mandatory=$False)]
         [System.String]
         $ConfigStoreAzureFileShareName,
 
@@ -125,7 +142,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.1.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
@@ -154,10 +171,21 @@
                     $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
                     $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
                     $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\server\config-store"
-                }
-                else {
-                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$ConfigStoreAccountName"
-                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                } else {
+                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($ConfigStoreAccountName)"
+                    if($ConfigStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
+                        $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($ConfigStoreAzureBlobServicePrincipalTenantId);ClientId=$($ConfigStoreAzureBlobServicePrincipalCredentials.Username)"
+
+                        $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ConfigStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password)"
+                    }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
+                        $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($ConfigStoreAzureBlobUserAssignedIdentityId)"
+                        $ConfigStoreCloudStorageConnectionSecret = ""
+                    }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'SASToken'){
+                        $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+                        $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                    }else{
+                        $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                    }
                 }
             }
         }
