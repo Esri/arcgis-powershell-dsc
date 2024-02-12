@@ -1,0 +1,102 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "Role": [
+                "Server"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerRole": "RasterAnalytics",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            },
+            "DataStoreItems": [
+                {
+                    "Name": "Test1",
+                    "Type": "Folder",
+                    "DataStorePath": "\\\\folder\\fileshare"
+                },
+                {
+                    "Name": "Test1",
+                    "Type": "RasterStore",
+                    "DataStorePath": "\\\\raster\\fileshare"
+                },
+                {
+                    "Name": "Test2",
+                    "Type": "BigDataFileShare",
+                    "DataStorePath": "\\\\bdfs\\fileshare"
+                },
+                {
+                    "Name": "Test-CloudStore",
+                    "Type": "<RasterStore | BigDataFileShare | CloudStore>",
+                    "ForceUpdate": "true | false",
+                    "CloudStoreAccount":{
+                        "Type": "Azure | Amazon",
+                        "AzureStorage":{
+                            "AccountName": "",
+                            "AccountEndpoint": "",
+                            "DefaultEndpointsProtocol": "",
+                            "OverrideEndpoint": "",
+                            "ContainerName": "",
+                            "FolderPath": "",
+                            "AuthenticationType": "",
+                            "UserAssignedIdentityClientId": "",
+                            "AccessKey": "",
+                            "AccessKeyFilePath": "",
+                            "SASToken": "",
+                            "SASTokenFilePath": "[Azure Service Principal Client Secret]",
+                            "ServicePrincipal": {
+                                "TenantId": "[Azure Service Principal Tenant Id]",
+                                "ClientId": "[Azure Service Principal Client Id]",
+                                "ClientSecret": "[Azure Service Principal Client Secret]",
+                                "ClientSecretFilePath": "[Azure Service Principal Client Secret]"
+                            }
+                        },
+                        "AmazonS3":{
+                            "AuthenticationType": "<IAMRole | AccessKey>",
+                            "BucketName" : "",
+                            "FolderPath":"",
+                            "Region":"",
+                            "RegionEndpointUrl":"",
+                            "AccessKeyId": "",
+                            "SecretAccessKey":"",
+                            "SecretAccessKeyFilePath": "[]"
+                        }
+                    }
+                }
+            ]
+        },
+        "Federation": {
+            "PortalHostName": "[Portal Host Name (FQDN) with which this site needs to be federated]",
+            "PortalPort": "[Port on which Portal is listening ex. - 443]",
+            "PortalContext": "[Context of the Portal ex. - portal]",
+            "PortalAdministrator": {
+                "UserName": "admin",
+                "Password": "changeit"
+            }
+        }
+    }
+}

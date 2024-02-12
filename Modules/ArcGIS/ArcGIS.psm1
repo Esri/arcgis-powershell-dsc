@@ -513,7 +513,11 @@ function Get-DownloadsInstallsConfigurationData
     [CmdletBinding()]
     [OutputType([System.Collections.Hashtable])]
     Param(
-        $ConfigurationParamsJSON
+        $ConfigurationParamsJSON,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $DownloadSetupsToSharedPath = $False
     )
     $InstallConfigurationParamsHashtable = Convert-PSObjectToHashtable $ConfigurationParamsJSON
     $ConfigData = @{
@@ -521,13 +525,28 @@ function Get-DownloadsInstallsConfigurationData
         ConfigData = $InstallConfigurationParamsHashtable.ConfigData
     }
 
+    $SetupsAlreadyInDownloadList = @()
+
     for ( $i = 0; $i -lt $InstallConfigurationParamsHashtable.AllNodes.Count; $i++ ){
         $Node = $InstallConfigurationParamsHashtable.AllNodes[$i]
         $NodeToAdd = @{ 
             NodeName = $Node.NodeName; 
-            Role = $Node.Role 
             PSDscAllowDomainUser = $True # Required as sometime we do need to pass in domain credentials eg. service accounts, AD accounts.
         }
+        $RoleToAdd = @()
+        if($DownloadSetupsToSharedPath){
+            foreach($Role in $Node.Role){
+                if(-not($SetupsAlreadyInDownloadList -icontains $Role)){
+                    $RoleToAdd += $Role
+                    $SetupsAlreadyInDownloadList += $Role
+                }
+            }
+        }else{
+            $RoleToAdd = $Node.Role
+        }
+
+        $NodeToAdd["Role"] = $RoleToAdd
+
         if($Node.TargetNodeEncryptionCertificateFilePath -and $Node.TargetNodeEncryptionCertificateThumbprint){
             $NodeToAdd["CertificateFile"] = $Node.TargetNodeEncryptionCertificateFilePath
             $NodeToAdd["Thumbprint"] = $Node.TargetNodeEncryptionCertificateThumbprint
@@ -701,7 +720,7 @@ function Invoke-ArcGISConfiguration
         }
 
         if(($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
-            throw "[ERROR] Starting from version 4.2.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file."
+            throw "[ERROR] Starting from version 4.2.1, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file."
         }
 
         $ServiceCredential = $null
@@ -720,14 +739,15 @@ function Invoke-ArcGISConfiguration
         }
 
         $InstallCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $ConfigurationParamsJSON
-
-        if($Mode -ine "Uninstall" -and ($InstallCD.ConfigData.DownloadSetups -or $InstallCD.ConfigData.DownloadSetupsToSharedPath)){
+        $DownloadSetups = if($InstallCD.ConfigData.DownloadSetups){ $InstallCD.ConfigData.DownloadSetups }else{ $False }
+        $DownloadSetupsToSharedPath = if($InstallCD.ConfigData.DownloadSetupsToSharedPath){ $InstallCD.ConfigData.DownloadSetupsToSharedPath }else{ $False }
+        if($Mode -ine "Uninstall" -and ($DownloadSetups -or $DownloadSetupsToSharedPath)){
+            $DownloadsCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $ConfigurationParamsJSON -DownloadSetupsToSharedPath $DownloadSetupsToSharedPath
             $AGOPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.Password -AsPlainText -Force }
             $AGOCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.UserName, $AGOPassword )
             $DownloadSetupsArgs = @{
-                ConfigurationData = $InstallCD
+                ConfigurationData = $DownloadsCD
                 AGOCredential = $AGOCredential
-                DownloadSetupsToSharedPath = if($InstallCD.ConfigData.DownloadSetupsToSharedPath){$InstallCD.ConfigData.DownloadSetupsToSharedPath}else{ $False}
             }
             $ConfigurationName = "ArcGISDownloads"
             $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $DownloadSetupsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2091,7 +2111,7 @@ function Invoke-ArcGISConfiguration
                                 }
                                 $ServerSiteAdminURLContext = 'arcgis'
                             }else{
-                                if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer')-or ($ServerRole -ieq 'MissionServer')){ 
+                                if(-not($WebAdaptorCheck) -or ($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer') -or ($ServerRole -ieq 'MissionServer'))){ 
                                     # Check this for LB when no WAs specified
                                     if($ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer){
                                         $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer
@@ -2163,7 +2183,7 @@ function Invoke-ArcGISConfiguration
                             }
 
                             Write-Information -InformationAction Continue "Portal Admin URL - https://$PortalAdminUrl/portaladmin"
-                            Write-Information "Portal URL - https://$PortalUrl/home"    
+                            Write-Information -InformationAction Continue "Portal URL - https://$PortalUrl/home"    
                         }
                         if($ServerCheck){
                             $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName }
@@ -2183,7 +2203,7 @@ function Invoke-ArcGISConfiguration
                             
                             if($null -ne $ServerExternalDNSHostName){
                                 $ServerURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
-                                if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled){
+                                if(-not($WebAdaptorCheck) -or $ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled){
                                     $ServerAdminURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
                                     $ServerManagerURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
                                 }
@@ -2219,7 +2239,7 @@ function Invoke-ArcGISConfiguration
             }
 
             if(($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
-                throw "[ERROR] Starting from version 4.2.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
+                throw "[ERROR] Starting from version 4.2.1, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
             }
 
             
@@ -2263,13 +2283,15 @@ function Invoke-ArcGISConfiguration
             }
 
             $SetupsDownloadCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $cfJSON
-            if($SetupsDownloadCD.ConfigData.DownloadSetups -or $SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath){
+            $DownloadSetups = if($SetupsDownloadCD.ConfigData.DownloadSetups){ $SetupsDownloadCD.ConfigData.DownloadSetups }else{ $False }
+            $DownloadSetupsToSharedPath = if($SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath){ $SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath }else{ $False }
+            if($DownloadSetups -or $DownloadSetupsToSharedPath){
+                $DownloadCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $cfJSON -DownloadSetupsToSharedPath $DownloadSetupsToSharedPath
                 $AGOPassword = if( $cfHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath ){ Get-Content $cfHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cfHashtable.ConfigData.Credentials.AGOCredential.Password -AsPlainText -Force }
                 $AGOCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cfHashtable.ConfigData.Credentials.AGOCredential.UserName, $AGOPassword )
                 $DownloadSetupsArgs = @{
-                    ConfigurationData = $SetupsDownloadCD
+                    ConfigurationData = $DownloadCD
                     AGOCredential = $AGOCredential
-                    DownloadSetupsToSharedPath = if($SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath){$SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath}else{ $False}
                 }
                 $ConfigurationName = "ArcGISDownloads"
                 $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $DownloadSetupsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2426,10 +2448,9 @@ function Invoke-JavaWebAdaptorUninstallUpgradeScript{
         $UseWinRMSSL = $False
     )
 
-    Write-Information -InformationAction Continue "ArcGIS Java Web Adaptor Uninstall Upgrades"
-
-    $IsJavaWebAdaptor = if($cf.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $cf.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
+    $IsJavaWebAdaptor = if($cf.ConfigData.ContainsKey("WebAdaptor") -and $cf.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $cf.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
     if($IsJavaWebAdaptor){
+        Write-Information -InformationAction Continue "ArcGIS Java Web Adaptor Uninstall Upgrades"
         $WebAdaptorCD = @{ AllNodes = @() }
         $WANodes = $cf.AllNodes | Where-Object { ($_.Role -icontains 'WebAdaptor') }
         foreach($Node in $WANodes){
@@ -2623,7 +2644,7 @@ function Invoke-PortalUpgradeScript {
         $WebsiteId = if($PortalConfig.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $PortalConfig.ConfigData.WebAdaptor.WebSiteId }else{ 1}
         $VersionArray = $PortalConfig.ConfigData.Version.Split('.')
         $PortalContext = if($PortalConfig.ConfigData.PortalContext){ $PortalConfig.ConfigData.PortalContext }else{ $null }
-        $IsJavaWebAdaptor = if($PortalConfig.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $PortalConfig.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
+        $IsJavaWebAdaptor = if($PortalConfig.ConfigData.ContainsKey("WebAdaptor") -and $PortalConfig.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $PortalConfig.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
         $WebAdaptorCD = @{ AllNodes = @() }
 
         foreach($Node in $PortalWANodes){
@@ -2645,6 +2666,7 @@ function Invoke-PortalUpgradeScript {
             SiteAdministratorCredential = $PortalSiteAdministratorCredential
             WebSiteId = if($PortalConfig.ConfigData.WebAdaptor.WebSiteId){ $PortalConfig.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
             EnableMSILogging =  $EnableMSILoggingMode
+            DownloadPatches = if($PortalConfig.ConfigData.DownloadPatches){ $PortalConfig.ConfigData.DownloadPatches }else{ $False }
         }
 
         if($IsJavaWebAdaptor){
@@ -2907,7 +2929,7 @@ function Invoke-ServerUpgradeScript {
         Write-Information -InformationAction Continue "Server WebAdaptor Upgrade"
         $WebAdaptorCD = @{ AllNodes = @() }
 
-        $IsJavaWebAdaptor = if($cf.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $cf.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
+        $IsJavaWebAdaptor = if($cf.ConfigData.ContainsKey("WebAdaptor") -and $cf.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $cf.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
         $WAAdminAccessEnabled = if($cf.ConfigData.WebAdaptor.AdminAccessEnabled){ $cf.ConfigData.WebAdaptor.AdminAccessEnabled }else{ $False }
         $WebsiteId = if($cf.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1}
         $WebAdaptorAdminAccessEnabledSupported = -not($cf.ConfigData.ServerRole -ieq "NotebookServer" -or $cf.ConfigData.ServerRole -ieq "MissionServer")
@@ -3311,7 +3333,7 @@ function Get-ArcGISProductDetails
                 if($DisplayName -imatch [regex]::escape($ProductName) -and $Publisher -ieq "Environmental Systems Research Institute, Inc."){
                     if(($ProductName -ieq "ArcGIS Notebook Server" -and -not($DisplayName -imatch "Samples Data")) `
                         -or ($ProductName -ieq "portal" -and -not($DisplayName -imatch "Web Styles")) `
-                        -or ($ProductName -ieq "ArcGIS Server" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Server")) `
+                        -or ($ProductName -ieq "ArcGIS Server" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Server") -and -not($DisplayName -imatch "Custom Data Feeds")) `
                         -or ($ProductName -ieq "ArcGIS Pro" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Pro")) `
                         -or ($ProductName -ine "portal" -and $ProductName -ine "ArcGIS Notebook Server" -and $ProductName -ine "ArcGIS Server" -and $ProductName -ine "ArcGIS Pro")
                         ){

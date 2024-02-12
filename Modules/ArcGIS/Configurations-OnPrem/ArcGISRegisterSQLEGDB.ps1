@@ -45,7 +45,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.0 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
     Import-DSCResource -Name ArcGIS_EGDB
     
     Node $AllNodes.NodeName
