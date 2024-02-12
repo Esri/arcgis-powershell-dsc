@@ -438,7 +438,6 @@ function Test-LicenseForRole{
         if($TextFound -ieq $False){
             Write-Verbose "License search keywords not found."
             $result = $False
-            break
         }
         $result
     }else{

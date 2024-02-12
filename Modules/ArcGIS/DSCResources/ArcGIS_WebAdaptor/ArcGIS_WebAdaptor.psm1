@@ -210,7 +210,7 @@ function Set-TargetResource
             $JavaWAInstalls = (Get-ArcGISProductDetails -ProductName "ArcGIS Web Adaptor (Java Platform) $($Version)")
             # Remove Web Adaptor Config File
             $InstallObject = ($JavaWAInstalls | Select-Object -First 1)
-            if($InstallObject.Version -imatch $Version){
+            if(Test-ArcGISJavaWebAdaptorBuildNumberToMatch -InstallObjectVersion $InstallObject.Version -VersionToMatch $Version){
                 $WAConfigFolder = (Join-Path $InstallObject.InstallLocation $Context)
                 $WAConfigPath = Join-Path $WAConfigFolder 'webadaptor.config'
                 if((Test-Path $WAConfigFolder) -and (Test-Path $WAConfigPath)){
@@ -289,7 +289,7 @@ function Test-TargetResource
 
         $JavaWAInstalls = (Get-ArcGISProductDetails -ProductName "ArcGIS Web Adaptor (Java Platform) $($Version)")
         $InstallObject = ($JavaWAInstalls | Select-Object -First 1)
-        if($InstallObject.Version -imatch $Version){
+        if(Test-ArcGISJavaWebAdaptorBuildNumberToMatch -InstallObjectVersion $InstallObject.Version -VersionToMatch $Version){
             $WAConfigFolder = Join-Path $InstallObject.InstallLocation $Context
             $WAConfigPath = Join-Path $WAConfigFolder 'webadaptor.config'
 			if((Test-Path $WAConfigFolder) -and (Test-Path $WAConfigPath)){
@@ -300,7 +300,8 @@ function Test-TargetResource
                 $result = $False
             }
         }else{
-            throw "Installed Java Web Adaptor version doesn't match $Version"
+            Write-Verbose "Installed Java Web Adaptor version doesn't match $Version"
+            $result = $False
         }
     }else{
         $ExistingWA = $False
@@ -322,7 +323,8 @@ function Test-TargetResource
         }
 
         if(-not($ExistingWA)){
-            throw "Installed Java Web Adaptor version doesn't match $Version"
+            Write-Verbose "None of the installed IIS Web Adaptors' version match $Version"
+            $result = $False
         }
     }
     
@@ -557,5 +559,40 @@ function Unregister-WebAdaptor{
         }
     }
 }
+
+function Test-ArcGISJavaWebAdaptorBuildNumberToMatch
+{
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param (
+        [System.String]
+        $InstallObjectVersion,
+
+        [System.String]
+        $VersionToMatch
+    )
+
+    $VersionWithBuild = switch ($VersionToMatch) {
+        "10.4.1" {  "10.7.5686" }
+        "10.5.0" { "10.7.6491" }
+        "10.5.1" { "10.7.7333" }
+        "10.6.0" { "10.7.8321" }
+        "10.6.1" { "10.7.9270" }
+        "10.7.0" { "10.7.10450" }
+        "10.7.1" { "10.7.11595" }
+        "10.8.0" { "10.8.12790" }
+        "10.8.1" { "10.8.14362" }
+        "10.9.0" { "10.9.26417" }
+        "10.9.1" { "10.9.28388" }
+        "11.1" { "11.1" }
+        "11.2" { "11.2" }
+        Default {
+            throw "Version $VersionToMatch not supported"
+        }
+    }
+
+    return $InstallObjectVersion -imatch $VersionWithBuild
+}
+
 
 Export-ModuleMember -Function *-TargetResource
