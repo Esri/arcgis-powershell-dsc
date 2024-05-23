@@ -6,7 +6,6 @@ class ArcGIS_NotebookServerWorkspaceSetup : OMI_BaseResource
 	[Key] String ArcGISWorkspaceLocation;
 	[Key] String FileShareEndpoint;
 	[Key] String FileShareName;
-	[Write] String UserAccountsWithPermissions[];
 	[Write] Boolean IsSingleTier;
 	[Write] Boolean Join;
 	[Write] Boolean UseAzureFiles;

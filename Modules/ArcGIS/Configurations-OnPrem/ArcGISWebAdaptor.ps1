@@ -35,7 +35,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_WebAdaptor
@@ -113,13 +113,13 @@
                 {
                     Version             = $Version
                     Ensure              = "Present"
-                    Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }else{ 'Server' }
-                    HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN } 
+                    Component           = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }elseif($ServerRole -ieq "VideoServer"){ 'VideoServer' }else{ 'Server' }
+                    HostName            = if($WA.HostName){ $WA.HostName }elseif($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN } 
                     ComponentHostName   = (Get-FQDN $PrimaryServerMachine)
                     Context             = $WA.Context
                     OverwriteFlag       = $False
                     SiteAdministrator   = $ServerPrimarySiteAdminCredential
-                    AdminAccessEnabled  = if($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer"){ $true }else{ $WA.AdminAccessEnabled }
+                    AdminAccessEnabled  = if(@("MissionServer", "NotebookServer", "VideoServer") -iContains  $ServerRole){ $true }else{ $WA.AdminAccessEnabled }
                     IsJavaWebAdaptor    = $IsJavaWebAdaptor
                     JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
                     DependsOn           = $Depends
@@ -133,7 +133,7 @@
                     Version             = $Version
                     Ensure              = "Present"
                     Component           = 'Portal'
-                    HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN }  
+                    HostName            = if($WA.HostName){ $WA.HostName }elseif($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ $MachineFQDN }  
                     ComponentHostName   = (Get-FQDN $PrimaryPortalMachine)
                     Context             = $WA.Context
                     OverwriteFlag       = $False

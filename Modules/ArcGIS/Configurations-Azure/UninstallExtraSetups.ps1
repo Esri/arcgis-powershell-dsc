@@ -2,7 +2,7 @@ Configuration UninstallExtraSetups {
     param(
         [Parameter(Mandatory = $false)]
         [System.String]
-        $Version = '11.2',
+        $Version = '11.3',
 
         [Parameter(Mandatory = $false)]
         [System.String]
@@ -10,20 +10,26 @@ Configuration UninstallExtraSetups {
 
         [Parameter(Mandatory = $false)]
         [System.String]
-        $ServerRole
+        $ServerRole,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $DebugMode
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DscResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install
     
+    $IsDebugMode = $DebugMode -ieq 'true'
     $MachineRolesArray = $MachineRoles -split ','
 
     Node localhost
     {
         $FoldersToDelete = @("C:\\ArcGIS\\Deployment\\Downloads")
         if($MachineRolesArray -iContains "Server" -and $ServerRole -ieq "NotebookServer"){
-            $FoldersToDelete = @("C:\\ArcGIS\\Deployment\\Downloads\\SQLNativeClient","C:\\ArcGIS\\Deployment\\Downloads\\WorkflowManagerServer","C:\\ArcGIS\\Deployment\\Downloads\\GeoEvent","C:\\ArcGIS\\Deployment\\Downloads\\Server", "C:\\ArcGIS\\Deployment\\Downloads\\MissionServer", "C:\\ArcGIS\\Deployment\\Downloads\\Portal", "C:\\ArcGIS\\Deployment\\Downloads\\WebStyles", "C:\\ArcGIS\\Deployment\\Downloads\\DataStore")
+            $FoldersToDelete = @("C:\\ArcGIS\\Deployment\\Downloads\\SQLNativeClient","C:\\ArcGIS\\Deployment\\Downloads\\WorkflowManagerServer","C:\\ArcGIS\\Deployment\\Downloads\\GeoEvent","C:\\ArcGIS\\Deployment\\Downloads\\Server", "C:\\ArcGIS\\Deployment\\Downloads\\MissionServer", 
+            "C:\\ArcGIS\\Deployment\\Downloads\\VideoServer", "C:\\ArcGIS\\Deployment\\Downloads\\Portal", "C:\\ArcGIS\\Deployment\\Downloads\\WebStyles", "C:\\ArcGIS\\Deployment\\Downloads\\DataStore")
         }
         
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "WorkflowManagerServer"){
@@ -45,7 +51,7 @@ Configuration UninstallExtraSetups {
             $FoldersToDelete += @("C:\\ArcGIS\\Server\\GeoEvent")
         }
         
-        if(-not($MachineRolesArray -iContains "Server") -or (@("NotebookServer", "MissionServer") -iContains $ServerRole)){
+        if(-not($MachineRolesArray -iContains "Server") -or (@("NotebookServer", "MissionServer", "VideoServer") -iContains $ServerRole)){
             ArcGIS_Install ServerUninstall {
                 Name = "Server"
                 Version = $Version
@@ -63,6 +69,16 @@ Configuration UninstallExtraSetups {
             }
 
             $FoldersToDelete += @("C:\\ArcGIS\\Mission")
+        }
+
+        if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "VideoServer"){
+            ArcGIS_Install VideoServerUninstall {
+                Name = "VideoServer"
+                Version = $Version
+                Ensure = "Absent"
+            }
+
+            $FoldersToDelete += @("C:\\ArcGIS\\Video")
         }
             
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "NotebookServer"){
@@ -101,8 +117,8 @@ Configuration UninstallExtraSetups {
 
             $FoldersToDelete += @("C:\\ArcGIS\\Portal")
         }
-            
-        if (-not($MachineRolesArray -icontains 'DataStore')) {
+        
+        if (-not($MachineRolesArray -icontains 'DataStore' -or $MachineRolesArray -icontains 'SpatiotemporalDataStore' -or $MachineRolesArray -icontains 'GraphDataStore' -or $MachineRolesArray -icontains 'ObjectDataStore' -or $MachineRolesArray -icontains 'TileCacheDataStore')){
             ArcGIS_Install DataStoreUninstall
             { 
                 Name = "DataStore"
@@ -120,6 +136,7 @@ Configuration UninstallExtraSetups {
                 Ensure = "Absent"
                 Type = "Directory"
                 DestinationPath	= $FolderToDelete
+                Recurse = $true
                 Force = $true
             }
         }

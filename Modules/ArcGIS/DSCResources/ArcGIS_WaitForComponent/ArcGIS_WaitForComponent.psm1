@@ -36,12 +36,12 @@ function Get-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
 		[System.String]
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
                
@@ -63,12 +63,12 @@ function Set-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
 		[System.String]
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
         
@@ -105,9 +105,9 @@ function Set-TargetResource
 	{
         Write-Verbose "Attempt $NumCount - $Component"
         try {
-            if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer"){
+            if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer" -or $Component -ieq "VideoServer"){
                 Write-Verbose "Checking for $Component site"
-                $Port = if($Component -ieq "NotebookServer"){ 11443 }elseif($Component -ieq "MissionServer"){ 20443 }else{ 6443 }
+                $Port = if($Component -ieq "NotebookServer"){ 11443 }elseif($Component -ieq "MissionServer"){ 20443 }elseif($Component -ieq "VideoServer"){ 21443 }else{ 6443 }
                 $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):$($Port)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer
                 Write-Verbose "Checking for $Component site on '$ComponentHostName'"
                 $Done = ($null -ne $token.token)
@@ -171,12 +171,12 @@ function Test-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal")]
 		[System.String]
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
 		[System.String]
         $InvokingComponent,
                 
@@ -210,9 +210,9 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $ComponentHostNameFQDN = Get-FQDN $ComponentHostName
     try {
-        if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer"){
+        if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer" -or $Component -ieq "VideoServer"){
             Write-Verbose "Checking for $Component site"
-            $Port = if($Component -ieq "NotebookServer"){ 11443 }elseif($Component -ieq "MissionServer"){ 20443 }else{ 6443}
+            $Port = if($Component -ieq "NotebookServer"){ 11443 }elseif($Component -ieq "MissionServer"){ 20443 }elseif($Component -ieq "VideoServer"){ 21443 }else{ 6443 }
 
             $token = Get-ServerToken -ServerEndPoint "https://$($ComponentHostNameFQDN):$($Port)" -ServerSiteName $ComponentContext -Credential $Credential -Referer $Referer 
             $result = ($null -ne $token.token)

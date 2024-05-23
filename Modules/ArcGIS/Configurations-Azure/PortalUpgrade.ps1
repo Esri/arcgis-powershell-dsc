@@ -3,11 +3,15 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2',
+        $Version = '11.3',
 
 		[parameter(Mandatory = $true)]
         [System.String]
         $PortalInstallerPath,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $PortalInstallerVolumePath,
 
         [parameter(Mandatory = $false)]
         [System.String]
@@ -24,6 +28,10 @@
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $ServiceCredentialIsDomainAccount,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsMultiMachinePortal,
 
 		[Parameter(Mandatory=$false)]
         [System.String]
@@ -73,6 +81,38 @@
 
         $Depends = @()
 
+        $VersionArray = $Version.Split(".")
+        if($IsMultiMachinePortal -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){ # 11.3 or later
+            ArcGIS_xFirewall Portal_Ignite_OutBound
+            {
+                Name                  = "PortalforArcGIS-Ignite-Outbound" 
+                DisplayName           = "Portal for ArcGIS Ignite Outbound" 
+                DisplayGroup          = "Portal for ArcGIS Ignite Outbound" 
+                Ensure                = 'Present' 
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                Direction             = "Outbound"                       
+                Protocol              = "TCP" 
+            }  
+            $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_OutBound')
+            
+            ArcGIS_xFirewall Portal_Ignite_InBound
+            {
+                Name                  = "PortalforArcGIS-Ignite-Inbound" 
+                DisplayName           = "Portal for ArcGIS Ignite Inbound" 
+                DisplayGroup          = "Portal for ArcGIS Ignite Inbound" 
+                Ensure                = 'Present' 
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                Protocol              = "TCP" 
+            }  
+            $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
+        }
+
         $InstallerFileName = Split-Path $PortalInstallerPath -Leaf
         $InstallerPathOnMachine = "$env:TEMP\portal\$InstallerFileName"
         
@@ -84,6 +124,23 @@
 			DestinationPath = $InstallerPathOnMachine    
 			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
+        }
+
+        $InstallerVolumePathOnMachine = ""
+        if(-not([string]::IsNullOrEmpty($PortalInstallerVolumePath))){
+            $InstallerVolumeFileName = Split-Path $PortalInstallerVolumePath -Leaf
+            $InstallerVolumePathOnMachine = "$env:TEMP\portal\$InstallerVolumeFileName"
+
+            File DownloadInstallerVolumeFromFileShare      
+            {            	
+                Ensure = "Present"              	
+                Type = "File"             	
+                SourcePath = $PortalInstallerVolumePath 	
+                DestinationPath = $InstallerVolumePathOnMachine     
+                Credential = $FileshareMachineCredential     
+                DependsOn = $Depends  
+            }
+            $Depends += '[File]DownloadInstallerVolumeFromFileShare'
         }
         
         ArcGIS_Install PortalUpgradeInstall
@@ -107,6 +164,9 @@
 			SetScript = 
 			{ 
 				Remove-Item $using:InstallerPathOnMachine -Force
+                if(-not([string]::IsNullOrEmpty($using:InstallerVolumePathOnMachine))){
+                    Remove-Item $using:InstallerVolumePathOnMachine -Force
+                }
 			}
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
 			GetScript = { $null }          

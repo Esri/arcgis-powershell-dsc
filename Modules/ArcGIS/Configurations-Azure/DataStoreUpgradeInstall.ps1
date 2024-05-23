@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2',
+        $Version = '11.3',
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,

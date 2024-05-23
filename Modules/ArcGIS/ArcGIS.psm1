@@ -403,6 +403,45 @@ function Invoke-BuildArcGISAzureImage
     }    
 }
 
+function Get-PasswordFromObject
+{
+    [CmdletBinding()]
+    [OutputType([System.Security.SecureString])]
+    Param(
+        [PSCustomObject]
+        $Object
+    )
+    
+    if($Object.PasswordFilePath){
+        if(Test-Path $Object.PasswordFilePath){
+            return (Get-Content $Object.PasswordFilePath | ConvertTo-SecureString)
+        }else{
+            throw "Password file $($Object.PasswordFilePath) does not exist."
+        }
+    }elseif($Object.PasswordEnvironmentVariableName){
+        return (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Object.PasswordEnvironmentVariableName)
+    }else{
+        return (ConvertTo-SecureString  $Object.Password -AsPlainText -Force)
+    }    
+}
+
+function Get-PasswordFromEnvironmentVariable
+{
+    [CmdletBinding()]
+    [OutputType([System.Security.SecureString])]
+    Param(
+        [System.String]
+        $EnvironmentVariableName
+    )
+    
+    $Password = [environment]::GetEnvironmentVariable($EnvironmentVariableName,"Machine")
+    if([string]::IsNullOrEmpty($Password)){
+        throw "Environment Variable $($EnvironmentVariableName) does not exist."
+    }
+    return (ConvertTo-SecureString $Password -AsPlainText -Force)
+
+}
+
 function Invoke-CreateNodeToAdd
 {
     [CmdletBinding()]
@@ -456,14 +495,17 @@ function Invoke-CreateNodeToAdd
                 Password = $null
             }
 
-            if($SSLCertificate.Password -or $SSLCertificate.PasswordFilePath){
-                $SSLPassword = if($SSLCertificate.PasswordFilePath){ Get-Content $SSLCertificate.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $SSLCertificate.Password -AsPlainText -Force }
+            if($SSLCertificate.Password `
+                -or $SSLCertificate.PasswordFilePath `
+                -or $SSLCertificate.PasswordEnvironmentVariableName){
+                $SSLPassword = (Get-PasswordFromObject -Object $SSLCertificate)
                 $Certificate["Password"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SSLCertPlaceholder",$SSLPassword)
             }
             $NodeToAdd["SSLCertificate"] = $Certificate
         }
 
-        if(($TargetComponent -ieq "Server" -or $TargetComponent -ieq "Portal") -and $SSLCertificate.SslRootOrIntermediate){
+        if(($TargetComponent -ieq "Server" -or $TargetComponent -ieq "Portal") `
+                -and $SSLCertificate.SslRootOrIntermediate){
             $NodeToAdd["SslRootOrIntermediate"] = ($SSLCertificate.SslRootOrIntermediate | ConvertTo-Json)
         }
     }    
@@ -491,6 +533,10 @@ function Invoke-CreateNodeToAdd
             $WANode = @{
                 Role = $wa.Role
                 Context = $Context
+            }
+
+            if($wa.ContainsKey("HostName")){
+                $WANode["HostName"] = $wa.HostName
             }
 
             if($wa.Role -ieq "Server" -and $WebAdaptorAdminAccessEnabledSupported){
@@ -569,8 +615,8 @@ function Get-DownloadsInstallsConfigurationData
                             Password = $null
                         }
 
-                        if($SSLCertificate.Password -or $SSLCertificate.PasswordFilePath){
-                            $SSLPassword = if($SSLCertificate.PasswordFilePath){ Get-Content $SSLCertificate.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $SSLCertificate.Password -AsPlainText -Force }
+                        if($SSLCertificate.Password -or $SSLCertificate.PasswordFilePath -or $SSLCertificate.PasswordEnvironmentVariableName){
+                            $SSLPassword = (Get-PasswordFromObject -Object $SSLCertificate)
                             $Certificate["Password"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SSLCertPlaceholder",$SSLPassword)
                         }
                         $NodeToAdd["SSLCertificate"] = $Certificate
@@ -673,7 +719,7 @@ function Invoke-ArcGISConfiguration
         [System.Array]
         $ConfigurationParametersFile,    
 
-        [ValidateSet("Install","InstallLicense","InstallLicenseConfigure","Uninstall","Upgrade")]
+        [ValidateSet("Install","InstallLicense","InstallLicenseConfigure","Uninstall", "Upgrade", "WebGISDRImport", "WebGISDRExport")]
         [Parameter(Position = 1)]
         [System.String]
         $Mode = 'InstallLicenseConfigure',
@@ -700,7 +746,7 @@ function Invoke-ArcGISConfiguration
     $UseWinRMSSL = if($UseSSL){ $True }else{ $False }
     $EnableMSILoggingMode = if($EnableMSILogging){ $True }else{ $False } 
 
-    if(@("Install","InstallLicense","InstallLicenseConfigure","Uninstall") -icontains $Mode){
+    if(@("Install","InstallLicense","InstallLicenseConfigure","Uninstall", "WebGISDRImport", "WebGISDRExport") -icontains $Mode){
         $ConfigurationParamsJSON = $null
         Foreach($cf in $ConfigurationParametersFile){
             if(-not($ConfigurationParamsJSON)){
@@ -720,7 +766,7 @@ function Invoke-ArcGISConfiguration
         }
 
         if(($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
-            throw "[ERROR] Starting from version 4.2.1, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file."
+            throw "[ERROR] Starting from version 4.3.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file."
         }
 
         $ServiceCredential = $null
@@ -733,17 +779,62 @@ function Invoke-ArcGISConfiguration
             $ForceServiceCredentialUpdate = if($ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.ForceUpdate){$ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.ForceUpdate}else{$False}
             $SAPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
             if(-not($ServiceCredentialIsMSA)){
-                $SAPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+                $SAPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount)
             }
             $ServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
         }
 
         $InstallCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $ConfigurationParamsJSON
+        if(@("WebGISDRImport", "WebGISDRExport") -icontains $Mode){
+            if($ConfigurationParamsHashtable.ConfigData.Portal `
+                -and $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR `
+                -and $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount){
+                    
+                #$WebGISDRRunAsAccountIsDomainAccount = if($ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount.IsDomainAccount){ $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount.IsDomainAccount }else{ $False }
+                $WebGISDRRunAsAccountIsMSA = if($ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount.IsMSAAccount){ $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount.IsMSAAccount }else{ $False }
+                if($WebGISDRRunAsAccountIsMSA){
+                    throw "DSC Automation module doesn't support use of WebGISDR when using MSA account for service account."
+                }
+                
+                $SAPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount)
+                
+
+                $WebGISDRRunAsAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount.UserName, $SAPassword )
+            
+                $PortalCD = @{ AllNodes = @() }
+                $PortalNodes = ($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' })
+                if(($PortalNodes | Measure-Object).Count -eq 0){
+                    throw "No Portal Node found in the configuration file."
+                }
+                
+                $PortalNode = ($PortalNodes | Select-Object -First 1)
+                $PortalCD.AllNodes += (Invoke-CreateNodeToAdd -Node $PortalNode -TargetComponent 'Portal')
+                $WebGISDRArgs = @{
+                    ConfigurationData = $PortalCD
+                    Version = $EnterpriseVersion
+                    PortalInstallDirectory = $ConfigurationParamsHashtable.ConfigData.Portal.Installer.InstallDir
+                    WebGISDRAction = $Mode.Replace("WebGISDR","")
+                    WebGISDRPropertiesFilePath = $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.PropertiesFilePath
+                    WebGISDRTimeoutInMinutes = if($ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.TimeoutInMinutes){$ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.TimeoutInMinutes}else{3600}
+                    RunAsCredential = $WebGISDRRunAsAccountCredential
+                }
+
+                $ConfigurationName = "ArcGISWebGISDR"
+                $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebGISDRArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                if($JobFlag[$JobFlag.Count - 1] -ne $True){
+                    throw "WebGISDR failed" 
+                }
+                return
+            }else{
+                throw "WebGISDR configuration is missing in the configuration file."
+            }
+        }
+        
         $DownloadSetups = if($InstallCD.ConfigData.DownloadSetups){ $InstallCD.ConfigData.DownloadSetups }else{ $False }
         $DownloadSetupsToSharedPath = if($InstallCD.ConfigData.DownloadSetupsToSharedPath){ $InstallCD.ConfigData.DownloadSetupsToSharedPath }else{ $False }
         if($Mode -ine "Uninstall" -and ($DownloadSetups -or $DownloadSetupsToSharedPath)){
             $DownloadsCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $ConfigurationParamsJSON -DownloadSetupsToSharedPath $DownloadSetupsToSharedPath
-            $AGOPassword = if( $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.Password -AsPlainText -Force }
+            $AGOPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential)
             $AGOCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.AGOCredential.UserName, $AGOPassword )
             $DownloadSetupsArgs = @{
                 ConfigurationData = $DownloadsCD
@@ -764,6 +855,7 @@ function Invoke-ArcGISConfiguration
         }
         
         if(-not($Mode -ieq "Uninstall")){
+            $InstallArgs["SkipPatchInstalls"] = if($ConfigurationParamsHashtable.ConfigData.SkipPatchInstalls){ $ConfigurationParamsHashtable.ConfigData.SkipPatchInstalls }else{ $False }
             $InstallArgs["EnableMSILogging"] = $EnableMSILoggingMode
         }
 
@@ -862,7 +954,12 @@ function Invoke-ArcGISConfiguration
                             $ServerLicenseFilePath = $ConfigurationParamsHashtable.ConfigData.Server.LicenseFilePath
                             $ServerLicensePassword = $null
                             if($ConfigurationParamsHashtable.ConfigData.Server.LicensePasswordFilePath){
+                                if(-not(Test-Path $ConfigurationParamsHashtable.ConfigData.Server.LicensePasswordFilePath)){
+                                    throw "Password file $($ConfigurationParamsHashtable.ConfigData.Server.LicensePasswordFilePath) does not exist."
+                                }
                                 $ServerLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Server.LicensePasswordFilePath | ConvertTo-SecureString )
+                            }elseif($ConfigurationParamsHashtable.ConfigData.Server.LicensePasswordEnvironmentVariableName){
+                                $ServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $ConfigurationParamsHashtable.ConfigData.Server.LicensePasswordEnvironmentVariableName)
                             }elseif($ConfigurationParamsHashtable.ConfigData.Server.LicensePassword){
                                 $ServerLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.LicensePassword -AsPlainText -Force)
                             }
@@ -872,7 +969,12 @@ function Invoke-ArcGISConfiguration
                                 $ServerLicenseFilePath = $Node.ServerLicenseFilePath
                                 $ServerLicensePassword = $null
                                 if($Node.ServerLicensePasswordFilePath){
+                                    if(-not(Test-Path $Node.ServerLicensePasswordFilePath)){
+                                        throw "Password file $($Node.ServerLicensePasswordFilePath) does not exist."
+                                    }
                                     $ServerLicensePassword = (Get-Content $Node.ServerLicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($Node.ServerLicensePasswordEnvironmentVariableName){
+                                    $ServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.ServerLicensePasswordEnvironmentVariableName)
                                 }elseif($Node.ServerLicensePassword){
                                     $ServerLicensePassword = (ConvertTo-SecureString $Node.ServerLicensePassword -AsPlainText -Force)
                                 }
@@ -888,7 +990,12 @@ function Invoke-ArcGISConfiguration
                             $GeoeventServerLicenseFilePath =  $ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicenseFilePath
                             $GeoeventServerLicensePassword = $null
                             if($ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePasswordFilePath){
+                                if(-not(Test-Path $ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePasswordFilePath)){
+                                    throw "Password file $($ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePasswordFilePath) does not exist."
+                                }
                                 $GeoeventServerLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePasswordFilePath | ConvertTo-SecureString )
+                            }elseif($ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePasswordEnvironmentVariableName){
+                                $GeoeventServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePasswordEnvironmentVariableName)
                             }elseif($ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePassword){
                                 $GeoeventServerLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.GeoEventServer.LicensePassword -AsPlainText -Force)
                             }
@@ -899,7 +1006,12 @@ function Invoke-ArcGISConfiguration
                                 $GeoeventServerLicenseFilePath = $Node.GeoeventServerLicenseFilePath
                                 $GeoeventServerLicensePassword = $null
                                 if($Node.GeoeventServerLicensePasswordFilePath){
+                                    if(-not(Test-Path $Node.GeoeventServerLicensePasswordFilePath)){
+                                        throw "Password file $($Node.GeoeventServerLicensePasswordFilePath) does not exist."
+                                    }
                                     $GeoeventServerLicensePassword = (Get-Content $Node.GeoeventServerLicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($Node.GeoeventServerLicensePasswordEnvironmentVariableName){
+                                    $GeoeventServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.GeoeventServerLicensePasswordEnvironmentVariableName)
                                 }elseif($Node.ServerLicensePassword){
                                     $GeoeventServerLicensePassword = (ConvertTo-SecureString $Node.GeoeventServerLicensePassword -AsPlainText -Force)
                                 }
@@ -915,7 +1027,12 @@ function Invoke-ArcGISConfiguration
                             $WorkflowManagerServerLicenseFilePath =  $ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicenseFilePath
                             $WorkflowManagerServerLicensePassword = $null
                             if($ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePasswordFilePath){
+                                if(-not(Test-Path $ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePasswordFilePath)){
+                                    throw "Password file $($ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePasswordFilePath) does not exist."
+                                }
                                 $WorkflowManagerServerLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePasswordFilePath | ConvertTo-SecureString )
+                            }elseif($ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePasswordEnvironmentVariableName){
+                                $WorkflowManagerServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePasswordEnvironmentVariableName)
                             }elseif($ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePassword){
                                 $WorkflowManagerServerLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.WorkflowManagerServer.LicensePassword -AsPlainText -Force)
                             }
@@ -926,7 +1043,12 @@ function Invoke-ArcGISConfiguration
                                 $WorkflowManagerServerLicenseFilePath = $Node.WorkflowManagerServerLicenseFilePath
                                 $WorkflowManagerServerLicensePassword = $null
                                 if($Node.WorkflowManagerServerLicensePasswordFilePath){
+                                    if(-not(Test-Path $Node.WorkflowManagerServerLicensePasswordFilePath)){
+                                        throw "Password file $($Node.WorkflowManagerServerLicensePasswordFilePath) does not exist."
+                                    }
                                     $WorkflowManagerServerLicensePassword = (Get-Content $Node.WorkflowManagerServerLicensePasswordFilePath | ConvertTo-SecureString )
+                                }elseif($Node.WorkflowManagerServerLicensePasswordEnvironmentVariableName){
+                                    $WorkflowManagerServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.WorkflowManagerServerLicensePasswordEnvironmentVariableName)
                                 }elseif($Node.ServerLicensePassword){
                                     $WorkflowManagerServerLicensePassword = (ConvertTo-SecureString $Node.WorkflowManagerServerLicensePassword -AsPlainText -Force)
                                 }
@@ -950,7 +1072,12 @@ function Invoke-ArcGISConfiguration
 
                             $ProLicensePassword = $null
                             if($ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordFilePath){
+                                if(-not(Test-Path $ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordFilePath)){
+                                    throw "Password file $($ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordFilePath) does not exist."
+                                }
                                 $ProLicensePassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordFilePath | ConvertTo-SecureString )
+                            }elseif($ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordEnvironmentVariableName){
+                                $ProLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $ConfigurationParamsHashtable.ConfigData.Pro.LicensePasswordEnvironmentVariableName)
                             }elseif($ConfigurationParamsHashtable.ConfigData.Pro.LicensePassword){
                                 $ProLicensePassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Pro.LicensePassword -AsPlainText -Force)
                             }
@@ -961,8 +1088,13 @@ function Invoke-ArcGISConfiguration
                                 $ProLicenseFilePath = $Node.ProLicenseFilePath
                                 $ProLicensePassword = $null
                                 if($Node.ProLicensePasswordFilePath){
+                                    if(-not(Test-Path $Node.ProLicensePasswordFilePath)){
+                                        throw "Password file $($Node.ProLicensePasswordFilePath) does not exist."
+                                    }
                                     $ProLicensePassword = (Get-Content $Node.ProLicensePasswordFilePath | ConvertTo-SecureString )
-                                }elseif($Node.ServerLicensePassword){
+                                }elseif($Node.ProLicensePasswordEnvironmentVariableName){
+                                    $ProLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.ProLicensePasswordEnvironmentVariableName)
+                                }elseif($Node.ProLicensePassword){
                                     $ProLicensePassword = (ConvertTo-SecureString $Node.ProLicensePassword -AsPlainText -Force)
                                 }
                             }
@@ -1076,13 +1208,13 @@ function Invoke-ArcGISConfiguration
                     
                     $ServerPrimarySiteAdminCredential = $null 
                     if($ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin){
-                        $ServerPrimarySiteAdminPassword = if( $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.Password -AsPlainText -Force }
+                        $ServerPrimarySiteAdminPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin)
                         $ServerPrimarySiteAdminCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.PrimarySiteAdmin.UserName, $ServerPrimarySiteAdminPassword )
                     }
 
                     $PortalAdministratorCredential = $null 
                     if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator){
-                        $PortalAdministratorPassword = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Password -AsPlainText -Force }
+                        $PortalAdministratorPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator)
                         $PortalAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.UserName, $PortalAdministratorPassword )
                     }
                     
@@ -1147,13 +1279,13 @@ function Invoke-ArcGISConfiguration
                             $WAAdminAccessEnabled = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled }else{ $False }
                             $WebsiteId = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId }else{ 1}
 
-                            $WebAdaptorAdminAccessEnabledSupported = -not($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "MissionServer")
+                            $WebAdaptorAdminAccessEnabledSupported = -not(@("NotebookServer","MissionServer","VideoServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole)
 
                             $WANode = ( Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'WebAdaptor' -ServerContext $ServerContext -PortalContext $PortalContext -WebAdaptorAdminAccessEnabled $WAAdminAccessEnabled -IsJavaWebAdaptor $IsJavaWebAdaptor -WebAdaptorWebSiteId $WebsiteId -WebAdaptorAdminAccessEnabledSupported $WebAdaptorAdminAccessEnabledSupported )
 
                             if(($WANode.WebAdaptorConfig | Where-Object { $_.Role -ieq "Server" }| Measure-Object).Count -gt 0){
                                 if(($WANode.WebAdaptorConfig | Where-Object { $_.Role -ieq "Server" -and $_.Context -ieq $ConfigurationParamsHashtable.ConfigData.ServerContext } | Measure-Object).Count -gt 0){
-                                    $ServerWAExternalHostName = if($WANode.SSLCertificate){ $WANode.SSLCertificate.CName }else{ Get-FQDN $WANode.NodeName }
+                                    $ServerWAExternalHostName = if($WANode.HostName){ $WANode.HostName }elseif($WANode.SSLCertificate){ $WANode.SSLCertificate.CName }else{ Get-FQDN $WANode.NodeName }
                                 }
                                 if(-not($IsServerWAOnSeparateMachine)){
                                     $IsServerWAOnSeparateMachine = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' -and $_.NodeName -ine $WANode.NodeName } | Measure-Object).Count -gt 0)
@@ -1162,7 +1294,7 @@ function Invoke-ArcGISConfiguration
 
                             if(($WANode.WebAdaptorConfig | Where-Object { $_.Role -ieq "Portal" }| Measure-Object).Count -gt 0){
                                 if($null -eq $PortalWAExternalHostName){
-                                    $PortalWAExternalHostName = if($WANode.SSLCertificate){ $WANode.SSLCertificate.CName }else{ Get-FQDN $WANode.NodeName }
+                                    $PortalWAExternalHostName = if($WANode.HostName){ $WANode.HostName }elseif($WANode.SSLCertificate){ $WANode.SSLCertificate.CName }else{ Get-FQDN $WANode.NodeName }
                                 }
                             }
 
@@ -1263,7 +1395,7 @@ function Invoke-ArcGISConfiguration
                             DebugMode = $DebugMode
                         }
 
-                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "MissionServer"){
+                        if(@("NotebookServer", "MissionServer", "VideoServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole){
                             if($ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
                                 $ServerArgs["ContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
                             }        
@@ -1298,13 +1430,16 @@ function Invoke-ArcGISConfiguration
                                     
                                 }elseif($ConfigStoreAzureBlobAuthenticationType -ieq "ServicePrincipal"){
                                     $ServerArgs["ConfigStoreAzureBlobServicePrincipalTenantId"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.TenantId
+                                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost){
+                                        $ServerArgs["ConfigStoreAzureBlobServicePrincipalAuthorityHost"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost
+                                    }
                                     $ConfigStoreAzureBlobServicePrincipalClientSecret = if( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecret -AsPlainText -Force }
                                     $ServerArgs["ConfigStoreAzureBlobServicePrincipalCredentials"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientId, $ConfigStoreAzureBlobServicePrincipalClientSecret )
                                 }
                             }
 
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Username -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Password -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordFilePath)){
-                                $ServerConfigStoreCloudStorageAccountPassword = if( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Password -AsPlainText -Force }
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Username -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Password -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordFilePath -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordEnvironmentVariableName)){
+                                $ServerConfigStoreCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount)
                                 $ServerConfigStoreCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.UserName, $ServerConfigStoreCloudStorageAccountPassword )
                             }else{
                                 if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AWSS3DynamoDB" -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AzureBlob" -and $ConfigStoreAzureBlobAuthenticationType -ne "UserAssignedIdentity" -and $ConfigStoreAzureBlobAuthenticationType -ne "ServicePrincipal")){
@@ -1326,7 +1461,7 @@ function Invoke-ArcGISConfiguration
                         if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
                             $ServerDirectoriesCloudStorageCredentials = $null
                             if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
-                                $ServerDirectoriesCloudStorageAccountPassword = if( $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.Password -AsPlainText -Force }
+                                $ServerDirectoriesCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount)
                                 $ServerDirectoriesCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.UserName, $ServerDirectoriesCloudStorageAccountPassword )
                             }else{
                                 throw "No credentials provided for Cloud Storage for $($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType)"
@@ -1343,6 +1478,8 @@ function Invoke-ArcGISConfiguration
                             $ConfigurationName = "ArcGISNotebookServer"
                         }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
                             $ConfigurationName = "ArcGISMissionServer"
+                        }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "VideoServer"){
+                            $ConfigurationName = "ArcGISVideoServer"
                         }
 
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -1353,19 +1490,19 @@ function Invoke-ArcGISConfiguration
                             if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                 $DatabaseServerAdministratorCredential = $null
                                 if($DB.DatabaseAdminUser){
-                                    $DatabaseAdminUserPassword = if( $DB.DatabaseAdminUser.PasswordFilePath ){ Get-Content $DB.DatabaseAdminUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseAdminUser.Password -AsPlainText -Force }
+                                    $DatabaseAdminUserPassword = (Get-PasswordFromObject -Object $DB.DatabaseAdminUser)
                                     $DatabaseServerAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.DatabaseAdminUser.UserName, $DatabaseAdminUserPassword )
                                 }
 
                                 $SDEUserCredential = $null
                                 if($DB.SDEUser){
-                                    $SDEUserPassword = if( $DB.SDEUser.PasswordFilePath ){ Get-Content $DB.SDEUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.SDEUser.Password -AsPlainText -Force }
+                                    $SDEUserPassword = (Get-PasswordFromObject -Object $DB.SDEUser)
                                     $SDEUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.SDEUser.UserName, $SDEUserPassword )
                                 }
 
                                 $DatabaseUserCredential = $null
                                 if($DB.DatabaseUser){
-                                    $DatabaseUserPassword = if( $DB.DatabaseUser.PasswordFilePath ){ Get-Content $DB.DatabaseUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DB.DatabaseUser.Password -AsPlainText -Force }
+                                    $DatabaseUserPassword = (Get-PasswordFromObject -Object $DB.DatabaseUser)
                                     $DatabaseUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DB.DatabaseUser.UserName, $DatabaseUserPassword )
                                 }
 
@@ -1422,6 +1559,10 @@ function Invoke-ArcGISConfiguration
                                             $ConnectionPassword = if( $AzureStorageObject.SASTokenFilePath ){ Get-Content $DSItem.SDEUser.SASTokenFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.SASToken -AsPlainText -Force }
                                         }elseif($AuthType -ieq "ServicePrincipal"){
                                             $ConnectionStringObject["AzureStorage"]["ServicePrincipalTenantId"] = $AzureStorageObject.ServicePrincipal.TenantId
+                                            if($AzureStorageObject.ServicePrincipal.AuthorityHost){
+                                                $ConnectionStringObject["AzureStorage"]["AuthorityHost"] = $AzureStorageObject.ServicePrincipal.AuthorityHost
+                                            }
+
                                             $ConnectionStringObject["AzureStorage"]["ServicePrincipalClientId"] = $AzureStorageObject.ServicePrincipal.ClientId
                                             $ConnectionPassword = if( $AzureStorageObject.ServicePrincipal.ClientSecretFilePath ){ Get-Content $AzureStorageObject.ServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.ServicePrincipal.ClientSecret -AsPlainText -Force }
                                         }elseif($AuthType -ieq "UserAssignedIdentity"){
@@ -1496,6 +1637,10 @@ function Invoke-ArcGISConfiguration
                         $ConfigurationName = "ArcGISServerSettings"
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
                             $ConfigurationName = "ArcGISMissionServerSettings"
+                            $ServerArgs["DisableServiceDirectory"] = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
+                        }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "VideoServer"){
+                            $ConfigurationName = "ArcGISVideoServerSettings"
+                            $ServerSettingsArgs.Remove("DisableServiceDirectory")
                         }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){
                             $ConfigurationName = "ArcGISNotebookServerSettings"
                         }else{
@@ -1540,6 +1685,9 @@ function Invoke-ArcGISConfiguration
                                     $PortalArgs["ContentStoreAzureBlobUserAssignedIdentityId"] = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobUserAssignedIdentityClientId
                                 }elseif($ContentStoreAzureBlobAuthenticationType -ieq "ServicePrincipal"){
                                     $PortalArgs["ContentStoreAzureBlobServicePrincipalTenantId"] = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.TenantId
+                                    if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost){
+                                        $PortalArgs["ContentStoreAzureBlobServicePrincipalAuthorityHost"] = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost
+                                    }
                                     $ConfigStoreAzureBlobServicePrincipalClientSecret = if( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientSecret -AsPlainText -Force }
                                     
                                     $PortalArgs["ContentStoreAzureBlobServicePrincipalCredentials"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientId, $ConfigStoreAzureBlobServicePrincipalClientSecret )
@@ -1547,9 +1695,8 @@ function Invoke-ArcGISConfiguration
                             }
 
                             $PortalCloudStorageCredentials = $null
-                            if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.Username -and ($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.Password -or $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.PasswordFilePath)){
-                                $PortalCloudStorageAccountPassword = if( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.Password -AsPlainText -Force }
-                                
+                            if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.Username -and ($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.Password -or $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.PasswordFilePath -or $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.PasswordEnvironmentVariableName)){
+                                $PortalCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount)
                                 $PortalCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.UserName, $PortalCloudStorageAccountPassword )
                             }else{
                                 if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ne "AWSS3DynamoDB" -and ($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ne "AzureBlob" -and $ContentStoreAzureBlobAuthenticationType -ne "UserAssignedIdentity" -and $ContentStoreAzureBlobAuthenticationType -ne "ServicePrincipal")){
@@ -1600,7 +1747,7 @@ function Invoke-ArcGISConfiguration
                         }
                         
                         if($ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser){
-                            $ADServicePassword = if($ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.Password -AsPlainText -Force }
+                            $ADServicePassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser)
                             $ADServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.ADServiceUser.UserName, $ADServicePassword )
                             $PortalSettingsArgs["ADServiceCredential"] = $ADServiceCredential
                         }
@@ -1614,7 +1761,7 @@ function Invoke-ArcGISConfiguration
                                 $PortalSettingsArgs["EmailSettingsLabel"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.Label
                                 $PortalSettingsArgs["EmailSettingsAuthenticationRequired"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.AuthenticationRequired
                                 if($ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.AuthenticationRequired){
-                                    $EmailSettingsPassword = if( $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.Password -AsPlainText -Force }
+                                    $EmailSettingsPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings)
                                     $EmailSettingsCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.UserName, $EmailSettingsPassword )
                                     $PortalSettingsArgs["EmailSettingsCredential"] = $EmailSettingsCredential
                                 }
@@ -1715,7 +1862,7 @@ function Invoke-ArcGISConfiguration
                                         }
                                         
                                         if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = if( $BackupObject.CloudStorageAccount.PasswordFilePath ){ Get-Content $BackupObject.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $BackupObject.CloudStorageAccount.Password -AsPlainText -Force }
+                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
                                             $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
                                             $Backup["CloudCredential"] = $BackupCloudStorageCredentials
                                         }else{
@@ -1790,7 +1937,7 @@ function Invoke-ArcGISConfiguration
                                         }
 
                                         if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = if( $BackupObject.CloudStorageAccount.PasswordFilePath ){ Get-Content $BackupObject.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $BackupObject.CloudStorageAccount.Password -AsPlainText -Force }
+                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
                                             $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
                                             $Backup["CloudCredential"] = $BackupCloudStorageCredentials
                                         }else{
@@ -1875,7 +2022,7 @@ function Invoke-ArcGISConfiguration
                                         }                                        
 
                                         if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = if( $BackupObject.CloudStorageAccount.PasswordFilePath ){ Get-Content $BackupObject.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $BackupObject.CloudStorageAccount.Password -AsPlainText -Force }
+                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
                                             $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
                                             $Backup["CloudCredential"] = $BackupCloudStorageCredentials
                                         }else{
@@ -1949,7 +2096,7 @@ function Invoke-ArcGISConfiguration
                                         }
 
                                         if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = if( $BackupObject.CloudStorageAccount.PasswordFilePath ){ Get-Content $BackupObject.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $BackupObject.CloudStorageAccount.Password -AsPlainText -Force }
+                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
                                             $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
                                             $Backup["CloudCredential"] = $BackupCloudStorageCredentials
                                         }else{
@@ -2028,7 +2175,7 @@ function Invoke-ArcGISConfiguration
                                         }
                                         
                                         if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = if( $BackupObject.CloudStorageAccount.PasswordFilePath ){ Get-Content $BackupObject.CloudStorageAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $BackupObject.CloudStorageAccount.Password -AsPlainText -Force }
+                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
                                             $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
                                             $Backup["CloudCredential"] = $BackupCloudStorageCredentials
                                         }else{
@@ -2077,7 +2224,7 @@ function Invoke-ArcGISConfiguration
                         $RemoteSiteAdministrator = $null
                         if($PortalCheck){
                             $PortalServerFederation = $True
-                            $PortalHostName = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryPortalMachine.NodeName } }
+                            $PortalHostName = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ $PrimaryPortalMachine.NodeName } }
                             $PortalPort = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ 7443 }
                             $PortalContext = 'arcgis'
                         }elseif($ConfigurationParamsHashtable.ConfigData.Federation){
@@ -2086,18 +2233,18 @@ function Invoke-ArcGISConfiguration
                             $PortalPort = $ConfigurationParamsHashtable.ConfigData.Federation.PortalPort
                             $PortalContext = $ConfigurationParamsHashtable.ConfigData.Federation.PortalContext
 
-                            $RemoteSiteAdministratorPassword = if( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.PasswordFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.Password -AsPlainText -Force }
+                            $RemoteSiteAdministratorPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator)
                             $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.UserName, $RemoteSiteAdministratorPassword )
                         }
 
                         if($RemoteFederation -or $PortalServerFederation){
                             $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             $ServerServiceURL = if($null -ne $ServerExternalDNSHostName){ $ServerExternalDNSHostName }else{  if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName } }
-                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{6443}}
+                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{6443}}
                             $ServerServiceURLContext = if($null -ne $ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ 'arcgis' }
 
-                            $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName }
-                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
+                            $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ $PrimaryServerMachine.NodeName }
+                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{ 6443 }
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
                                 $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
                             }
@@ -2105,13 +2252,13 @@ function Invoke-ArcGISConfiguration
 
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
                                 $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }else{ 6443 }
+                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{ 6443 }
                                 if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
                                     $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
                                 }
                                 $ServerSiteAdminURLContext = 'arcgis'
                             }else{
-                                if(-not($WebAdaptorCheck) -or ($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer') -or ($ServerRole -ieq 'MissionServer'))){ 
+                                if(-not($WebAdaptorCheck) -or ($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer') -or ($ServerRole -ieq 'MissionServer') -or ($ServerRole -ieq 'VideoServer'))){ 
                                     # Check this for LB when no WAs specified
                                     if($ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer){
                                         $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer
@@ -2187,7 +2334,7 @@ function Invoke-ArcGISConfiguration
                         }
                         if($ServerCheck){
                             $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName }
-                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){20443}else{6443}                            
+                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){20443}elseif($ServerRole -ieq "VideoServer"){21443}else{6443}                            
                             $ServerAdminURL = "$($PrimaryServerCName):$($Port)/arcgis"
                             $ServerManagerURL = "$($PrimaryServerCName):$($Port)/arcgis"
                             $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
@@ -2210,7 +2357,7 @@ function Invoke-ArcGISConfiguration
                             }
 
                             Write-Information -InformationAction Continue "Server Admin URL - https://$ServerAdminURL/admin"
-                            if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer'))){
+                            if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer','VideoServer'))){
                                 Write-Information -InformationAction Continue "Server Manager URL - https://$ServerManagerURL/manager"
                             }
                             Write-Information -InformationAction Continue "Server Rest URL - https://$ServerURL/rest"
@@ -2239,7 +2386,7 @@ function Invoke-ArcGISConfiguration
             }
 
             if(($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
-                throw "[ERROR] Starting from version 4.2.1, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
+                throw "[ERROR] Starting from version 4.3.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
             }
 
             
@@ -2286,11 +2433,11 @@ function Invoke-ArcGISConfiguration
             $DownloadSetups = if($SetupsDownloadCD.ConfigData.DownloadSetups){ $SetupsDownloadCD.ConfigData.DownloadSetups }else{ $False }
             $DownloadSetupsToSharedPath = if($SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath){ $SetupsDownloadCD.ConfigData.DownloadSetupsToSharedPath }else{ $False }
             if($DownloadSetups -or $DownloadSetupsToSharedPath){
-                $DownloadCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $cfJSON -DownloadSetupsToSharedPath $DownloadSetupsToSharedPath
-                $AGOPassword = if( $cfHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath ){ Get-Content $cfHashtable.ConfigData.Credentials.AGOCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cfHashtable.ConfigData.Credentials.AGOCredential.Password -AsPlainText -Force }
+                $DownloadsCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $cfJSON -DownloadSetupsToSharedPath $DownloadSetupsToSharedPath
+                $AGOPassword = (Get-PasswordFromObject -Object $cfHashtable.ConfigData.Credentials.AGOCredential)
                 $AGOCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cfHashtable.ConfigData.Credentials.AGOCredential.UserName, $AGOPassword )
                 $DownloadSetupsArgs = @{
-                    ConfigurationData = $DownloadCD
+                    ConfigurationData = $DownloadsCD
                     AGOCredential = $AGOCredential
                 }
                 $ConfigurationName = "ArcGISDownloads"
@@ -2380,7 +2527,7 @@ function Invoke-ArcGISConfiguration
                 $ServiceAccountIsMSA = if($HostingConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$HostingConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false}
                 $ServiceAccountPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
                 if(-not($ServiceAccountIsMSA)){
-                    $ServiceAccountPassword = if( $HostingConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $HostingConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $HostingConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+                    $ServiceAccountPassword = (Get-PasswordFromObject -Object $HostingConfig.ConfigData.Credentials.ServiceAccount)
                 }
                 $ServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $HostingConfig.ConfigData.Credentials.ServiceAccount.UserName, $ServiceAccountPassword )
 
@@ -2396,6 +2543,7 @@ function Invoke-ArcGISConfiguration
                     IsServiceAccountMSA = $ServiceAccountIsMSA
                     EnableMSILogging =  $EnableMSILoggingMode
                     DownloadPatches = if($HostingConfig.ConfigData.DownloadPatches){ $HostingConfig.ConfigData.DownloadPatches }else{ $False }
+                    SkipPatchInstalls = if($HostingConfig.ConfigData.SkipPatchInstalls){ $HostingConfig.ConfigData.SkipPatchInstalls }else{ $False }
                 }
 
                 $JobFlag = Invoke-DSCJob -ConfigurationName "InsightsUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $InsightsInstallUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2508,11 +2656,16 @@ function Invoke-PortalUpgradeScript {
     $PortalLicensePassword = $null
 
     if($PortalConfig.ConfigData.Portal.LicensePasswordFilePath){
+        if(-not(Test-Path $PortalConfig.ConfigData.Portal.LicensePasswordFilePath)){
+            throw "Password file $($PortalConfig.ConfigData.Portal.LicensePasswordFilePath) does not exist."
+        }
         $PortalLicensePassword = (Get-Content $PortalConfig.ConfigData.Portal.LicensePasswordFilePath | ConvertTo-SecureString )
+    }elseif($PortalConfig.ConfigData.Portal.LicensePasswordEnvironmentVariableName){
+        $PortalLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $PortalConfig.ConfigData.Portal.LicensePasswordEnvironmentVariableName )
     }elseif($PortalConfig.ConfigData.Portal.LicensePassword){
         $PortalLicensePassword = (ConvertTo-SecureString $PortalConfig.ConfigData.Portal.LicensePassword -AsPlainText -Force)
     }
-    
+
     $PrimaryNodeToAdd = $null
     $StandbyNodeToAdd = $null
     $IsMultiMachinePortal = $False
@@ -2537,7 +2690,12 @@ function Invoke-PortalUpgradeScript {
             if($Node.PortalLicenseFilePath){
                 if($Node.PortalLicensePassword -or $Node.PortalLicensePasswordFilePath){
                     if($Node.PortalLicensePasswordFilePath){
+                        if(-not(Test-Path $Node.PortalLicensePasswordFilePath)){
+                            throw "Password file $($Node.PortalLicensePasswordFilePath) does not exist."
+                        }
                         $NodeToAdd["PortalLicensePassword"] = (Get-Content $Node.PortalLicensePasswordFilePath | ConvertTo-SecureString )
+                    }elseif($Node.PortalLicensePasswordEnvironmentVariableName){
+                        $NodeToAdd["PortalLicensePassword"] = = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.PortalLicensePasswordEnvironmentVariableName)
                     }elseif($Node.PortalLicensePassword){
                         $NodeToAdd["PortalLicensePassword"] = (ConvertTo-SecureString $Node.PortalLicensePassword -AsPlainText -Force)
                     }
@@ -2561,11 +2719,11 @@ function Invoke-PortalUpgradeScript {
     $PortalServiceAccountIsMSA = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$PortalConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false}
     $PortalServiceAccountPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
     if(-not($PortalServiceAccountIsMSA)){
-        $PortalServiceAccountPassword = if( $PortalConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+        $PortalServiceAccountPassword = (Get-PasswordFromObject -Object $PortalConfig.ConfigData.Credentials.ServiceAccount)
     }
     $PortalServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalServiceAccountPassword )
     
-    $PortalSiteAdministratorPassword = if($PortalConfig.ConfigData.Portal.PortalAdministrator.PasswordFilePath ){ Get-Content $PortalConfig.ConfigData.Portal.PortalAdministrator.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $PortalConfig.ConfigData.Portal.PortalAdministrator.Password -AsPlainText -Force }
+    $PortalSiteAdministratorPassword = (Get-PasswordFromObject -Object $PortalConfig.ConfigData.Portal.PortalAdministrator)
     $PortalSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Portal.PortalAdministrator.UserName, $PortalSiteAdministratorPassword )
 
     $PortalUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
@@ -2590,6 +2748,8 @@ function Invoke-PortalUpgradeScript {
         IsServiceAccountMSA = $PortalServiceAccountIsMSA
         EnableMSILogging =  $EnableMSILoggingMode
         DownloadPatches = if($PortalConfig.ConfigData.DownloadPatches){ $PortalConfig.ConfigData.DownloadPatches }else{ $False }
+        SkipPatchInstalls = if($PortalConfig.ConfigData.SkipPatchInstalls){ $PortalConfig.ConfigData.SkipPatchInstalls }else{ $False }
+        IsMultiMachinePortal = $IsMultiMachinePortal
     }
     if((($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or ($PortalVersion -ieq "10.7.1")) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
         $PortalUpgradeArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
@@ -2626,6 +2786,7 @@ function Invoke-PortalUpgradeScript {
                 PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
                 SetOnlyHostNamePropertiesFile = $false
                 Version = $PortalConfig.ConfigData.Version
+                DebugMode = $DebugMode
             }
 
             $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $PortalPostUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2667,6 +2828,7 @@ function Invoke-PortalUpgradeScript {
             WebSiteId = if($PortalConfig.ConfigData.WebAdaptor.WebSiteId){ $PortalConfig.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
             EnableMSILogging =  $EnableMSILoggingMode
             DownloadPatches = if($PortalConfig.ConfigData.DownloadPatches){ $PortalConfig.ConfigData.DownloadPatches }else{ $False }
+            SkipPatchInstalls = if($PortalConfig.ConfigData.SkipPatchInstalls){ $PortalConfig.ConfigData.SkipPatchInstalls }else{ $False }
         }
 
         if($IsJavaWebAdaptor){
@@ -2715,11 +2877,11 @@ function Invoke-ServerUpgradeScript {
     $cfServiceAccountIsMSA = if($cf.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$cf.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false }
     $cfServiceAccountPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
     if(-not($cfServiceAccountIsMSA)){
-        $cfServiceAccountPassword = if( $cf.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $cf.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+        $cfServiceAccountPassword = (Get-PasswordFromObject -Object $cf.ConfigData.Credentials.ServiceAccount)
     }
     $cfServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Credentials.ServiceAccount.UserName, $cfServiceAccountPassword )
     
-    $cfSiteAdministratorPassword = if($cf.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $cf.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.ConfigData.Server.PrimarySiteAdmin.Password -AsPlainText -Force }
+    $cfSiteAdministratorPassword = (Get-PasswordFromObject -Object $cf.ConfigData.Server.PrimarySiteAdmin)
     $cfSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Server.PrimarySiteAdmin.UserName, $cfSiteAdministratorPassword )
     
     $JobFlag = $True
@@ -2748,6 +2910,7 @@ function Invoke-ServerUpgradeScript {
         }
     }
 
+    $IsMultiMachineServerSite = (($cf.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
     for ( $i = 0; $i -lt $cf.AllNodes.count; $i++ ){
         $Node = $cf.AllNodes[$i]
         if($Node.Role -icontains 'Server'){
@@ -2777,7 +2940,12 @@ function Invoke-ServerUpgradeScript {
                 $ServerLicenseFilePath = $cf.ConfigData.Server.LicenseFilePath
                 $ServerLicensePassword = $null
                 if($cf.ConfigData.Server.LicensePasswordFilePath){
+                    if(-not(Test-Path $cf.ConfigData.Server.LicensePasswordFilePath)){
+                        throw "Password file $($cf.ConfigData.Server.LicensePasswordFilePath) does not exist."
+                    }
                     $ServerLicensePassword = (Get-Content $cf.ConfigData.Server.LicensePasswordFilePath | ConvertTo-SecureString )
+                }elseif($cf.ConfigData.Server.LicensePasswordEnvironmentVariableName){
+                    $ServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $cf.ConfigData.Server.LicensePasswordEnvironmentVariableName)
                 }elseif($cf.ConfigData.Server.LicensePassword){
                     $ServerLicensePassword = (ConvertTo-SecureString $cf.ConfigData.Server.LicensePassword -AsPlainText -Force)
                 }
@@ -2786,7 +2954,12 @@ function Invoke-ServerUpgradeScript {
                     $ServerLicenseFilePath = $Node.ServerLicenseFilePath
                     $ServerLicensePassword = $null
                     if($Node.ServerLicensePasswordFilePath){
+                        if(-not(Test-Path $Node.ServerLicensePasswordFilePath)){
+                            throw "Password file $($Node.ServerLicensePasswordFilePath) does not exist."
+                        }
                         $ServerLicensePassword = (Get-Content $Node.ServerLicensePasswordFilePath | ConvertTo-SecureString )
+                    }elseif($Node.ServerLicensePasswordEnvironmentVariableName){
+                        $ServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.ServerLicensePasswordEnvironmentVariableName)
                     }elseif($Node.ServerLicensePassword){
                         $ServerLicensePassword = (ConvertTo-SecureString $Node.ServerLicensePassword -AsPlainText -Force)
                     }
@@ -2802,7 +2975,12 @@ function Invoke-ServerUpgradeScript {
                 $GeoeventServerLicenseFilePath =  $cf.ConfigData.GeoEventServer.LicenseFilePath
                 $GeoeventServerLicensePassword = $null
                 if($cf.ConfigData.GeoEventServer.LicensePasswordFilePath){
+                    if(-not(Test-Path $cf.ConfigData.GeoEventServer.LicensePasswordFilePath)){
+                        throw "Password file $($cf.ConfigData.GeoEventServer.LicensePasswordFilePath) does not exist."
+                    }
                     $GeoeventServerLicensePassword = (Get-Content $cf.ConfigData.GeoEventServer.LicensePasswordFilePath | ConvertTo-SecureString )
+                }elseif($cf.ConfigData.GeoEventServer.LicensePasswordEnvironmentVariableName){
+                    $GeoeventServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $cf.ConfigData.GeoEventServer.LicensePasswordEnvironmentVariableName)
                 }elseif($cf.ConfigData.GeoEventServer.LicensePassword){
                     $GeoeventServerLicensePassword = (ConvertTo-SecureString $cf.ConfigData.GeoEventServer.LicensePassword -AsPlainText -Force)
                 }
@@ -2812,7 +2990,12 @@ function Invoke-ServerUpgradeScript {
                     $GeoeventServerLicenseFilePath = $Node.GeoeventServerLicenseFilePath
                     $GeoeventServerLicensePassword = $null
                     if($Node.GeoeventServerLicensePasswordFilePath){
+                        if(-not(Test-Path $Node.GeoeventServerLicensePasswordFilePath)){
+                            throw "Password file $($Node.GeoeventServerLicensePasswordFilePath) does not exist."
+                        }
                         $GeoeventServerLicensePassword = (Get-Content $Node.GeoeventServerLicensePasswordFilePath | ConvertTo-SecureString )
+                    }elseif($Node.GeoeventServerLicensePasswordEnvironmentVariableName){
+                        $GeoeventServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.GeoeventServerLicensePasswordEnvironmentVariableName )
                     }elseif($Node.ServerLicensePassword){
                         $GeoeventServerLicensePassword = (ConvertTo-SecureString $Node.GeoeventServerLicensePassword -AsPlainText -Force)
                     }
@@ -2828,7 +3011,12 @@ function Invoke-ServerUpgradeScript {
                 $WorkflowManagerServerLicenseFilePath =  $cf.ConfigData.WorkflowManagerServer.LicenseFilePath
                 $WorkflowManagerServerLicensePassword = $null
                 if($cf.ConfigData.WorkflowManagerServer.LicensePasswordFilePath){
+                    if(-not(Test-Path $cf.ConfigData.WorkflowManagerServer.LicensePasswordFilePath)){
+                        throw "Password file $($cf.ConfigData.WorkflowManagerServer.LicensePasswordFilePath) does not exist."
+                    }
                     $WorkflowManagerServerLicensePassword = (Get-Content $cf.ConfigData.WorkflowManagerServer.LicensePasswordFilePath | ConvertTo-SecureString )
+                }elseif($cf.ConfigData.WorkflowManagerServer.LicensePasswordEnvironmentVariableName){
+                    $WorkflowManagerServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $cf.ConfigData.WorkflowManagerServer.LicensePasswordEnvironmentVariableName)
                 }elseif($cf.ConfigData.WorkflowManagerServer.LicensePassword){
                     $WorkflowManagerServerLicensePassword = (ConvertTo-SecureString $cf.ConfigData.WorkflowManagerServer.LicensePassword -AsPlainText -Force)
                 }
@@ -2839,7 +3027,12 @@ function Invoke-ServerUpgradeScript {
                     $WorkflowManagerServerLicenseFilePath = $Node.WorkflowManagerServerLicenseFilePath
                     $WorkflowManagerServerLicensePassword = $null
                     if($Node.WorkflowManagerServerLicensePasswordFilePath){
+                        if(-not(Test-Path $Node.WorkflowManagerServerLicensePasswordFilePath)){
+                            throw "Password file $($Node.WorkflowManagerServerLicensePasswordFilePath) does not exist."
+                        }
                         $WorkflowManagerServerLicensePassword = (Get-Content $Node.WorkflowManagerServerLicensePasswordFilePath | ConvertTo-SecureString )
+                    }elseif($Node.WorkflowManagerServerLicensePasswordEnvironmentVariableName){
+                        $WorkflowManagerServerLicensePassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $Node.WorkflowManagerServerLicensePasswordEnvironmentVariableName )
                     }elseif($Node.ServerLicensePassword){
                         $WorkflowManagerServerLicensePassword = (ConvertTo-SecureString $Node.WorkflowManagerServerLicensePassword -AsPlainText -Force)
                     }
@@ -2865,11 +3058,12 @@ function Invoke-ServerUpgradeScript {
                 PatchesDir = $cf.ConfigData.Server.Installer.PatchesDir
                 PatchInstallOrder = $cf.ConfigData.Server.Installer.PatchInstallOrder
                 InstallDir = $cf.ConfigData.Server.Installer.InstallDir
-                IsMultiMachineServerSite = ($cf.AllNodes.count -gt 1)
+                IsMultiMachineServerSite = $IsMultiMachineServerSite
                 EnableMSILogging = $EnableMSILogging
                 EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
                 Extensions = if($cf.ConfigData.Server.Extensions){ $cf.ConfigData.Server.Extensions }else{ $null }
                 DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
+                SkipPatchInstalls = if($cf.ConfigData.SkipPatchInstalls){ $cf.ConfigData.SkipPatchInstalls }else{ $False }
             }
 
             if($Version -ieq "10.9.1"){
@@ -2932,7 +3126,7 @@ function Invoke-ServerUpgradeScript {
         $IsJavaWebAdaptor = if($cf.ConfigData.ContainsKey("WebAdaptor") -and $cf.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $cf.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
         $WAAdminAccessEnabled = if($cf.ConfigData.WebAdaptor.AdminAccessEnabled){ $cf.ConfigData.WebAdaptor.AdminAccessEnabled }else{ $False }
         $WebsiteId = if($cf.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1}
-        $WebAdaptorAdminAccessEnabledSupported = -not($cf.ConfigData.ServerRole -ieq "NotebookServer" -or $cf.ConfigData.ServerRole -ieq "MissionServer")
+        $WebAdaptorAdminAccessEnabledSupported = -not($cf.ConfigData.ServerRole -ieq "NotebookServer" -or $cf.ConfigData.ServerRole -ieq "MissionServer" -or $cf.ConfigData.ServerRole -ieq "VideoServer")
         $ServerContext = if($cf.ConfigData.ServerContext){ $cf.ConfigData.ServerContext }else{ $null }
         foreach($Node in $ServerWANodes){
             $WANode = (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'WebAdaptor' -ServerContext $ServerContext -WebAdaptorAdminAccessEnabled $WAAdminAccessEnabled -IsJavaWebAdaptor $IsJavaWebAdaptor -WebAdaptorWebSiteId $WebsiteId -WebAdaptorAdminAccessEnabledSupported $WebAdaptorAdminAccessEnabledSupported )
@@ -2943,7 +3137,7 @@ function Invoke-ServerUpgradeScript {
         $WebAdaptorUpgradeArgs = @{
             ConfigurationData = $WebAdaptorCD
             WebAdaptorRole = "Server"
-            Component = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }else{ 'Server' }
+            Component = if($ServerRole -ieq "NotebookServer"){ 'NotebookServer' }elseif($ServerRole -ieq "MissionServer"){ 'MissionServer' }elseif($ServerRole -ieq "VideoServer"){ 'VideoServer' }else{ 'Server' }
             Version = $cf.ConfigData.Version
             OldVersion = $cf.ConfigData.OldVersion 
             InstallerPath = $cf.ConfigData.WebAdaptor.Installer.Path
@@ -2955,6 +3149,7 @@ function Invoke-ServerUpgradeScript {
             WebSiteId = if($cf.ConfigData.WebAdaptor.WebSiteId){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1 }
             EnableMSILogging = $EnableMSILoggingMode
             DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
+            SkipPatchInstalls = if($cf.ConfigData.SkipPatchInstalls){ $cf.ConfigData.SkipPatchInstalls }else{ $False }
         }
 
         if($IsJavaWebAdaptor){
@@ -3009,11 +3204,11 @@ function Invoke-DataStoreUpgradeScript {
     $DSServiceAccountIsMSA = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$DSConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false}  
     $DSSAPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
     if(-not($DSServiceAccountIsMSA)){
-        $DSSAPassword = if( $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Credentials.ServiceAccount.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Credentials.ServiceAccount.Password -AsPlainText -Force }
+        $DSSAPassword = (Get-PasswordFromObject -Object $DSConfig.ConfigData.Credentials.ServiceAccount)
     }
     $DSServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Credentials.ServiceAccount.UserName, $DSSAPassword )
     
-    $DSPSAPassword = if($DSConfig.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath ){ Get-Content $DSConfig.ConfigData.Server.PrimarySiteAdmin.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $DSConfig.ConfigData.Server.PrimarySiteAdmin.Password -AsPlainText -Force }
+    $DSPSAPassword = (Get-PasswordFromObject -Object $DSConfig.ConfigData.Server.PrimarySiteAdmin)
     $DSSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Server.PrimarySiteAdmin.UserName, $DSPSAPassword )
     
     $Version = $DSConfig.ConfigData.Version
@@ -3095,6 +3290,7 @@ function Invoke-DataStoreUpgradeScript {
                 InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir
                 EnableMSILogging = $EnableMSILoggingMode
                 DownloadPatches = if($DSConfig.ConfigData.DownloadPatches){ $DSConfig.ConfigData.DownloadPatches }else{ $False }
+                SkipPatchInstalls = if($DSConfig.ConfigData.SkipPatchInstalls){ $DSConfig.ConfigData.SkipPatchInstalls }else{ $False }
             }
 
             $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeInstallArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -3230,7 +3426,7 @@ function Invoke-PublishGISService
         $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
     }
 
-    $PublisherAccountPassword = if( $cf.PublisherAccountCredential.PasswordFilePath ){ Get-Content $cf.PublisherAccountCredential.PasswordFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $cf.PublisherAccountCredential.Password -AsPlainText -Force }
+    $PublisherAccountPassword = (Get-PasswordFromObject -Object $cf.PublisherAccountCredential)
     $PublisherAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.PublisherAccountCredential.UserName, $PublisherAccountPassword )
     
     $ConfigData = @{ 
@@ -3247,6 +3443,7 @@ function Invoke-PublishGISService
     $ConfigurationName = "PublishGISService"
     Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ConfigData -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
 }
+
 
 function Wait-ForServiceToReachDesiredState
 {
@@ -3362,18 +3559,16 @@ function New-NotebookWorkspaceSMBGlobalMapping
         $DriveLetter,
 
         [System.String]
-        $AccountsWithFullAccess,
-
-        [System.String]
         $Username,
 
         [System.String]
         $WorkspaceUserFilePath
     )
+    
+    Remove-SmbGlobalMapping -LocalPath "$($DriveLetter):" -Force -ErrorAction Ignore
     $SecurePassword = Get-Content $WorkspaceUserFilePath | ConvertTo-SecureString
     $FSCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $Username, $SecurePassword )
-    $Accounts = $AccountsWithFullAccess -Split ','
-    New-SmbGlobalMapping -RemotePath $RemotePath -LocalPath "$($DriveLetter):" -Persistent $true -FullAccess $Accounts -Credential $FSCredential -Verbose
+    New-SmbGlobalMapping -RemotePath $RemotePath -LocalPath "$($DriveLetter):" -Credential $FSCredential -Verbose
 }
 
 Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `

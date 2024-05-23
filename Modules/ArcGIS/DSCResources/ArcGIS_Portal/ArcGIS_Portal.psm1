@@ -72,11 +72,16 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Email Settings SMTP Server Host Port on Portal
     .PARAMETER EmailSettingsEncryptionMethod
         Email Settings SMTP Server Encryption Method on Portal
+    .PARAMETER EnableCreateSiteDebug
+        Enable debug during create site operation
 #>
 
 function Invoke-CreatePortalSite {    
     [CmdletBinding()]
     param(
+        [System.String]
+        $Version,
+
         [System.String]
         $PortalHostNameFQDN, 
 
@@ -114,7 +119,10 @@ function Invoke-CreatePortalSite {
 		$LicenseFilePath = $null,
         
 		[System.String]
-        $UserLicenseTypeId = $null
+        $UserLicenseTypeId = $null,
+
+        [System.Boolean]
+        $EnableCreateSiteDebug = $false
     )
 
     if ($ContentDirectoryCloudConnectionString -and $ContentDirectoryCloudConnectionString.Length -gt 0) {
@@ -148,6 +156,9 @@ function Invoke-CreatePortalSite {
                 $ConnectionString["tenantId"] = $ConnectionObj["tenantId"]
                 $ConnectionString["clientId"] = $ConnectionObj["clientId"]
                 $ConnectionString["clientSecret"] = $ConnectionObj["clientSecret"]
+                if($ConnectionObj.ContainsKey("authorityHost") -and $ConnectionObj["authorityHost"] -ne ""){
+                    $ConnectionString["authorityHost"] = $ConnectionObj["authorityHost"]
+                }
             }
  
             Write-Verbose "Using Content Store on Azure Cloud Storage $objectStoreLocation"
@@ -202,6 +213,12 @@ function Invoke-CreatePortalSite {
                     contentStore = ConvertTo-Json -Depth 5 $contentStore
                     f = 'json'
                 }
+    
+    $VersionArray = $Version.Split('.')
+    if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 -and $EnableCreateSiteDebug){
+        Write-Verbose "Enable Debug during create site operation"
+        $WebParams["enableDebug"] = $EnableCreateSiteDebug
+    }
     
     #$HttpRequestBody = ConvertTo-HttpBody -props $WebParams
     Write-Verbose "Making request to $CreateNewSiteUrl to create the site"
@@ -447,7 +464,10 @@ function Set-TargetResource {
         $ContentDirectoryCloudConnectionString,
 
         [System.String]
-        $ContentDirectoryCloudContainerName
+        $ContentDirectoryCloudContainerName,
+
+        [System.Boolean]
+        $EnableCreateSiteDebug
     )
     
     if ($VerbosePreference -ne 'SilentlyContinue') {        
@@ -568,12 +588,13 @@ function Set-TargetResource {
                         Write-Verbose "Joined machine to portal site at peer $PeerMachineFQDN"   
                     } else {
                         Write-Verbose "Creating Portal Site" 
-                        Invoke-CreatePortalSite -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
+                        Invoke-CreatePortalSite -Version $Version -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
                                             -FullName $AdminFullName -ContentDirectoryLocation $ContentDirectoryLocation `
                                             -Email $AdminEmail -Description $AdminDescription -UserLicenseTypeId $UserLicenseTypeId `
                                             -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
                                             -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
-                                            -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath
+                                            -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath -EnableCreateSiteDebug $EnableCreateSiteDebug
+                        
                         Write-Verbose 'Created Portal Site'
                     }
                 }else{
@@ -718,7 +739,10 @@ function Test-TargetResource {
         $ContentDirectoryCloudConnectionString,
 
         [System.String]
-        $ContentDirectoryCloudContainerName
+        $ContentDirectoryCloudContainerName,
+
+        [System.Boolean]
+        $EnableCreateSiteDebug
 	)
 
     

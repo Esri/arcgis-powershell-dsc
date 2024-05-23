@@ -74,6 +74,10 @@ function Get-TargetResource
 		[System.String]
         $ProDotnetDesktopRuntimePath,
 
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProEdgeWebView2RuntimePath,
+
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -111,6 +115,10 @@ function Set-TargetResource
 		[System.String]
         $Path,
 
+        [parameter(Mandatory = $false)]
+		[System.String[]]
+        $VolumePaths,
+
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $Extract = $True,
@@ -146,6 +154,10 @@ function Set-TargetResource
         [parameter(Mandatory = $false)]
 		[System.String]
         $ProDotnetDesktopRuntimePath,
+
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProEdgeWebView2RuntimePath,
 
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -199,6 +211,19 @@ function Set-TargetResource
             Invoke-StartProcess -ExecPath $ProDotnetDesktopRuntimePath -Arguments "/install /quiet /norestart" -Verbose
         }
 
+        if($Name -ieq 'Pro' -and $ProEdgeWebView2RuntimePath -and (Test-Path $ProEdgeWebView2RuntimePath)){
+            # Check if Edge WebView 2 Runtime is already installed
+            $EdgeWebView2RuntimeInstalled = "HKEY_CURRENT_USER\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+            $EdgeWebView2Runtime64Installed = "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+            $EdgeWebView2Runtime32Installed = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+            if(-not(Test-Path $EdgeWebView2RuntimeInstalled) -and -not(Test-Path $EdgeWebView2Runtime64Installed) -and -not(Test-Path $EdgeWebView2Runtime32Installed)){
+                # Install Edge Web View 2 Runtime - exe package
+                Invoke-StartProcess -ExecPath $ProEdgeWebView2RuntimePath -Arguments "/silent /install" -Verbose
+            }else{
+                Write-Verbose "Edge WebView 2 Runtime is already installed"
+            }
+        }
+
         $ExecPath = $null
         if($Extract)
         {
@@ -225,8 +250,20 @@ function Set-TargetResource
             }  
 
             Write-Verbose "Extracting $Path to $TempFolder"
-            $SetupExtractProc = (Start-Process -FilePath $Path -ArgumentList "/s /d $TempFolder" -Wait -NoNewWindow  -Verbose -PassThru)
+            $ArgumentsList = "/s /d $TempFolder"
+            $VersionSplit = $Version.Split('.')
+            if($VersionSplit[0] -eq 11 -and $VersionSplit[1] -gt 2){
+                $ArgumentsList = "/s /d $TempFolder /x"
+            }
+            $SetupExtractProc = (Start-Process -FilePath $Path -ArgumentList $ArgumentsList -Wait -NoNewWindow  -Verbose -PassThru)
+
             if($SetupExtractProc.ExitCode -ne 0){
+                if($VersionSplit[0] -eq 11 -and $VersionSplit[1] -gt 2 -and ($ComponentName -ieq "Server" -or $ComponentName -ieq "Portal")){
+                    #TODO - generalize this at a later point
+                    if(-not(Test-Path "$($Path).001")){
+                        throw "Associated Volume of the setup is not found at $Path. Please make sure all the volumes are present in the same location"
+                    }
+                }
                 throw "Error while extracting setup for '$ComponentName' at Path '$Path' :- exited with status code $($SetupExtractProc.ExitCode)"
             }else{
                 Write-Verbose 'Done Extracting. Waiting 15 seconds to allow the extractor to close files'
@@ -258,7 +295,7 @@ function Set-TargetResource
             $ExecPath = "msiexec"
         }
 
-        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","WorkflowManagerWebApp","NotebookServerSamplesData", "Insights") -icontains $ComponentName)){
+        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","VideoServer","WorkflowManagerServer","WorkflowManagerWebApp","NotebookServerSamplesData", "Insights") -icontains $ComponentName)){
             if(-not(@("WorkflowManagerServer","WorkflowManagerWebApp","GeoEvent","Insights") -icontains $ComponentName)){
                 $Arguments += " USER_NAME=$($ServiceCredential.UserName)"
             }
@@ -273,7 +310,7 @@ function Set-TargetResource
         if($FeatureSet.Count -gt 0){
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
@@ -290,7 +327,7 @@ function Set-TargetResource
                 }
             }else{
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -458,6 +495,10 @@ function Test-TargetResource
 		[System.String]
         $ProDotnetDesktopRuntimePath,
 
+        [parameter(Mandatory = $false)]
+		[System.String]
+        $ProEdgeWebView2RuntimePath,
+
         [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -482,7 +523,7 @@ function Test-TargetResource
 	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
-            if(@("11.0","11.1","11.2") -iContains $Version){
+            if(@("11.0","11.1","11.2","11.3") -iContains $Version){
                 $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
@@ -490,7 +531,7 @@ function Test-TargetResource
             if($Version -ieq "10.9.1"){
                 # Get all the feature that are installed.
                 # Create an add and remove feature list
-            }elseif(@("11.0","11.1","11.2") -iContains $Version){
+            }elseif(@("11.0","11.1","11.2","11.3") -iContains $Version){
                 #Get all the feature that are installed.
                 #Create an add and remove feature list
             }

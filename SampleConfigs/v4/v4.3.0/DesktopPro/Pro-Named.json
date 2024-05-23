@@ -1,0 +1,30 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name 1]",
+            "Role": [
+                "Pro"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "ProVersion": "[Version of ArcGIS Pro ]",
+        "Pro": {
+            "AuthorizationType": "NAMED_USER",
+            "BlockAddIns": "[0 (Default All Addins Allowed), 1 (Signed by CA), 2 (Esri Addins Only), 3 (Esri Addins Only from Admin Folder), 4 (No Addins Allowed), 5 (Only Addins from Addmin Folder)]",
+            "SoftwareClass": "[Viewer | Editor | Professional]",
+            "AllUsers": "[1 (Per Machine Install)]",
+            "EnableEUEI": "[ True (Default enables participation of Esri User Experience Improvement Program) | False ]",
+            "CheckForUpdatesAtStartup": "[ True (Default enables automatic update notifications of ArcGIS Pro) | False ]",
+            "Installer": {
+                "Path": "[Pro Installer Path]",
+                "IsSelfExtracting": "[ Optional - True (Default) | False ]",
+                "InstallDir": "[Pro Install Dir - Ex. C:\\ArcGIS\\Pro]",
+                "PatchesDir": "",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            }
+        }
+    }
+}

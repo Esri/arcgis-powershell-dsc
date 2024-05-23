@@ -93,17 +93,21 @@
         $Extensions = $null,
 
         [System.Boolean]
-        $DownloadPatches = $False
+        $DownloadPatches = $False,
+
+        [System.Boolean]
+        $SkipPatchInstalls = $False
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -Name ArcGIS_License 
     Import-DscResource -Name ArcGIS_ServerUpgrade 
     Import-DscResource -Name ArcGIS_NotebookServerUpgrade 
     Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_MissionServerUpgrade 
+    Import-DscResource -Name ArcGIS_VideoServerUpgrade 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_InstallPatch
     
@@ -118,7 +122,7 @@
         $VersionArray = $Version.Split(".")
         $Depends = @()
         
-        $ServerTypeName = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($Node.ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" }
+        $ServerTypeName = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($Node.ServerRole -ieq "MissionServer"){ "MissionServer" }elseif($Node.ServerRole -ieq "VideoServer"){ "VideoServer" }else{ "Server" }
 
         if($Node.ServerRole -ieq "GeoEvent" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoEvent")){
             Service ArcGIS_GeoEvent_Service_Stop
@@ -228,7 +232,7 @@
             }
         }
 
-        if ($PatchesDir) {
+        if ($PatchesDir -and -not($SkipPatchInstalls)) {
             ArcGIS_InstallPatch ServerInstallPatch
             {
                 Name = $ServerTypeName
@@ -292,6 +296,14 @@
         }
 
         if($Node.ServerRole -ine "GeoEvent" -and $Node.ServerRole -ine "WorkflowManagerServer" -and $Node.ServerLicenseFilePath){
+            $AdditionalRoles = $null
+            if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){
+                $AddRoles = ($Node.AdditionalServerRoles | Where-Object { -not(@('GeoEvent', 'NotebookServer','WorkflowManagerServer', 'MissionServer', 'VideoServer') -iContains $_ ) })
+                if($AddRoles.Count -gt 0){
+                    $AdditionalRoles = $AddRoles
+                }
+            }
+
             ArcGIS_License "ServerLicense$($Node.NodeName)"
             {
                 LicenseFilePath = $Node.ServerLicenseFilePath
@@ -299,7 +311,7 @@
                 Ensure = "Present"
                 Component = 'Server'
                 ServerRole = $Node.ServerRole
-                AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ if(($Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}).Count -gt 0){ $Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'} }else{$null} }else{ $null }
+                AdditionalServerRoles = $AdditionalRoles
                 Force = $True
                 DependsOn = $Depends
             }
@@ -367,6 +379,13 @@
                 ServerHostName = $Node.NodeName
                 DependsOn = $Depends
             }
+        }elseif($Node.ServerRole -ieq "VideoServer"){
+            ArcGIS_VideoServerUpgrade VideoServerConfigureUpgrade{
+                Ensure = "Present"
+                Version = $Version
+                ServerHostName = $Node.NodeName
+                DependsOn = $Depends
+            }
         }else{
             ArcGIS_ServerUpgrade ServerConfigureUpgrade{
                 Ensure = "Present"
@@ -396,7 +415,7 @@
             }
             $Depends += "[ArcGIS_Install]WorkflowManagerServerUpgrade"
 
-            if ($WorkflowManagerServerPatchesDir) {
+            if ($WorkflowManagerServerPatchesDir -and -not($SkipPatchInstalls)) {
                 ArcGIS_InstallPatch WorkflowManagerServerPatches
                 {
                     Name = "WorkflowManagerServer"
@@ -408,6 +427,44 @@
                     DependsOn = $Depends
                 }
                 $Depends += "[ArcGIS_InstallPatch]WorkflowManagerServerPatches"
+            }
+
+            # MultiMachine upgrade
+            $VersionArray = $Version.Split(".")
+            if($IsMultiMachineServerSite -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){
+                $WfmPorts = @("13820", "13830", "13840", "9880")
+
+                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
+                {
+                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 
+                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Outbound" 
+                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension" 
+                    Ensure                =  "Present"
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = $WfmPorts
+                    Protocol              = "TCP" 
+                    Direction             = "Outbound"    
+                    DependsOn             = $Depends
+                }
+                $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_OutBound"
+
+                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_InBound
+                {
+                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterInbound"
+                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Inbound"
+                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension"
+                    Ensure                = 'Present'
+                    Access                = "Allow"
+                    State                 = "Enabled"
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = $WfmPorts
+                    Protocol              = "TCP"
+                    Direction             = "Inbound"
+                    DependsOn             = $Depends
+                }
+                $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
             }
         }
 
@@ -435,7 +492,7 @@
             }
             $Depends += "[ArcGIS_Install]GeoEventServerUpgrade"
 
-            if ($GeoEventServerPatchesDir) {
+            if ($GeoEventServerPatchesDir -and -not($SkipPatchInstalls)) {
                 ArcGIS_InstallPatch GeoEventServerPatches
                 {
                     Name = "GeoEvent"

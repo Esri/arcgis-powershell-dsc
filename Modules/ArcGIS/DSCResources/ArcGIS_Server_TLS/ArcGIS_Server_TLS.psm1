@@ -88,6 +88,9 @@ function Set-TargetResource
     }elseif($ServerType -ieq "MissionServer"){
         $ServiceName = "ArcGIS Mission Server"
         $SitePort = 20443
+    }elseif($ServerType -ieq "VideoServer"){
+        $ServiceName = "ArcGIS Video Server"
+        $SitePort = 21443
     }
     
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
@@ -103,7 +106,7 @@ function Set-TargetResource
     }
 
     # Get the current security configuration
-    if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer"){
+    if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer" -and $ServerType -ine "VideoServer"){
         $UpdateSecurityConfig = $False
         Write-Verbose 'Getting security config for site'
         $secConfig = Get-SecurityConfig -ServerURL $ServerURL -Token $token.token -Referer $Referer
@@ -255,7 +258,7 @@ function Set-TargetResource
             Wait-ForUrl -Url "$($ServerUrl)/arcgis/rest/info/healthcheck?f=json" -HttpMethod 'GET'
 
             # Restart Geoevent
-            if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer"){ #TODO - This will cause issues in Azure, where we have Geoevent and WFM running.
+            if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer" -and $ServerType -ine "VideoServer"){ #TODO - This will cause issues in Azure, where we have Geoevent and WFM running.
                 ### If the SSL Certificate is changed. Restart the GeoEvent Service so that it will pick up the new certificate 
                 $GeoEventServiceName = 'ArcGISGeoEvent' 
                 $GeoEventService = Get-Service -Name $GeoEventServiceName -ErrorAction Ignore
@@ -286,7 +289,7 @@ function Set-TargetResource
     if($null -ne $SslRootOrIntermediate){ #RootOrIntermediateCertificate
         $RestartRequired = $false
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
-        $AllCertificates = if($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer"){ $Certs.sslCertificates }else{ $Certs.certificates}
+        $AllCertificates = if($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer" -and $ServerType -ieq "VideoServer"){ $Certs.sslCertificates }else{ $Certs.certificates}
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
             $UploadRootOrIntermediateCertificate = $False
             if ($AllCertificates -icontains $key.Alias){
@@ -381,6 +384,8 @@ function Test-TargetResource
         $SitePort = 11443
     }elseif($ServerType -ieq "MissionServer"){
         $SitePort = 20443
+    }elseif($ServerType -ieq "VideoServer"){
+        $SitePort = 21443
     }
     $ServerUrl = "https://$($FQDN):$($SitePort)"
         
@@ -393,7 +398,7 @@ function Test-TargetResource
         throw "Unable to retrieve token for Site Administrator"
     }
 
-    if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer"){
+    if($ServerType -ine "NotebookServer" -and $ServerType -ine "MissionServer" -and $ServerType -ine "VideoServer"){
         $secConfig = Get-SecurityConfig -ServerURL $ServerURL -Token $token.token -Referer $Referer
         if($result){
             if($EnableHTTPSOnly){
@@ -477,7 +482,7 @@ function Test-TargetResource
     }
     if($result -and $null -ne $SslRootOrIntermediate){
         $Certs = Get-AllSSLCertificateForMachine -ServerUrl $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName 
-        $AllCertificates = if($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer"){ $Certs.sslCertificates }else{ $Certs.certificates}
+        $AllCertificates = if($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer" -or $ServerType -ieq "VideoServer"){ $Certs.sslCertificates }else{ $Certs.certificates}
         foreach ($key in ($SslRootOrIntermediate | ConvertFrom-Json)){
             if ($AllCertificates -icontains $key.Alias){
                 Write-Verbose "RootOrIntermediate $($key.Alias) is in List of SSL-Certificates. Validating if thumbprint matches the existing certificate"
@@ -594,7 +599,7 @@ function Import-ExistingCertificate
     $props = @{ f= 'json';  alias = $CertAlias; certPassword = $CertificatePassword.GetNetworkCredential().Password  }    
 
     $Header = @{}
-    if(-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer")){
+    if(-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer" -or $ServerType -ieq "VideoServer")){
         $props["token"] = $Token;
     }else{
         $Header["X-Esri-Authorization"] = "Bearer $Token"

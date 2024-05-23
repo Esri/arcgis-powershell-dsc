@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2'
+        $Version = '11.3'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -46,6 +46,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $EnableDataDisk  
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Int32]
+        $DataDiskNumber = 2
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -93,7 +97,7 @@
         {
             ArcGIS_xDisk DataDisk
             {
-                DiskNumber  =  2
+                DiskNumber  =  $DataDiskNumber
                 DriveLetter = 'F'
             }
         }

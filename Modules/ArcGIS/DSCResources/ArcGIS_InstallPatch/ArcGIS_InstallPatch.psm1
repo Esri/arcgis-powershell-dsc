@@ -321,6 +321,8 @@ function Get-PatchManifestFromESRIDownloads
         $ProductNameArray += "ArcGIS Workflow Manager Server"
     }elseif($ProductName -ieq "MissionServer"){
         $ProductNameArray += "ArcGIS Mission Server"
+    }elseif($ProductName -ieq "VideoServer"){
+        $ProductNameArray += "ArcGIS Video Server"
     }elseif($ProductName -ieq "NotebookServer"){
         $ProductNameArray += "ArcGIS Notebook Server"
     }elseif($ProductName -ieq "GeoEvent"){
@@ -382,6 +384,8 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\Portal for ArcGIS\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\ArcGIS Data Store\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\ArcGIS Notebook Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Mission Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Video Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGIS Insights\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.3\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server10.4\Updates\*" ,
@@ -393,6 +397,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\Server11.0\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.1\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.2\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server11.3\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.6\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.7\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.8\Server\Updates\*",
@@ -400,6 +405,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.0\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.1\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.2\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent11.3\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
@@ -412,7 +418,8 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9.1\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.0\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.1\Updates\*",
-        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.2\Updates\*"
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.2\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.3\Updates\*"
     )
     
     foreach($RegPath in $RegPaths){

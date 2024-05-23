@@ -92,6 +92,10 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
+        $ConfigStoreAzureBlobServicePrincipalAuthorityHost = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
         $ConfigStoreAzureFileShareName,
 
         [Parameter(Mandatory=$False)]
@@ -142,7 +146,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Server
     Import-DscResource -Name ArcGIS_Service_Account
@@ -175,7 +179,9 @@
                     $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($ConfigStoreAccountName)"
                     if($ConfigStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
                         $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($ConfigStoreAzureBlobServicePrincipalTenantId);ClientId=$($ConfigStoreAzureBlobServicePrincipalCredentials.Username)"
-
+                        if($ConfigStoreAzureBlobServicePrincipalAuthorityHost){
+                            $ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($ConfigStoreAzureBlobServicePrincipalAuthorityHost)"
+                        }    
                         $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ConfigStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password)"
                     }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
                         $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($ConfigStoreAzureBlobUserAssignedIdentityId)"
@@ -646,7 +652,9 @@
 
             if($IsMultiMachineServer){
                 $WfmPorts = @("9830", "9820", "9840", "9880")
-
+                if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){
+                    $WfmPorts = @("13820", "13830", "13840", "9880")
+                }
                 ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
                 {
                     Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 

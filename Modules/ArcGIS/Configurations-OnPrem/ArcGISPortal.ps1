@@ -86,6 +86,10 @@
         [System.Management.Automation.PSCredential]
         $ContentStoreAzureBlobServicePrincipalCredentials = $null,
 
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ContentStoreAzureBlobServicePrincipalAuthorityHost = $null,
+
         [System.String]
         $AzureFileShareName,
 
@@ -113,7 +117,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Portal
     Import-DscResource -Name ArcGIS_Service_Account
@@ -147,6 +151,9 @@
                     if($ContentStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
                         $ClientSecret = $ContentStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password
                         $ContentDirectoryCloudConnectionString += ";tenantId=$($ContentStoreAzureBlobServicePrincipalTenantId);clientId=$($ContentStoreAzureBlobServicePrincipalCredentials.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
+                        if($ContentStoreAzureBlobServicePrincipalAuthorityHost -ne $null){
+                            $ContentDirectoryCloudConnectionString += ";authorityHost=$($ContentStoreAzureBlobServicePrincipalAuthorityHost)"
+                        }
                     }elseif($ContentStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
                         $ContentDirectoryCloudConnectionString += ";managedIdentityClientId=$($ContentStoreAzureBlobUserAssignedIdentityId);CredentialType=userAssignedIdentity"
                     }elseif($ContentStoreAzureBlobAuthenticationType -ieq 'SASToken'){
@@ -218,6 +225,38 @@
                 Protocol              = "TCP" 
             }  
             $Depends += @('[ArcGIS_xFirewall]Portal_Database_InBound')
+            
+            $VersionArray = $Version.Split('.')
+            if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later
+                ArcGIS_xFirewall Portal_Ignite_OutBound
+                {
+                    Name                  = "PortalforArcGIS-Ignite-Outbound" 
+                    DisplayName           = "Portal for ArcGIS Ignite Outbound" 
+                    DisplayGroup          = "Portal for ArcGIS Ignite Outbound" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                    Direction             = "Outbound"                       
+                    Protocol              = "TCP" 
+                }  
+                $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_OutBound')
+                
+                ArcGIS_xFirewall Portal_Ignite_InBound
+                {
+                    Name                  = "PortalforArcGIS-Ignite-Inbound" 
+                    DisplayName           = "Portal for ArcGIS Ignite Inbound" 
+                    DisplayGroup          = "Portal for ArcGIS Ignite Inbound" 
+                    Ensure                = 'Present' 
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                    Protocol              = "TCP" 
+                }  
+                $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
+            }
         }
 
         $DataDirsForPortal = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')
@@ -327,7 +366,7 @@
                 $Depends += "[WaitForAll]WaitForAllPortal$($PrimaryPortalMachine)"
             }
         }   
-        
+               
         ArcGIS_Portal "Portal$($Node.NodeName)"
         {
             Ensure = 'Present'
@@ -349,6 +388,7 @@
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
             ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
             ContentDirectoryCloudContainerName = $ContentDirectoryCloudContainerName
+            EnableCreateSiteDebug = if($DebugMode) { $true } else { $false }
             DependsOn =  $Depends
         }
         $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"

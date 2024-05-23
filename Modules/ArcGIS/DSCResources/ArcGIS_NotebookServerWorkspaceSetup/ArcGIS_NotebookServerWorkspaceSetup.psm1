@@ -30,9 +30,6 @@ function Get-TargetResource
         [System.Boolean]
         $UseAzureFiles,
 
-        [System.String[]]
-        $UserAccountsWithPermissions,
-
         [System.Boolean]
         $IsSingleTier,
 
@@ -67,9 +64,6 @@ function Set-TargetResource
 
         [System.Boolean]
         $UseAzureFiles,
-
-        [System.String[]]
-        $UserAccountsWithPermissions,
 
         [System.Boolean]
         $IsSingleTier,
@@ -109,8 +103,7 @@ function Set-TargetResource
         Write-Verbose "SMB mapping already exists"
     }else{
         if($IsSingleTier -and -not($Join) -and -not($UseAzureFiles)){
-            New-SmbGlobalMapping -RemotePath $ArcGISWorkspaceLocation -Credential $FSCredential `
-            -LocalPath G: -Persistent $true -FullAccess $UserAccountsWithPermissions -Verbose 
+            New-SmbGlobalMapping -RemotePath $ArcGISWorkspaceLocation -Credential $FSCredential -LocalPath G: -Verbose 
         }else{
             New-SmbGlobalMapping -RemotePath $ArcGISWorkspaceLocation -Credential $FSCredential `
             -LocalPath G: -Persistent $true -Verbose
@@ -123,12 +116,11 @@ function Set-TargetResource
         $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
         
         $UserPassFilePath = "$($InstallDir)\NBWorkspaceUser.txt"
-        $FSCredential.GetNetworkCredential().Password | Out-File $UserPassFilePath
-        $acc = $UserAccountsWithPermissions -Join ','
+        $FSCredential.Password | ConvertFrom-SecureString | Out-File $UserPassFilePath
         $Trigger = New-ScheduledTaskTrigger -AtStartup
         $User = "NT AUTHORITY\SYSTEM" # Specify the account to run the script
         $Arguments = @"
--NoProfile -ExecutionPolicy Bypass -Command "& { New-NotebookWorkspaceSMBGlobalMapping -RemotePath $($ArcGISWorkspaceLocation) -DriveLetter G -AccountsWithFullAccess '$acc' -Username $($Credential.UserName) -WorkspaceUserFilePath '$UserPassFilePath' }"
+-NoProfile -ExecutionPolicy Bypass -Command "& { New-NotebookWorkspaceSMBGlobalMapping -RemotePath $($ArcGISWorkspaceLocation) -DriveLetter G -Username $($FSCredential.UserName) -WorkspaceUserFilePath '$UserPassFilePath' }"
 "@
         $Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument $Arguments # Specify what program to run and with its parameters
         Register-ScheduledTask -TaskName "NBWorkspaceVMStartupTask" -Trigger $Trigger -User $User -Action $Action -RunLevel Highest -Force -Verbose # Specify the name of the task
@@ -160,9 +152,6 @@ function Test-TargetResource
 
         [System.Boolean]
         $UseAzureFiles,
-
-        [System.String[]]
-        $UserAccountsWithPermissions,
 
         [System.Boolean]
         $IsSingleTier,

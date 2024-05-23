@@ -7,5 +7,6 @@ class ArcGIS_PortalUpgrade : OMI_BaseResource
 	[Write] Boolean SetOnlyHostNamePropertiesFile;
 	[Write] String Version;
 	[Write] Boolean ImportExternalPublicCertAsRoot;
+	[Write] Boolean EnableUpgradeSiteDebug;
 };
 

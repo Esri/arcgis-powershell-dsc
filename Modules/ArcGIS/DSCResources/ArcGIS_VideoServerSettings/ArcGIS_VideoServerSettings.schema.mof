@@ -1,0 +1,8 @@
+﻿
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_VideoServerSettings")]
+class ArcGIS_VideoServerSettings : OMI_BaseResource
+{
+    [Write] String ServerHostName;
+    [Key] String WebContextURL;
+    [Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+};

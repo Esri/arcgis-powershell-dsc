@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2'
+        $Version = '11.3'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -48,6 +48,10 @@
         $StorageAccountServicePrincipalTenantId
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalAuthorityHost
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountServicePrincipalCredential
                 
@@ -83,6 +87,10 @@
         [System.String]
         $EnableDataDisk  
 
+        ,[Parameter(Mandatory=$false)]
+        [System.Int32]
+        $DataDiskNumber = 2
+        
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $EnableLogHarvesterPlugin
@@ -186,6 +194,9 @@
                 if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
                     $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
                     $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+                    if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
+						$ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
+					}
                     $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
                 }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
                     $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
@@ -222,7 +233,7 @@
         {
             ArcGIS_xDisk DataDisk
             {
-                DiskNumber  =  2
+                DiskNumber  =  $DataDiskNumber
                 DriveLetter = 'F'
             }
         }

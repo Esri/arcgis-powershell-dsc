@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0
     Import-DscResource -Name ArcGIS_RemoteFile
     
     Node $AllNodes.NodeName {
@@ -72,8 +72,24 @@
                         ArcGISDownloadAPIFolderPath = "software/arcgis/$($ConfigurationData.ConfigData.Version)"
                         Ensure = $Ensure
                     }
+                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 -and $ConfigurationData.ConfigData.Server.Installer.VolumePaths){
+                        foreach($VolumePath in $ConfigurationData.ConfigData.Server.Installer.VolumePaths){
+                            $VolumeName = Split-Path $VolumePath -leaf
+                            ArcGIS_RemoteFile "ServerVolumeDownload$($VolumeName)"
+                            {
+                                Source = $VolumePath
+                                Destination = $VolumePath
+                                FileSourceType = "ArcGISDownloadsAPI"
+                                Credential = $AGOCredential
+                                ArcGISDownloadAPIFolderPath = "software/arcgis/$($ConfigurationData.ConfigData.Version)"
+                                Ensure = $Ensure
+                            }
+                        }
+                    }
 
-                    $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+                    $ServerTypeName = if(@("MissionServer", "NotebookServer", "VideoServer") -iContains $ConfigurationData.ConfigData.ServerRole){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+                    
                     if($ServerTypeName -ieq "Server" -and $ConfigurationData.ConfigData.Server.Extensions){
                         foreach ($Extension in $ConfigurationData.ConfigData.Server.Extensions.GetEnumerator())
                         {
@@ -89,8 +105,8 @@
                         }
                     }
                     
-                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
-                        foreach($ImagePath in $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
+                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Server.ContainerImagePaths){
+                        foreach($ImagePath in $ConfigurationData.ConfigData.Server.ContainerImagePaths){
                             $ImageName = Split-Path $ImagePath -leaf
                             ArcGIS_RemoteFile "NotebookContainerImageDownloads$($ImageName)"
                             {
@@ -116,7 +132,7 @@
                             Ensure = $Ensure
                         }
                     }
-
+                    
                     if($ConfigurationData.ConfigData.WorkflowManagerServer) 
                     {
                         ArcGIS_RemoteFile "WorkflowManagerServerDownload$($Node.NodeName)"
@@ -156,6 +172,21 @@
                         Ensure = $Ensure
                     }
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 -and $ConfigurationData.ConfigData.Portal.Installer.VolumePaths){
+                        foreach($VolumePath in $ConfigurationData.ConfigData.Portal.Installer.VolumePaths){
+                            $VolumeName = Split-Path $VolumePath -leaf
+                            ArcGIS_RemoteFile "PortalVolumeDownload$($VolumeName)"
+                            {
+                                Source = $VolumePath
+                                Destination = $VolumePath
+                                FileSourceType = "ArcGISDownloadsAPI"
+                                Credential = $AGOCredential
+                                ArcGISDownloadAPIFolderPath = "software/arcgis/$($ConfigurationData.ConfigData.Version)"
+                                Ensure = $Ensure
+                            }
+                        }
+                    }
+
                     if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_RemoteFile "WebStyleDownload$($Node.NodeName)"
                         {
@@ -278,6 +309,15 @@
                         ArcGIS_RemoteFile "DotnetDesktopRuntimeDownload$($Node.NodeName)"{
                             Source = $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimeDownloadUrl
                             Destination = $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath 
+                            FileSourceType = "Default"
+                            Ensure = $Ensure
+                        }
+                    }
+
+                    if($ConfigurationData.ConfigData.Pro.Installer.EdgeWebView2RuntimeDownloadUrl){
+                        ArcGIS_RemoteFile "EdgeWebView2RuntimeDownload$($Node.NodeName)"{
+                            Source = $ConfigurationData.ConfigData.Pro.Installer.EdgeWebView2RuntimeDownloadUrl
+                            Destination = $ConfigurationData.ConfigData.Pro.Installer.EdgeWebView2RuntimePath 
                             FileSourceType = "Default"
                             Ensure = $Ensure
                         }

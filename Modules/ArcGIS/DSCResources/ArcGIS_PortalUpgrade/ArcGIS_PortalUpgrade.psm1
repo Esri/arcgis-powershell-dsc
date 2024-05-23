@@ -33,7 +33,11 @@ function Get-TargetResource
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $ImportExternalPublicCertAsRoot = $False
+        $ImportExternalPublicCertAsRoot = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableUpgradeSiteDebug = $False
 	)
 
     $null
@@ -66,7 +70,11 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $ImportExternalPublicCertAsRoot = $False
+        $ImportExternalPublicCertAsRoot = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableUpgradeSiteDebug = $False
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -156,6 +164,10 @@ function Set-TargetResource
             }
             if($VersionArray[0] -ieq 11){
                 $WebParams["async"] = $true
+                if($VersionArray[1] -ge 2 -and $EnableUpgradeSiteDebug){
+                    Write-Verbose "Enabling Debug for Upgrade Site"
+                    $WebParams["enableDebug"] = $true
+                }
             } 
 
             $UpgradeResponse = $null
@@ -227,13 +239,19 @@ function Set-TargetResource
             }else{
                 throw  "[ERROR]:- $(ConvertTo-Json $UpgradeResponse -Compress -Depth 5)"
             }
-            
-            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer -Verbose
-            if(-not($token.token)) {
-                throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
-            }
-            Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
+        }
 
+        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 20 -Verbose
+        if(-not($token.token)) {
+            throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
+        }
+        Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
+
+        [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
+        $postUpgradeGetResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpMethod "GET" -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -Verbose
+        if($postUpgradeGetResponse.status -ieq "error" -and $postUpgradeGetResponse.messages -icontains "The site is already configured at this time.") {
+            Write-Verbose "Post Upgrade Step Successful"
+        } else {
             if($LicenseFilePath){
                 Write-Verbose 'Populating Licenses'
                 [string]$populateLicenseUrl = "https://$($FQDN):7443/arcgis/portaladmin/license/populateLicense"
@@ -244,14 +262,14 @@ function Set-TargetResource
                     throw $populateLicenseResponse.error.message
                 }
             }
-
+    
             Write-Verbose "Waiting for portal to start."
             try {
                 $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
             } catch {
                 Write-Verbose $_
             }
-
+    
             Write-Verbose "Post Upgrade Step"
             [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
             $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
@@ -264,18 +282,18 @@ function Set-TargetResource
             }else{
                 throw  "[ERROR]:- $(ConvertTo-Json $ResponseJSON -Compress -Depth 5)"
             }
-
+    
             Write-Verbose "Waiting for portal to start."
             try {
                 $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
             } catch {
                 Write-Verbose $_
             }
-            
-            if(($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -or $Version -ieq "10.8" -or $Version -ieq "10.8.0"){
-                Write-Verbose "Reindexing Portal"
-                Invoke-UpgradeReindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
-            }
+        }
+        
+        if(($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -or $Version -ieq "10.8" -or $Version -ieq "10.8.0"){
+            Write-Verbose "Reindexing Portal"
+            Invoke-UpgradeReindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
         }
 
         if(Get-LivingAtlasStatus -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
@@ -356,7 +374,11 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $ImportExternalPublicCertAsRoot = $False
+        $ImportExternalPublicCertAsRoot = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableUpgradeSiteDebug = $False
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null

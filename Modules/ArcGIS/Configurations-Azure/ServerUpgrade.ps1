@@ -2,7 +2,11 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2',
+        $Version = '11.3',
+
+        [Parameter(Mandatory=$True)]
+        [System.String]
+        $OldVersion,
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -16,6 +20,9 @@
 
         [System.String]
         $ServerInstallerPath,
+
+        [System.String]
+        $ServerInstallerVolumePath,
 
         [System.String]
         $ServerLicenseFileUrl,
@@ -34,6 +41,30 @@
         [Parameter(Mandatory=$false)]
         [System.String]
         $WorkflowManagerServerInstallerPath = "",
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsNotebookServerWebAdaptorUpgrade = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $DotnetHostingBundleInstallerPath = "",
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $WebDeployInstallerPath = "",
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $WebAdaptorInstallerPath = "",
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $NotebookWebAdaptorContext = "",
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+		$SiteAdministratorCredential,
 		
 		[Parameter(Mandatory=$false)]
         [System.String]
@@ -70,6 +101,7 @@
     Import-DscResource -Name ArcGIS_MissionServerUpgrade
     Import-DscResource -Name ArcGIS_NotebookPostInstall 
     Import-DscResource -Name ArcGIS_xFirewall 
+    Import-DscResource -Name ArcGIS_WebAdaptor
     $IsDebugMode = $DebugMode -ieq 'true'
 
     Node localhost {
@@ -104,9 +136,25 @@
 			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
         }
-
         $Depends += '[File]DownloadInstallerFromFileShare'
 
+        $InstallerVolumePathOnMachine = ""
+        if(-not([string]::IsNullOrEmpty($ServerInstallerVolumePath))){
+            $InstallerVolumeFileName = Split-Path $ServerInstallerVolumePath -Leaf
+            $InstallerVolumePathOnMachine = "$env:TEMP\Server\$InstallerVolumeFileName"
+
+            File DownloadInstallerVolumeFromFileShare      
+            {            	
+                Ensure = "Present"              	
+                Type = "File"             	
+                SourcePath = $ServerInstallerVolumePath 	
+                DestinationPath = $InstallerVolumePathOnMachine     
+                Credential = $FileshareMachineCredential     
+                DependsOn = $Depends  
+            }
+            $Depends += '[File]DownloadInstallerVolumeFromFileShare'
+        }
+        
         ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Stop
         {
             Name = 'ArcGISGeoEvent'
@@ -150,6 +198,9 @@
 			SetScript = 
 			{ 
 				Remove-Item $using:InstallerPathOnMachine -Force
+                if(-not([string]::IsNullOrEmpty($using:InstallerVolumePathOnMachine))){
+                    Remove-Item $using:InstallerVolumePathOnMachine -Force
+                }
 			}
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
 			GetScript = { $null }          
@@ -288,6 +339,87 @@
                 PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
             }
 
+            if($IsNotebookServerWebAdaptorUpgrade){
+                ArcGIS_Install "WebAdaptorIISUninstall"
+                { 
+                    Name = "WebAdaptorIIS"
+                    Version = $OldVersion
+                    WebAdaptorContext = $NotebookWebAdaptorContext
+                    Arguments = "WEBSITE_ID=1"
+                    Ensure = "Absent"
+                    DependsOn = @("[ArcGIS_NotebookPostInstall]NotebookPostInstallSamples")
+                }
+    
+                $WebDeployFileName = Split-Path $WebDeployInstallerPath -Leaf
+                $WebDeployInstallerPathOnMachine = "$env:TEMP\WebAdaptor\$WebDeployFileName"
+    
+                File DownloadWebDeployInstallerFromFileShare      
+                {            	
+                    Ensure = "Present"              	
+                    Type = "File"             	
+                    SourcePath = $WebDeployInstallerPath 	
+                    DestinationPath = $WebDeployInstallerPathOnMachine     
+                    Credential = $FileshareMachineCredential     
+                    DependsOn = @('[ArcGIS_Install]WebAdaptorIISUninstall')
+                }
+    
+                $DotnetHostingBundleFileName = Split-Path $DotnetHostingBundleInstallerPath -Leaf
+                $DotnetHostingBundleInstallerPathOnMachine = "$env:TEMP\WebAdaptor\$DotnetHostingBundleFileName"
+    
+                File DownloadHostingBundleInstallerFromFileShare      
+                {            	
+                    Ensure = "Present"              	
+                    Type = "File"             	
+                    SourcePath = $DotnetHostingBundleInstallerPath 	
+                    DestinationPath = $DotnetHostingBundleInstallerPathOnMachine     
+                    Credential = $FileshareMachineCredential     
+                    DependsOn = @('[ArcGIS_Install]WebAdaptorIISUninstall')
+                }
+    
+                $WebAdaptorInstallerFileName = Split-Path $WebAdaptorInstallerPath -Leaf
+                $WebAdaptorInstallerPathOnMachine = "$env:TEMP\WebAdaptor\$WebAdaptorInstallerFileName"
+                File DownloadWebAdaptorInstallerFromFileShare      
+                {            	
+                    Ensure = "Present"              	
+                    Type = "File"             	
+                    SourcePath = $WebAdaptorInstallerPath 	
+                    DestinationPath = $WebAdaptorInstallerPathOnMachine     
+                    Credential = $FileshareMachineCredential     
+                    DependsOn = @('[ArcGIS_Install]WebAdaptorIISUninstall')
+                }
+    
+                # Install the new hosting bundle
+                ArcGIS_Install "WebAdaptorInstall"
+                {
+                    Name = "WebAdaptorIIS"
+                    Version = $Version 
+                    Path = $WebAdaptorInstallerPathOnMachine
+                    Extract = $True
+                    Arguments = "/qn ACCEPTEULA=YES VDIRNAME=$($NotebookWebAdaptorContext) WEBSITE_ID=1 CONFIGUREIIS=TRUE "
+                    WebAdaptorContext = $NotebookWebAdaptorContext
+                    WebAdaptorDotnetHostingBundlePath = $DotnetHostingBundleInstallerPathOnMachine
+                    WebAdaptorWebDeployPath = $WebDeployInstallerPathOnMachine
+                    Ensure = "Present"
+                    DependsOn =  @('[File]DownloadWebDeployInstallerFromFileShare','[File]DownloadHostingBundleInstallerFromFileShare','[File]DownloadWebAdaptorInstallerFromFileShare')
+                }
+    
+                $MachineFQDN = Get-FQDN $env:ComputerName
+    
+                ArcGIS_WebAdaptor "ConfigureWebAdaptor"
+                {
+                    Version             = $Version
+                    Ensure              = "Present"
+                    Component           = 'NotebookServer'
+                    HostName            = $MachineFQDN
+                    ComponentHostName   = $MachineFQDN
+                    Context             = $NotebookWebAdaptorContext
+                    OverwriteFlag       = $False
+                    SiteAdministrator   = $NotebookSiteAdministratorCredential
+                    AdminAccessEnabled  = $True
+                    DependsOn           = @('[ArcGIS_WebAdaptor]WebAdaptorInstall')
+                }
+            }
+            
         }elseif($ServerRole -ieq "MissionServer"){
             ArcGIS_MissionServerUpgrade MissionServerConfigureUpgrade{
                 Ensure = "Present"
@@ -411,7 +543,7 @@
             $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
 
             $WorkflowManagerServerInstallerFileName = Split-Path $WorkflowManagerServerInstallerPath -Leaf
-            $WorkflowManagerServerInstallerPathOnMachine = "$env:TEMP\NBServer\$WorkflowManagerServerInstallerFileName"
+            $WorkflowManagerServerInstallerPathOnMachine = "$env:TEMP\WFMServer\$WorkflowManagerServerInstallerFileName"
 
             File DownloadWorkflowManagerInstallerFromFileShare      
             {            	
@@ -431,8 +563,9 @@
                 Path = $WorkflowManagerServerInstallerPathOnMachine
                 Arguments = "/qn"
                 ServiceCredential = $ServiceCredential
-                ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+                ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
+                Ensure = "Present"
                 EnableMSILogging = $IsDebugMode
                 DependsOn = $Depends
             }
@@ -448,6 +581,41 @@
                 GetScript = { $null }          
             }
             $Depends += '[Script]RemoveWorkflowManagerServerInstaller'
+
+            $VersionArray = $Version.Split(".")
+            if($IsMultiMachineServerSite -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){ # 11.3 or later
+                $WfmPorts = @("13820", "13830", "13840", "9880")
+
+                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
+                {
+                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 
+                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Outbound" 
+                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension" 
+                    Ensure                =  "Present"
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = $WfmPorts
+                    Protocol              = "TCP" 
+                    Direction             = "Outbound"
+                }
+                $DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_OutBound"
+
+                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_InBound
+                {
+                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterInbound"
+                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Inbound"
+                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension"
+                    Ensure                = 'Present'
+                    Access                = "Allow"
+                    State                 = "Enabled"
+                    Profile               = ("Domain","Private","Public")
+                    RemotePort            = $WfmPorts
+                    Protocol              = "TCP"
+                    Direction             = "Inbound"
+                }
+                $DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
+            }
         }
     }
 }

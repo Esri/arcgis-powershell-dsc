@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2'
+        $Version = '11.3'
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -54,6 +54,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $StorageAccountServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalAuthorityHost
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -114,6 +118,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $EnableDataDisk
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Int32]
+        $DataDiskNumber = 2
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -247,9 +255,15 @@
                 if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
                     $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
                     $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+                    if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
+                        $ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
+                    }
                     $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
+
                     $ContentDirectoryCloudConnectionString += ";tenantId=$($StorageAccountServicePrincipalTenantId);clientId=$($StorageAccountServicePrincipalCredential.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
-    
+                    if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
+                       $ContentDirectoryCloudConnectionString += ";authorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
+                    }
                 }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
                     $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
                     $ConfigStoreCloudStorageConnectionSecret = ""
@@ -291,7 +305,7 @@
         {
             ArcGIS_xDisk DataDisk
             {
-                DiskNumber  =  2
+                DiskNumber  =  $DataDiskNumber
                 DriveLetter = 'F'
             }
         }
@@ -632,6 +646,38 @@
                     }  
 
                     $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_FirewallRules', '[ArcGIS_xFirewall]Portal_Database_OutBound', '[ArcGIS_xFirewall]Portal_Database_InBound')
+
+                    $VersionArray = $Version.Split(".")
+                    if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later
+                        ArcGIS_xFirewall Portal_Ignite_OutBound
+                        {
+                            Name                  = "PortalforArcGIS-Ignite-Outbound" 
+                            DisplayName           = "Portal for ArcGIS Ignite Outbound" 
+                            DisplayGroup          = "Portal for ArcGIS Ignite Outbound" 
+                            Ensure                = 'Present' 
+                            Access                = "Allow" 
+                            State                 = "Enabled" 
+                            Profile               = ("Domain","Private","Public")
+                            RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                            Direction             = "Outbound"                       
+                            Protocol              = "TCP" 
+                        }  
+                        $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Ignite_OutBound')
+                        
+                        ArcGIS_xFirewall Portal_Ignite_InBound
+                        {
+                            Name                  = "PortalforArcGIS-Ignite-Inbound" 
+                            DisplayName           = "Portal for ArcGIS Ignite Inbound" 
+                            DisplayGroup          = "Portal for ArcGIS Ignite Inbound" 
+                            Ensure                = 'Present' 
+                            Access                = "Allow" 
+                            State                 = "Enabled" 
+                            Profile               = ("Domain","Private","Public")
+                            RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                            Protocol              = "TCP" 
+                        }  
+                        $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
+                    }
                 }
                 else # If single machine, need to open 7443 to allow federation over private portal URL and 6443 for changeServerRole
                 {

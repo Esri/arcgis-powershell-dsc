@@ -125,13 +125,14 @@ function Test-TargetResource
     if($ServiceUrlPort -eq 443){
         $ServiceUrl = "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
     }
-    $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"            
-	if($ServerSiteAdminUrlPort -eq 443){
-        $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName)/$ServerSiteAdminUrlContext"  
-    }
-    $ServerHostName = $ServerSiteAdminUrlHostName
-    $PortalFQDN = Get-FQDN $PortalHostName
 
+    $ServerFQDN = Get-FQDN $ServerSiteAdminUrlHostName
+    $ServerSiteAdminUrl = "https://$($ServerFQDN):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"            
+	if($ServerSiteAdminUrlPort -eq 443){
+        $ServerSiteAdminUrl = "https://$($ServerFQDN)/$ServerSiteAdminUrlContext"  
+    }
+
+    $PortalFQDN = Get-FQDN $PortalHostName
 	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Write-Verbose "Get Portal Token from Deployment '$PortalFQDN'"
     $Referer = "https://$($PortalFQDN):$($PortalPort)/$PortalContext"
@@ -187,7 +188,7 @@ function Test-TargetResource
     if($result) {
         $oauthApp = Get-OAuthApplication -PortalHostName $PortalFQDN -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
         Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
-        $DesiredDomainForRedirect = "https://$($ServerHostName)"
+        $DesiredDomainForRedirect = "https://$($ServerFQDN)"
         if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
             Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist"
             $result = $false
@@ -327,15 +328,15 @@ function Set-TargetResource
     if($ServiceUrlPort -eq 443){
         $ServiceUrl = "https://$($ServiceUrlHostName)/$ServiceUrlContext" 
     }
-    $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"  
+
+    $ServerFQDN = Get-FQDN $ServerSiteAdminUrlHostName
+    $ServerSiteAdminUrl = "https://$($ServerFQDN):$($ServerSiteAdminUrlPort)/$ServerSiteAdminUrlContext"  
     if($ServerSiteAdminUrlPort -eq 443){
-        $ServerSiteAdminUrl = "https://$($ServerSiteAdminUrlHostName)/$ServerSiteAdminUrlContext"  
+        $ServerSiteAdminUrl = "https://$($ServerFQDN)/$ServerSiteAdminUrlContext"  
     }
-    $ServerHostName = $ServerSiteAdminUrlHostName
     $ServerContext = $ServerSiteAdminUrlContext
-
+    
     $PortalFQDN = Get-FQDN $PortalHostName
-
     Write-Verbose "Get Portal Token from Deployment '$PortalFQDN'"
     $Referer = "https://$($PortalFQDN):$($PortalPort)/$PortalContext"
     if($PortalPort -eq 443){
@@ -432,7 +433,7 @@ function Set-TargetResource
 
         if($ServerRole -ine "HOSTING_SERVER"){
             $oauthApp = Get-OAuthApplication -PortalHostName $PortalFQDN -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
-            $DesiredDomainForRedirect = "https://$($ServerHostName)"
+            $DesiredDomainForRedirect = "https://$($ServerFQDN)"
             Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
             if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
                 Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist. Adding it"
@@ -540,7 +541,7 @@ function Set-TargetResource
             }
         }
     }elseif($Ensure -eq 'Absent') {
-        $ServerHttpsUrl = "https://$($ServerHostName):$($ServerSiteAdminUrlPort)/"
+        $ServerHttpsUrl = "https://$($ServerFQDN):$($ServerSiteAdminUrlPort)/"
         
         $fedServers = Get-FederatedServers -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer    
         $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
@@ -553,7 +554,7 @@ function Set-TargetResource
                 }else {
                     Write-Verbose 'UnFederation succeeded'
                     Write-Verbose 'Retrieve Current Security Config:'
-                    $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerHostName)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
+                    $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
                     $CurrentSecurityConfig = Get-SecurityConfig -ServerURL $ServerHttpsUrl -SiteName $ServerContext -Token $serverToken.token -Referer $Referer
                     Write-Verbose "Current Security Config:- $($CurrentSecurityConfig.authenticationTier)"
                     if('ARCGIS_PORTAL' -ieq $CurrentSecurityConfig.authenticationTier){

@@ -95,7 +95,7 @@ function Set-TargetResource
         if(-not($Version)){
             try{
                 $ErrorActionPreference = "Stop"; #Make all errors terminating
-                $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "ArcGIS Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "ArcGIS Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
+                $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "ArcGIS Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "ArcGIS Mission Server" }elseif($ServerRole -ieq 'VideoServer'){ "ArcGIS Video Server" }else{ "ArcGIS Server" } } else{ $Component }
                 $RealVersion = (Get-ArcGISProductDetails -ProductName $ComponentName).Version
             }catch{
                 throw "Couldn't Find The Product - $Component"            
@@ -172,7 +172,7 @@ function Test-TargetResource
     if(-not($Version)){
         try{
             $ErrorActionPreference = "Stop"; #Make all errors terminating
-            $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "ArcGIS Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "ArcGIS Mission Server" }else{ "ArcGIS Server" } } else{ $Component }
+            $ComponentName = if($Component -ieq "LicenseManager"){ "License Manager" }elseif($Component -ieq "Server"){ if($ServerRole -ieq 'NotebookServer'){ "ArcGIS Notebook Server" }elseif($ServerRole -ieq 'MissionServer'){ "ArcGIS Mission Server" }elseif($ServerRole -ieq 'VideoServer'){ "ArcGIS Video Server" }else{ "ArcGIS Server" } } else{ $Component }
             $RealVersion = (Get-ArcGISProductDetails -ProductName $ComponentName).Version
         }catch{
             throw "Couldn't Find The Product - $Component"        
@@ -277,12 +277,14 @@ function Invoke-LicenseSoftware
                 $ServerTypeName = "ArcGIS Notebook Server" 
             }elseif($ServerRole -ieq "MissionServer"){ 
                 $ServerTypeName = "ArcGIS Mission Server"
+            }elseif($ServerRole -ieq "VideoServer"){ 
+                $ServerTypeName = "ArcGIS Video Server"
             }
             $InstallLocation = (Get-ArcGISProductDetails -ProductName $ServerTypeName).InstallLocation
             if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 2){
                 $SoftwareAuthExePath = "$($InstallLocation)tools\SoftwareAuthorization\SoftwareAuthorization.exe"
             }else{
-                if(($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" ) -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8))){
+                if(($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" -or $ServerRole -ieq "VideoServer") -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8))){
                     if($ServerRole -ieq "MissionServer"){
                         $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorization.exe"
                     }else{
