@@ -1035,7 +1035,7 @@ function Set-PITRState
         throw [string]::Format("ERROR: failed. {0}" , $response.error.message)
     }else{
         if($Response.status -ieq "success"){
-            Write-Verbose "PITR state changed to  $PITRState"
+            Write-Verbose "PITR state changed to $PITRState"
         }else{
             throw "[ERROR] Configure PITR web request returned unknown response $($Response.status)."
         }

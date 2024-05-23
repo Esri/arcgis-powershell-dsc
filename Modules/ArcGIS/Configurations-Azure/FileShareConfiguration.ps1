@@ -31,6 +31,10 @@
         $EnableDataDisk
 
         ,[Parameter(Mandatory=$false)]
+        [System.Int32]
+        $DataDiskNumber = 2
+
+        ,[Parameter(Mandatory=$false)]
         [System.String]
         $FileShareName = 'fileshare'
 
@@ -83,7 +87,7 @@
         {
             ArcGIS_xDisk DataDisk
             {
-                DiskNumber  =  2
+                DiskNumber  =  $DataDiskNumber
                 DriveLetter = 'F'
             }
         }

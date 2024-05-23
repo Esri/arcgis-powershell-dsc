@@ -1,0 +1,10 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_WebGISDR")]
+class ArcGIS_WebGISDR : OMI_BaseResource
+{
+    [Key, Description("Specifies the version of ArcGIS to be configured")] String Version;
+	[Key, Description("Specifies the version of Portal for ArcGIS install directory")] String PortalInstallDirectory;
+	[Key, Description("Specifies the action to be performed"), ValueMap{"Import","Export"}, Values{"Import","Export"}] String Action;
+	[Key, Description("Specifies the properties file path")] String PropertiesFilePath;
+	[Write, Description("Specifies the timeout in minutes")] Uint32 TimeoutInMinutes;
+};

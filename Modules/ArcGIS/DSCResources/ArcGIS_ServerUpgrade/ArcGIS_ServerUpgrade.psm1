@@ -132,6 +132,10 @@ function Set-TargetResource
 				Start-Sleep -Seconds 30
 				$Attempts = $Attempts + 1
             }
+
+            if($Attempts -eq 120 -and -not($ServerReady)){
+                throw "Upgrade Failed. Server not ready after 60 minutes."
+            }
         }else{
 			throw "Error:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $Response)"  
 		}

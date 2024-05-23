@@ -4,7 +4,7 @@ class ArcGIS_WebAdaptor : OMI_BaseResource
 {
 	[Write] String Version;
 	[Key, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
-	[Key, ValueMap{"Server","NotebookServer","MissionServer","Portal"}, Values{"Server","NotebookServer","MissionServer","Portal"}] String Component;
+	[Key, ValueMap{"Server","NotebookServer","MissionServer","VideoServer","Portal"}, Values{"Server","NotebookServer","MissionServer","VideoServer","Portal"}] String Component;
 	[Write] String HostName;
 	[Key] String ComponentHostName;
 	[Key] String Context;

@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_License
 
     Node $AllNodes.NodeName 
@@ -32,7 +32,7 @@
                             Ensure = "Present"
                             Component = 'Server'
                             ServerRole = $Node.ServerRole
-                            AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ if(($Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}).Count -gt 0){$Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer'}}else{$null} }else{ $null }
+                            AdditionalServerRoles = if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){ if(($Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer' -and $_ -ine 'VideoServer'}).Count -gt 0){$Node.AdditionalServerRoles | Where-Object {$_ -ine 'GeoEvent' -and $_ -ine 'NotebookServer' -and $_ -ine 'WorkflowManagerServer' -and $_ -ine 'MissionServer' -and $_ -ine 'VideoServer'}}else{$null} }else{ $null }
                             Force = $ForceLicenseUpdate
                         }
                     }

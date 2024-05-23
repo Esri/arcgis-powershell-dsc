@@ -374,10 +374,11 @@ function Set-TargetResource
                         Set-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -StartupType "Automatic" -Verbose
                     }
                 }else{
-                    $ServiceStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "Automatic" -Verbose) # TODO - why is this check failing ?
+                    $ServiceStartUpType = if($Name -ieq 'ArcGIS Notebook Server'){ "AutomaticDelayedStart" }else{ "Automatic" }
+                    $ServiceStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType $ServiceStartUpType -Verbose) # TODO - why is this check failing ?
                     if(-not($ServiceStartupTypeIsAuto)){
-                        Write-Verbose "Setting Startup Type for $Name to Automatic"
-                        Set-ServiceStartupType -ServiceName $Name -StartupType "Automatic" -Verbose
+                        Write-Verbose "Setting Startup Type for $Name to '$($ServiceStartUpType)'"
+                        Set-ServiceStartupType -ServiceName $Name -StartupType $ServiceStartUpType -Verbose
                     }
                 }
             }catch{
@@ -470,14 +471,15 @@ function Test-TargetResource
     }
 
     if($SetStartupToAutomatic){
+        Write-Verbose "Checking Service Startup Type for service '$Name'."
         if($Name -ieq 'ArcGISGeoEvent') {
             $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEvent' -ExpectedStartupType "AutomaticDelayedStart" -Verbose)
             if($result){
                 $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -ExpectedStartupType "Automatic" -Verbose)
             }
         }else{
-            Write-Verbose "Checking Service Startup Type $Name."
-            $result = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType "Automatic" -Verbose)
+            $ServiceStartUpType = if($Name -ieq 'ArcGIS Notebook Server'){ "AutomaticDelayedStart" }else{ "Automatic" }
+            $result = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType  $ServiceStartUpType -Verbose)
         }
     }
     

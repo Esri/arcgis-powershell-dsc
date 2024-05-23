@@ -49,6 +49,21 @@
                     Ensure = $Ensure
                 }
 
+                if((($Installer.Volumes).Length -gt 0)) {
+                    foreach($Volume in $Installer.Volumes){
+                        $VolumeFileName = Split-Path $Volume -leaf
+                        ArcGIS_RemoteFile "$($Installer.Name.Replace(' ', '_'))_$($VolumeFileName.Replace(' ', '_'))"
+                        {
+                            Source = $VolumeFileName
+                            Destination = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Installer.LocalPath) $VolumeFileName)
+                            FileSourceType = $FileSourceType
+                            AzureFilesEndpoint = if($FileSourceType -ieq "AzureFiles"){ $AFSEndpoint }else{ $null }
+                            Credential = if($FileSourceType -ieq "AzureFiles"){ $AFSCredential }else{ $null }
+                            Ensure = $Ensure
+                        }
+                    }
+                }
+
                 if((($Installer.Patches).Length -gt 0)) {
                     foreach($patch in $Installer.Patches){
                         $PatchFileName = Split-Path $patch -leaf

@@ -1,0 +1,19 @@
+﻿
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_VideoServer")]
+class ArcGIS_VideoServer : OMI_BaseResource
+{
+	[Write] String Version;
+	[Write] String ServerHostName;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+    [Write] String ConfigurationStoreLocation;
+	[Key] String ServerDirectoriesRootLocation;
+	[Write] String ServerDirectories;
+	[Write] String ServerLogsLocation;
+	[Write] String ConfigStoreCloudStorageConnectionString;
+	[Write] String ConfigStoreCloudStorageAccountName;
+	[Write] String ConfigStoreCloudStorageConnectionSecret;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+	[Write, Description("Is Joining Existing site")] Boolean Join;
+	[Write] String PeerServerHostName;
+	[Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
+};

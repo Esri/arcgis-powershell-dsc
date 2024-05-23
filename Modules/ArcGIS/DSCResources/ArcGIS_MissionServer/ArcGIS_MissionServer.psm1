@@ -362,7 +362,7 @@ function Test-TargetResource
     $result = $false
     try {        
         Write-Verbose "Checking for site on '$ServerUrl'"
-        Wait-ForUrl -Url $ServerUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'
+        Wait-ForUrl -Url "$($ServerUrl)/arcgis/admin" -SleepTimeInSeconds 5 -HttpMethod 'GET'
         $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
         $result = ($null -ne $token.token)
         if($result){

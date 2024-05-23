@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2'
+        $Version = '11.3'
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -62,6 +62,10 @@
         $StorageAccountServicePrincipalTenantId
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalAuthorityHost
+
+        ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountServicePrincipalCredential
 
@@ -108,6 +112,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $EnableDataDisk 
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Int32]
+        $DataDiskNumber = 2
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -223,6 +231,9 @@
                 if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
                     $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
                     $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+                    if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
+						$ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
+					}
                     $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
                 }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
                     $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
@@ -263,7 +274,7 @@
         {
             ArcGIS_xDisk DataDisk
             {
-                DiskNumber  =  2
+                DiskNumber  =  $DataDiskNumber
 				DriveLetter = 'F'
 				DependsOn 	= $DependsOn
 			}
@@ -301,7 +312,6 @@
                     ArcGISWorkspaceLocation = "$($ServerDirsLocation)\arcgisworkspace"
                     FileShareEndpoint = if($UseAzureFiles -ieq 'True'){ $AzureFilesEndpoint }else{ $FileShareMachineName }
                     FileShareName = $FileShareName
-                    UserAccountsWithPermissions = $null
                     IsSingleTier = $False
                     Join = $False
                     UseAzureFiles = ($UseAzureFiles -ieq 'True')
@@ -339,7 +349,7 @@
                     Extract = $True
                     Arguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Context) WEBSITE_ID=1 CONFIGUREIIS=TRUE "
                     WebAdaptorContext = $Context
-                    WebAdaptorDotnetHostingBundlePath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\AdditionalFiles\\dotnet-hosting-6.0.23-win.exe"
+                    WebAdaptorDotnetHostingBundlePath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\AdditionalFiles\\dotnet-hosting-8.0.0-win.exe"
                     WebAdaptorWebDeployPath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\AdditionalFiles\\WebDeploy_amd64_en-US.msi"
                     Ensure = "Present"
                 }
@@ -386,6 +396,7 @@
                     RunAsAccount    = $ServiceCredential
                     IsDomainAccount = $ServiceCredentialIsDomainAccount
                     Ensure          = 'Present'
+                    SetStartupToAutomatic = $True
                     DependsOn       = $DependsOn
                 }
                 $DependsOn += '[ArcGIS_Service_Account]NotebookServer_Service_Account'

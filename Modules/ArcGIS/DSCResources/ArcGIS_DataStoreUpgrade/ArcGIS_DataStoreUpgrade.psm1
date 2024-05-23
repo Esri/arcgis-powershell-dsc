@@ -163,7 +163,7 @@ function Set-TargetResource
             Write-Verbose $dstypes
             $ServerAdminUrl = "$($ServerUrl)/arcgis"
             $ExecPath = Join-Path $InstallDir 'tools\configuredatastore.bat'
-            $Arguments = "$($ServerAdminUrl) $($SiteAdministrator.GetNetworkCredential().UserName) $($SiteAdministrator.GetNetworkCredential().Password) $($ContentDirectory) --stores $dstypes"
+            $Arguments = "$($ServerAdminUrl) $($SiteAdministrator.GetNetworkCredential().UserName) `"$($SiteAdministrator.GetNetworkCredential().Password)`" $($ContentDirectory) --stores $dstypes"
             
             write-verbose "Executing $ExecPath"
 

@@ -241,7 +241,7 @@ function Get-AllSSLCertificateCNamesForMachine
         [string]$MachineName,
         [string]$ServerType
     )
-    $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }elseif($ServerType -ieq "MissionServer"){ 20443 }else{ 6443 }
+    $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }elseif($ServerType -ieq "MissionServer"){ 20443 }elseif($ServerType -ieq "VideoServer"){ 21443 }else{ 6443 }
     Invoke-ArcGISWebRequest -Url "https://$($ServerHostName):$($SitePort)/$SiteName/admin/machines/$MachineName/sslCertificates/" -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' 
 }
 
@@ -276,7 +276,7 @@ function Import-CertFromServerIntoTrustedCertificateStore
         # Import Certificate into ArcGIS Server (establish trust between JVM)
         if($SiteAdministrator) {
             $FQDN = Get-FQDN $env:COMPUTERNAME
-            $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }elseif($ServerType -ieq "MissionServer"){ 20443 }else{ 6443 }
+            $SitePort = if($ServerType -ieq "NotebookServer"){ 11443 }elseif($ServerType -ieq "MissionServer"){ 20443 }elseif($ServerType -ieq "VideoServer"){ 21443 }else{ 6443 }
             $ServerUrl = "https://$($FQDN):$($SitePort)"
             $SiteName = 'arcgis'
        

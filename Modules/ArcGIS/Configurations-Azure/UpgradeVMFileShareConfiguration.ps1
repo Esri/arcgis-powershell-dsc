@@ -58,6 +58,7 @@
 			$Accounts = @('NT AUTHORITY\SYSTEM')
 			if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
 			if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
+
 			ArcGIS_xSmbShare FileShare 
 			{ 
 				Ensure						= 'Present' 

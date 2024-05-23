@@ -13,16 +13,19 @@
             ],
             "WebAdaptorConfig":[
                 {
-                    "Role": "Portal"
+                    "Role": "Portal",
+                    "HostName": "[Portal Web Adaptor IIS Binding Hostname]"
                 },
                 {
-                    "Role": "Server"
+                    "Role": "Server",
+                    "HostName": "[Server Web Adaptor IIS Binding Hostname]"
                 },
                 {
                     "Role": "Server",
                     "Context": "serveradmin",
                     "AdminAccessEnabled": true,
-                    "WebSiteId": 1
+                    "WebSiteId": 1,
+                    "HostName": "[Server Web Adaptor IIS Binding Hostname]"
                 }
             ],
             "SslCertificates": [

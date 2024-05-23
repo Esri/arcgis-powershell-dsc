@@ -55,13 +55,16 @@
         [System.Boolean]
         $DownloadPatches = $False,
 
+        [System.Boolean]
+        $SkipPatchInstalls = $False,
+
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $EnableMSILogging = $false
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_WebAdaptor
 
@@ -74,7 +77,7 @@
         }
 
         $VersionArray = $Version.Split('.')
-
+        $Depends = $null
         if($IsJavaWebAdaptor){
             $LastWAName = ""
             foreach($WA in $Node.WebAdaptorConfig){
@@ -117,8 +120,9 @@
                 Ensure = "Present"
                 DependsOn  = "[ArcGIS_WebAdaptor]$LastWAName"
             }
+            $Depends = @("[ArcGIS_Install]WebAdaptorJavaInstall")
 
-            if ($PatchesDir) { 
+            if ($PatchesDir -and -not($SkipPatchInstalls)) { 
                 #TODO - this is not working (Even if the patch is installed, we will have to update the war file manually to get the patch applied)
                 ArcGIS_InstallPatch WebAdaptorJavaInstallPatch
                 {
@@ -128,11 +132,12 @@
                     PatchesDir = $PatchesDir
                     PatchInstallOrder = $PatchInstallOrder
                     Ensure = "Present"
-                    DependsOn  = "[ArcGIS_Install]WebAdaptorJavaInstall"
+                    DependsOn = $Depends
                 }
+                $Depends = @("[ArcGIS_InstallPatch]WebAdaptorJavaInstallPatch")
             }
         }else{
-            $Depends = $null
+            
             foreach($WA in $Node.WebAdaptorConfig){
                 if($WA.Role -ieq $WebAdaptorRole){
                     $WAName = "WebAdaptorIIS-$($WA.Role)-$($WA.Context)"
@@ -167,23 +172,21 @@
                         Ensure = "Present"
                         DependsOn = @("[ArcGIS_Install]$($WAName)Uninstall")
                     }
-
-                    if ($PatchesDir) {
-                        ArcGIS_InstallPatch "$($WAName)InstallPatch"
-                        {
-                            Name = "WebAdaptorIIS"
-                            Version = $Version
-                            DownloadPatches = $DownloadPatches
-                            PatchesDir = $PatchesDir
-                            PatchInstallOrder = $PatchInstallOrder
-                            Ensure = "Present"
-                            DependsOn = @("[ArcGIS_Install]$($WAName)Install")
-                        }
-                        $Depends = @("[ArcGIS_InstallPatch]$($WAName)InstallPatch")
-                    }else{
-                        $Depends = @("[ArcGIS_Install]$($WAName)Install")
-                    }
+                    $Depends = @("[ArcGIS_Install]$($WAName)Install")
                 }
+            }
+            if ($PatchesDir -and -not($SkipPatchInstalls)){
+                ArcGIS_InstallPatch "WAIISInstallPatch"
+                {
+                    Name = "WebAdaptorIIS"
+                    Version = $Version
+                    DownloadPatches = $DownloadPatches
+                    PatchesDir = $PatchesDir
+                    PatchInstallOrder = $PatchInstallOrder
+                    Ensure = "Present"
+                    DependsOn = $Depends
+                }
+                $Depends = @("[ArcGIS_InstallPatch]WAIISInstallPatch")
             }
         }
 

@@ -407,7 +407,7 @@ function Get-DataStoreItemConnectionObject {
 				connectionString = @{ 
 					path = $ConnStringObj.DataStorePath
 				};
-				connectionType   = if ($ConnStringObj.DataStorePath.StartsWith('/cloudStores')) { 'dataStore' } else { 'fileShare' }
+				connectionType   = if ($ConnStringObj.DataStorePath.StartsWith('/cloudStores') -or $ConnStringObj.DataStorePath.StartsWith('/enterpriseDatabases')) { 'dataStore' } else { 'fileShare' }
 			};
 			path = "/rasterStores/$($ItemName)"
 		}
@@ -468,6 +468,9 @@ function Get-DataStoreItemConnectionObject {
 				$item.info.connectionString["tenantId"] = $ConnStringObj.AzureStorage.ServicePrincipalTenantId
 				$item.info.connectionString["clientId"] = $ConnStringObj.AzureStorage.ServicePrincipalClientId
 				$item.info.connectionString["clientSecret"] = $ConnectionSecret.GetNetworkCredential().Password
+				if($ConnStringObj.AzureStorage.ContainsKey("ServicePrincipalAuthorityHost") -and $ConnStringObj.AzureStorage.ServicePrincipalAuthorityHost -ne ""){
+                    $item.info.connectionString["authorityHost"] = $ConnStringObj.AzureStorage.ServicePrincipalAuthorityHost
+                }
 			}
 			elseif ($AzureCloudStoreAuthenticationType -ieq "UserAssignedIdentity") {
 				$item.info.connectionString["credentialType"] = 'userAssignedIdentity'

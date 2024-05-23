@@ -33,13 +33,16 @@
         [System.Boolean]
         $DownloadPatches = $False,
 
+        [System.Boolean]
+        $SkipPatchInstalls = $False,
+
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $EnableMSILogging = $false
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallPatch
     Import-DscResource -Name ArcGIS_DataStoreUpgrade
@@ -73,7 +76,7 @@
         }
         $Depends += '[ArcGIS_Install]DataStoreUpgrade'
 
-        if ($PatchesDir) {
+        if ($PatchesDir -and -not($SkipPatchInstalls)) {
             ArcGIS_InstallPatch DatastoreInstallPatch
             {
                 Name = "DataStore"

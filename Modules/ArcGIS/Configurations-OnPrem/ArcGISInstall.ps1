@@ -14,11 +14,15 @@
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
+        $SkipPatchInstalls = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
         $EnableMSILogging = $false
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_InstallMsiPackage
     Import-DscResource -Name ArcGIS_InstallPatch
@@ -94,12 +98,12 @@
             {
                 'Server'
                 {
-                    $ServerTypeName = if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -or $ConfigurationData.ConfigData.ServerRole -ieq "MissionServer" ){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+                    $ServerTypeName = if(@("MissionServer", "NotebookServer", "VideoServer") -iContains $ConfigurationData.ConfigData.ServerRole){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
 
                     $ServerFeatureSet = @()
                     $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
                     if($ServerTypeName -ieq "Server"){
-                        if(@("11.0","11.1","11.2") -iContains $ConfigurationData.ConfigData.Version){
+                        if(@("11.0","11.1","11.2","11.3") -iContains $ConfigurationData.ConfigData.Version){
                             $EnableDontet = $True
                             if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
                                 $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
@@ -178,7 +182,7 @@
                         }
                     }
 
-                    if ($ConfigurationData.ConfigData.Server.Installer.PatchesDir) {
+                    if ($ConfigurationData.ConfigData.Server.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                         ArcGIS_InstallPatch ServerInstallPatch
                         {
                             Name = $ServerTypeName
@@ -227,7 +231,7 @@
                             Ensure = "Present"
                         }
 
-                        if ($ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir) {
+                        if ($ConfigurationData.ConfigData.WorkflowManagerServer.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                             ArcGIS_InstallPatch WorkflowManagerServerInstallPatch
                             {
                                 Name = "WorkflowManagerServer"
@@ -257,7 +261,7 @@
                             Ensure = "Present"
                         }
 
-                        if ($ConfigurationData.ConfigData.GeoEventServer.Installer.PatchesDir) {
+                        if ($ConfigurationData.ConfigData.GeoEventServer.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                             ArcGIS_InstallPatch GeoeventServerInstallPatch
                             {
                                 Name = "GeoEvent"
@@ -303,7 +307,7 @@
                         }
                     }
 
-                    if ($ConfigurationData.ConfigData.Portal.Installer.PatchesDir) {
+                    if ($ConfigurationData.ConfigData.Portal.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                         ArcGIS_InstallPatch PortalInstallPatch
                         {
                             Name = "Portal"
@@ -348,7 +352,7 @@
                         Ensure = "Present"
                     }
 
-                    if ($ConfigurationData.ConfigData.Insights.Installer.PatchesDir) {
+                    if ($ConfigurationData.ConfigData.Insights.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                         ArcGIS_InstallPatch InsightsInstallPatch
                         {
                             Name = "Insights"
@@ -365,7 +369,7 @@
                     $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
 
                     $DsFeatureSet = $Null
-                    if(@("11.0","11.1","11.2") -iContains $ConfigurationData.ConfigData.Version) {
+                    if(@("11.0","11.1","11.2","11.3") -iContains $ConfigurationData.ConfigData.Version) {
                         $DsFeatureSet = $Node.DataStoreTypes
                         if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
                             $DsFeatureSet = @("ALL")
@@ -387,7 +391,7 @@
                         Ensure = "Present"
                     }
 
-                    if ($ConfigurationData.ConfigData.DataStore.Installer.PatchesDir) {
+                    if ($ConfigurationData.ConfigData.DataStore.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                         ArcGIS_InstallPatch DataStoreInstallPatch
                         {
                             Name = "DataStore"
@@ -435,7 +439,7 @@
                             Ensure = "Present"
                         }
 
-                        if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir) { 
+                        if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir -and -not($SkipPatchInstalls)) { 
                             #TODO - this is not working (Even if the patch is installed, we will have to update the war file manually to get the patch applied)
                             ArcGIS_InstallPatch WebAdaptorJavaInstallPatch
                             {
@@ -492,7 +496,7 @@
                             }
                         }
 
-                        if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir) {
+                        if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                             ArcGIS_InstallPatch "WebAdaptorIIS-InstallPatches"
                             {
                                 Name = "WebAdaptorIIS"
@@ -596,7 +600,7 @@
                         }
                     }
 
-                    if ($ConfigurationData.ConfigData.Desktop.Installer.PatchesDir) {
+                    if ($ConfigurationData.ConfigData.Desktop.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                         ArcGIS_InstallPatch DesktopInstallPatch
                         {
                             Name = "Desktop"
@@ -653,6 +657,7 @@
                         Version = $ConfigurationData.ConfigData.ProVersion
                         Path = $ConfigurationData.ConfigData.Pro.Installer.Path
                         ProDotnetDesktopRuntimePath = if($ConfigurationData.ConfigData.ProVersion.Split(".")[0] -ge 3){ $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath }else{ $null }
+                        ProEdgeWebView2RuntimePath = if($ConfigurationData.ConfigData.ProVersion.Split(".")[0] -ge 3 -and $ConfigurationData.ConfigData.ProVersion.Split(".")[1] -ge 3){ $ConfigurationData.ConfigData.Pro.Installer.EdgeWebView2RuntimePath }else{ $null }
                         Extract = if($ConfigurationData.ConfigData.Pro.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Pro.Installer.IsSelfExtracting }else{ $True }
                         Arguments = $Arguments
                         EnableMSILogging = $EnableMSILogging
@@ -691,7 +696,7 @@
                         }
                     }
 
-                    if ($ConfigurationData.ConfigData.Pro.Installer.PatchesDir) {
+                    if ($ConfigurationData.ConfigData.Pro.Installer.PatchesDir -and -not($SkipPatchInstalls)) {
                         ArcGIS_InstallPatch ProInstallPatch
                         {
                             Name = "Pro"

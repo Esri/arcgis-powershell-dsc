@@ -263,6 +263,17 @@ function Set-TargetResource
                                    }
             }
         }
+
+        foreach($UserName in $FullAccess){
+            $existingAccess = $Path | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName
+            if(-not($existingAccess -and -not($existingAccess.FileSystemRights -imatch "FullControl"))){
+                $acl = Get-Acl $Path
+                $permission = "$($UserName)","FullControl","ContainerInherit,ObjectInherit","None","Allow"
+                $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
+                $acl.SetAccessRule($accessRule)
+                $acl | Set-Acl $Path
+            }	
+        }
     }
     else 
     {
@@ -344,6 +355,16 @@ function Test-TargetResource
         else
         {
             $testResult = $false
+        }
+    }
+
+    if($testResult){
+        foreach($UserName in $FullAccess){
+            $existingAccess = $Path | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName
+            if(-not($existingAccess -and -not($existingAccess.FileSystemRights -imatch "FullControl"))){
+                $testResult = $false
+                break
+            }	
         }
     }
 

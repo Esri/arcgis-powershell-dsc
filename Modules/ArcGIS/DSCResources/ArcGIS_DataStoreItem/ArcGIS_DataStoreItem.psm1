@@ -249,7 +249,7 @@ function Set-TargetResource
         }
     }
     elseif($DataStoreType -ieq 'RasterStore') {
-        $rasterStores = Get-DataStoreItemsOfType -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -Types 'rasterStore' -AncestorPath '/cloudStores'
+        $rasterStores = Get-DataStoreItemsOfType -ServerURL $ServerUrl -SiteName $SiteName -Token $token.token -Referer $Referer -Types 'rasterStore' -AncestorPath '/rasterStores'
         if(($rasterStores.items | Where-Object { $_.path -ieq "/rasterStores/$Name" } | Measure-Object).Count -gt 0) {
             Write-Verbose "Raster DataStore Item with name '$Name' already exists"  
         }else {
@@ -384,10 +384,11 @@ function Register-RasterDataStoreItem
     
     $RegisterDataItemUrl = $ServerURL.TrimEnd('/') + '/' + $SiteName + '/admin/data/registerItem' 
     $item = @{ type = 'rasterStore'; 
-               info = @{ connectionString = @{ path = $DataStorePath };
-                         connectionType = if($DataStorePath.StartsWith('/cloudStores')) { 'dataStore' } else { 'fileShare' }
-                        };
-               path = "/rasterStores/$ItemName"
+                info = @{ 
+                    connectionString = @{ path = $DataStorePath };
+                    connectionType = if($DataStorePath.StartsWith('/cloudStores') -or $DataStorePath.StartsWith('/enterpriseDatabases')) { 'dataStore' } else { 'fileShare' }
+                };
+                path = "/rasterStores/$ItemName"
              }
     Invoke-ArcGISWebRequest -Url $RegisterDataItemUrl -HttpFormParameters  @{ f = 'json'; token = $Token; item = (ConvertTo-Json -InputObject $item -Depth 3 -Compress) } -Referer $Referer 
 }

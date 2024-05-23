@@ -54,6 +54,27 @@
         $ConfigStoreCloudStorageType,
 
         [Parameter(Mandatory=$False)]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken")]
+        [AllowNull()] 
+        $ConfigStoreAzureBlobAuthenticationType,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAzureBlobUserAssignedIdentityId = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAzureBlobServicePrincipalTenantId = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ConfigStoreAzureBlobServicePrincipalCredentials = $null,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $ConfigStoreAzureBlobServicePrincipalAuthorityHost = $null,
+
+        [Parameter(Mandatory=$False)]
         [System.String]
         $ConfigStoreAzureFileShareName,
 
@@ -97,7 +118,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_MissionServer
     Import-DscResource -Name ArcGIS_MissionServerSettings
     Import-DscResource -Name ArcGIS_Server_TLS
@@ -105,6 +126,7 @@
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_WaitForComponent
 
+    $Join = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
     if($null -ne $ConfigStoreCloudStorageType) {
         if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){
             $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($ConfigStoreCloudNamespace);REGION=$($ConfigStoreAWSRegion);"
@@ -129,9 +151,25 @@
                     $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\missionserver\config-store"
                 }
                 else {
-                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)missionserver$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
-                    $ConfigStoreCloudStorageAccountName = "AccountName=$ConfigStoreAccountName"
-                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                    if(-not($Join)){
+                        $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)missionserver$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
+                        $ConfigStoreCloudStorageAccountName = "AccountName=$ConfigStoreAccountName"
+                        if($ConfigStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
+                            $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($ConfigStoreAzureBlobServicePrincipalTenantId);ClientId=$($ConfigStoreAzureBlobServicePrincipalCredentials.Username)"
+                            if(-not([string]::IsNullOrEmpty($ConfigStoreAzureBlobServicePrincipalAuthorityHost))){
+                                $ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($ConfigStoreAzureBlobServicePrincipalAuthorityHost)" 
+                            }
+                            $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ConfigStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password)"
+                        }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
+                            $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($ConfigStoreAzureBlobUserAssignedIdentityId)"
+                            $ConfigStoreCloudStorageConnectionSecret = ""
+                        }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'SASToken'){
+                            $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+                            $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                        }else{
+                            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
+                        }
+                    }
                 }
             }
         }
@@ -299,11 +337,11 @@
             ServerDirectoriesRootLocation           = $ServerDirectoriesRootLocation
             ServerDirectories                       = if($ServerDirectories -ne $null){ (ConvertTo-JSON $ServerDirectories -Depth 5) }else{ $null }
             LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-            ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-            ConfigStoreCloudStorageAccountName      = $ConfigStoreCloudStorageAccountName
-            ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+            ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
+            ConfigStoreCloudStorageAccountName      = if(-not($Join)){ $ConfigStoreCloudStorageAccountName }else{ $null }
+            ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
             ServerLogsLocation                      = $ServerLogsLocation
-            Join                                    = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
+            Join                                    = $Join
             PeerServerHostName                      = $PrimaryServerMachine
             Version                                 = $Version
             DependsOn                               = $DependsOn

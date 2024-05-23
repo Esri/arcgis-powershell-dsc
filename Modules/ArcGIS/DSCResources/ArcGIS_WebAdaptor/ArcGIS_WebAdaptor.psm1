@@ -50,7 +50,7 @@ function Get-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal")]
         [System.String]
         $Component,
 
@@ -100,7 +100,7 @@ function Set-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal")]
         [System.String]
         $Component,
 
@@ -153,7 +153,7 @@ function Set-TargetResource
             $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
             $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
             $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
-            if($Version.StartsWith("11.1") -or $Version.StartsWith("11.2")){
+            if($Version.StartsWith("11.1") -or $Version.StartsWith("11.2") -or $Version.StartsWith("11.3")){
                 $ExecPath = Join-Path ${env:CommonProgramFiles} $ConfigureToolPath
             }
         }
@@ -240,7 +240,7 @@ function Test-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal")]
         [System.String]
         $Component,
 
@@ -276,7 +276,7 @@ function Test-TargetResource
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     
-    $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}else{"https://$($ComponentHostName):6443"}
+    $ServerSiteURL = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}elseif($Component -ieq "VideoServer"){"https://$($ComponentHostName):21443"}else{"https://$($ComponentHostName):6443"}
     $PortalSiteUrl = "https://$($ComponentHostName):7443"
     $result = $True
     $WAConfigSiteUrl = $null
@@ -310,7 +310,7 @@ function Test-TargetResource
             if($wa.InstallLocation -match "\\$($Context)\\"){
                 $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
                 $WAConfigSiteUrl = $null
-                if($wa.Version.StartsWith("11.1") -or $wa.Version.StartsWith("11.2")){
+                if($wa.Version.StartsWith("11.1") -or $wa.Version.StartsWith("11.2") -or $Version.StartsWith("11.3")){
                     $WAConfig = (Get-Content $WAConfigPath | ConvertFrom-Json)
                     $WAConfigSiteUrl = if($Component -ieq "Portal"){ $WAConfig.portal.url }else{ $WAConfig.gisserver.url }
                 }else{
@@ -332,7 +332,7 @@ function Test-TargetResource
         $result =  $false
     }else{
         if($Ensure -ieq 'Present'){ # Only do this check when the web adaptor is to be configured
-            if((@("Server", "NotebookServer", "MissionServer") -iContains $Component) -and ($WAConfigSiteUrl -like $ServerSiteURL)){
+            if((@("Server", "NotebookServer", "MissionServer","VideoServer") -iContains $Component) -and ($WAConfigSiteUrl -like $ServerSiteURL)){
                 if (Test-URL "https://$Hostname/$Context/admin"){
                     if($Component -ieq "Server"){
                         $result = if(-not($AdminAccessEnabled)){ $false }else{ $true }
@@ -455,6 +455,18 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         }else{
             $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
         }
+    }elseif($Component -ieq 'VideoServer') {
+        $SiteURL = "https://$($ComponentHostName):21443"
+        $WAUrl = "https://$($HostName)/$($Context)/webadaptor"
+        Write-Verbose $WAUrl
+        $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
+        Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
+        $WAMode = "video"
+        if($IsJavaWebAdaptor){
+            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
+        }else{
+            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+        }
     }
     elseif($Component -ieq 'Portal'){
         $SiteURL = "https://$($ComponentHostName):7443"
@@ -544,7 +556,7 @@ function Unregister-WebAdaptor{
         $token = Get-PortalToken -PortalHostName $ComponentHostName -Credential $SiteAdministrator -Referer $Referer
         $WASystemUrl = "https://$($ComponentHostName):7443/arcgis/portaladmin/system/webadaptors"
     }else{
-        $ServerUrl = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}else{"https://$($ComponentHostName):6443"}
+        $ServerUrl = if($Component -ieq "NotebookServer"){"https://$($ComponentHostName):11443"}elseif($Component -ieq "MissionServer"){"https://$($ComponentHostName):20443"}elseif($Component -ieq "VideoServer"){"https://$($ComponentHostName):21443"}else{"https://$($ComponentHostName):6443"}
         $token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName 'arcgis' -Credential $SiteAdministrator -Referer $Referer 
         $WASystemUrl = "$($ServerUrl)/arcgis/admin/system/webadaptors"
     }
@@ -586,6 +598,7 @@ function Test-ArcGISJavaWebAdaptorBuildNumberToMatch
         "10.9.1" { "10.9.28388" }
         "11.1" { "11.1" }
         "11.2" { "11.2" }
+        "11.3" { "11.3" }
         Default {
             throw "Version $VersionToMatch not supported"
         }

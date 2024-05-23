@@ -3,7 +3,7 @@
 	param(
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.2'
+        $Version = '11.3'
 		
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -70,6 +70,10 @@
         [System.String]
         $StorageAccountServicePrincipalTenantId
 
+		,[Parameter(Mandatory=$false)]
+        [System.String]
+        $StorageAccountServicePrincipalAuthorityHost
+
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountServicePrincipalCredential
@@ -113,6 +117,10 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
 		$EnableDataDisk 
+
+		,[Parameter(Mandatory=$false)]
+        [System.Int32]
+        $DataDiskNumber = 2
 		
 		,[Parameter(Mandatory=$false)]
         [System.String]
@@ -145,6 +153,10 @@
         ,[parameter(Mandatory = $false)]
 		[System.String]
 		$EnableGeodatabase = 'True'
+
+		,[parameter(Mandatory = $false)]
+		[System.String]
+		$RegisterEGDBAsRasterStore = 'False'
 
         ,[Parameter(Mandatory=$false)]
         $CloudStores
@@ -263,6 +275,9 @@
 				if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
 					$ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
 					$ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
+					if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
+						$ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
+					}
 					$ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
 				}elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
 					$ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
@@ -307,7 +322,7 @@
         {
             ArcGIS_xDisk DataDisk
             {
-                DiskNumber  =  2
+                DiskNumber  =  $DataDiskNumber
                 DriveLetter = 'F'
             }
         }    
@@ -706,7 +721,7 @@
 					$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
 		
 					if($IsMultiMachineServer){
-						$WfmPorts = @("9830", "9820", "9840", "9880")
+						$WfmPorts = @("13820", "13830", "13840", "9880")
 		
 						ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
 						{
@@ -853,6 +868,22 @@
                 Ensure                      = 'Present'
                 DependsOn                   = if($HasValidServiceCredential) { @('[ArcGIS_Server]Server') } else { $null }
             }
+
+			if($RegisterEGDBAsRasterStore -ieq 'True'){
+				$ConnectionStringObject = @{
+					DataStorePath = "/enterpriseDatabases/$($DatabaseServerHostName)_$($DatabaseName)"
+				}
+
+				ArcGIS_DataStoreItemServer RasterStore
+				{
+					Name = "RasterStore-$($DatabaseName.Replace(' ', '_'))"
+					ServerHostName = $ServerHostName
+					SiteAdministrator = $SiteAdministratorCredential
+					DataStoreType = 'RasterStore'
+					ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
+					DependsOn = @("[ArcGIS_EGDB]RegisterEGDB")
+				}
+			}
         }  
 
         if($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0 -and ($ServerHostName -ieq $env:ComputerName)) 
@@ -879,6 +910,9 @@
 					$ConnectionPassword = ConvertTo-SecureString $cloudStore.SASToken -AsPlainText -Force 
 				}elseif($AuthType -ieq "ServicePrincipal"){
 					$AzureConnectionObject["ServicePrincipalTenantId"] = $cloudStore.ServicePrincipal.TenantId
+					if($cloudStore.ServicePrincipal.ContainsKey("AuthorityHost") -and -not([string]::IsNullOrEmpty($cloudStore.ServicePrincipal.AuthorityHost))){
+						$AzureConnectionObject["ServicePrincipalAuthorityHost"] = $cloudStore.ServicePrincipal.AuthorityHost
+					}
 					$AzureConnectionObject["ServicePrincipalClientId"] = $cloudStore.ServicePrincipal.ClientId
 					$ConnectionPassword = (ConvertTo-SecureString $AzureStorageObject.ServicePrincipal.ClientSecret -AsPlainText -Force)
 				}elseif($AuthType -ieq "UserAssignedIdentity"){

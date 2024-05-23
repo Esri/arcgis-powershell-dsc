@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.2"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.3"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -57,24 +57,6 @@
         }
         $Depends += "[Script]SetAutomaticPageFileManagement"
 
-        Script CleanInstallDotNetCore6HostingBunde
-        {
-            TestScript = { $false }
-            GetScript = { $null }
-            SetScript = {
-                $url = "https://github.com/dotnet/cli-lab/releases/download/1.6.0/dotnet-core-uninstall-1.6.0.msi"
-                Start-BitsTransfer -Source $url -Destination "c:/temp"
-                Start-Process "msiexec.exe" -Wait -Verbose -ArgumentList "/I C:\temp\dotnet-core-uninstall-1.6.0.msi /norestart /qn" -NoNewWindow -PassThru
-                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --sdk 
-                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --runtime
-                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --aspnet-runtime
-                & "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall" remove --all --force --yes --hosting-bundle
-                Get-Package -Name "*SDK Uninstall Tool*" |  Uninstall-Package   
-                Start-Process "msiexec.exe" -Wait -Verbose -ArgumentList "/x C:\temp\dotnet-core-uninstall-1.6.0.msi /qn" -NoNewWindow -PassThru
-            }
-        }
-        $Depends += "[Script]CleanInstallDotNetCore6HostingBunde"
-
         $ProImage = $false
         if($Installers.Length -eq 3 -or $Installers.Length -eq 4){
             foreach($Installer in $Installers){
@@ -84,7 +66,8 @@
             }
         }
         
-        if(-not($ProImage)){
+        if(-not($ProImage))
+        {
             #region Windows Features
             if($WindowsFeatures -and ($WindowsFeatures.Length -gt 0)) 
             {

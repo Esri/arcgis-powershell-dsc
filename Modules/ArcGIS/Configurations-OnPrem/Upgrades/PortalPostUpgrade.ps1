@@ -11,11 +11,15 @@
 
         [parameter(Mandatory = $false)]
         [System.String]
-        $Version
+        $Version,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.2.1 
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
     Import-DscResource -Name ArcGIS_PortalUpgrade 
 
     Node $AllNodes.NodeName {
@@ -34,6 +38,7 @@
             LicenseFilePath = $Node.PortalLicenseFilePath
             SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
             Version = $Version
+            EnableUpgradeSiteDebug = $DebugMode
         }
     }
 }
