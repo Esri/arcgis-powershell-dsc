@@ -7,6 +7,12 @@ Sample JSON Configuration files for different ArcGIS deployment patterns are ava
 
 See [wiki](https://github.com/Esri/arcgis-powershell-dsc/wiki) pages for more information about using ArcGIS Powershell DSC Module.
 
+## Prereqs for success
+- Must be ran with Powershell 5.1
+- Must have the ArcGIS Module on ALL target machines, along with the orchestration machine (if applicable) and check that it can be imported successfully. May need to set the execution policy to: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
+- Must have all the prereqs for ArcGIS Enterprise components in place or configured to install within the json.
+- Read the [Getting Started page](https://github.com/Esri/arcgis-powershell-dsc/wiki/V4.-Getting-Started) for more specific details
+
 ## Issues
 
 Find a bug or want to request a new feature?  Please let us know by submitting an [issue](https://github.com/Esri/arcgis-powershell-dsc/issues).
