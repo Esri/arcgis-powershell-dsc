@@ -72,7 +72,7 @@ function Get-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-        $ProDotnetDesktopRuntimePath,
+        $DotnetDesktopRuntimePath,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -153,7 +153,7 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-        $ProDotnetDesktopRuntimePath,
+        $DotnetDesktopRuntimePath,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -206,9 +206,9 @@ function Set-TargetResource
             }
         }
 
-        if($Name -ieq 'Pro' -and $ProDotnetDesktopRuntimePath -and (Test-Path $ProDotnetDesktopRuntimePath)){
+        if(($Name -ieq 'Pro' -or $Name -ieq 'Server') -and $DotnetDesktopRuntimePath -and (Test-Path $DotnetDesktopRuntimePath)){
             # Install DotNet Desktop Runtime - exe package
-            Invoke-StartProcess -ExecPath $ProDotnetDesktopRuntimePath -Arguments "/install /quiet /norestart" -Verbose
+            Invoke-StartProcess -ExecPath $DotnetDesktopRuntimePath -Arguments "/install /quiet /norestart" -Verbose
         }
 
         if($Name -ieq 'Pro' -and $ProEdgeWebView2RuntimePath -and (Test-Path $ProEdgeWebView2RuntimePath)){
@@ -310,7 +310,7 @@ function Set-TargetResource
         if($FeatureSet.Count -gt 0){
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2","11.3") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
@@ -327,7 +327,7 @@ function Set-TargetResource
                 }
             }else{
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2","11.3") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -385,6 +385,7 @@ function Set-TargetResource
     }
     elseif($Ensure -eq 'Absent') {
         $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
+        $IISServiceName = 'W3SVC'
         if($IsWebAdaptorIIS){
             $WAInstalls = (Get-ArcGISProductDetails -ProductName 'ArcGIS Web Adaptor')
             $prodIdSetFlag = $False
@@ -399,6 +400,13 @@ function Set-TargetResource
             if(-not($prodIdSetFlag)){
                 throw "Given product Id doesn't match the product id for the version specified for Component $Name"
             }
+
+            # Stop IIS Service
+            Write-Verbose "Stop Service '$IISServiceName'"
+            Stop-Service -Name $IISServiceName -Force 
+            Write-Verbose 'Stopping the service' 
+            Wait-ForServiceToReachDesiredState -ServiceName $IISServiceName -DesiredState 'Stopped'
+            Write-Verbose 'Stopped the service'
         }
         
         if(-not($ProdIdObject.StartsWith('{'))){
@@ -407,8 +415,8 @@ function Set-TargetResource
         if(-not($ProdIdObject.EndsWith('}'))){
             $ProdIdObject = $ProdIdObject + '}'
         }
-        Write-Verbose "msiexec /x ""$ProdIdObject"" /quiet"
-        $UninstallProc = (Start-Process -FilePath msiexec.exe -ArgumentList "/x ""$ProdIdObject"" /quiet" -Wait -Verbose -PassThru)
+        Write-Verbose "msiexec /x ""$ProdIdObject"" /norestart /quiet"
+        $UninstallProc = (Start-Process -FilePath msiexec.exe -ArgumentList "/x ""$ProdIdObject"" /norestart /quiet" -Wait -Verbose -PassThru)
         if($UninstallProc.ExitCode -ne 0){
             throw "Error while uninstalling '$ComponentName' :- exited with status code $($UninstallProc.ExitCode)"
         }else{
@@ -416,6 +424,13 @@ function Set-TargetResource
         }
 
         if($IsWebAdaptorIIS){
+            # Restart IIS Service
+            Write-Verbose "Restarting Service '$IISServiceName'"
+            Start-Service -Name $IISServiceName
+            Write-Verbose 'Starting the service'
+            Wait-ForServiceToReachDesiredState -ServiceName $IISServiceName -DesiredState 'Running'
+            Write-Verbose 'Started the service'
+
             Import-Module WebAdministration | Out-Null
             $WebSiteId = 1
             $Arguments.Split(' ') | Foreach-Object {
@@ -432,8 +447,8 @@ function Set-TargetResource
             $ServerComponenetsInstalled = Get-ArcGISProductDetails -ProductName "ArcGIS Server"
             foreach($ServerComponent in $ServerComponenetsInstalled){
                 Write-Verbose "Uninstalling '$($ServerComponent.Name)' with Product Id '$($ServerComponent.IdentifyingNumber)' "
-                Write-Verbose "msiexec /x ""$($ServerComponent.IdentifyingNumber)"" /quiet"
-                $UninstallServerCompProc = (Start-Process -FilePath msiexec.exe -ArgumentList "/x ""$($ServerComponent.IdentifyingNumber)"" /quiet" -Wait -Verbose -PassThru)
+                Write-Verbose "msiexec /x ""$($ServerComponent.IdentifyingNumber)"" /norestart /quiet"
+                $UninstallServerCompProc = (Start-Process -FilePath msiexec.exe -ArgumentList "/x ""$($ServerComponent.IdentifyingNumber)"" /norestart /quiet" -Wait -Verbose -PassThru)
                 if($UninstallServerCompProc.ExitCode -ne 0){
                     throw "Error while uninstalling Server Component '$($ServerComponent.Name)' :- exited with status code $($UninstallServerCompProc.ExitCode)"
                 }else{
@@ -493,7 +508,7 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
 		[System.String]
-        $ProDotnetDesktopRuntimePath,
+        $DotnetDesktopRuntimePath,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -523,7 +538,7 @@ function Test-TargetResource
 	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
-            if(@("11.0","11.1","11.2","11.3") -iContains $Version){
+            if(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
                 $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
@@ -531,7 +546,7 @@ function Test-TargetResource
             if($Version -ieq "10.9.1"){
                 # Get all the feature that are installed.
                 # Create an add and remove feature list
-            }elseif(@("11.0","11.1","11.2","11.3") -iContains $Version){
+            }elseif(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
                 #Get all the feature that are installed.
                 #Create an add and remove feature list
             }

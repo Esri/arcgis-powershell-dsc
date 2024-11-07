@@ -13,6 +13,11 @@ function Get-TargetResource {
 		[System.String]
 		$Name,
 
+		[parameter(Mandatory = $true)]
+		[ValidateSet("Present","Absent")]
+		[System.String]
+		$Ensure,
+
 		[parameter(Mandatory = $false)]
 		[System.String]
 		$ServerHostName,
@@ -31,7 +36,7 @@ function Get-TargetResource {
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare")]
+		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore")]
 		$DataStoreType,
 
 		[System.String]
@@ -54,6 +59,11 @@ function Set-TargetResource {
 		[System.String]
 		$Name,
 
+		[parameter(Mandatory = $true)]
+		[ValidateSet("Present","Absent")]
+		[System.String]
+		$Ensure,
+
 		[parameter(Mandatory = $false)]
 		[System.String]
 		$ServerHostName,
@@ -72,10 +82,9 @@ function Set-TargetResource {
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare")]
+		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore")]
 		$DataStoreType,
 
-		[parameter(Mandatory = $true)]
 		[System.String]
 		$ConnectionString,
 
@@ -97,21 +106,31 @@ function Set-TargetResource {
 	$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName $ServerSiteName -Credential $SiteAdministrator -Referer $Referer 
 	$DataStoreItemUrl = $ServerURL.TrimEnd('/') + '/' + $ServerSiteName + '/admin/data' 
 
-	$DataStoreItemConnectionObject = Get-DataStoreItemConnectionObject -ItemName $Name -DataStoreType $DataStoreType -ConnectionString $ConnectionString -ConnectionSecret $ConnectionSecret
-	Write-Verbose ($DataStoreItemConnectionObject | ConvertTo-Json -Depth 5)
-	# Validate Data Store Item Connection
-	if(Invoke-ValidateDataStoreItemConnection -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemConnectionObject $DataStoreItemConnectionObject){
-		if(Test-DataStoreItemExists -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType){
-			# Edit Data Store Item Connection
-			Edit-DataStoreItemConnection -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemConnectionObject $DataStoreItemConnectionObject
+	if($Ensure -ieq 'Present') {
+		# Get Data Store Item Connection Object
+		$DataStoreItemConnectionObject = Get-DataStoreItemConnectionObject -ItemName $Name -DataStoreType $DataStoreType -ConnectionString $ConnectionString -ConnectionSecret $ConnectionSecret
+		# Validate Data Store Item Connection
+		if(Invoke-ValidateDataStoreItemConnection -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemConnectionObject $DataStoreItemConnectionObject){
+			if(Test-DataStoreItemExists -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType){
+				# Edit Data Store Item Connection
+				Edit-DataStoreItemConnection -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemConnectionObject $DataStoreItemConnectionObject
+			}else{
+				# Register Data Store Item
+				Register-DataStoreItem -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemConnectionObject $DataStoreItemConnectionObject
+			}
 		}else{
-			# Register Data Store Item
-			Register-DataStoreItem -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemConnectionObject $DataStoreItemConnectionObject
+			throw "Validation of Data Store Item Connection failed."
 		}
-	}else{
-		throw "Validation of Data Store Item Connection failed."
+	}elseif($Ensure -ieq 'Absent') {
+		$DataStoreItemTest = Test-DataStoreItemExists -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType
+		if($DataStoreItemTest){
+			$DSItem = Get-DsItems -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType
+			Unregister-DataStoreItem -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreItemPath $DSItem.Path -Force $true -Verbose
+		}
 	}
 }
+
+
 
 function Test-TargetResource {
 
@@ -121,6 +140,11 @@ function Test-TargetResource {
 		[parameter(Mandatory = $true)]
 		[System.String]
 		$Name,
+
+		[parameter(Mandatory = $true)]
+		[ValidateSet("Present","Absent")]
+		[System.String]
+		$Ensure,
 
 		[parameter(Mandatory = $false)]
 		[System.String]
@@ -140,7 +164,7 @@ function Test-TargetResource {
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare")]
+		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare","ObjectStore")]
 		$DataStoreType,
 
 		[System.String]
@@ -163,11 +187,12 @@ function Test-TargetResource {
 	$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName $ServerSiteName -Credential $SiteAdministrator -Referer $Referer 
 	
 	$DataStoreItemUrl = $ServerURL.TrimEnd('/') + '/' + $ServerSiteName + '/admin/data' 
-	if(Test-DataStoreItemExists -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType){
-		if($ForceUpdate){
-			Write-Verbose "$DataStoreType DataStore Item with name '$Name' already exists. Force Update specified."
+	$DataStoreItemTest = Test-DataStoreItemExists -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType
+	if($DataStoreItemTest){
+		if($ForceUpdate -and $Ensure -ieq 'Present'){
+			Write-Verbose "$DataStoreType DataStore Item with name '$Name' exists. Force Update specified."
 		}else{
-			Write-Verbose "$DataStoreType DataStore Item with name '$Name' already exists."
+			Write-Verbose "$DataStoreType DataStore Item with name '$Name' exists."
 			$result = $true
 		}
 	}
@@ -175,8 +200,44 @@ function Test-TargetResource {
 		Write-Verbose "$DataStoreType DataStore Item with name '$Name' does not exist"
 	}
 
-	$result
+	if($Ensure -ieq 'Present') {
+        $result
+    }elseif($Ensure -ieq 'Absent') {        
+        -not($result)
+    }
 }
+
+function Get-DsItems
+{
+	param(
+		[System.String]
+		$ItemName,
+
+		[System.String]
+		$DataStoreItemUrl,
+		
+		[System.String]
+		$Token,
+
+		[System.String]
+		$Referer,
+
+		[System.String]
+		$DataStoreType
+	)
+	$result = Get-DSAncestorPathOrItemType -DataStoreType $DataStoreType
+	$TypeString =$result[0]
+	$AncestorPath = $result[1]
+
+	$DataItemsUrl = $DataStoreItemUrl + '/findItems'
+	$DataStoreItems = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $TypeString; ancestorPath = $AncestorPath } -Referer $Referer 
+	if($ItemName -ieq "OzoneObjectStore"){
+		return ($DataStoreItems.items | Where-Object { $_.provider -ieq "ArcGIS Data Store" })
+	}else{
+		return ($DataStoreItems.items | Where-Object { $_.path -ieq "$($AncestorPath)/$($ItemName)" })
+	}
+}
+
 
 function Test-DataStoreItemExists {
 	[CmdletBinding()]
@@ -197,6 +258,17 @@ function Test-DataStoreItemExists {
 		$DataStoreType
 	)
 
+	return ((Get-DsItems -ItemName $ItemName -DataStoreItemUrl $DataStoreItemUrl -Token $Token -Referer $Referer -DataStoreType $DataStoreType) | Measure-Object).Count -gt 0
+}
+
+function Get-DSAncestorPathOrItemType {
+	[CmdletBinding()]
+	param
+	(
+		[System.String]
+		$DataStoreType
+	)
+
 	$TypeString = ""
 	$AncestorPath = ""
 	if ($DataStoreType -ieq 'Folder') {
@@ -207,6 +279,10 @@ function Test-DataStoreItemExists {
 		$TypeString = "cloudStore"
 		$AncestorPath = "/cloudStores"
 	}
+	elseif ($DataStoreType -ieq 'ObjectStore') {
+		$TypeString = "objectStore"
+		$AncestorPath = "/cloudStores"
+	}
 	elseif ($DataStoreType -ieq 'BigDataFileShare') { 
 		$TypeString = "bigDataFileShare"
 		$AncestorPath = "/bigDataFileShares"
@@ -215,11 +291,7 @@ function Test-DataStoreItemExists {
 		$TypeString = "rasterStores"
 		$AncestorPath = "/rasterStores"
 	}
-
-	$DataItemsUrl = $DataStoreItemUrl + '/findItems'
-
-	$DataStoreItems = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $TypeString; ancestorPath = $AncestorPath } -Referer $Referer 
-	return (($DataStoreItems.items | Where-Object { $_.path -ieq "$($AncestorPath)/$($ItemName)" } | Measure-Object).Count -gt 0)
+	return @($TypeString, $AncestorPath)
 }
 
 function Invoke-ValidateDataStoreItemConnection {
@@ -310,10 +382,7 @@ function Register-DataStoreItem {
 		$Referer = 'http://localhost',
 
 		[System.Object]
-		$DataStoreItemConnectionObject,
-
-		[System.String]
-		$OperationType = 'register'
+		$DataStoreItemConnectionObject
 	)
 	
 	$FormParameters = @{ 
@@ -335,6 +404,48 @@ function Register-DataStoreItem {
 		}
 	}
 }
+
+function Unregister-DataStoreItem {
+	[CmdletBinding()]
+	[OutputType([System.Boolean])]
+	param
+	(
+		[System.String]
+		$DataStoreItemUrl,
+
+		[System.String]
+		$Token,
+
+		[System.String]
+		$Referer = 'http://localhost',
+
+		[System.String]
+		$DataStoreItemPath,
+
+		[System.Boolean]
+		$Force = $false
+	)
+	
+	$FormParameters = @{ 
+		f     = 'json'; 
+		token = $Token; 
+		itemPath = $DataStoreItemPath
+		force = "$Force"
+	}
+	$UnregisterDataStoreItemUrl = $DataStoreItemUrl + '/unregisterItem'
+
+	$response = Invoke-ArcGISWebRequest -Url $UnregisterDataStoreItemUrl -HttpFormParameters $FormParameters -Referer $Referer -Verbose
+	if ($response.status -ieq 'success') {
+		Write-Verbose "Unregister of Data Store Item successful"
+		return $true
+	}
+	else {
+		if (($response.status -ieq 'error') -and $response.messages) {
+			throw "[ERROR]:- Unregister of Data Store Item failed. $($response.messages -join ',')"
+		}
+	}
+}
+
 
 function Get-DataStoreItemConnectionObject {
 	[CmdletBinding()]
@@ -424,7 +535,7 @@ function Get-DataStoreItemConnectionObject {
 			path = "/bigDataFileShares/$($ItemName)"
 		}
 	}
-	elseif ($DataStoreType -ieq 'CloudStore') {
+	elseif ($DataStoreType -ieq 'CloudStore' -or $DataStoreType -ieq 'ObjectStore') {
 		$CloudStoreType = $ConnStringObj.CloudStoreType
 
 		$item = @{
@@ -435,6 +546,22 @@ function Get-DataStoreItemConnectionObject {
 				connectionString = @{};
 			};
 			provider = $CloudStoreType
+		}
+
+		if($DataStoreType -ieq 'ObjectStore'){
+			$item = @{
+				type     = 'objectStore';
+				path     = "/cloudStores/$($ItemName)";
+				info     = @{
+					isManaged        = $True; 
+					systemManaged    = $false; 
+					isManagedData    = $True;
+					purposes         = @('feature-tile', 'scene');
+					connectionString = @{};
+					encryptionInfo   = @("info.connectionString")
+				};
+				provider = $CloudStoreType
+			}
 		}
 
 		if ($CloudStoreType -ieq "Azure") {

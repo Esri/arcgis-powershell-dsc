@@ -96,20 +96,18 @@
         $DownloadPatches = $False,
 
         [System.Boolean]
-        $SkipPatchInstalls = $False
+        $SkipPatchInstalls = $False,
+
+        [System.String]
+        $DotnetDesktopRuntimePath = $null,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $DebugMode = $False
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_Install 
-    Import-DscResource -Name ArcGIS_License 
-    Import-DscResource -Name ArcGIS_ServerUpgrade 
-    Import-DscResource -Name ArcGIS_NotebookServerUpgrade 
-    Import-DscResource -Name ArcGIS_NotebookPostInstall
-    Import-DscResource -Name ArcGIS_MissionServerUpgrade 
-    Import-DscResource -Name ArcGIS_VideoServerUpgrade 
-    Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_InstallPatch
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -174,6 +172,7 @@
             ServiceCredentialIsDomainAccount = $IsServiceAccountDomainAccount
             ServiceCredentialIsMSA = $IsServiceAccountMSA
             EnableMSILogging = $EnableMSILogging
+            DotnetDesktopRuntimePath = $DotnetDesktopRuntimePath
             Ensure = "Present"
             DependsOn = $Depends
         }
@@ -245,7 +244,7 @@
             $Depends += "[ArcGIS_InstallPatch]ServerInstallPatch"
         }
 
-        if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $NotebookServerSamplesDataPath){
+        if(@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $Version -and $NotebookServerSamplesDataPath){
             ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)Upgrade"
             { 
                 Name = "NotebookServerSamplesData"
@@ -261,8 +260,16 @@
                 DependsOn = $Depends
             }
             $Depends += "[ArcGIS_Install]NotebookServerSamplesData$($Node.NodeName)Upgrade"
+        }else{
+            ArcGIS_Install NotebookUninstallSamplesData{
+                Name = "NotebookServerSamplesData"
+                Version = $OldVersion
+                Ensure = "Absent"
+                DependsOn = $Depends
+            }
+            $Depends += '[ArcGIS_Install]NotebookUninstallSamplesData'
         }
-        
+
         if((($Node.ServerRole -ieq "GeoAnalytics") -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoAnalytics")) -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $IsMultiMachineServerSite){
             $GeoAnalyticsPorts = @("7077","12181","12182","12190")
             ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
@@ -346,7 +353,6 @@
 
         if($Node.ServerRole -ieq "NotebookServer"){
             ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $Node.NodeName
                 DependsOn = $Depends
@@ -374,24 +380,22 @@
             }
         }elseif($Node.ServerRole -ieq "MissionServer"){
             ArcGIS_MissionServerUpgrade MissionServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $Node.NodeName
                 DependsOn = $Depends
             }
         }elseif($Node.ServerRole -ieq "VideoServer"){
             ArcGIS_VideoServerUpgrade VideoServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $Node.NodeName
                 DependsOn = $Depends
             }
         }else{
             ArcGIS_ServerUpgrade ServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $Node.NodeName
                 DependsOn = $Depends
+                EnableUpgradeSiteDebug = $DebugMode
             }
         }
 

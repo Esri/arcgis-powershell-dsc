@@ -12,7 +12,7 @@ class ArcGIS_Install : OMI_BaseResource
 	[Write] String WebAdaptorContext;
 	[Write] String WebAdaptorDotnetHostingBundlePath;
 	[Write] String WebAdaptorWebDeployPath;
-	[Write] String ProDotnetDesktopRuntimePath;
+	[Write] String DotnetDesktopRuntimePath;
 	[Write] String ProEdgeWebView2RuntimePath;
 	[Write, EmbeddedInstance("MSFT_Credential")] String ServiceCredential;
 	[Write] Boolean ServiceCredentialIsDomainAccount;

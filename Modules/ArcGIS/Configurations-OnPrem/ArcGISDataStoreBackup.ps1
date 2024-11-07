@@ -43,8 +43,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_DataStoreBackup
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_DataStoreBackup
 
     Node $AllNodes.NodeName 
     {

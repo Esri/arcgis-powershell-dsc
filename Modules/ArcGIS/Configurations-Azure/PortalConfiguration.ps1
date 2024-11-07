@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3'
+        $Version = 11.4
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -28,11 +28,11 @@
         $PortalContext = 'portal'
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $UseCloudStorage 
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
@@ -62,10 +62,6 @@
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $PublicKeySSLCertificateFileUrl
-        
-        ,[Parameter(Mandatory=$false)]
-        [System.Management.Automation.PSCredential]
-        $ServerInternalCertificatePassword
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -89,38 +85,34 @@
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
-        $FileShareMachineName
-
-        ,[Parameter(Mandatory=$true)]
-        [System.String]
         $ExternalDNSHostName    
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $PrivateDNSHostName
         
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $OSDiskSize = 0
+        ,[Parameter(Mandatory=$true)]
+        [System.Boolean]
+        $UseExistingFileShare
 
-        ,[Parameter(Mandatory=$false)]
+        ,[Parameter(Mandatory=$true)]
         [System.String]
-        $EnableDataDisk      
+        $FileShareMachineName
         
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $DataDiskNumber = 2
-
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $FileShareName = 'fileshare'
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $FileSharePath
         
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
         
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode
     )
 
@@ -148,16 +140,29 @@
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_PortalSettings
     Import-DscResource -Name ArcGIS_Federation
    
-    $FileShareHostName = $MachineName
+    $FileShareRootPath = $FileSharePath
+    if(-not($UseExistingFileShare)) { 
+        $FileSharePath = "\\$($FileShareMachineName)\$($FileShareName)"
+        
+        $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
+        if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
+        $FileShareRootPath = "\\$ipaddress\$FileShareName"
+    }
+
     $PortalCertificateFileName  = 'SSLCertificateForPortal.pfx'
     $PortalCertificateLocalFilePath =  (Join-Path $env:TEMP $PortalCertificateFileName)
-    $PortalCertificateFileLocation = "\\$($FileShareMachineName)\$FileShareName\Certs\$PortalCertificateFileName"
 
+    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
+    $PortalCertificateFileLocation = "$($FileSharePath)\Certs\$PortalCertificateFileName"
+    if($UseExistingFileShare)
+    {
+        $PortalCertificateFileLocation = "$($FileSharePath)\$($FolderName)\$($PortalContext)\$PortalCertificateFileName"
+    }
+    
     ##
     ## Download license file and certificate files
     ##
@@ -171,25 +176,22 @@
 		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
 	}
 
+    $ContentStoreLocation = "$($FileSharePath)\$FolderName\$($PortalContext)\content"
+
 	$ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1
     $PortalHostNames = ($PortalMachineNames -split ',')
     $PortalHostName = $PortalHostNames | Select-Object -First 1   
     $LastPortalHostName = $PortalHostNames | Select-Object -Last 1 
-    $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
-    if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
-    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $FileShareRootPath = "\\$FileShareMachineName\$FileShareName"
-    $ContentStoreLocation = "\\$FileShareMachineName\$FileShareName\$FolderName\$($PortalContext)\content"   
+    
     $Join = ($env:ComputerName -ine $PortalHostName)    
     $PeerMachineName = $null
     if($PortalHostNames.Length -gt 1) {
       $PeerMachineName = $PortalHostNames | Select-Object -Last 1
     }
-    $IsDebugMode = $DebugMode -ieq 'true'
     $IsHAPortal = ($PortalHostName -ine $PeerMachineName) -and ($PeerMachineName)
 
-    if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
+    if($UseCloudStorage -and $StorageAccountCredential) 
     {
         $Namespace = $ExternalDNSHostName
         $Pos = $Namespace.IndexOf('.')
@@ -204,7 +206,7 @@
 			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
         }
 
-        if($UseAzureFiles -ieq 'True') {
+        if($UseAzureFiles) {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')                        
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case
             $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.'))
@@ -243,22 +245,9 @@
             RebootNodeIfNeeded = $true
         }
         
-        if($OSDiskSize -gt 0) 
+        ArcGIS_Disk DiskSizeCheck
         {
-            ArcGIS_Disk OSDiskSize
-            {
-                DriveLetter = ($env:SystemDrive -replace ":" )
-                SizeInGB    = $OSDiskSize
-            }
-        }
-        
-        if($EnableDataDisk -ieq 'true')
-        {
-            ArcGIS_xDisk DataDisk
-            {
-                DiskNumber  =  $DataDiskNumber
-                DriveLetter = 'F'
-            }
+            HostName = $env:ComputerName
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -315,7 +304,7 @@
                     $PortalDependsOn += '[ArcGIS_Service_Account]Portal_Service_Account'
             
                 
-                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True'))
+                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles))
                     {    
                         $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                         $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -463,8 +452,8 @@
                         IsHAPortal                            = $IsHAPortal
                         PeerMachineHostName                   = if($Join) { $PortalHostName } else { $PeerMachineName }
                         ContentDirectoryLocation              = if(-not($Join)){ $ContentStoreLocation }else{ $null }
-                        EnableDebugLogging                    = $IsDebugMode
-                        LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+                        EnableDebugLogging                    = $DebugMode
+                        LogLevel                              = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
                         ContentDirectoryCloudConnectionString = if(-not($Join)){ $ContentDirectoryCloudConnectionString }else{ $null }
                         ContentDirectoryCloudContainerName    = if(-not($Join)){ $ContentDirectoryCloudContainerName }else{ $null }
                     } 
@@ -473,6 +462,7 @@
             }
 
             if($IsUpdatingCertificates -or ($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) )){ #On add of new machine or update certificate op
+                
                 Script CopyCertificateFileToLocalMachine
                 {
                     GetScript = {
@@ -502,8 +492,8 @@
                     WebServerCertificateAlias= "ApplicationGateway"
                     CertificateFileLocation = $PortalCertificateLocalFilePath 
                     CertificatePassword     = if($PortalInternalCertificatePassword -and ($PortalInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $PortalInternalCertificatePassword } else { $null }
-                    DependsOn               = $PortalDependsOn
                     SslRootOrIntermediate	= if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                    DependsOn               = $PortalDependsOn
                 }
                 $PortalDependsOn += '[ArcGIS_Portal_TLS]ArcGIS_Portal_TLS'
             }

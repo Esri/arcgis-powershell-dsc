@@ -22,7 +22,7 @@
         $Version,
 		
 		[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode		
     )
 
@@ -46,8 +46,6 @@
     Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_PortalUpgrade 
 
-    $IsDebugMode = $DebugMode -ieq 'true'
-
     Node localhost {
         LocalConfigurationManager
         {
@@ -69,6 +67,7 @@
             SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
             Version = $Version
             ImportExternalPublicCertAsRoot = $True
+            EnableUpgradeSiteDebug = $DebugMode
         }
     }
 }

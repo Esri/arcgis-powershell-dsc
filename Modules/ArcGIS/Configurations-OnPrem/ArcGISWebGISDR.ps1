@@ -30,8 +30,7 @@ Configuration ArcGISWebGISDR
         $RunAsCredential
     )
 
-    Import-DscResource -ModuleName 'ArcGIS' -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_WebGISDR
+    Import-DscResource -ModuleName 'ArcGIS' -ModuleVersion 4.4.0 -Name ArcGIS_WebGISDR
 
     Node $AllNodes.NodeName
     {

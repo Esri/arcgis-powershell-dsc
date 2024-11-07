@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3',
+        $Version = 11.4,
 
         [Parameter(Mandatory=$True)]
         [System.String]
@@ -33,11 +33,7 @@
 		[Parameter(Mandatory=$false)]
         [System.String]
         $GeoEventServerInstallerPath = "",
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $NotebookSamplesDataInstallerPath = "",
-
+        
         [Parameter(Mandatory=$false)]
         [System.String]
         $WorkflowManagerServerInstallerPath = "",
@@ -67,7 +63,7 @@
 		$SiteAdministratorCredential,
 		
 		[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode,
 
         [Parameter(Mandatory=$false)]
@@ -99,11 +95,9 @@
     Import-DscResource -Name ArcGIS_ServerUpgrade 
     Import-DscResource -Name ArcGIS_NotebookServerUpgrade 
     Import-DscResource -Name ArcGIS_MissionServerUpgrade
-    Import-DscResource -Name ArcGIS_NotebookPostInstall 
     Import-DscResource -Name ArcGIS_xFirewall 
     Import-DscResource -Name ArcGIS_WebAdaptor
-    $IsDebugMode = $DebugMode -ieq 'true'
-
+    
     Node localhost {
         LocalConfigurationManager
         {
@@ -122,6 +116,16 @@
                 Ensure = "Present"
             }
             $Depends += '[User]ArcGIS_RunAsAccount'
+        }
+
+        if($ServerRole -ieq "NotebookServer" -and (@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $OldVersion)){
+            ArcGIS_Install NotebookUninstallSamplesData{
+                Name = "NotebookServerSamplesData"
+                Version = $OldVersion
+                Ensure = "Absent"
+                DependsOn = $Depends
+            }
+            $Depends += '[ArcGIS_Install]NotebookUninstallSamplesData'
         }
 
 		$InstallerFileName = Split-Path $ServerInstallerPath -Leaf
@@ -187,7 +191,7 @@
             ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
-            EnableMSILogging = $IsDebugMode
+            EnableMSILogging = $DebugMode
             DependsOn = $Depends
         }
 
@@ -207,78 +211,7 @@
 		}
         $Depends += '[Script]RemoveInstaller'
 
-        if($ServerRole -ieq "NotebookServer"){
-            $NotebookSamplesDataInstallerFileName = Split-Path $NotebookSamplesDataInstallerPath -Leaf
-            $NotebookSamplesDataInstallerPathOnMachine = "$env:TEMP\NBServer\$NotebookSamplesDataInstallerFileName"
-
-            File DownloadNotebookSampleInstallerFromFileShare      
-            {            	
-                Ensure = "Present"              	
-                Type = "File"             	
-                SourcePath = $NotebookSamplesDataInstallerPath 	
-                DestinationPath = $NotebookSamplesDataInstallerPathOnMachine     
-                Credential = $FileshareMachineCredential     
-                DependsOn = $Depends  
-            }
-            $Depends += '[File]DownloadNotebookSampleInstallerFromFileShare'
-            
-            ArcGIS_Install NotebookInstallSamplesData{
-                Name = "NotebookServerSamplesData"
-                Version = $Version
-                Path = $NotebookSamplesDataInstallerPathOnMachine
-                Arguments = "/qn";
-                ServiceCredential = $ServiceCredential
-                ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
-                ServiceCredentialIsMSA = $False
-                Ensure = "Present"
-                EnableMSILogging = $IsDebugMode
-                DependsOn = $Depends
-            }
-            $Depends += '[ArcGIS_Install]NotebookInstallSamplesData'
-
-            Script RemoveNotebookSamplesDataInstaller
-            {
-                SetScript = 
-                { 
-                    Remove-Item $using:NotebookSamplesDataInstallerPathOnMachine -Force
-                }
-                TestScript = { -not(Test-Path $using:NotebookSamplesDataInstallerPathOnMachine) }
-                GetScript = { $null }          
-            }
-            $Depends += '[Script]RemoveNotebookSamplesDataInstaller'
-        }
-
-        if(($ServerRole -ieq "GeoAnalyticsServer") -and $IsMultiMachineServerSite){
-            ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
-            {
-                    Name                  = "ArcGISGeoAnalyticsInboundFirewallRules" 
-                    DisplayName           = "ArcGIS GeoAnalytics" 
-                    DisplayGroup          = "ArcGIS GeoAnalytics" 
-                    Ensure                = 'Present' 
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
-                    Protocol              = "TCP" 
-            }
-            $Depends += '[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules'
-
-            ArcGIS_xFirewall GeoAnalytics_OutboundFirewallRules
-            {
-                    Name                  = "ArcGISGeoAnalyticsOutboundFirewallRules" 
-                    DisplayName           = "ArcGIS GeoAnalytics" 
-                    DisplayGroup          = "ArcGIS GeoAnalytics" 
-                    Ensure                = 'Present' 
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("12181","12182","12190","7077")	# Spark and Zookeeper
-                    Protocol              = "TCP" 
-                    Direction             = "Outbound"    
-            }
-            $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules'
-
-        }
+        
 
         $ServerLicenseRole = $ServerRole
         if(-not($ServerRole) -or ($ServerRole -ieq "GeoEventServer")){
@@ -286,9 +219,6 @@
         }
         if($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "ImageHosting"){
             $ServerLicenseRole = "ImageServer"
-        }
-        if($ServerRole -ieq "GeoAnalyticsServer"){
-            $ServerLicenseRole = "GeoAnalytics"
         }
         if($ServerRole -ieq "NotebookServer"){
             $ServerLicenseRole = "NotebookServer"
@@ -324,20 +254,11 @@
         if($ServerRole -ieq "NotebookServer"){
             #For Notebook Server at the end of install use the Configure app to finish the upgrade process.
             ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $env:ComputerName
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_NotebookServerUpgrade]NotebookServerConfigureUpgrade'
-
-            ArcGIS_NotebookPostInstall NotebookPostInstallSamples {
-                SiteName            = "arcgis"
-                ContainerImagePaths = @()
-                ExtractSamples      = $true
-                DependsOn           = $Depends
-                PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-            }
 
             if($IsNotebookServerWebAdaptorUpgrade){
                 ArcGIS_Install "WebAdaptorIISUninstall"
@@ -347,7 +268,7 @@
                     WebAdaptorContext = $NotebookWebAdaptorContext
                     Arguments = "WEBSITE_ID=1"
                     Ensure = "Absent"
-                    DependsOn = @("[ArcGIS_NotebookPostInstall]NotebookPostInstallSamples")
+                    DependsOn = $Depends
                 }
     
                 $WebDeployFileName = Split-Path $WebDeployInstallerPath -Leaf
@@ -414,24 +335,23 @@
                     ComponentHostName   = $MachineFQDN
                     Context             = $NotebookWebAdaptorContext
                     OverwriteFlag       = $False
-                    SiteAdministrator   = $NotebookSiteAdministratorCredential
+                    SiteAdministrator   = $SiteAdministratorCredential
                     AdminAccessEnabled  = $True
-                    DependsOn           = @('[ArcGIS_WebAdaptor]WebAdaptorInstall')
+                    DependsOn           = @('[ArcGIS_Install]WebAdaptorInstall')
                 }
             }
             
         }elseif($ServerRole -ieq "MissionServer"){
             ArcGIS_MissionServerUpgrade MissionServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $env:ComputerName
                 DependsOn = $Depends
             }
         }else{
             ArcGIS_ServerUpgrade ServerConfigureUpgrade{
-                Ensure = "Present"
                 Version = $Version
                 ServerHostName = $env:ComputerName
+                EnableUpgradeSiteDebug = $DebugMode
                 DependsOn = $Depends
             }
         }
@@ -480,7 +400,7 @@
                 ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
                 Ensure = "Present"
-                EnableMSILogging = $IsDebugMode
+                EnableMSILogging = $DebugMode
                 DependsOn = $Depends
             }
 
@@ -566,7 +486,7 @@
                 ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
                 ServiceCredentialIsMSA = $False
                 Ensure = "Present"
-                EnableMSILogging = $IsDebugMode
+                EnableMSILogging = $DebugMode
                 DependsOn = $Depends
             }
             $Depends += '[ArcGIS_Install]WorkflowManagerInstall'

@@ -1,7 +1,0 @@
-﻿
-[ClassVersion("0.1.0.0"), FriendlyName("ArcGIS_xDisk")] 
-class ArcGIS_xDisk : OMI_BaseResource
-{
-    [key] uint32 DiskNumber;
-    [write] string DriveLetter;
-};

@@ -21,7 +21,6 @@
 	#$FileShareHostName = $env:ComputerName    
     $FileShareLocalPath = (Join-Path $env:SystemDrive "ArcGIS\Deployment\Downloads")
 	$FileShareName = "UpgradeSetups"  
-	$IsDebugMode = $DebugMode -ieq 'true'
 	
     Node localhost
     {   

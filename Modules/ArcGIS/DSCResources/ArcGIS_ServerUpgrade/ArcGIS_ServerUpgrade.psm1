@@ -41,19 +41,20 @@ function Set-TargetResource
 	[CmdletBinding()]
 	param
 	(
-		[ValidateSet("Present","Absent")]
-		[System.String]
-        $Ensure,
-
-        [parameter(Mandatory = $true)]
+		[parameter(Mandatory = $true)]
         [System.String]
         $ServerHostName,
     
         [parameter(Mandatory = $true)]
         [System.String]
-        $Version
+        $Version,
 
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableUpgradeSiteDebug = $False
 	)
+
+    $VersionArray = $Version.Split('.')
 
     #$MachineFQDN = Get-FQDN $env:COMPUTERNAME    
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
@@ -63,86 +64,98 @@ function Set-TargetResource
 	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin'"
     Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
 
-    if($Ensure -ieq 'Present') {
+    $ServiceName = 'ArcGIS Server'
+    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
+    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
 
-        $ServiceName = 'ArcGIS Server'
-        $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-        $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-        $RestartRequired = $false
-        $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-        if($configuredHostName -ine $FQDN){
-            Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
-            if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-				# Need to restart the service to pick up the hostname 
-                $RestartRequired = $true 
-            }
+    $RestartRequired = $false
+    $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
+    if($configuredHostName -ine $FQDN){
+        Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
+        if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
+            # Need to restart the service to pick up the hostname 
+            $RestartRequired = $true 
         }
+    }
 
-        if(Test-Install -Name "Server" -Version $Version){
-            Write-Verbose "Installed Version of ArcGIS Server is $Version"
-        }else{
-            throw "ArcGIS Server not upgraded to required Version $Version"
-        }
+    if(Test-Install -Name "Server" -Version $Version){
+        Write-Verbose "Installed Version of ArcGIS Server is $Version"
+    }else{
+        throw "ArcGIS Server not upgraded to required Version $Version"
+    }
 
-        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-            Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
-            if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
-                 # Need to restart the service to pick up the EC2
-                 $RestartRequired = $true
-             }  
-        }
+    if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
+        Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
+        if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
+                # Need to restart the service to pick up the EC2
+                $RestartRequired = $true
+            }  
+    }
 
-        if($RestartRequired) {
-			Restart-ArcGISService -ServiceName $ServiceName -Verbose
+    if($RestartRequired) {
+        Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
-			Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
-            Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
-            Start-Sleep -Seconds 30
-        }
+        Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
+        Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
+        Start-Sleep -Seconds 30
+    }
 
+    $Referer = "http://localhost"
+    $ServerSiteURL = "https://$($FQDN):6443"
+    
+    [string]$ServerLocalUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/local"
+    Write-Verbose "Making request to $ServerLocalUrl before upgrading the site"
+    Invoke-ArcGISWebRequest -Url $ServerLocalUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose
+    
+    [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
+    Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
+    $UpgradeParameters = @{f = 'json'; runAsync='true'}
+    if($VersionArray[0] -ieq "11"){
+        $UpgradeParameters.Add("enableDebug", 'true')
+    }
 
-        $Referer = "http://localhost"
-        $ServerSiteURL = "https://$($FQDN):6443"
-        [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
-        
-        Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
-        $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json';runAsync='true'} -Referer $Referer -Verbose
-                    
-        if($Response.upgradeStatus -ieq 'IN_PROGRESS' -or ($Response.status -ieq "error" -and $Response.code -ieq 403 -and ($Response.messages -imatch "Upgrade in progress."))) {
-            Write-Verbose "Upgrade in Progress"
-			$ServerReady = $false
-			$Attempts = 0
+    $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters $UpgradeParameters -Referer $Referer -Verbose
+                
+    if($Response.upgradeStatus -ieq 'IN_PROGRESS' -or ($Response.status -ieq "error" -and $Response.code -ieq 403 -and ($Response.messages -imatch "Upgrade in progress."))) {
+        Write-Verbose "Upgrade in Progress"
+        $ServerReady = $false
+        $Attempts = 0
 
-            while(-not($ServerReady) -and ($Attempts -lt 120)){
-                $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
-                if(($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error')){
-                    if(Test-ServerUpgradeStatus -ServerSiteURL $ServerSiteURL -Referer $Referer -Version $Version -Verbose){
-                        $ServerReady = $True
-                        break
-                    }
-                }elseif(($ResponseStatus.status -ieq "error") -and ($ResponseStatus.code -ieq '500')){
-					throw $ResponseStatus.messages
-					break
-				}elseif($ResponseStatus.upgradeStatus -ieq "LAST_ATTEMPT_FAILED"){
-                    throw $ResponseStatus.messages
-					break
+        [int]$TotalElapsedTimeInSeconds = 0
+        $MaxWaitTimeInSeconds = 3600 * 4 # 4 hours
+        while((-not($ServerReady)) -and ($TotalElapsedTimeInSeconds -lt $MaxWaitTimeInSeconds)) {
+            $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters $UpgradeParameters -Referer $Referer -Verbose -HttpMethod 'GET'
+            
+            Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $ResponseStatus)"
+            if(($ResponseStatus.upgradeStatus -ine 'IN_PROGRESS') -and ($VersionArray[0] -ieq "11" -and $VersionArray[1] -gt "3")){
+                foreach($Stage in $Stages){
+                    Write-Verbose "$($Stage.name) : $($Stage.state)"
                 }
-				Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $ResponseStatus)"  
-				Start-Sleep -Seconds 30
-				$Attempts = $Attempts + 1
             }
 
-            if($Attempts -eq 120 -and -not($ServerReady)){
-                throw "Upgrade Failed. Server not ready after 60 minutes."
+            if($ResponseStatus.upgradeStatus -ieq 'Success' -or (($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error'))){
+                if(Test-ServerUpgradeStatus -ServerSiteURL $ServerSiteURL -Referer $Referer -Version $Version -Verbose){
+                    $ServerReady = $True
+                    break
+                }
+            }elseif(($ResponseStatus.status -ieq "error") -and ($ResponseStatus.code -ieq '500')){
+                throw $ResponseStatus.messages
+                break
+            }elseif($ResponseStatus.upgradeStatus -ieq "LAST_ATTEMPT_FAILED"){
+                throw $ResponseStatus.messages
+                break
             }
-        }else{
-			throw "Error:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $Response)"  
-		}
-    }
-    elseif($Ensure -ieq 'Absent') {
-       Write-Verbose "Do Nothing"
-    }
+
+            Start-Sleep -Seconds 5
+            $Attempts = $Attempts + 1
+        }
+        
+        if(-not($ServerReady)){
+            throw "Upgrade Failed. Server not ready after 4 hours."
+        }
+    }else{
+        throw "Error:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $Response)"  
+    }  
 }
 
 function Test-TargetResource
@@ -151,18 +164,17 @@ function Test-TargetResource
 	[OutputType([System.Boolean])]
 	param
 	(
-		[ValidateSet("Present","Absent")]
-		[System.String]
-        $Ensure,
-        
-        [parameter(Mandatory = $true)]
+		[parameter(Mandatory = $true)]
         [System.String]
         $ServerHostName,
 
         [parameter(Mandatory = $true)]
         [System.String]
-        $Version
-        
+        $Version,
+
+        [parameter(Mandatory = $false)]
+        [System.Boolean]
+        $EnableUpgradeSiteDebug = $False        
     )
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -193,14 +205,8 @@ function Test-TargetResource
     }else{
         throw "ArcGIS Server not upgraded to required Version $Version"
     }
-    
-    
-    if($Ensure -ieq 'Present') {
-	       $result   
-    }
-    elseif($Ensure -ieq 'Absent') {        
-        (-not($result))
-    }
+
+    $result    
 }
 
 function Test-ServerUpgradeStatus

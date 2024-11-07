@@ -226,7 +226,7 @@ function Set-TargetResource
             Restart-ArcGISService -ServiceName 'Portal for ArcGIS' -Verbose
             Write-Verbose "Waiting 30 seconds before checking for intitialization"
             Start-Sleep -Seconds 30
-            Wait-ForUrl "$PortalURL/arcgis/portaladmin/healthCheck/?f=json" -Verbose
+            Wait-ForUrl "$PortalURL/arcgis/portaladmin/healthCheck/?f=json" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
             Wait-ForUrl "$PortalURL/arcgis/sharing/rest/generateToken" -Verbose
         }
     }

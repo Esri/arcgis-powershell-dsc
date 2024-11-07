@@ -125,6 +125,28 @@ function Set-TargetResource
     
     if($AdminSettingsModified){
         Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/update" -Token $token.token -Properties $systemProperties
+
+        $MaxWaitTimeInSeconds = 120
+        $SleepTimeInSeconds = 10
+        $TotalElapsedTimeInSeconds = 0
+        Write-Verbose "Waiting for up to $($MaxWaitTimeInSeconds) seconds for notebook server to restart"
+        while(-not($Done) -and ($TotalElapsedTimeInSeconds -lt $MaxWaitTimeInSeconds)){
+            try{
+                # if available sleep and try again.
+                Wait-ForUrl "$($ServerUrl)/arcgis/rest/info/healthcheck/?f=json" -MaxWaitTimeInSeconds 10 -HttpMethod 'GET' -ThrowErrors
+                Write-Verbose "Notebook web server is still available. Trying again in $($SleepTimeInSeconds) seconds"
+                Start-Sleep -Seconds $SleepTimeInSeconds
+                $TotalElapsedTimeInSeconds += $SleepTimeInSeconds
+            }catch{
+                # if error and most likely notebook server has become unavailable then exit loop
+                Write-Verbose "Notebook server is likely restarting as result of update of system properties:- $($_)"
+                $Done = $true
+            }
+        }
+        
+        Write-Verbose "Waiting up to 6 minutes for notebook server healtcheck endpoint '$($ServerUrl)/arcgis/rest/info/healthcheck' to come back up"
+        Wait-ForUrl "$($ServerUrl)/arcgis/rest/info/healthcheck/?f=json" -MaxWaitTimeInSeconds 360 -HttpMethod 'GET' -Verbose
+        Write-Verbose "Finished waiting for notebook server healtcheck endpoint '$($ServerUrl)/arcgis/rest/info/healthcheck' to come back up"
     }
 }
 

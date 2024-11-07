@@ -77,11 +77,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_Service_Account
-    Import-DscResource -Name ArcGIS_DataStore
-    Import-DscResource -Name ArcGIS_WaitForComponent
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_WaitForComponent
 
     Node $AllNodes.NodeName 
     {

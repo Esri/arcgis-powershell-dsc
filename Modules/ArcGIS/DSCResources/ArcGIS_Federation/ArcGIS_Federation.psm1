@@ -139,20 +139,8 @@ function Test-TargetResource
     if($PortalPort -eq 443){
         $Referer = "https://$($PortalFQDN)/$PortalContext"
     }
-    $waitForToken = $true
-    $waitForTokenCounter = 0 
-    while ($waitForToken -and $waitForTokenCounter -lt 25) {
-        $waitForTokenCounter++
-        try{
-            $token = Get-PortalToken -PortalHostName $PortalFQDN -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer
-        } catch {
-            Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
-            Start-Sleep -Seconds 60
-        }
-        if($token.token) {    
-            $waitForToken = $false
-        }
-    }
+
+    $token = Get-PortalToken -PortalHostName $PortalFQDN -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer -MaxAttempts 30 -Verbose
     if(-not($token.token)) {
         throw "Unable to retrieve Portal Token for '$($RemoteSiteAdministrator.UserName)' from Deployment '$PortalFQDN'"
     }
@@ -169,89 +157,93 @@ function Test-TargetResource
         Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl does not exist"
     }
 
-    if($ServerRole -ieq "HOSTING_SERVER"){
-        if($result) {
-            $servers = Get-RegisteredServersForPortal -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer 
-            $server = $servers.servers | Where-Object { $_.isHosted -eq $true }
-            if(-not($server)) {
-                $result = $false
-                Write-Verbose "No hosted Server has been detected"
-            }else {
-                $result = ($server -and ($server.url -ieq $ServiceUrl))
-                if(-not($result)) {
-                    Write-Verbose "The URL of the hosted server'$($server.url)' does not match expected '$ServiceUrl'"
+    if($result -and $Ensure -ieq 'Absent'){
+        $result = $true
+    }else{
+        if($ServerRole -ieq "HOSTING_SERVER"){
+            if($result) {
+                $servers = Get-RegisteredServersForPortal -PortalHostName $PortalFQDN -SiteName $PortalContext -Port $PortalPort -Token $token.token -Referer $Referer 
+                $server = $servers.servers | Where-Object { $_.isHosted -eq $true }
+                if(-not($server)) {
+                    $result = $false
+                    Write-Verbose "No hosted Server has been detected"
+                }else {
+                    $result = ($server -and ($server.url -ieq $ServiceUrl))
+                    if(-not($result)) {
+                        Write-Verbose "The URL of the hosted server'$($server.url)' does not match expected '$ServiceUrl'"
+                    }
                 }
+            }
+        }
+    
+        if($result) {
+            $oauthApp = Get-OAuthApplication -PortalHostName $PortalFQDN -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
+            Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
+            $DesiredDomainForRedirect = "https://$($ServerFQDN)"
+            if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
+                Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist"
+                $result = $false
+            }else {
+                Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists as required"
+            }        
+        }    
+    
+        if($result -and ($ServerFunctions -or $ServerRole)) {
+            Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverRole)"
+            if($fedServer.serverRole -ine $ServerRole) {
+                Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerRole'"
+                $result = $false
+            }
+            else {
+                Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
+            }
+            
+            Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverFunction)"
+            # We will only allow adding server functions and not deleting them. 
+            # This is to support any roles that might have been added by user after federation.
+            $ServerFunctionFlag = $false
+            $ExpectedServerFunctionsArray = @()
+            $ServerFunctionsArray = $ServerFunctions.Split(',')
+            
+            $ExistingServerFunctionArray = ($fedServer.serverFunction).Split(',')
+            foreach($sf in $ExistingServerFunctionArray){
+                if($sf -ine "GeneralPurposeServer"){
+                    $ExpectedServerFunctionsArray += $sf
+                }else{
+                    $ServerFunctionFlag = $true
+                }
+            }
+            
+            $ServerFunctionsArray = $ServerFunctions.Split(',')
+            foreach($sf in $ServerFunctionsArray){
+                if($sf -ine "GeneralPurposeServer"){
+                    if($ExpectedServerFunctionsArray -icontains $sf){
+                        # Nothing to add already exists in updated array.
+                    }else{
+                        $ExpectedServerFunctionsArray += $sf
+                        $ServerFunctionFlag = $true
+                    }
+                }else{
+                    #It is okay not to add it.
+                }
+            }
+    
+            $serverFunctionsCompare = Compare-Object -ReferenceObject $ExpectedServerFunctionsArray -DifferenceObject $ExistingServerFunctionArray -PassThru
+            if($serverFunctionsCompare.Count -gt 0) {
+                if(-not($ServerFunctions)){
+                    $ServerFunctions = $fedServer.serverFunction
+                }
+                Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' does not contain desired value '$ServerFunctions'"
+                $ServerFunctionFlag = $true
+            }
+            else {
+                Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' contains the desired value '$ServerFunctions'"
+            }
+            if($ServerFunctionFlag){
+                $result = $False
             }
         }
     }
-
-    if($result) {
-        $oauthApp = Get-OAuthApplication -PortalHostName $PortalFQDN -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
-        Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
-        $DesiredDomainForRedirect = "https://$($ServerFQDN)"
-        if(-not($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect)){
-            Write-Verbose "Redirect Uri for $DesiredDomainForRedirect does not exist"
-            $result = $false
-        }else {
-            Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists as required"
-        }        
-    }    
-
-    if($result -and ($ServerFunctions -or $ServerRole)) {
-        Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverRole)"
-        if($fedServer.serverRole -ine $ServerRole) {
-            Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' does not match desired value '$ServerRole'"
-            $result = $false
-        }
-        else {
-            Write-Verbose "Server ServerRole for Federated Server with id '$($fedServer.id)' matches desired value '$ServerRole'"
-        }
-        
-        Write-Verbose "Server Function for federated server with id '$($fedServer.id)' :- $($fedServer.serverFunction)"
-        # We will only allow adding server functions and not deleting them. 
-        # This is to support any roles that might have been added by user after federation.
-        $ServerFunctionFlag = $false
-        $ExpectedServerFunctionsArray = @()
-        $ServerFunctionsArray = $ServerFunctions.Split(',')
-        
-        $ExistingServerFunctionArray = ($fedServer.serverFunction).Split(',')
-        foreach($sf in $ExistingServerFunctionArray){
-            if($sf -ine "GeneralPurposeServer"){
-                $ExpectedServerFunctionsArray += $sf
-            }else{
-                $ServerFunctionFlag = $true
-            }
-        }
-        
-        $ServerFunctionsArray = $ServerFunctions.Split(',')
-        foreach($sf in $ServerFunctionsArray){
-            if($sf -ine "GeneralPurposeServer"){
-                if($ExpectedServerFunctionsArray -icontains $sf){
-                    # Nothing to add already exists in updated array.
-                }else{
-                    $ExpectedServerFunctionsArray += $sf
-                    $ServerFunctionFlag = $true
-                }
-            }else{
-                #It is okay not to add it.
-            }
-        }
-
-        $serverFunctionsCompare = Compare-Object -ReferenceObject $ExpectedServerFunctionsArray -DifferenceObject $ExistingServerFunctionArray -PassThru
-        if($serverFunctionsCompare.Count -gt 0) {
-            if(-not($ServerFunctions)){
-                $ServerFunctions = $fedServer.serverFunction
-            }
-            Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' does not contain desired value '$ServerFunctions'"
-            $ServerFunctionFlag = $true
-        }
-        else {
-            Write-Verbose "Server Functions for Federated Server with id '$($fedServer.id)' contains the desired value '$ServerFunctions'"
-        }
-        if($ServerFunctionFlag){
-            $result = $False
-        }
-    }    
 
     if($Ensure -ieq 'Present') {
 	    $result
@@ -342,20 +334,8 @@ function Set-TargetResource
     if($PortalPort -eq 443){
         $Referer = "https://$($PortalFQDN)/$PortalContext"
     }
-    $waitForToken = $true
-    $waitForTokenCounter = 0 
-    while ($waitForToken -and $waitForTokenCounter -lt 25) {
-        $waitForTokenCounter++
-        try{
-            $token = Get-PortalToken -PortalHostName $PortalFQDN -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer
-        } catch {
-            Write-Verbose "Error getting Token for Federation ! Waiting for 1 Minutes to try again"
-            Start-Sleep -Seconds 60
-        }
-        if($token.token) {    
-            $waitForToken = $false
-        }
-    }
+
+    $token = Get-PortalToken -PortalHostName $PortalFQDN -Port $PortalPort -SiteName $PortalContext -Credential $RemoteSiteAdministrator -Referer $Referer -MaxAttempts 30 -Verbose
     if(-not($token.token)) {
         throw "Unable to retrieve Portal Token for '$($RemoteSiteAdministrator.UserName)' from Deployment '$PortalFQDN'"
     }
@@ -553,17 +533,39 @@ function Set-TargetResource
                     Write-Verbose "[ERROR]:- UnFederation returned error. Error:- $($resp.error)"
                 }else {
                     Write-Verbose 'UnFederation succeeded'
-                    Write-Verbose 'Retrieve Current Security Config:'
-                    $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
-                    $CurrentSecurityConfig = Get-SecurityConfig -ServerURL $ServerHttpsUrl -SiteName $ServerContext -Token $serverToken.token -Referer $Referer
-                    Write-Verbose "Current Security Config:- $($CurrentSecurityConfig.authenticationTier)"
-                    if('ARCGIS_PORTAL' -ieq $CurrentSecurityConfig.authenticationTier){
-                        try{
-                            Update-SecurityConfigForServer -ServerLocalHttpsEndpoint $ServerHttpsUrl -ServerContext $ServerContext -Referer $Referer -ServerToken $serverToken.token
-                            Write-Verbose "Config Update succeeded"
-                        }catch{
-                            Write-Verbose "Error during Config Update. Error:- $_"
+                    if($null -ne $SiteAdministrator){
+                        Write-Verbose 'Retrieve Current Security Config:'
+                        $serverToken = Get-ServerToken -ServerEndPoint "https://$($ServerFQDN)" -ServerSiteName $ServerContext -Credential $SiteAdministrator -Referer $Referer
+                        $CurrentSecurityConfig = Get-SecurityConfig -ServerURL $ServerHttpsUrl -SiteName $ServerContext -Token $serverToken.token -Referer $Referer
+                        Write-Verbose "Current Security Config:- $($CurrentSecurityConfig.authenticationTier)"
+                        if('ARCGIS_PORTAL' -ieq $CurrentSecurityConfig.authenticationTier){
+                            try{
+                                Update-SecurityConfigForServer -ServerLocalHttpsEndpoint $ServerHttpsUrl -ServerContext $ServerContext -Referer $Referer -ServerToken $serverToken.token
+                                Write-Verbose "Config Update succeeded"
+                            }catch{
+                                Write-Verbose "Error during Config Update. Error:- $_"
+                            }
                         }
+                    }
+
+                    if($ServerRole -ine "HOSTING_SERVER"){
+                        $oauthApp = Get-OAuthApplication -PortalHostName $PortalFQDN -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer 
+                        $DesiredDomainForRedirect = "https://$($ServerFQDN)"
+                        Write-Verbose "Current list of redirect Uris:- $($oauthApp.redirect_uris)"
+                        if($oauthApp.redirect_uris -icontains $DesiredDomainForRedirect){
+                            Write-Verbose "Redirect Uri for $DesiredDomainForRedirect exists. Removing it"
+                            $updatedRedirectUris = @()
+                            foreach($uri in $oauthApp.redirect_uris){
+                                if($uri -ine $DesiredDomainForRedirect){
+                                    $updatedRedirectUris += $uri
+                                }
+                            }
+                            $oauthApp.redirect_uris += $updatedRedirectUris
+                            Write-Verbose "Updated list of redirect Uris:- $($oauthApp.redirect_uris)"
+                            Update-OAuthApplication -PortalHostName $PortalFQDN -SiteName $PortalContext -Token $token.token -Port $PortalPort -Referer $Referer -AppObject $oauthApp 
+                        }else {
+                            Write-Verbose "Redirect Uri for $DesiredDomainForRedirect doesn't exists as required"
+                        }        
                     }
                 }
             }catch { 

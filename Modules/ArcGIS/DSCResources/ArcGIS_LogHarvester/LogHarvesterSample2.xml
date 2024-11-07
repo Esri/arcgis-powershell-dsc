@@ -7,12 +7,12 @@
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
       <PatternLayout>
-        <Pattern>%mdc{time}, %mdc{type}, %mdc{code}, %mdc{source}, %mdc{methodName}, %mdc{machine}, %mdc{process}, %mdc{thread}, %mdc{elapsed}, %mdc{requestId}, %mdc{user}, [%msg]%n</Pattern>
+        <Pattern>%mdc{time}, %mdc{type}, %mdc{code}, %mdc{source}, %mdc{methodName}, %mdc{machine}, %mdc{process}, %mdc{thread}, %mdc{elapsed}, %mdc{requestId}, %mdc{user}, [%replace{%msg}{[\r\n]+}{ }]%n</Pattern>
       </PatternLayout>
     </Console>
     <RollingFile name="csv" filePattern="${log.dir}\\${env:COMPUTERNAME:-arcgisserver}-%d{YYYYMMdd-HHmmss}-%i.log">
       <PatternLayout>
-        <Pattern>%mdc{time}, %mdc{type}, %mdc{code}, %mdc{source}, %mdc{methodName}, %mdc{machine}, %mdc{process}, %mdc{thread}, %mdc{elapsed}, %mdc{requestId}, %mdc{user}, [%msg]%n</Pattern>
+        <Pattern>%mdc{time}, %mdc{type}, %mdc{code}, %mdc{source}, %mdc{methodName}, %mdc{machine}, %mdc{process}, %mdc{thread}, %mdc{elapsed}, %mdc{requestId}, %mdc{user}, [%replace{%msg}{[\r\n]+}{ }]%n</Pattern>
       </PatternLayout>
       <Policies>
         <SizeBasedTriggeringPolicy size="10 MB"/>

@@ -10,7 +10,7 @@
         $ServerMachineName,
 
 		[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode
     )
     
@@ -32,7 +32,6 @@
         ArcGIS_DataStoreUpgrade DataStoreConfigUpgrade
         {
             ServerHostName = $ServerMachineName
-            Ensure = 'Present'
             SiteAdministrator = $SiteAdministratorCredential
             ContentDirectory = $DataStoreContentDirectory
             InstallDir = $InstallDir

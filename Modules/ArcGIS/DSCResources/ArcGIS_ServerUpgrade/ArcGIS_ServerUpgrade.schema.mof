@@ -3,6 +3,6 @@ class ArcGIS_ServerUpgrade : OMI_BaseResource
 {
 	[Key] String ServerHostName;
 	[Write] String Version;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
+	[Write] Boolean EnableUpgradeSiteDebug;
 };
 

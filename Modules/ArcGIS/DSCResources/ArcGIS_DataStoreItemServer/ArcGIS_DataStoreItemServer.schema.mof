@@ -3,11 +3,12 @@
 class ArcGIS_DataStoreItemServer : OMI_BaseResource
 {
 	[Key] String Name;
+	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write] String ServerSiteName;
 	[Write] String ServerHostName;
 	[Write] String ServerHostPort;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-	[Write, ValueMap{"Folder","CloudStore","RasterStore","BigDataFileShare"}, Values{"Folder","CloudStore","RasterStore","BigDataFileShare"}] String DataStoreType;
+	[Write, ValueMap{"Folder","CloudStore","RasterStore","BigDataFileShare","ObjectStore"}, Values{"Folder","CloudStore","RasterStore","BigDataFileShare","ObjectStore"}] String DataStoreType;
 	[Write] String ConnectionString;
 	[Write, EmbeddedInstance("MSFT_Credential")] String ConnectionSecret;
 	[Write] Boolean ForceUpdate;

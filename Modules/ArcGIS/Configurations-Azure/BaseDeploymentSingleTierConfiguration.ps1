@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3'
+        $Version = 11.4
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -32,11 +32,11 @@
         $MachineAdministratorCredential
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $UseCloudStorage 
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
@@ -112,31 +112,61 @@
         $IsTileCacheDataStoreClustered = $False
 
         ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $OSDiskSize = 0
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $EnableDataDisk
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $DataDiskNumber = 2
-        
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $EnableLogHarvesterPlugin
+
+        ,[Parameter(Mandatory=$true)]
+        [System.Boolean]
+        $UseExistingFileShare
+
+        ,[Parameter(Mandatory=$true)]
+        [System.String]
+        $FileShareMachineName
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $FileShareName = 'fileshare'
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $FileSharePath
+
+        ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
-        
+
+        ,[parameter(Mandatory = $false)]
+		[System.String]
+		$DatabaseOption
+
+        ,[parameter(Mandatory = $false)]
+		[System.String]
+		$DatabaseServerHostName
+
+        ,[parameter(Mandatory = $false)]
+		[System.String]
+		$DatabaseName
+
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Management.Automation.PSCredential]
+        $DatabaseServerAdministratorCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $DatabaseUserCredential
+
+        ,[parameter(Mandatory = $false)]
+		[System.Boolean]
+		$EnableGeodatabase = $True
+
+        ,[Parameter(Mandatory=$false)]
+        $CloudStores
+
+        ,[Parameter(Mandatory=$false)]
+        $CloudProvidedObjectStore
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
         $DebugMode
     )
 
@@ -169,20 +199,35 @@
     Import-DscResource -Name ArcGIS_Federation
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_xSmbShare
-    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_ServerSettings
     Import-DscResource -Name ArcGIS_PortalSettings
     Import-DscResource -Name ArcGIS_LogHarvester
     
-    $FileShareHostName = $MachineName
+    $FileShareRootPath = $FileSharePath
+
+    if(-not($UseExistingFileShare)){
+        $FileSharePath = "\\$($FileShareMachineName)\$($FileShareName)"
+        
+        $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
+        if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
+        $FileShareRootPath = "\\$ipaddress\$FileShareName"
+    }
+
     $ServerCertificateFileName  = 'SSLCertificateForServer.pfx'
     $PortalCertificateFileName  = 'SSLCertificateForPortal.pfx'
     $ServerCertificateLocalFilePath =  (Join-Path $env:TEMP $ServerCertificateFileName)
     $PortalCertificateLocalFilePath =  (Join-Path $env:TEMP $PortalCertificateFileName)
-    $ServerCertificateFileLocation = "\\$($FileShareHostName)\$FileShareName\Certs\$ServerCertificateFileName"
-    $PortalCertificateFileLocation = "\\$($FileShareHostName)\$FileShareName\Certs\$PortalCertificateFileName"
-   
+
+    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
+    $ServerCertificateFileLocation = "$($FileSharePath)\Certs\$ServerCertificateFileName"
+    $PortalCertificateFileLocation = "$($FileSharePath)\Certs\$PortalCertificateFileName"
+    if($UseExistingFileShare)
+    {
+        $ServerCertificateFileLocation = "$($FileSharePath)\$($FolderName)\$($ServerContext)\$ServerCertificateFileName"
+        $PortalCertificateFileLocation = "$($FileSharePath)\$($FolderName)\$($PortalContext)\$PortalCertificateFileName"
+    }
+    
     ##
     ## Download license files
     ##
@@ -203,26 +248,20 @@
     $HostNames = @($MachineName)
     if($PeerMachineName) {
         $HostNames += $PeerMachineName
-    }        
-
-    $ipaddress = (Resolve-DnsName -Name $FileShareHostName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
-    if(-not($ipaddress)) { $ipaddress = $FileShareHostName }
-    $FileShareRootPath = "\\$ipaddress\$FileShareName"
+    }
     
-    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $ConfigStoreLocation  = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($ServerContext)\config-store"
-    $ServerDirsLocation   = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($ServerContext)\server-dirs"
-    $ContentStoreLocation = "\\$($FileShareHostName)\$FileShareName\$FolderName\$($PortalContext)\content"    
-    $DataStoreBackupLocation = "\\$($FileShareHostName)\$FileShareName\$FolderName\datastore\dbbackups"    
+    $ConfigStoreLocation  = "$($FileSharePath)\$FolderName\$($ServerContext)\config-store"
+    $ServerDirsLocation   = "$($FileSharePath)\$FolderName\$($ServerContext)\server-dirs"
+    $ContentStoreLocation = "$($FileSharePath)\$FolderName\$($PortalContext)\content"    
+    $DataStoreBackupLocation = "$($FileSharePath)\$FolderName\datastore\dbbackups"    
     $FileShareLocalPath = (Join-Path $env:SystemDrive $FileShareName)         
-    
+
     $Join = ($env:ComputerName -ieq $PeerMachineName) -and ($MachineName -ine $PeerMachineName)
     $IsDualMachineDeployment = ($MachineName -ine $PeerMachineName)
-    $IsDebugMode = $DebugMode -ieq 'true'
     $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
     $LastHostName = $HostNames | Select-Object -Last 1
 
-    if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
+    if($UseCloudStorage -and $StorageAccountCredential) 
     {
         $Namespace = $ExternalDNSHostName
         $Pos = $Namespace.IndexOf('.')
@@ -238,7 +277,7 @@
         }
         $AccountKey = $StorageAccountCredential.GetNetworkCredential().Password
 
-        if($UseAzureFiles -ieq 'True') {
+        if($UseAzureFiles) {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')                        
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case            
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\config-store"
@@ -291,29 +330,18 @@
             ConfigurationMode = 'ApplyOnly'    
             RebootNodeIfNeeded = $true
         }
-        
-        if($OSDiskSize -gt 0) 
+
+        ArcGIS_Disk DiskSizeCheck
         {
-            ArcGIS_Disk OSDiskSize
-            {
-                DriveLetter = ($env:SystemDrive -replace ":" )
-                SizeInGB    = $OSDiskSize
-            }
-        }
-        
-        if($EnableDataDisk -ieq 'true')
-        {
-            ArcGIS_xDisk DataDisk
-            {
-                DiskNumber  =  $DataDiskNumber
-                DriveLetter = 'F'
-            }
+            HostName = $env:ComputerName
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
+        $CloudStoreRegisterDependsOn = @()
         if($HasValidServiceCredential) 
         {
-            if(-not($IsUpdatingCertificates)){
+            if(-not($IsUpdatingCertificates))
+            {
                 if(-Not($ServiceCredentialIsDomainAccount)){
                     User ArcGIS_RunAsAccount
                     {
@@ -326,41 +354,47 @@
                     }
                 }
             
-                File FileShareLocationPath
-                {
-                    Type						= 'Directory'
-                    DestinationPath				= $FileShareLocalPath
-                    Ensure						= 'Present'
-                    Force						= $true
-                }
-            
-                File ContentDirectoryLocationPath
-                {
-                    Type						= 'Directory'
-                    DestinationPath				= (Join-Path $FileShareLocalPath "$FolderName/$($PortalContext)/content")
-                    Ensure						= 'Present'
-                    Force						= $true
-                }
+                if(-not($Join)){
+                    if(-not($UseExistingFileShare)){
+                        File FileShareLocationPath
+                        {
+                            Type						= 'Directory'
+                            DestinationPath				= $FileShareLocalPath
+                            Ensure						= 'Present'
+                            Force						= $true
+                        }
+                    
+                        File ContentDirectoryLocationPath
+                        {
+                            Type						= 'Directory'
+                            DestinationPath				= (Join-Path $FileShareLocalPath "$FolderName/$($PortalContext)/content")
+                            Ensure						= 'Present'
+                            Force						= $true
+                        }
 
-                $DataStoreBackupsLocalPath = (Join-Path $FileShareLocalPath "$FolderName/datastore/dbbackups")
-                File DataStoreBackupsLocationPath
-                {
-                    Type						= 'Directory'
-                    DestinationPath				= $DataStoreBackupsLocalPath
-                    Ensure						= 'Present'
-                    Force						= $true
-                }
+                        $DataStoreBackupsLocalPath = (Join-Path $FileShareLocalPath "$FolderName/datastore/dbbackups")
+                        File DataStoreBackupsLocationPath
+                        {
+                            Type						= 'Directory'
+                            DestinationPath				= $DataStoreBackupsLocalPath
+                            Ensure						= 'Present'
+                            Force						= $true
+                        }
 
-                $Accounts = @('NT AUTHORITY\SYSTEM')
-                if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
-                if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
-                ArcGIS_xSmbShare FileShare 
-                { 
-                    Ensure						= 'Present' 
-                    Name						= $FileShareName
-                    Path						= $FileShareLocalPath
-                    FullAccess					= $Accounts
-                    DependsOn					= if(-Not($ServiceCredentialIsDomainAccount)){ @('[File]FileShareLocationPath', '[User]ArcGIS_RunAsAccount')}else{ @('[File]FileShareLocationPath')}
+                        $Accounts = @('NT AUTHORITY\SYSTEM')
+                        if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
+                        if($MachineAdministratorCredential -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine 'Placeholder') -and ($MachineAdministratorCredential.GetNetworkCredential().UserName -ine $ServiceCredential.GetNetworkCredential().UserName)) { $Accounts += $MachineAdministratorCredential.GetNetworkCredential().UserName }
+                        ArcGIS_xSmbShare FileShare 
+                        { 
+                            Ensure						= 'Present' 
+                            Name						= $FileShareName
+                            Path						= $FileShareLocalPath
+                            FullAccess					= $Accounts
+                            DependsOn					= if(-Not($ServiceCredentialIsDomainAccount)){ @('[File]FileShareLocationPath', '[User]ArcGIS_RunAsAccount')}else{ @('[File]FileShareLocationPath')}
+                        }
+                    }else{
+                        # TODO - create folders in existing file share
+                    }
                 }
                 
                 $ServerDependsOn = @('[ArcGIS_Service_Account]Server_Service_Account', '[ArcGIS_xFirewall]Server_FirewallRules')  
@@ -394,7 +428,7 @@
                 }
                 
                 $PortalDependsOn = @('[ArcGIS_Service_Account]Portal_Service_Account')   
-                if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
+                if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
                 {
                     $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                     $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -488,7 +522,7 @@
                 ArcGIS_LogHarvester ServerLogHarvester
                 {
                     ComponentType = "Server"
-                    EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
+                    EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin){$true}else{$false}
                     Version = $Version
                     LogFormat = "csv"
                     DependsOn = $ServerDependsOn
@@ -506,12 +540,14 @@
                     ServerDirectoriesRootLocation           = $ServerDirsLocation
                     Join                                    = $Join
                     PeerServerHostName                      = $MachineName
-                    LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+                    LogLevel                                = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
                     ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
                     ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
                 }
+                $CloudStoreRegisterDependsOn = @('[ArcGIS_Server]Server')
             }
             
+            # Copy or Download the internal certificate to local machine
             Script CopyServerCertificateFileToLocalMachine
             {
                 GetScript = {
@@ -542,8 +578,8 @@
                 CertificateFileLocation    = $ServerCertificateLocalFilePath
                 CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
                 ServerType                 = "GeneralPurposeServer"
-                DependsOn                  = if(-not($IsUpdatingCertificates)){ @('[ArcGIS_Server]Server','[Script]CopyServerCertificateFileToLocalMachine') }else{ @('[Script]CopyServerCertificateFileToLocalMachine') }
                 SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                DependsOn                  = if(-not($IsUpdatingCertificates)){ @('[ArcGIS_Server]Server','[Script]CopyServerCertificateFileToLocalMachine') }else{ @('[Script]CopyServerCertificateFileToLocalMachine')}
             }
 
             if(-not($IsUpdatingCertificates)){
@@ -728,13 +764,13 @@
                     PeerMachineHostName                   = if($Join) { $MachineName } else { $PeerMachineName }
                     IsHAPortal                            = $IsDualMachineDeployment
                     ContentDirectoryLocation              = if(-not($Join)){ $ContentStoreLocation }else{ $null }
-                    EnableDebugLogging                    = $IsDebugMode
-                    LogLevel                              = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+                    EnableDebugLogging                    = $DebugMode
+                    LogLevel                              = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
                     ContentDirectoryCloudConnectionString = if(-not($Join)){ $ContentDirectoryCloudConnectionString }else{ $null }
                     ContentDirectoryCloudContainerName    = if(-not($Join)){ $ContentDirectoryCloudContainerName }else{ $null }
                 }
             }
-            
+
             Script CopyPortalCertificateFileToLocalMachine
             {
                 GetScript = {
@@ -757,15 +793,16 @@
                 PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
             }
             
+            # Copy or Download the internal certificate to local machine
             ArcGIS_Portal_TLS ArcGIS_Portal_TLS
             {
-                PortalHostName = if($MachineName -ieq $env:ComputerName){ $MachineName }else{ $PeerMachineName }
-                SiteAdministrator       = $SiteAdministratorCredential 
-                WebServerCertificateAlias = "ApplicationGateway"
-                CertificateFileLocation = $PortalCertificateLocalFilePath 
-                CertificatePassword     = if($PortalInternalCertificatePassword -and ($PortalInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $PortalInternalCertificatePassword } else { $null }
-                DependsOn               = if(-not($IsUpdatingCertificates)){ @('[ArcGIS_Portal]Portal','[Script]CopyPortalCertificateFileToLocalMachine') }else{ @('[Script]CopyPortalCertificateFileToLocalMachine') }
-                SslRootOrIntermediate	= if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                PortalHostName              = if($MachineName -ieq $env:ComputerName){ $MachineName }else{ $PeerMachineName }
+                SiteAdministrator           = $SiteAdministratorCredential 
+                WebServerCertificateAlias   = "ApplicationGateway"
+                CertificateFileLocation     = $PortalCertificateLocalFilePath 
+                CertificatePassword         = if($PortalInternalCertificatePassword -and ($PortalInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $PortalInternalCertificatePassword } else { $null }
+                SslRootOrIntermediate	    = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                DependsOn                   =  if(-not($IsUpdatingCertificates)){ @('[ArcGIS_Portal]Portal','[Script]CopyPortalCertificateFileToLocalMachine') }else{ @('[Script]CopyPortalCertificateFileToLocalMachine')}
             }
 
             if(-not($IsUpdatingCertificates)){
@@ -983,5 +1020,119 @@
                 }
             }
         }
+
+        if(($DatabaseOption -ine 'None') -and $DatabaseServerHostName -and $DatabaseName -and $DatabaseServerAdministratorCredential -and $DatabaseUserCredential -and ($MachineName -ieq $env:ComputerName))
+        {
+            ArcGIS_EGDB RegisterEGDB
+            {
+                DatabaseServer              = $DatabaseServerHostName
+                DatabaseName                = $DatabaseName
+                ServerSiteAdministrator     = $SiteAdministratorCredential
+                DatabaseServerAdministrator = $DatabaseServerAdministratorCredential
+                DatabaseUser                = $DatabaseUserCredential
+                EnableGeodatabase           = $EnableGeodatabase
+                DatabaseType                = $DatabaseOption
+				IsManaged					= $False
+                Ensure                      = 'Present'
+                DependsOn                   = $CloudStoreRegisterDependsOn
+            }
+            $CloudStoreRegisterDependsOn += @("[ArcGIS_EGDB]RegisterEGDB")
+        }
+
+        if((($CloudProvidedObjectStore.Count -gt 0) -or ($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0)) -and ($MachineName -ieq $env:ComputerName))
+        {
+            $DataStoreItems = @()
+            $CacheDirectories = @()
+            $CloudStoresObj = $()
+            if($CloudProvidedObjectStore -and $CloudProvidedObjectStore.Count -gt 0){
+                $CloudStoresObj += @($CloudProvidedObjectStore)
+            }
+            if($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0){
+                $CloudStoresObj += $CloudStores.stores
+            }
+
+            foreach($cloudStore in $CloudStoresObj) 
+            {
+                $AuthType = $cloudStore.AzureStorageAuthenticationType
+                $AzureConnectionObject = @{
+                    AccountName = $cloudStore.AccountName
+                    AccountEndpoint = $cloudStore.AccountEndpoint
+                    DefaultEndpointsProtocol = "https"
+                    OverrideEndpoint = if($cloudStore.OverrideEndpoint){ $cloudStore.OverrideEndpoint }else{ $null }
+                    ContainerName = $cloudStore.ContainerName
+                    FolderPath = if($cloudStore.Path){ $cloudStore.Path }else{ $null } 
+                    AuthenticationType = $AuthType
+                }
+
+                $ConnectionPassword = $null
+                if($AuthType -ieq "AccessKey"){
+                    $ConnectionPassword = ConvertTo-SecureString $cloudStore.AccessKey -AsPlainText -Force 
+                }elseif($AuthType -ieq "SASToken"){
+                    $ConnectionPassword = ConvertTo-SecureString $cloudStore.SASToken -AsPlainText -Force 
+                }elseif($AuthType -ieq "ServicePrincipal"){
+                    $AzureConnectionObject["ServicePrincipalTenantId"] = $cloudStore.ServicePrincipal.TenantId
+                    if($cloudStore.ServicePrincipal.ContainsKey("AuthorityHost") -and -not([string]::IsNullOrEmpty($cloudStore.ServicePrincipal.AuthorityHost))){
+                        $AzureConnectionObject["ServicePrincipalAuthorityHost"] = $cloudStore.ServicePrincipal.AuthorityHost
+                    }
+                    $AzureConnectionObject["ServicePrincipalClientId"] = $cloudStore.ServicePrincipal.ClientId
+                    $ConnectionPassword = (ConvertTo-SecureString $AzureStorageObject.ServicePrincipal.ClientSecret -AsPlainText -Force)
+                }elseif($AuthType -ieq "UserAssignedIdentity"){
+                    $AzureConnectionObject["UserAssignedIdentityClientId"] = $cloudStore.UserAssignedIdentityClientId
+                }
+                $ConnectionSecret = $null
+                if($null -ne $ConnectionPassword){
+                    $ConnectionSecret = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( "PlaceHolder", $ConnectionPassword )
+                }
+
+                $ConnectionStringObject = @{
+                    CloudStoreType = "Azure"
+                    AzureStorage = $AzureConnectionObject
+                }
+                
+                $CloudStoreName = $cloudStore.Name
+                $DataStoreItems += @{
+                    Name = $CloudStoreName
+                    DataStoreType = if($cloudStore.StoreType -ieq 'ObjectStore'){ 'ObjectStore' }else{ 'CloudStore' }  
+                    ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
+                    ConnectionSecret = $ConnectionSecret
+                }
+                if($cloudStore.StoreType -ieq 'CacheDirectory'){
+                    $CacheDirectories += @{
+                        name = ('Cache Directory ' + $CloudStoreName).Replace(' ', '_')
+                        physicalPath = "/cloudStores/$($CloudStoreName)"
+                        directoryType = "CACHE"
+                    }
+                }
+            }
+
+            foreach($dataStoreItem in $DataStoreItems)
+            {
+                ArcGIS_DataStoreItemServer $dataStoreItem.Name
+                {
+                    Name = $dataStoreItem.Name
+                    ServerHostName = $MachineName
+                    SiteAdministrator = $SiteAdministratorCredential
+                    DataStoreType = $dataStoreItem.DataStoreType
+                    ConnectionString = $dataStoreItem.ConnectionString
+                    ConnectionSecret = $dataStoreItem.ConnectionSecret
+                    Ensure = "Present"
+                    DependsOn = $CloudStoreRegisterDependsOn
+                }
+                $CloudStoreRegisterDependsOn += @("[ArcGIS_DataStoreItemServer]$($dataStoreItem.Name)")				
+            }
+
+            if($CacheDirectories.Length -gt 0){
+                ArcGIS_Server_RegisterDirectories "RegisterCacheDirectory"
+                { 
+                    ServerHostName = $MachineName
+                    Ensure = 'Present'
+                    SiteAdministrator = $SiteAdministratorCredential
+                    DirectoriesJSON = ($CacheDirectories | ConvertTo-Json)
+                    DependsOn = $CloudStoreRegisterDependsOn
+                }
+                $CloudStoreRegisterDependsOn += @("[ArcGIS_Server_RegisterDirectories]RegisterCacheDirectory")		
+            }
+        }
+
 	}
 }

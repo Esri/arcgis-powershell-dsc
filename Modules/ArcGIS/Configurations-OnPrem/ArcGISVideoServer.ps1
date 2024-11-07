@@ -97,12 +97,8 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_VideoServer
-    Import-DscResource -Name ArcGIS_Server_TLS
-    Import-DscResource -Name ArcGIS_Service_Account
-    Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_WaitForComponent
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_VideoServer, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent
+    
 
     if($null -ne $ConfigStoreCloudStorageType) {
         if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){

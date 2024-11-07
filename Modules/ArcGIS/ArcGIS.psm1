@@ -24,9 +24,11 @@
                 }
                 if($null -eq $DnsRecord) {
                     $machine = (Get-CimInstance -Class Win32_ComputerSystem).Name
-                    $domain = (Get-CimInstance -Class Win32_NetworkAdapterConfiguration -Filter IPEnabled=TRUE -ComputerName $MachineName).DNSDomain
-                    $Dns = "$($machine).$($domain)"
-                    $ResolvedDns = $true
+                    $machineDomain = (Get-CimInstance -Class Win32_NetworkAdapterConfiguration -Filter IPEnabled=TRUE -ComputerName $MachineName -ErrorAction SilentlyContinue)
+                    if($null -ne $machineDomain){
+                        $Dns = "$($machine).$($machineDomain.DNSDomain)"
+                        $ResolvedDns = $true
+                    }
                 }
             }
             Catch {
@@ -246,7 +248,7 @@ function Invoke-DSCJob {
         if($UseWinRMSSL){
             $ComputeNameList = @()
             $SessionOptions = New-CimSessionOption -UseSsl
-            (Get-ChildItem ".\$($ConfigurationName)\*.mof" -File -exclude @("*.meta.mof") ).Name | ForEach-Object { $ComputeNameList += $_.TrimEnd(".mof") }
+            (Get-ChildItem ".\$($ConfigurationName)\*.mof" -File -exclude @("*.meta.mof") ).Name | ForEach-Object { $ComputeNameList += ($_ -replace '\.mof$', '') }
             $DeploymentCimSession = New-CimSession -Credential $Credential -SessionOption $sessionOptions -ComputerName $ComputeNameList
             $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -CimSession $DeploymentCimSession
         }else{
@@ -337,6 +339,8 @@ function Invoke-BuildArcGISAzureImage
         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDownloadInstallers" -ConfigurationFolderPath "Configurations-AzureImageBuild" -Arguments $DownloadInstallersArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
         if($JobFlag[$JobFlag.Count - 1] -eq $True){
             Write-Information -InformationAction Continue "Downloaded Installer Setups Successfully."
+        }else{
+            throw "Error while downloading installers."
         }
     }else{
         $JobFlag = $True
@@ -351,6 +355,8 @@ function Invoke-BuildArcGISAzureImage
         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISSetupConfiguration" -ConfigurationFolderPath "Configurations-AzureImageBuild" -Arguments $SetupConfigArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
         if($JobFlag[$JobFlag.Count - 1] -eq $True) {
             Write-Information -InformationAction Continue "Installed ArcGIS Setups Successfully. Removing Setup Configuration File."
+        }else{
+            throw "Error while installing arcgis setups."
         }
     }
 
@@ -485,23 +491,50 @@ function Invoke-CreateNodeToAdd
     }else{
         $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
     }
-
-    if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -icontains  $TargetComponent }  | Measure-Object).Count -gt 0) ){
-        $SSLCertificate = ($Node.SslCertificates | Where-Object { $_.Target -icontains $TargetComponent }  | Select-Object -First 1)
-        if($SSLCertificate.CNameFQDN -and $SSLCertificate.Path){
-            $Certificate = @{
-                CName = if($SSLCertificate.CNameFQDN){ $SSLCertificate.CNameFQDN }else{ $null }
-                Path = if($SSLCertificate.Path){ $SSLCertificate.Path }else{ $null }
-                Password = $null
+    
+    if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -ilike "$TargetComponent*" }  | Measure-Object).Count -gt 0) ){
+        $SSLCertificates = ($Node.SslCertificates | Where-Object { $_.Target -ilike "$TargetComponent*" })
+        if($TargetComponent -ieq "DataStore"){
+            $NodeToAdd["DataStoreSSLCertificates"] = @()
+            foreach($dscert in $SSLCertificates){
+                if($dscert.CNameFQDN -and $dscert.Path){
+                    foreach($target in $dscert.Target){
+                        if($target.StartsWith("DataStore")){
+                            $DSCertificate = @{
+                                CName = if($dscert.CNameFQDN){ $dscert.CNameFQDN }else{ $null }
+                                Path = if($dscert.Path){ $dscert.Path }else{ $null }
+                                Password = $null
+                                Type = if($target -ilike "$TargetComponent-*"){ $target.Split('-')[1] }else{ "WebServer" }
+                            }
+                
+                            if($dscert.Password `
+                                -or $dscert.PasswordFilePath `
+                                -or $dscert.PasswordEnvironmentVariableName){
+                                $DSSSLPassword = (Get-PasswordFromObject -Object $dscert)
+                                $DSCertificate["Password"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SSLCertPlaceholder",$DSSSLPassword)
+                            }
+                            $NodeToAdd["DataStoreSSLCertificates"] += $DSCertificate
+                        }
+                    }
+                }
             }
-
-            if($SSLCertificate.Password `
-                -or $SSLCertificate.PasswordFilePath `
-                -or $SSLCertificate.PasswordEnvironmentVariableName){
-                $SSLPassword = (Get-PasswordFromObject -Object $SSLCertificate)
-                $Certificate["Password"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SSLCertPlaceholder",$SSLPassword)
+        }else{
+            $SSLCertificate = ($SSLCertificates | Select-Object -First 1)
+            if($SSLCertificate.CNameFQDN -and $SSLCertificate.Path){
+                $Certificate = @{
+                    CName = if($SSLCertificate.CNameFQDN){ $SSLCertificate.CNameFQDN }else{ $null }
+                    Path = if($SSLCertificate.Path){ $SSLCertificate.Path }else{ $null }
+                    Password = $null
+                }
+    
+                if($SSLCertificate.Password `
+                    -or $SSLCertificate.PasswordFilePath `
+                    -or $SSLCertificate.PasswordEnvironmentVariableName){
+                    $SSLPassword = (Get-PasswordFromObject -Object $SSLCertificate)
+                    $Certificate["Password"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("SSLCertPlaceholder",$SSLPassword)
+                }
+                $NodeToAdd["SSLCertificate"] = $Certificate
             }
-            $NodeToAdd["SSLCertificate"] = $Certificate
         }
 
         if(($TargetComponent -ieq "Server" -or $TargetComponent -ieq "Portal") `
@@ -731,7 +764,7 @@ function Invoke-ArcGISConfiguration
         [parameter(Mandatory = $false)]
         [System.Boolean]
         $MappedDriveOverrideFlag = $false,
-        
+         
         [switch]
         $DebugSwitch,
 
@@ -760,13 +793,15 @@ function Invoke-ArcGISConfiguration
         if($ConfigurationParamsHashtable.ConfigData.Version){
             $EnterpriseVersion = $ConfigurationParamsHashtable.ConfigData.Version
             $EnterpriseVersionArray = $EnterpriseVersion.Split(".")
-            if(-not(($EnterpriseVersionArray[0] -eq 10 -and $EnterpriseVersionArray[1] -ge 7) -or $EnterpriseVersionArray[0] -eq 11)){
-                throw "[ERROR] DSC Module only supports ArcGIS Enterprise 10.7.x and later versions."
+            if(-not(($EnterpriseVersionArray[0] -eq 10 -and $EnterpriseVersionArray[1] -ge 8) -or $EnterpriseVersionArray[0] -eq 11)){
+                throw "[ERROR] DSC Module only supports ArcGIS Enterprise 10.8 and above."
             }
-        }
 
-        if(($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
-            throw "[ERROR] Starting from version 4.3.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file."
+            if($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -gt 3){
+                if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
+                    throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update your configuration file to modify the server role."
+                }
+            }
         }
 
         $ServiceCredential = $null
@@ -1329,7 +1364,7 @@ function Invoke-ArcGISConfiguration
                                 if($null -eq $ObjectDataStore){ $PrimaryObjectDataStore = $PrimaryObjectDataStoreNodeToAdd }
                             }
 
-                            if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -icontains 'DataStore' } | Measure-Object).Count -gt 0))
+                            if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -ilike "DataStore*" } | Measure-Object).Count -gt 0))
                             {
                                 $DataStoreCertificateUpdateCD.AllNodes += (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'DataStore')
                             }
@@ -1400,9 +1435,13 @@ function Invoke-ArcGISConfiguration
                                 $ServerArgs["ContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
                             }        
                             
-                            if((($EnterpriseVersionArray[0] -eq 10 -and  $EnterpriseVersionArray[1] -gt 8) -or ($EnterpriseVersionArray[0] -eq 11))-and $ConfigurationParamsHashtable.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
-                                $ServerArgs["ExtractNotebookServerSamplesData"] = $True
-                            }                        
+                            if($ConfigurationParamsHashtable.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
+                                if(@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $EnterpriseVersion){
+                                    $ServerArgs["ExtractNotebookServerSamplesData"] = $True
+                                }else{
+                                    throw "Notebook Server Samples Data Path is only supported for $EnterpriseVersion."
+                                }
+                            }                      
                         }else{
                             $ServerArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             $ServerArgs["EnableHTTPSOnly"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
@@ -1528,6 +1567,31 @@ function Invoke-ArcGISConfiguration
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.Server.DataStoreItems){
+                        if(-not($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
+                            if(($ConfigurationParamsHashtable.ConfigData.Server.DataStoreItems | Where-Object { $_.CloudStoreAccount.Type -ieq "Azure" -and (@("ServicePrincipal","SASToken","UserAssignedIdentity") -icontains $_.CloudStoreAccount.AzureStorage.AuthenticationType) } |  Measure-Object).Count -gt 0){
+                                throw "Azure Cloud Data Store authentication using ServicePrincipal, SASToken or UserAssignedIdentity is only supported at 11.2 and later."
+                            }
+                        }
+
+                        $ObjectStoresObject = ($ConfigurationParamsHashtable.ConfigData.Server.DataStoreItems | Where-Object { $_.Type -ieq "ObjectStore" })
+                        if(($ObjectStoresObject | Measure-Object).Count -gt 0){
+                            if($ObjectDataStoreCheck){
+                                throw "Cloud-provided Object Store is not supported with ArcGIS Object Store. Please modify the configuration to use only one type of Object Store."
+                            }
+
+                            if(-not($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 4)){
+                                throw "Cloud-provided Object Store is only supported at 11.4 and later." 
+                            }
+                            if(($ObjectStoresObject | Measure-Object).Count -gt 1){
+                                throw "Only one Cloud-provided Object Store is supported."
+                            }
+                            if($EnterpriseVersion -ieq "11.4" -and $ObjectStoresObject.CloudStoreAccount.Type -ieq "Azure"){
+                                if($ObjectStoresObject.CloudStoreAccount.AzureStorage.AuthenticationType -ieq "ServicePrincipal" -or $ObjectStoresObject.CloudStoreAccount.AzureStorage.AuthenticationType -ieq "SASToken"){
+                                    throw "Cloud-provided Object Store do not support Service Principal or SAS Token authentication at 11.4."
+                                }
+                            }
+                        }
+
                         foreach($DSItem in $ConfigurationParamsHashtable.ConfigData.Server.DataStoreItems){
                             if($JobFlag[$JobFlag.Count - 1] -eq $True){
                                 $ConnectionSecret = $null
@@ -1536,13 +1600,11 @@ function Invoke-ArcGISConfiguration
                                 if($DSItem.CloudStoreAccount){
                                     $IsCloudStore = $True
                                     $ConnectionStringObject["CloudStoreType"] = $DSItem.CloudStoreAccount.Type
-
                                     $Username = "PlaceHolder"
                                     $ConnectionPassword = $null
                                     if($DSItem.CloudStoreAccount.Type -ieq "Azure"){
                                         $AzureStorageObject = $DSItem.CloudStoreAccount.AzureStorage
                                         $AuthType = $AzureStorageObject.AuthenticationType
-                                        
                                         $ConnectionStringObject["AzureStorage"] = @{
                                             AccountName = $AzureStorageObject.AccountName
                                             AccountEndpoint = $AzureStorageObject.AccountEndpoint
@@ -2198,6 +2260,7 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = $False
                         $ArcGISDataStoreCertificateUpdateArgs = @{
                             ConfigurationData = $DataStoreCertificateUpdateCD
+                            Version = $EnterpriseVersion
                         }
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStoreCertificateUpdate" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ArcGISDataStoreCertificateUpdateArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                     }
@@ -2220,31 +2283,34 @@ function Invoke-ArcGISConfiguration
                     }
                     
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
-                        $RemoteFederation = $PortalServerFederation = $False
+                        $Federation = $False
                         $RemoteSiteAdministrator = $null
-                        if($PortalCheck){
-                            $PortalServerFederation = $True
-                            $PortalHostName = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ $PrimaryPortalMachine.NodeName } }
-                            $PortalPort = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ 7443 }
-                            $PortalContext = 'arcgis'
-                        }elseif($ConfigurationParamsHashtable.ConfigData.Federation){
-                            $RemoteFederation = $True
+                        
+                        if($ConfigurationParamsHashtable.ConfigData.Federation){
+                            $Federation = $True
                             $PortalHostName = $ConfigurationParamsHashtable.ConfigData.Federation.PortalHostName
                             $PortalPort = $ConfigurationParamsHashtable.ConfigData.Federation.PortalPort
                             $PortalContext = $ConfigurationParamsHashtable.ConfigData.Federation.PortalContext
 
                             $RemoteSiteAdministratorPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator)
                             $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Federation.PortalAdministrator.UserName, $RemoteSiteAdministratorPassword )
+                        }else{
+                            if($PortalCheck){
+                                $Federation = $True
+                                $PortalHostName = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancer }else{ if($PrimaryPortalMachine.SSLCertificate){ $PrimaryPortalMachine.SSLCertificate.CName }else{ $PrimaryPortalMachine.NodeName } }
+                                $PortalPort = if($null -ne $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort){ $ConfigurationParamsHashtable.ConfigData.Portal.InternalLoadBalancerPort }else{ 7443 }
+                                $PortalContext = 'arcgis'
+                            }
                         }
 
-                        if($RemoteFederation -or $PortalServerFederation){
+                        if($Federation){
                             $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             $ServerServiceURL = if($null -ne $ServerExternalDNSHostName){ $ServerExternalDNSHostName }else{  if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName } }
-                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{6443}}
+                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{if($ServerRole -ieq 'NotebookServer'){ 11443 }elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{6443}}
                             $ServerServiceURLContext = if($null -ne $ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ 'arcgis' }
 
                             $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ $PrimaryServerMachine.NodeName }
-                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{ 6443 }
+                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){ 11443 }elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{ 6443 }
                             if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
                                 $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
                             }
@@ -2303,7 +2369,7 @@ function Invoke-ArcGISConfiguration
                                 ServerSiteAdminUrlPort = $ServerSiteAdminURLPort
                                 ServerSiteAdminUrlContext = $ServerSiteAdminURLContext
                                 ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
-                                RemoteSiteAdministrator = if($RemoteFederation){ $RemoteSiteAdministrator }else{ $PortalAdministratorCredential }
+                                RemoteSiteAdministrator = if($ConfigurationParamsHashtable.ConfigData.Federation){ $RemoteSiteAdministrator }else{ $PortalAdministratorCredential }
                                 IsHostingServer = ($ServerCheck -and $PortalCheck -and $DataStoreCheck) #Check for relational ds only
                                 IsFederatedWithRestrictedPublishing = if($ConfigurationParamsHashtable.ConfigData.Federation.RestrictedPublishing){$ConfigurationParamsHashtable.ConfigData.Federation.RestrictedPublishing}else{$False}
                                 ServerFunctions = [system.String]::Join(",", $ServerFunctions)
@@ -2377,18 +2443,29 @@ function Invoke-ArcGISConfiguration
             $cfHashtable = Convert-PSObjectToHashtable $cfJSON
             $UpgradeVersion = $cfHashtable.ConfigData.Version
             $VersionArray = $cfHashtable.ConfigData.Version.Split(".")
-            if(-not(($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 7) -or $VersionArray[0] -eq 11)){
-                throw "[ERROR] DSC Module only supports upgrades to ArcGIS Enterprise 10.7.x and later versions. Configuration File Name - $cf"
+            if(-not(($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or $VersionArray[0] -eq 11)){
+                throw "[ERROR] DSC Module only supports upgrades to ArcGIS Enterprise 10.8 and above. Configuration File Name - $cf"
             }
 
             if(-not($cfHashtable.ConfigData.OldVersion)){
                 throw "No Enterprise Version for present installation ('OldVersion') specified for Configuration File Name - $cf"
             }
 
+            # If old version is 10.7.1 and version is greater than equal to 11.4 and above, throw error
+            $OldVersionArray = $cfHashtable.ConfigData.OldVersion.Split(".")
+            if(($OldVersionArray[0] -eq 10 -and $OldVersionArray[1] -le 7) -and ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 4)){
+                throw "[ERROR] ArcGIS Enterprise doesn't support upgrading from 10.7.1 and below to 11.4 and above."
+            }
+
             if(($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
                 throw "[ERROR] Starting from version 4.3.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
             }
 
+            if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 3){
+                if($cfHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $cfHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
+                    throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update the server role in the configuration file and try again."
+                }
+            }
             
             $HasPortalNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal'} | Measure-Object).Count -gt 0
             $HasServerNodes = ($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0
@@ -3060,10 +3137,12 @@ function Invoke-ServerUpgradeScript {
                 InstallDir = $cf.ConfigData.Server.Installer.InstallDir
                 IsMultiMachineServerSite = $IsMultiMachineServerSite
                 EnableMSILogging = $EnableMSILogging
-                EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
+                EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
                 Extensions = if($cf.ConfigData.Server.Extensions){ $cf.ConfigData.Server.Extensions }else{ $null }
                 DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
                 SkipPatchInstalls = if($cf.ConfigData.SkipPatchInstalls){ $cf.ConfigData.SkipPatchInstalls }else{ $False }
+                DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("DotnetDesktopRuntimePath")){ $cf.ConfigData.Server.Installer.DotnetDesktopRuntimePath } else { $null } } else { $null }
+                DebugMode = $DebugMode
             }
 
             if($Version -ieq "10.9.1"){
@@ -3074,12 +3153,15 @@ function Invoke-ServerUpgradeScript {
                 if($cf.ConfigData.Server.ContainerImagePaths){
                     $ServerUpgradeArgs.Add("ContainerImagePaths", $cf.ConfigData.Server.ContainerImagePaths)
                 } 
-                if($cf.ConfigData.Version.Split(".")[1] -gt 8){
-                    if($cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
+
+                if($cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
+                    if(@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $cf.ConfigData.Version){
                         $ServerUpgradeArgs.Add("NotebookServerSamplesDataPath",  $cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath)
-                    }
-                    if($cf.ConfigData.Server.Installer.ContainsKey("NotebookServerSamplesDataInstallerIsSelfExtracting")){
-                        $ServerUpgradeArgs.Add("NotebookServerSamplesDataInstallerIsSelfExtracting", $cf.ConfigData.Server.Installer.NotebookServerSamplesDataInstallerIsSelfExtracting)
+                        if($cf.ConfigData.Server.Installer.ContainsKey("NotebookServerSamplesDataInstallerIsSelfExtracting")){
+                            $ServerUpgradeArgs.Add("NotebookServerSamplesDataInstallerIsSelfExtracting", $cf.ConfigData.Server.Installer.NotebookServerSamplesDataInstallerIsSelfExtracting)
+                        }
+                    }else{
+                        throw "Notebook Server Samples Data Path is only supported for $($cf.ConfigData.Version)."
                     }
                 }
             }

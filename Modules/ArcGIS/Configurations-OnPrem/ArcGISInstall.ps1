@@ -22,12 +22,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_Install
-    Import-DscResource -Name ArcGIS_InstallMsiPackage
-    Import-DscResource -Name ArcGIS_InstallPatch
-    Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_InstallMsiPackage, ArcGIS_InstallPatch, ArcGIS_xFirewall, ArcGIS_Tomcat
 
     Node $AllNodes.NodeName {
 
@@ -103,7 +98,7 @@
                     $ServerFeatureSet = @()
                     $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
                     if($ServerTypeName -ieq "Server"){
-                        if(@("11.0","11.1","11.2","11.3") -iContains $ConfigurationData.ConfigData.Version){
+                        if(@("11.0","11.1","11.2","11.3","11.4") -iContains $ConfigurationData.ConfigData.Version){
                             $EnableDontet = $True
                             if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
                                 $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
@@ -144,6 +139,7 @@
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
                         Extract = if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Server.Installer.IsSelfExtracting }else{ $True }
+                        DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4") -iContains $ConfigurationData.ConfigData.Version){ $ConfigurationData.ConfigData.Server.Installer.DotnetDesktopRuntimePath }else{ $null }
                         Arguments = $ServerInstallArguments
                         FeatureSet = $ServerFeatureSet
                         ServiceCredential = $ServiceCredential
@@ -196,9 +192,7 @@
 
                     if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath) 
                     {
-                        $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8))
-                        {
+                        if(@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $ConfigurationData.ConfigData.Version){
                             ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
                             { 
                                 Name = "NotebookServerSamplesData"
@@ -369,7 +363,7 @@
                     $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
 
                     $DsFeatureSet = $Null
-                    if(@("11.0","11.1","11.2","11.3") -iContains $ConfigurationData.ConfigData.Version) {
+                    if(@("11.0","11.1","11.2","11.3","11.4") -iContains $ConfigurationData.ConfigData.Version) {
                         $DsFeatureSet = $Node.DataStoreTypes
                         if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
                             $DsFeatureSet = @("ALL")
@@ -656,7 +650,7 @@
                         Name = "Pro"
                         Version = $ConfigurationData.ConfigData.ProVersion
                         Path = $ConfigurationData.ConfigData.Pro.Installer.Path
-                        ProDotnetDesktopRuntimePath = if($ConfigurationData.ConfigData.ProVersion.Split(".")[0] -ge 3){ $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath }else{ $null }
+                        DotnetDesktopRuntimePath = if($ConfigurationData.ConfigData.ProVersion.Split(".")[0] -ge 3){ $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath }else{ $null }
                         ProEdgeWebView2RuntimePath = if($ConfigurationData.ConfigData.ProVersion.Split(".")[0] -ge 3 -and $ConfigurationData.ConfigData.ProVersion.Split(".")[1] -ge 3){ $ConfigurationData.ConfigData.Pro.Installer.EdgeWebView2RuntimePath }else{ $null }
                         Extract = if($ConfigurationData.ConfigData.Pro.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Pro.Installer.IsSelfExtracting }else{ $True }
                         Arguments = $Arguments

@@ -126,16 +126,8 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_NotebookServer
-    Import-DscResource -Name ArcGIS_NotebookPostInstall
-    Import-DscResource -Name ArcGIS_NotebookServerSettings
-    Import-DscResource -Name ArcGIS_Server_TLS
-    Import-DscResource -Name ArcGIS_Service_Account
-    Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_WaitForComponent
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_NotebookServer, ArcGIS_NotebookPostInstall, ArcGIS_NotebookServerSettings, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent
 
-    $Join = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
     if($null -ne $ConfigStoreCloudStorageType) {
         if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){
             $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($ConfigStoreCloudNamespace);REGION=$($ConfigStoreAWSRegion);"
@@ -196,6 +188,8 @@
 
     Node $AllNodes.NodeName
     {
+        $Join = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
+
         if($Node.Thumbprint){
             LocalConfigurationManager
             {
@@ -374,24 +368,16 @@
             $DependsOn += "[ArcGIS_Server_TLS]NotebookServer_TLS_$($Node.NodeName)"
         }
 
-        $VersionArray = $Version.Split('.')
-        if($ContainerImagePaths.Count -gt 0 -or (-not($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 9) -and $ExtractNotebookServerSamplesData)){
-            if($ServiceCredentialIsMSA){
-                ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                    SiteName            = 'arcgis' 
-                    ContainerImagePaths = $ContainerImagePaths
-                    ExtractSamples      = $false
-                    DependsOn           = $DependsOn
-                }
-            }else{
-                ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                    SiteName            = 'arcgis' 
-                    ContainerImagePaths = $ContainerImagePaths
-                    ExtractSamples      = (-not($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 9) -and $ExtractNotebookServerSamplesData)
-                    DependsOn           = $DependsOn
-                    PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-                }
-            }            
+        $HasContainerImages = ($ContainerImagePaths.Count -gt 0)
+        $ExtractSamples = ((@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $Version) -and $ExtractNotebookServerSamplesData -and -not($ServiceCredentialIsMSA))
+
+        if($HasContainerImages -or $ExtractSamples){
+            ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
+                SiteName            = 'arcgis' 
+                ContainerImagePaths = if($HasContainerImages){$ContainerImagePaths}else{$null}
+                ExtractSamples      = $ExtractSamples
+                DependsOn           = $DependsOn
+            }
         }
     }
 }

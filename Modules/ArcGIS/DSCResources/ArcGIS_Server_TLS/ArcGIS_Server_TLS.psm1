@@ -673,20 +673,13 @@ function Update-SSLCertificate
         $SleepTimeInSecondsBetweenAttempts = 30
     )
 
-    $Info = Invoke-ArcGISWebRequest -Url ($ServerUrl.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -Verbose -HttpMethod 'GET'
-    $VersionArray = "$($Info.fullVersion)".Split('.')
-    $VersionIsLessThan107 = ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7)
-
-
     $UpdateSSLCertUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/machines/$MachineName/edit"
     $MachineProperties.psobject.properties | Foreach-Object -begin {$h=@{}} -process {$h."$($_.Name)" = $_.Value} -end {$h} # convert PSCustomObject to hashtable
-    if($VersionIsLessThan107){
-        $h.JMXPort = $MachineProperties.ports.JMXPort
-        $h.OpenEJBPort = $MachineProperties.ports.OpenEJBPort
-        $h.NamingPort = $MachineProperties.ports.NamingPort
-        $h.DerbyPort = $MachineProperties.ports.DerbyPort
+    
+    if($ServerURL -imatch "6443"){
+        $h.ports = $null
     }
-    $h.ports = $null    
+
     $h.f = 'json'
     $h.token = $Token
     [bool]$Done = $false
@@ -699,14 +692,15 @@ function Update-SSLCertificate
         }
         Write-Verbose "Update SSLCert Name $AttemptStr"
         try {    
-            $response = Invoke-ArcGISWebRequest -Url $UpdateSSLCertUrl -HttpFormParameters $h -Referer $Referer -TimeOutSec 150
+            $response = Invoke-ArcGISWebRequest -Url $UpdateSSLCertUrl -HttpFormParameters $h -Referer $Referer -TimeOutSec 150 -Verbose
             if($response.status -ieq 'success'){
                 Write-Verbose "Update Web Server SSL Certificate Successful! Server will Restart now."
                 $Done = $true
             }else{
                 if(($response.status -ieq 'error') -and $response.messages){
                     Write-Verbose "[WARNING]:- $($response.messages -join ',')"
-                    Start-Sleep -Seconds $SleepTimeInSecondsBetweenAttempts
+                }else{
+                    Write-Verbose "[WARNING]:- $($response | ConvertTo-Json -Depth 10)"
                 }
             }
         }
@@ -716,8 +710,11 @@ function Update-SSLCertificate
                 Write-Verbose "[WARNING] Update failed after $MaxAttempts. Last Response:- $($_)"
                 #throw "Update failed after $MaxAttempts. Error:- $($_)"
             }
+        }
+        if(-not($Done)){
             Start-Sleep -Seconds $SleepTimeInSecondsBetweenAttempts
-        }   
+        }
+        
         $Attempt++
     }
     $response

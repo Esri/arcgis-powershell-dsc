@@ -6,8 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0
-    Import-DscResource -Name ArcGIS_RemoteFile
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_RemoteFile
     
     Node $AllNodes.NodeName {
 
@@ -63,6 +62,15 @@
             {
                 'Server'
                 {
+                    if($ConfigurationData.ConfigData.Server.Installer.DotnetDesktopRuntimeDownloadUrl){
+                        ArcGIS_RemoteFile "ServerDotnetDesktopRuntimeDownload$($Node.NodeName)"{
+                            Source = $ConfigurationData.ConfigData.Server.Installer.DotnetDesktopRuntimeDownloadUrl
+                            Destination = $ConfigurationData.ConfigData.Server.Installer.DotnetDesktopRuntimePath 
+                            FileSourceType = "Default"
+                            Ensure = $Ensure
+                        }
+                    }
+
                     ArcGIS_RemoteFile "ServerDownload$($Node.NodeName)"
                     {
                         Source = $ConfigurationData.ConfigData.Server.Installer.Path
@@ -120,7 +128,7 @@
                         }
                     }
 
-                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath) 
+                    if($ConfigurationData.ConfigData.ServerRole -ieq "NotebookServer" -and $ConfigurationData.ConfigData.Server.Installer.NotebookServerSamplesDataPath) #TODO
                     {
                         ArcGIS_RemoteFile "NotebookServerSamplesDataDownloads$($Node.NodeName)"
                         {
@@ -306,7 +314,7 @@
                 'Pro'
                 {
                     if($ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimeDownloadUrl){
-                        ArcGIS_RemoteFile "DotnetDesktopRuntimeDownload$($Node.NodeName)"{
+                        ArcGIS_RemoteFile "ProDotnetDesktopRuntimeDownload$($Node.NodeName)"{
                             Source = $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimeDownloadUrl
                             Destination = $ConfigurationData.ConfigData.Pro.Installer.DotnetDesktopRuntimePath 
                             FileSourceType = "Default"

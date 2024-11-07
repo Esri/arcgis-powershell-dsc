@@ -126,7 +126,7 @@ function Set-TargetResource
     
     if($RestartRequired) {    
         Restart-ArcGISService -ServiceName $ServiceName -Verbose
-		Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
+        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
     }
 
     if(-not($SetOnlyHostNamePropertiesFile)){

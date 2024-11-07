@@ -7,8 +7,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-	
+    
     Node $AllNodes.NodeName {
         
         if($Node.Thumbprint){
