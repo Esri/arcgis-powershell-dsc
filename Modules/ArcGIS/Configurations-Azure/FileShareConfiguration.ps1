@@ -23,18 +23,6 @@
         $PortalContext
         
         ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $OSDiskSize = 0
-
-         ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $EnableDataDisk
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $DataDiskNumber = 2
-
-        ,[Parameter(Mandatory=$false)]
         [System.String]
         $FileShareName = 'fileshare'
 
@@ -51,20 +39,18 @@
         $ServerContext
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
-    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_xSmbShare
     Import-DscResource -Name ArcGIS_Disk
 
     $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
     $FileShareLocalPath = (Join-Path $env:SystemDrive $FileShareName)
-    $IsDebugMode = $DebugMode -ieq 'true'
-
+    
 	Node localhost
 	{
         LocalConfigurationManager
@@ -74,22 +60,9 @@
             RebootNodeIfNeeded = $true
         }
         
-        if($OSDiskSize -gt 0)
+        ArcGIS_Disk DiskSizeCheck
         {
-            ArcGIS_Disk OSDiskSize
-            {
-                DriveLetter = ($env:SystemDrive -replace ":" )
-                SizeInGB    = $OSDiskSize
-            }
-        }
-
-        if($EnableDataDisk -ieq 'true')
-        {
-            ArcGIS_xDisk DataDisk
-            {
-                DiskNumber  =  $DataDiskNumber
-                DriveLetter = 'F'
-            }
+            HostName = $env:ComputerName
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))

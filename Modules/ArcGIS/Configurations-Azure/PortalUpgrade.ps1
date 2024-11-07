@@ -3,7 +3,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3',
+        $Version = 11.4,
 
 		[parameter(Mandatory = $true)]
         [System.String]
@@ -34,7 +34,7 @@
         $IsMultiMachinePortal,
 
 		[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode
     )
 
@@ -59,8 +59,7 @@
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
-    $IsDebugMode = $DebugMode -ieq 'true'
-
+    
     Node localhost {
         LocalConfigurationManager
         {
@@ -125,6 +124,7 @@
 			Credential = $FileshareMachineCredential     
 			DependsOn = $Depends  
         }
+        $Depends += '[File]DownloadInstallerFromFileShare'
 
         $InstallerVolumePathOnMachine = ""
         if(-not([string]::IsNullOrEmpty($PortalInstallerVolumePath))){
@@ -153,7 +153,7 @@
             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
-            EnableMSILogging = $IsDebugMode
+            EnableMSILogging = $DebugMode
             DependsOn = $Depends
         }
 
@@ -169,7 +169,8 @@
                 }
 			}
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
-			GetScript = { $null }          
+			GetScript = { $null }
+            DependsOn = $Depends
 		}
             
         $Depends += '[Script]RemoveInstaller'
@@ -195,7 +196,7 @@
             Path = $WebStylesInstallerPathOnMachine
             Arguments = "/qn"
             Ensure = "Present"
-            EnableMSILogging = $IsDebugMode
+            EnableMSILogging = $DebugMode
             DependsOn = $Depends
         }
 
@@ -208,7 +209,8 @@
                 Remove-Item $using:WebStylesInstallerPathOnMachine -Force
             }
             TestScript = { -not(Test-Path $using:WebStylesInstallerPathOnMachine) }
-            GetScript = { $null }          
+            GetScript = { $null }
+            DependsOn = $Depends          
         }
         $Depends += '[Script]RemoveWebStylesInstaller'
         

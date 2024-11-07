@@ -32,9 +32,7 @@
         $FileShareLocalPath
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_FileShare
-    Import-DSCResource -Name ArcGIS_DataStoreItem
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_FileShare, ArcGIS_DataStoreItemServer
 
     Node $AllNodes.NodeName
     {
@@ -45,6 +43,7 @@
             }
         }
         
+        $Depends = @()
         if(-not($ExternalFileSharePath)){
             ArcGIS_FileShare RasterAnalysisFileShare
             {
@@ -55,16 +54,24 @@
                 IsDomainAccount = $ServiceCredentialIsDomainAccount
                 IsMSAAccount = $ServiceCredentialIsMSA
             }
+            $Depends = @("[ArcGIS_FileShare]RasterAnalysisFileShare")
         }
-        
-        ArcGIS_DataStoreItem RasterDataStoreItem
+
+        $ConnectionStringObject = @{
+            DataStorePath = if($ExternalFileSharePath){ $ExternalFileSharePath }else{ "\\$($Node.NodeName)\$($FileShareName)" }
+        }
+
+        ArcGIS_DataStoreItemServer RasterDataStoreItem
         {
             Name = "RasterFileShareDataStore"
-            HostName = $PrimaryServerMachine
-            Ensure = "Present"
+            ServerHostName = $PrimaryServerMachine
             SiteAdministrator = $ServerPrimarySiteAdminCredential
             DataStoreType = "RasterStore"
-            DataStorePath = if($ExternalFileSharePath){ $ExternalFileSharePath }else{ "\\$($Node.NodeName)\$($FileShareName)" }
+            ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
+            ConnectionSecret = $null
+            ForceUpdate = $True
+            Ensure = "Present"
+            DependsOn = $Depends
         }
     }
 }

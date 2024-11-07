@@ -18,13 +18,13 @@
         [System.String]
         $ConnectionString,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $ConnectionSecret,
 
         [Parameter(Mandatory=$true)]
         [System.String]
-        [ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare")]
+        [ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore")]
         $DataStoreType,
 
         [Parameter(Mandatory=$true)]
@@ -35,10 +35,9 @@
         [System.Boolean]
         $ForceUpdate
     )
+    
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_FileShare
-    Import-DSCResource -Name ArcGIS_DataStoreItemServer
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_DataStoreItemServer
 
     Node $AllNodes.NodeName
     {
@@ -60,6 +59,7 @@
                 DataStoreType = "CloudStore"
                 ConnectionString = $ConnectionString
                 ConnectionSecret = $ConnectionSecret
+                Ensure = "Present"
                 ForceUpdate = $ForceUpdate
             }
             $Depends = @("[ArcGIS_DataStoreItemServer]DataStoreItemCloudStore")
@@ -81,6 +81,7 @@
             ConnectionString = $ConnectionString
             ConnectionSecret = $ConnectionSecret
             ForceUpdate = $ForceUpdate
+            Ensure = "Present"
             DependsOn = $Depends
         }
     }

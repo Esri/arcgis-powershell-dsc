@@ -8,7 +8,7 @@
         $ServiceCredentialIsDomainAccount,
 		
 		[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode
     )
     

@@ -42,11 +42,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_Install
-    Import-DscResource -Name ArcGIS_InstallPatch
-    Import-DscResource -Name ArcGIS_DataStoreUpgrade
-    Import-DscResource -Name ArcGIS_xFirewall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
     
     Node $AllNodes.NodeName {
 

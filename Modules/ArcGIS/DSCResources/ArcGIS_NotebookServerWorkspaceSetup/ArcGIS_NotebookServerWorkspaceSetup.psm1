@@ -73,7 +73,7 @@ function Set-TargetResource
 	)
     
     $fsusername = "$($env:COMPUTERNAME)\$($FileShareCredential.GetNetworkCredential().UserName)"
-    if($UseAzureFiles -ieq 'True') {
+    if($UseAzureFiles) {
         $AzureFileStrAccountName = $FileShareEndpoint.Substring(0, $FileShareEndpoint.IndexOf('.'))
         $fsusername = "Azure\$AzureFileStrAccountName"
     }
@@ -103,10 +103,10 @@ function Set-TargetResource
         Write-Verbose "SMB mapping already exists"
     }else{
         if($IsSingleTier -and -not($Join) -and -not($UseAzureFiles)){
-            New-SmbGlobalMapping -RemotePath $ArcGISWorkspaceLocation -Credential $FSCredential -LocalPath G: -Verbose 
+            New-SmbGlobalMapping -RemotePath $ArcGISWorkspaceLocation -Credential $FSCredential -LocalPath "G:" -Verbose 
         }else{
             New-SmbGlobalMapping -RemotePath $ArcGISWorkspaceLocation -Credential $FSCredential `
-            -LocalPath G: -Persistent $true -Verbose
+                -LocalPath "G:" -Persistent $true -Verbose
         }
     }
 

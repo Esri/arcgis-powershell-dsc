@@ -35,10 +35,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_IIS_TLS
-    Import-DscResource -Name ArcGIS_WebAdaptor
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
 
     Node $AllNodes.NodeName
     {

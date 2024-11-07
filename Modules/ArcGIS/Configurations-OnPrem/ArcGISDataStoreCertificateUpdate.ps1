@@ -1,8 +1,14 @@
 ﻿Configuration ArcGISDataStoreCertificateUpdate 
 {
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        [System.String]
+        $Version
+    )
+
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_DataStore_TLS
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_DataStore_TLS
 
     Node $AllNodes.NodeName 
     {
@@ -13,11 +19,16 @@
             }
         }
 
-        ArcGIS_DataStore_TLS "DataStore_TLS_$($Node.NodeName)"{
-            DatastoreMachineHostName = $Node.NodeName
-            CName = $Node.SSLCertificate.CName
-            CertificateFileLocation = $Node.SSLCertificate.Path
-            CertificatePassword = $Node.SSLCertificate.Password
+        foreach($Cert in $Node.DataStoreSSLCertificates){
+            ArcGIS_DataStore_TLS "DataStore_TLS_$($Node.NodeName)_$($Cert.Type)" 
+            {
+                Version = $Version
+                DatastoreMachineHostName = $Node.NodeName
+                CName = $Cert.CName
+                CertificateFileLocation = $Cert.Path
+                CertificatePassword = $Cert.Password
+                CertificateType = $Cert.Type
+            }
         }
     }
 }

@@ -201,7 +201,8 @@ function Set-TargetResource
                 Write-Verbose 'Enabling Geodatabase'       
                 $SdeConnectUserName = if($DatabaseType -ieq "AzurePostgreSQLDatabase"){ "$($SdeUserName)@$($DatabaseServer.Split(".")[0])" }else{ $SdeUserName }
                 $Arguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $SdeConnectUserName -p $($SDECredential.GetNetworkCredential().Password) -l $LicenseFilePath"
-                Write-Verbose "[Running Command] $PythonInterpreterPath $Arguments "
+                $RedactedArguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $SdeConnectUserName -p xxxxx -l $LicenseFilePath"
+                Write-Verbose "[Running Command] $PythonInterpreterPath $RedactedArguments "
                 $StdOutLogFile = [System.IO.Path]::GetTempFileName()
                 $StdErrLogFile = [System.IO.Path]::GetTempFileName()
                 Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait

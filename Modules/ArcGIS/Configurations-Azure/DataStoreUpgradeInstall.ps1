@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3',
+        $Version = 11.4,
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -17,7 +17,7 @@
         $InstallerPath,
         
 		[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode,
 
         [System.String]
@@ -79,7 +79,7 @@
             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
             ServiceCredentialIsMSA = $False
             Ensure = "Present"
-            EnableMSILogging = $IsDebugMode
+            EnableMSILogging = $DebugMode
             DependsOn = $Depends
         }
         $Depends += '[ArcGIS_Install]DataStoreUpgrade'

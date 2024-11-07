@@ -3,8 +3,9 @@
 class ArcGIS_DataStore_TLS : OMI_BaseResource
 {
 	[Key] String DatastoreMachineHostName;
-	[Write, Description("Common Name for the SSL Certificate")] String CName;
+	[Key] String Version;
+	[Key, Description("Common Name for the SSL Certificate")] String CName;
+	[Key, ValueMap{"WebServer","Relational","GraphStore","ObjectStore","TileCache"}, Values{"WebServer","Relational","GraphStore","ObjectStore","TileCache"}] String CertificateType;
 	[Write, Description("Location of the .pfx certificate file")] String CertificateFileLocation;
 	[Write, EmbeddedInstance("MSFT_Credential"), Description("Password or Private Key for the Certificate")] String CertificatePassword;
 };
-

@@ -124,15 +124,8 @@ function Set-TargetResource
         if($InstallDir) 
         { 
             $InstallDir = $InstallDir.TrimEnd('\')
-            if(Test-Path $InstallDir){
-                Write-Verbose "Checking if RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
-                if(-not(Test-Acl $InstallDir $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
-                    Write-Verbose "Providing RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
-                    Write-Verbose "icacls.exe $InstallDir /grant $($ExpectedRunAsUserName):(OI)(CI)F"
-                    icacls.exe $InstallDir /grant "$($ExpectedRunAsUserName):(OI)(CI)F"
-                }else {
-                    Write-Verbose "RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
-                } 
+            if(-not(Test-Path $InstallDir)){
+                throw "Install Directory '$InstallDir' does not exist."
             }
 
             # Get Current Run as account or if Force Update run as account set
@@ -146,8 +139,9 @@ function Set-TargetResource
 
                 if($ForceRunAsAccountUpdate -or ($CurrentRunAsAccount -ne $ExpectedRunAsUserName)){
                     $RestartService = $True
-
                     if(@('ArcGIS Server','Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server','ArcGIS Data Store') -icontains $Name){
+                        Write-Verbose "Running Account Configuration Utility for service $Name."
+
                         $psi = New-Object System.Diagnostics.ProcessStartInfo
                         $ExecPath = $InstallDir
                         if($Name -ieq 'ArcGIS Server'){
@@ -232,7 +226,14 @@ function Set-TargetResource
                         }
                     }
                 }else{
-                    Write-Verbose "Service Account needs no updates."
+                    Write-Verbose "Checking if RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
+                    if(-not(Test-Acl $InstallDir $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
+                        Write-Verbose "Providing RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
+                        Write-Verbose "icacls.exe $InstallDir /grant $($ExpectedRunAsUserName):(OI)(CI)F"
+                        icacls.exe $InstallDir /grant "$($ExpectedRunAsUserName):(OI)(CI)F"
+                    } else {
+                        Write-Verbose "RunAs Account '$ExpectedRunAsUserName' has the required permissions to $InstallDir"
+                    }
                 }
             }
             else{
@@ -470,7 +471,7 @@ function Test-TargetResource
         $result = $false
     }
 
-    if($SetStartupToAutomatic){
+    if($result -and $SetStartupToAutomatic){
         Write-Verbose "Checking Service Startup Type for service '$Name'."
         if($Name -ieq 'ArcGISGeoEvent') {
             $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEvent' -ExpectedStartupType "AutomaticDelayedStart" -Verbose)

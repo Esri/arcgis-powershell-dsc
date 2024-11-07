@@ -153,7 +153,7 @@ function Set-TargetResource
             $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
             $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
             $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
-            if($Version.StartsWith("11.1") -or $Version.StartsWith("11.2") -or $Version.StartsWith("11.3")){
+            if($Version.StartsWith("11.1") -or $Version.StartsWith("11.2") -or $Version.StartsWith("11.3") -or $Version.StartsWith("11.4")){
                 $ExecPath = Join-Path ${env:CommonProgramFiles} $ConfigureToolPath
             }
         }
@@ -310,7 +310,7 @@ function Test-TargetResource
             if($wa.InstallLocation -match "\\$($Context)\\"){
                 $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
                 $WAConfigSiteUrl = $null
-                if($wa.Version.StartsWith("11.1") -or $wa.Version.StartsWith("11.2") -or $Version.StartsWith("11.3")){
+                if($wa.Version.StartsWith("11.1") -or $wa.Version.StartsWith("11.2") -or $Version.StartsWith("11.3") -or $Version.StartsWith("11.4")){
                     $WAConfig = (Get-Content $WAConfigPath | ConvertFrom-Json)
                     $WAConfigSiteUrl = if($Component -ieq "Portal"){ $WAConfig.portal.url }else{ $WAConfig.gisserver.url }
                 }else{
@@ -413,9 +413,9 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         $SiteUrlCheck = "$($SiteURL)/arcgis/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         if($IsJavaWebAdaptor){
-            $Arguments = "-m server -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password) -a $AdminAccessString"
+            $Arguments = "-m server -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$($SiteAdministrator.GetNetworkCredential().Password)`" -a $AdminAccessString"
         }else{
-            $Arguments = "/m server /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password) /a $AdminAccessString"
+            $Arguments = "/m server /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$($SiteAdministrator.GetNetworkCredential().Password)`" /a $AdminAccessString"
         }
     }
     elseif($Component -ieq 'NotebookServer') {
@@ -426,9 +426,9 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $WAMode = if($Version.StartsWith("10.7")){ "server" }else{ "notebook" }
         if($IsJavaWebAdaptor){
-            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }else{
-            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }
 
         if($Version.StartsWith("10.7")){
@@ -451,9 +451,9 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $WAMode = "mission"
         if($IsJavaWebAdaptor){
-            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }else{
-            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }
     }elseif($Component -ieq 'VideoServer') {
         $SiteURL = "https://$($ComponentHostName):21443"
@@ -463,9 +463,9 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         $WAMode = "video"
         if($IsJavaWebAdaptor){
-            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }else{
-            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }
     }
     elseif($Component -ieq 'Portal'){
@@ -475,9 +475,9 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         $SiteUrlCheck = "$($SiteURL)/arcgis/sharing/rest/info?f=json"
         Wait-ForUrl $SiteUrlCheck -HttpMethod 'GET'
         if($IsJavaWebAdaptor){
-            $Arguments = "-m portal -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "-m portal -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }else{
-            $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p $($SiteAdministrator.GetNetworkCredential().Password)"
+            $Arguments = "/m portal /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
         }
 
         $VersionArray = $Version.Split('.')
@@ -499,16 +499,22 @@ function Start-ConfigureWebAdaptorCMDLineTool{
     $p = [System.Diagnostics.Process]::Start($psi)
     $p.WaitForExit()
     $op = $p.StandardOutput.ReadToEnd()
-    if($op -and $op.Length -gt 0) {
-        Write-Verbose "Output:- $op"
+    Write-Verbose "Web Adaptor configuration output:- $op"
+    if($p.ExitCode -eq 0) {
         if($op.trim().StartsWith("ERROR") -or ($_ -imatch "The underlying connection was closed: An unexpected error occurred on a receive.") -or ($op -imatch "The operation timed out while waiting for a response from the portal application")){
-            throw $op
+            throw "Web Adaptor configuration failed. Error - $op"
+        }else{
+            Write-Verbose "Configuration successful."
         }
-    }
-    $err = $p.StandardError.ReadToEnd()
-    if($err -and $err.Length -gt 0) {
-        Write-Verbose $err
-        throw $err
+    }else{
+        Write-Verbose "Web Adaptor configuration failed."
+        $err = $p.StandardError.ReadToEnd()
+        if($err -and $err.Length -gt 0) {
+            Write-Verbose $err
+            throw "Web Adaptor configuration failed. Error - $err"
+        }else{
+            throw "Web Adaptor configuration failed. Output - $op"
+        }
     }
 }
 
@@ -596,9 +602,11 @@ function Test-ArcGISJavaWebAdaptorBuildNumberToMatch
         "10.8.1" { "10.8.14362" }
         "10.9.0" { "10.9.26417" }
         "10.9.1" { "10.9.28388" }
+        "11.0" { "11.0" }
         "11.1" { "11.1" }
         "11.2" { "11.2" }
         "11.3" { "11.3" }
+        "11.4" { "11.4" }
         Default {
             throw "Version $VersionToMatch not supported"
         }
@@ -606,6 +614,5 @@ function Test-ArcGISJavaWebAdaptorBuildNumberToMatch
 
     return $InstallObjectVersion -imatch $VersionWithBuild
 }
-
 
 Export-ModuleMember -Function *-TargetResource

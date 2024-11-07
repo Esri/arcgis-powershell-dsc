@@ -2,7 +2,6 @@
 class ArcGIS_DataStoreUpgrade : OMI_BaseResource
 {
 	[Key] String ServerHostName;
-	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write] String ContentDirectory;
 	[Write] String InstallDir;

@@ -14,10 +14,7 @@
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.3.0 
-    Import-DscResource -Name ArcGIS_Install
-    Import-DscResource -Name ArcGIS_FileShare
-    Import-DscResource -Name ArcGIS_InstallMsiPackage
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install,ArcGIS_FileShare
     
     Node $AllNodes.NodeName
     {   
@@ -80,7 +77,7 @@
                     }
                     
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    if($ServerTypeName -ieq "NotebookServer" -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)))
+                    if($ServerTypeName -ieq "NotebookServer" -and (@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $ConfigurationData.ConfigData.Version))
                     {
                         ArcGIS_Install "NotebookServerSamplesData$($Node.NodeName)"
                         { 

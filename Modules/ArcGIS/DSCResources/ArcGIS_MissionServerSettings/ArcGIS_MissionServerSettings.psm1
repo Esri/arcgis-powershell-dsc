@@ -125,6 +125,28 @@ function Set-TargetResource
 
     if($AdminSettingsModified){
         Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/update" -Token $token.token -Properties $systemProperties
+
+        $MaxWaitTimeInSeconds = 120
+        $SleepTimeInSeconds = 10
+        $TotalElapsedTimeInSeconds = 0
+        Write-Verbose "Waiting for up to $($MaxWaitTimeInSeconds) seconds for mission server to restart"
+        while(-not($Done) -and ($TotalElapsedTimeInSeconds -lt $MaxWaitTimeInSeconds)){
+            try{
+                # if available sleep and try again.
+                Wait-ForUrl "$($ServerUrl)/arcgis/rest/info/healthcheck/?f=json" -MaxWaitTimeInSeconds 10 -HttpMethod 'GET' -ThrowErrors
+                Write-Verbose "Mission web server is still available. Trying again in $($SleepTimeInSeconds) seconds"
+                Start-Sleep -Seconds $SleepTimeInSeconds
+                $TotalElapsedTimeInSeconds += $SleepTimeInSeconds
+            }catch{
+                # if error and most likely mission server has become unavailable then exit loop
+                Write-Verbose "Mission server is likely restarting as result of update of system properties:- $($_)"
+                $Done = $true
+            }
+        }
+        
+        Write-Verbose "Waiting up to 6 minutes for mission server healtcheck endpoint '$($ServerUrl)/arcgis/rest/info/healthcheck' to come back up"
+        Wait-ForUrl "$($ServerUrl)/arcgis/rest/info/healthcheck/?f=json" -MaxWaitTimeInSeconds 360 -HttpMethod 'GET' -Verbose
+        Write-Verbose "Finished waiting for mission server healtcheck endpoint '$($ServerUrl)/arcgis/rest/info/healthcheck' to come back up"
     }    
 }
 

@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3'
+        $Version = 11.4
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -31,32 +31,28 @@
         [System.String]
         $ServerMachineNames
 
-        ,[Parameter(Mandatory=$true)]
-        [System.String]
-        $FileShareMachineName
-
         ,[Parameter(Mandatory=$false)]
         [System.String]
         $DataStoreTypes = 'ObjectStore'
         
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $OSDiskSize = 0
+        ,[Parameter(Mandatory=$true)]
+        [System.Boolean]
+        $UseExistingFileShare
 
-        ,[Parameter(Mandatory=$false)]
+        ,[Parameter(Mandatory=$true)]
         [System.String]
-        $EnableDataDisk  
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $DataDiskNumber = 2
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $FileShareName = 'fileshare' 
+        $FileShareMachineName
         
         ,[Parameter(Mandatory=$false)]
         [System.String]
+        $FileShareName = 'fileshare'
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $FileSharePath
+                
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
         $DebugMode
     )
         
@@ -66,13 +62,11 @@
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     
     $ObjectDataStoreHostNames = ($ObjectDataStoreMachineNames -split ',')    
     $ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1    
-    $IsDebugMode = $DebugMode -ieq 'true'
     $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
 
 	Node localhost
@@ -84,22 +78,9 @@
             RebootNodeIfNeeded = $true
         }
         
-        if($OSDiskSize -gt 0) 
+        ArcGIS_Disk DiskSizeCheck
         {
-            ArcGIS_Disk OSDiskSize
-            {
-                DriveLetter = ($env:SystemDrive -replace ":" )
-                SizeInGB    = $OSDiskSize
-            }
-        }
-        
-        if($EnableDataDisk -ieq 'true')
-        {
-            ArcGIS_xDisk DataDisk
-            {
-                DiskNumber  =  $DataDiskNumber
-                DriveLetter = 'F'
-            }
+            HostName = $env:ComputerName
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))

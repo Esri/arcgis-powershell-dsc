@@ -320,7 +320,7 @@ function Join-PortalSite {
 		Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
 		Write-Verbose "Wait for endpoint 'https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/' to initialize"
-        Wait-ForUrl "https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
+        Wait-ForUrl "https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
 		Write-Verbose "Finished Waiting for endpoint 'https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/' to initialize. Sleeping for 5 minutes"
 
 		Write-Verbose "Check primary with second round of health checks"
@@ -547,7 +547,7 @@ function Set-TargetResource {
 
     if ($RestartRequired) {
         Restart-ArcGISService -ServiceName $ServiceName -Verbose
-		Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
+		Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
     }    
 
     Write-Verbose "Portal at https://$($FQDN):7443"
@@ -571,7 +571,7 @@ function Set-TargetResource {
                 }catch {
                     Write-Verbose "Sharing API rest endpoint is not available. Error:- $_. Restarting Portal."
                     Restart-ArcGISService -ServiceName $ServiceName -Verbose
-                    Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -Verbose
+                    Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
                     $Attempts = $Attempts + 1
                 }        
             }
@@ -665,7 +665,7 @@ function Set-TargetResource {
             # Finally set log level to user defined
             if(Set-LoggingLevel -EnableDebugLogging $EnableDebugLogging) {
                 Restart-ArcGISService -ServiceName $ServiceName -Verbose
-                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json" -HttpMethod 'GET' -Verbose
+                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
             }
         }
     }

@@ -2,7 +2,7 @@ Configuration UninstallExtraSetups {
     param(
         [Parameter(Mandatory = $false)]
         [System.String]
-        $Version = '11.3',
+        $Version = 11.4,
 
         [Parameter(Mandatory = $false)]
         [System.String]
@@ -13,7 +13,7 @@ Configuration UninstallExtraSetups {
         $ServerRole,
 
         [Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode
     )
 
@@ -21,7 +21,6 @@ Configuration UninstallExtraSetups {
     Import-DscResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install
     
-    $IsDebugMode = $DebugMode -ieq 'true'
     $MachineRolesArray = $MachineRoles -split ','
 
     Node localhost
@@ -58,7 +57,7 @@ Configuration UninstallExtraSetups {
                 Ensure = "Absent"
             }
 
-            $FoldersToDelete += @("C:\\ArcGIS\\Server")
+            $FoldersToDelete += @("C:\\ArcGIS\\Server", "C:\\arcgisserver")
         }
             
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "MissionServer"){
@@ -68,7 +67,7 @@ Configuration UninstallExtraSetups {
                 Ensure = "Absent"
             }
 
-            $FoldersToDelete += @("C:\\ArcGIS\\Mission")
+            $FoldersToDelete += @("C:\\ArcGIS\\Mission","C:\\arcgismissionserver")
         }
 
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "VideoServer"){
@@ -78,7 +77,7 @@ Configuration UninstallExtraSetups {
                 Ensure = "Absent"
             }
 
-            $FoldersToDelete += @("C:\\ArcGIS\\Video")
+            $FoldersToDelete += @("C:\\ArcGIS\\Video","C:\\arcgisvideoserver")
         }
             
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "NotebookServer"){
@@ -88,16 +87,9 @@ Configuration UninstallExtraSetups {
                 Ensure = "Absent"
             }
 
-            ArcGIS_Install NotebookServerSamplesDataUninstall
-            { 
-                Name = "NotebookServerSamplesData"
-                Version = $Version
-                Ensure = "Absent"
-            } 
-
-            $FoldersToDelete += @("C:\\ArcGIS\\NotebookServer")
+            $FoldersToDelete += @("C:\\ArcGIS\\NotebookServer", "C:\\arcgisnotebookserver")
         }else{
-            $FoldersToDelete += @("C:\\ArcGIS\\Deployment\\Downloads\\NotebookServerSamplesData", "C:\\ArcGIS\\Deployment\\Downloads\\NotebookServer")
+            $FoldersToDelete += @("C:\\ArcGIS\\Deployment\\Downloads\\NotebookServer")
         }
             
         if(-not($MachineRolesArray -iContains "Portal")){
@@ -115,7 +107,7 @@ Configuration UninstallExtraSetups {
                 Ensure = "Absent"
             }
 
-            $FoldersToDelete += @("C:\\ArcGIS\\Portal")
+            $FoldersToDelete += @("C:\\ArcGIS\\Portal","C:\\portalforarcgis")
         }
         
         if (-not($MachineRolesArray -icontains 'DataStore' -or $MachineRolesArray -icontains 'SpatiotemporalDataStore' -or $MachineRolesArray -icontains 'GraphDataStore' -or $MachineRolesArray -icontains 'ObjectDataStore' -or $MachineRolesArray -icontains 'TileCacheDataStore')){
@@ -130,14 +122,26 @@ Configuration UninstallExtraSetups {
         
         foreach($FolderToDelete in $FoldersToDelete){
             $FileNameResourceName = $FolderToDelete.Replace('\', '_').Replace(':', '_')
-
-            File "RemoveFolder-$FileNameResourceName"
+            
+            # Script resource to delete folder recursively and swallow any errors that may occur
+            Script "RemoveFolder-$FileNameResourceName"
             {
-                Ensure = "Absent"
-                Type = "Directory"
-                DestinationPath	= $FolderToDelete
-                Recurse = $true
-                Force = $true
+                GetScript = { $null }
+                TestScript = { 
+                    Write-Verbose "Checking if folder '$($using:FolderToDelete)' exists"
+                    $result = Test-Path $using:FolderToDelete 
+                    Write-Verbose "Folder '$($using:FolderToDelete)' exists: $result"
+                    return -not($result)
+                }
+                SetScript = { 
+                    try{
+                        Write-Verbose "Deleting folder '$($using:FolderToDelete)'"
+                        Remove-Item -Path $using:FolderToDelete -Recurse -Force
+                        Write-Verbose "Folder '$($using:FolderToDelete)' deleted"
+                    }catch{
+                        Write-Verbose "[WARNING] Error trying to delete folder '$($using:FolderToDelete)' - $($_.Exception.Message)"
+                    }
+                }
             }
         }
     }

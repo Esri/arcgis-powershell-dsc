@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = '11.3'
+        $Version = 11.4
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -24,11 +24,11 @@
         $ServerContext = 'server'
 
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $UseCloudStorage 
 
          ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $UseAzureFiles 
 
         ,[Parameter(Mandatory=$false)]
@@ -73,38 +73,64 @@
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
-        $FileShareMachineName
-
-        ,[Parameter(Mandatory=$true)]
-        [System.String]
         $ExternalDNSHostName    
         
         ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $OSDiskSize = 0
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $EnableDataDisk  
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Int32]
-        $DataDiskNumber = 2
-        
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $EnableLogHarvesterPlugin
 
-         ,[Parameter(Mandatory=$false)]
+        ,[Parameter(Mandatory=$true)]
+        [System.Boolean]
+        $UseExistingFileShare
+
+        ,[Parameter(Mandatory=$true)]
+        [System.String]
+        $FileShareMachineName
+        
+        ,[Parameter(Mandatory=$false)]
         [System.String]
         $FileShareName = 'fileshare'
 
         ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $FileSharePath
+
+        ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
+
+        ,[parameter(Mandatory = $false)]
+		[System.String]
+		$DatabaseOption
+
+        ,[parameter(Mandatory = $false)]
+		[System.String]
+		$DatabaseServerHostName
+
+        ,[parameter(Mandatory = $false)]
+		[System.String]
+		$DatabaseName
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $DatabaseServerAdministratorCredential
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $DatabaseUserCredential
+
+        ,[parameter(Mandatory = $false)]
+		[System.Boolean]
+		$EnableGeodatabase = $True
+
+        ,[Parameter(Mandatory=$false)]
+        $CloudStores
+
+        ,[Parameter(Mandatory=$false)]
+        $CloudProvidedObjectStore
         
         ,[Parameter(Mandatory=$false)]
-        [System.String]
+        [System.Boolean]
         $DebugMode        
     )
 
@@ -132,19 +158,32 @@
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_xFirewall
-    Import-DscResource -Name ArcGIS_xDisk
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_LogHarvester
     Import-DscResource -Name ArcGIS_ServerSettings
     
+    $FileShareRootPath = $FileSharePath
+    if(-not($UseExistingFileShare)) { 
+        $FileSharePath = "\\$($FileShareMachineName)\$($FileShareName)"
+        
+        $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
+        if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
+        $FileShareRootPath = "\\$ipaddress\$FileShareName"
+    }
+
+    $ServerCertificateFileName  = 'SSLCertificateForServer.pfx'
+    $ServerCertificateLocalFilePath =  (Join-Path $env:TEMP $ServerCertificateFileName)
+
+    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
+    $ServerCertificateFileLocation = "$($FileSharePath)\Certs\$ServerCertificateFileName"
+    if($UseExistingFileShare)
+    {
+        $ServerCertificateFileLocation = "$($FileSharePath)\$($FolderName)\$($ServerContext)\$ServerCertificateFileName"
+    }
+
     ##
     ## Download license file and certificate files
     ##
-    
-    $ServerCertificateFileName  = 'SSLCertificateForServer.pfx'
-    $ServerCertificateLocalFilePath =  (Join-Path $env:TEMP $ServerCertificateFileName)
-    $ServerCertificateFileLocation = "\\$($FileShareMachineName)\$FileShareName\Certs\$ServerCertificateFileName"
-
     if($ServerLicenseFileUrl -and ($ServerLicenseFileUrl.Trim().Length -gt 0)) {
         $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
         Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
@@ -154,20 +193,15 @@
 		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
 		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
 	}
-        
-    $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1    
-    $ipaddress = (Resolve-DnsName -Name $FileShareMachineName -Type A -ErrorAction Ignore | Select-Object -First 1).IPAddress    
-    if(-not($ipaddress)) { $ipaddress = $FileShareMachineName }
-    $FileShareRootPath = "\\$ipaddress\$FileShareName"
-    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $ConfigStoreLocation  = "\\$FileShareMachineName\$FileShareName\$FolderName\$($ServerContext)\config-store"
-    $ServerDirsLocation   = "\\$FileShareMachineName\$FileShareName\$FolderName\$($ServerContext)\server-dirs" 
+    
+    $ConfigStoreLocation  = "$($FileSharePath)\$FolderName\$($ServerContext)\config-store"
+    $ServerDirsLocation   = "$($FileSharePath)\$FolderName\$($ServerContext)\server-dirs" 
 
+    $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1    
     $Join = ($env:ComputerName -ine $ServerHostName)
-    $IsDebugMode = $DebugMode -ieq 'true'
     $IsMultiMachineServer = (($ServerMachineNames -split ',').Length -gt 1)
 
-    if(($UseCloudStorage -ieq 'True') -and $StorageAccountCredential) 
+    if($UseCloudStorage -and $StorageAccountCredential) 
     {
         $Namespace = $ExternalDNSHostName
         $Pos = $Namespace.IndexOf('.')
@@ -182,7 +216,7 @@
 			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
         }
 
-        if($UseAzureFiles -ieq 'True') {
+        if($UseAzureFiles) {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')                        
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case            
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($ServerContext)\config-store"
@@ -220,22 +254,9 @@
             RebootNodeIfNeeded = $true
         }
         
-        if($OSDiskSize -gt 0) 
+        ArcGIS_Disk DiskSizeCheck
         {
-            ArcGIS_Disk OSDiskSize
-            {
-                DriveLetter = ($env:SystemDrive -replace ":" )
-                SizeInGB    = $OSDiskSize
-            }
-        }
-        
-        if($EnableDataDisk -ieq 'true')
-        {
-            ArcGIS_xDisk DataDisk
-            {
-                DiskNumber  =  $DataDiskNumber
-                DriveLetter = 'F'
-            }
+            HostName = $env:ComputerName
         }
                 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -287,7 +308,7 @@
                     }
                     $ServerDependsOn += '[ArcGIS_Service_Account]Server_Service_Account'
                 
-                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles -ieq 'True')) 
+                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
                     {
                         $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                         $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -347,7 +368,7 @@
                     ArcGIS_LogHarvester ServerLogHarvester
                     {
                         ComponentType = "Server"
-                        EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin -ieq 'true'){$true}else{$false}
+                        EnableLogHarvesterPlugin = if($EnableLogHarvesterPlugin){$true}else{$false}
                         Version = $Version
                         LogFormat = "csv"
                         DependsOn = $ServerDependsOn
@@ -361,19 +382,22 @@
                         Ensure                                  = 'Present'
                         SiteAdministrator                       = $SiteAdministratorCredential
                         ConfigurationStoreLocation              = if(-not($Join)){ $ConfigStoreLocation }else{ $null }
-                        DependsOn                               = $ServerDependsOn
                         ServerDirectoriesRootLocation           = $ServerDirsLocation
                         Join                                    = $Join
                         PeerServerHostName                      = $ServerHostName
-                        LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
+                        LogLevel                                = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
                         ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
                         ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
+                        DependsOn                               = $ServerDependsOn
                     }
                     $ServerDependsOn += '[ArcGIS_Server]Server'
+
+                    
                 }
             }
             
             if($IsUpdatingCertificates -or ($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0))){ #On add of new machine or update certificate op
+                
                 Script CopyCertificateFileToLocalMachine
                 {
                     GetScript = {
@@ -405,20 +429,21 @@
                     CertificateFileLocation    = $ServerCertificateLocalFilePath
                     CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
                     ServerType                 = "GeneralPurposeServer"
-                    DependsOn                  = $ServerDependsOn
                     SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
+                    DependsOn                  = $ServerDependsOn
                 }
                 $ServerDependsOn += '[ArcGIS_Server_TLS]Server_TLS'
             }
 
-            if($env:ComputerName -ieq $ServerHostName -and (-not($IsUpdatingCertificates) -and ($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0)))){ #On add of new machine and not on update certificate op, Perform on First machine
+            #On add of new machine and not on update certificate op, Perform on First machine
+            if($env:ComputerName -ieq $ServerHostName -and (-not($IsUpdatingCertificates) -and ($ServerLicenseFileName -and ($ServerLicenseFileName.Trim().Length -gt 0)))){ 
                 ArcGIS_ServerSettings ServerSettings
                 {
                     ServerContext       = $ServerContext
                     ServerHostName      = $ServerHostName
                     ExternalDNSName     = $ExternalDNSHostName
                     SiteAdministrator   = $SiteAdministratorCredential
-                    DependsOn = $ServerDependsOn
+                    DependsOn           = $ServerDependsOn
                 }
             }
 
@@ -439,5 +464,121 @@
                 }
             }
         }
+
+        if(($DatabaseOption -ine 'None') -and $DatabaseServerHostName -and $DatabaseName -and $DatabaseServerAdministratorCredential -and $DatabaseUserCredential -and ($ServerHostName -ieq $env:ComputerName))
+        {
+            ArcGIS_EGDB RegisterEGDB
+            {
+                DatabaseServer              = $DatabaseServerHostName
+                DatabaseName                = $DatabaseName
+                ServerSiteAdministrator     = $SiteAdministratorCredential
+                DatabaseServerAdministrator = $DatabaseServerAdministratorCredential
+                DatabaseUser                = $DatabaseUserCredential
+                EnableGeodatabase           = $EnableGeodatabase
+                DatabaseType                = $DatabaseOption
+				IsManaged					= $False
+                Ensure                      = 'Present'
+                DependsOn                   = $CloudStoreRegisterDependsOn
+            }
+            $CloudStoreRegisterDependsOn += @("[ArcGIS_EGDB]RegisterEGDB")
+        }
+
+
+        if((($CloudProvidedObjectStore.Count -gt 0) -or ($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0)) -and ($ServerHostName -ieq $env:ComputerName)) 
+        {
+            $DataStoreItems = @()
+            $CacheDirectories = @()
+
+            $CloudStoresObj = $()
+            if($CloudProvidedObjectStore -and $CloudProvidedObjectStore.Count -gt 0){
+                $CloudStoresObj += @($CloudProvidedObjectStore)
+            }
+            if($CloudStores -and $CloudStores.stores -and $CloudStores.stores.Count -gt 0){
+                $CloudStoresObj += $CloudStores.stores
+            }
+
+            foreach($cloudStore in $CloudStoresObj) 
+            {
+                $AuthType = $cloudStore.AzureStorageAuthenticationType
+                $AzureConnectionObject = @{
+                    AccountName = $cloudStore.AccountName
+                    AccountEndpoint = $cloudStore.AccountEndpoint
+                    DefaultEndpointsProtocol = "https"
+                    OverrideEndpoint = if($cloudStore.OverrideEndpoint){ $cloudStore.OverrideEndpoint }else{ $null }
+                    ContainerName = $cloudStore.ContainerName
+                    FolderPath = if($cloudStore.Path){ $cloudStore.Path }else{ $null } 
+                    AuthenticationType = $AuthType
+                }
+
+                $ConnectionPassword = $null
+                if($AuthType -ieq "AccessKey"){
+                    $ConnectionPassword = ConvertTo-SecureString $cloudStore.AccessKey -AsPlainText -Force 
+                }elseif($AuthType -ieq "SASToken"){
+                    $ConnectionPassword = ConvertTo-SecureString $cloudStore.SASToken -AsPlainText -Force 
+                }elseif($AuthType -ieq "ServicePrincipal"){
+                    $AzureConnectionObject["ServicePrincipalTenantId"] = $cloudStore.ServicePrincipal.TenantId
+                    if($cloudStore.ServicePrincipal.ContainsKey("AuthorityHost") -and -not([string]::IsNullOrEmpty($cloudStore.ServicePrincipal.AuthorityHost))){
+                        $AzureConnectionObject["ServicePrincipalAuthorityHost"] = $cloudStore.ServicePrincipal.AuthorityHost
+                    }
+                    $AzureConnectionObject["ServicePrincipalClientId"] = $cloudStore.ServicePrincipal.ClientId
+                    $ConnectionPassword = (ConvertTo-SecureString $AzureStorageObject.ServicePrincipal.ClientSecret -AsPlainText -Force)
+                }elseif($AuthType -ieq "UserAssignedIdentity"){
+                    $AzureConnectionObject["UserAssignedIdentityClientId"] = $cloudStore.UserAssignedIdentityClientId
+                }
+                $ConnectionSecret = $null
+                if($null -ne $ConnectionPassword){
+                    $ConnectionSecret = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( "PlaceHolder", $ConnectionPassword )
+                }
+
+                $ConnectionStringObject = @{
+                    CloudStoreType = "Azure"
+                    AzureStorage = $AzureConnectionObject
+                }
+                
+                $CloudStoreName = $cloudStore.Name
+                $DataStoreItems += @{
+                    Name = $CloudStoreName
+                    DataStoreType = if($cloudStore.StoreType -ieq 'ObjectStore'){ 'ObjectStore' }else{ 'CloudStore' }  
+                    ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
+                    ConnectionSecret = $ConnectionSecret
+                }
+                if($cloudStore.StoreType -ieq 'CacheDirectory'){
+                    $CacheDirectories += @{
+                        name = ('Cache Directory ' + $CloudStoreName).Replace(' ', '_')
+                        physicalPath = "/cloudStores/$($CloudStoreName)"
+                        directoryType = "CACHE"
+                    }
+                }
+            }
+
+            foreach($dataStoreItem in $DataStoreItems)
+            {
+                ArcGIS_DataStoreItemServer $dataStoreItem.Name
+                {
+                    Name = $dataStoreItem.Name
+                    ServerHostName = $ServerHostName
+                    SiteAdministrator = $SiteAdministratorCredential
+                    DataStoreType = $dataStoreItem.DataStoreType
+                    ConnectionString = $dataStoreItem.ConnectionString
+                    ConnectionSecret = $dataStoreItem.ConnectionSecret
+                    Ensure = "Present"
+                    DependsOn = $ServerDependsOn
+                }
+                $ServerDependsOn += @("[ArcGIS_DataStoreItemServer]$($dataStoreItem.Name)")				
+            }
+
+            if($CacheDirectories.Length -gt 0){
+                ArcGIS_Server_RegisterDirectories "RegisterCacheDirectory"
+                { 
+                    ServerHostName = $ServerHostName
+                    Ensure = 'Present'
+                    SiteAdministrator = $SiteAdministratorCredential
+                    DirectoriesJSON = ($CacheDirectories | ConvertTo-Json)
+                    DependsOn = $ServerDependsOn
+                }
+                $ServerDependsOn += @("[ArcGIS_Server_RegisterDirectories]RegisterCacheDirectory")		
+            }
+        }
+
 	}
 }
