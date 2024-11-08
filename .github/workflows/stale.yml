@@ -18,8 +18,8 @@ jobs:
           stale-pr-message: "This PR has been automatically marked as stale because it has not had recent activity. It will be closed if no further activity occurs. If you want this PR to never become stale, please apply
             the 'Draft' label."
           close-pr-message: "This PR has been automatically closed due to inactivity. Thank you for your contributions."          
-          days-before-stale: 45
-          days-before-close: 15
+          days-before-stale: 90
+          days-before-close: 30
           exempt-issue-labels: 'bug, security, enhancement' # Labels to exempt from being marked as stale
           exempt-pr-labels: 'draft' # Labels to exempt from being marked as stale
           operations-per-run: 90
