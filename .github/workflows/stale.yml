@@ -22,3 +22,4 @@ jobs:
           days-before-close: 15
           exempt-issue-labels: 'bug, security, enhancement' # Labels to exempt from being marked as stale
           exempt-pr-labels: 'draft' # Labels to exempt from being marked as stale
+          operations-per-run: 90
