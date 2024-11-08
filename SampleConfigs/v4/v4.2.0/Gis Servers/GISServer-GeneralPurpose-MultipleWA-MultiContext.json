@@ -9,7 +9,7 @@
             "WebAdaptorConfig":[
                 {
                     "Role": "Server",
-                    "ServerContext":"[Node Server Context]",
+                    "Context":"[Node Server Context]",
                     "AdminAccessEnabled": true
                 }
             ]
@@ -22,7 +22,7 @@
             "WebAdaptorConfig":[
                 {
                     "Role": "Server",
-                    "ServerContext":"[Node Server Context]",
+                    "Context":"[Node Server Context]",
                     "AdminAccessEnabled": false
                 }
             ]
