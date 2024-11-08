@@ -1,0 +1,24 @@
+name: "Close stale issues"
+
+# Controls when the workflow will run. 
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+jobs:
+  # stale:
+  stale-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: "This issue has been automatically marked as stale because it has not had recent activity. It will be closed if no further activity occurs. "
+          close-issue-message: "This issue has been automatically closed due to inactivity."
+          stale-pr-message: "This PR has been automatically marked as stale because it has not had recent activity. It will be closed if no further activity occurs. If you want this PR to never become stale, please apply
+            the 'Draft' label."
+          close-pr-message: "This PR has been automatically closed due to inactivity. Thank you for your contributions."          
+          days-before-stale: 45
+          days-before-close: 15
+          exempt-issue-labels: 'bug, security, enhancement' # Labels to exempt from being marked as stale
+          exempt-pr-labels: 'draft' # Labels to exempt from being marked as stale
