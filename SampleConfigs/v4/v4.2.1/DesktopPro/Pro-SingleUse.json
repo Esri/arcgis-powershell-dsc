@@ -25,6 +25,8 @@
                 "Path": "[Pro Installer Path]",
                 "DotnetDesktopRuntimeDownloadUrl": "[Dotnet Desktop Runtime Installer Download Url]",
                 "DotnetDesktopRuntimePath": "[Dotnet Desktop Runtime Installer Path]",
+                "EdgeWebView2RuntimeDownloadUrl": "[Edge Web View 2 runtime Installer Download Url]",
+                "EdgeWebView2RuntimePath": "[Edge Web View 2 runtime Installer Path]",
                 "IsSelfExtracting": "[ Optional - True (Default) | False ]",
                 "InstallDir": "[Pro Install Dir - Ex. C:\\ArcGIS\\Pro]",
                 "PatchesDir": "",

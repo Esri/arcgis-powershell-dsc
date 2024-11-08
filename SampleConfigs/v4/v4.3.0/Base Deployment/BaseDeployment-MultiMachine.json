@@ -87,14 +87,14 @@
             "LicenseFilePath": "[License File Path - Server ]",
             "Installer": {
                 "Path": "[Server Installer Path]",
+                "VolumePaths": [
+                    "[Server Installer Path].001"
+                ],
                 "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
                 "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
                 "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
                 "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
             },
-            "VolumePaths": [
-                "[Server Installer Path].001"
-            ],
             "ServerDirectoriesRootLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\directories",
             "ConfigStoreLocation": "\\\\[Fileshare Machine Name 1]\\[Fileshare Name]\\arcgisserver\\config-store",
             "ExternalLoadBalancer": "",
