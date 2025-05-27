@@ -32,7 +32,7 @@ Configuration UnfederateSiteConfiguration
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
         ArcGIS_Federation Federate

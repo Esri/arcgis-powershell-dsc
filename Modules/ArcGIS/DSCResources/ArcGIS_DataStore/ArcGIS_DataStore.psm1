@@ -25,8 +25,6 @@ Import-Module -Name (Join-Path -Path $modulePath `
         A MSFT_Credential Object - Primary Site Administrator to access the GIS Server. 
     .PARAMETER ContentDirectory
          Path for the ArcGIS Data Store directory. This directory contains the data store files, plus the relational data store backup directory.
-    .PARAMETER IsStandby
-        Boolean to Indicate if the datastore (Relational only) being configured with a GIS Server is a Standby Server.(Only Supports 1 StandBy Server)
     .PARAMETER DataStoreTypes
         The type of data store to create on the machine.('Relational','SpatioTemporal','TileCache'). Value for this can be one or more. 
     .PARAMETER EnableFailoverOnPrimaryStop
@@ -67,9 +65,6 @@ function Get-TargetResource
 		[System.String]
 		$ContentDirectory,
 
-        [System.Boolean]
-		$IsStandby,
-
         [System.Array]
         $DataStoreTypes,
         
@@ -78,6 +73,9 @@ function Get-TargetResource
 
         [System.Boolean]
         $IsObjectDataStoreClustered = $false,
+
+        [System.Boolean]
+        $IsGraphStoreClustered = $false,
         
         [System.Boolean]
 		$EnableFailoverOnPrimaryStop = $false,
@@ -120,9 +118,6 @@ function Set-TargetResource
 		[System.String]
 		$ContentDirectory,
 
-        [System.Boolean]
-		$IsStandby,
-
         [System.Array]
         $DataStoreTypes,
 
@@ -131,6 +126,9 @@ function Set-TargetResource
 
         [System.Boolean]
         $IsObjectDataStoreClustered = $false,
+
+        [System.Boolean]
+        $IsGraphStoreClustered = $false,
         
         [System.Boolean]
         $EnableFailoverOnPrimaryStop = $false,
@@ -259,7 +257,8 @@ function Set-TargetResource
                                     -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
                                     -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
                                     -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
-                                    -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory
+                                    -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory `
+                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version
         
         #Check if the TileCache mode is correct, only for 10.8.1 and above                                                            
         if($DatastoresToRegisterOrConfigure.Count -gt 0){
@@ -269,7 +268,8 @@ function Set-TargetResource
                                 -ServerUrl $ServerUrl -DataStoreContentDirectory $ContentDirectory -ServerAdminUrl "$ServerUrl/arcgis/admin" `
                                 -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes `
                                 -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -DataStoreInstallDirectory $DataStoreInstallDirectory `
-                                -IsObjectDataStoreClustered $IsObjectDataStoreClustered
+                                -IsObjectDataStoreClustered $IsObjectDataStoreClustered -IsGraphStoreClustered $IsGraphStoreClustered `
+                                -Version $Version
         }
 
         if($DataStoreTypes -icontains "SpatioTemporal"){
@@ -326,9 +326,6 @@ function Test-TargetResource
         [System.String]
 		$ContentDirectory,
 
-        [System.Boolean]
-		$IsStandby,
-
         [System.Array]
         $DataStoreTypes,
 
@@ -337,6 +334,9 @@ function Test-TargetResource
 
         [System.Boolean]
         $IsObjectDataStoreClustered = $false,
+
+        [System.Boolean]
+        $IsGraphStoreClustered = $false,
         
         [System.Boolean]
         $EnableFailoverOnPrimaryStop = $false,
@@ -396,7 +396,8 @@ function Test-TargetResource
                                     -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
                                     -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
                                     -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
-                                    -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory
+                                    -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory `
+                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version
 
         if($DatastoresToRegisterOrConfigure.Count -gt 0){
             $result = $false
@@ -438,6 +439,9 @@ function Invoke-RegisterOrConfigureDataStore
     [CmdletBinding()]
     param(
         [System.String]
+        $Version,
+
+        [System.String]
         $DataStoreAdminEndpoint,
 
         [System.Management.Automation.PSCredential]
@@ -472,6 +476,9 @@ function Invoke-RegisterOrConfigureDataStore
 
         [System.Boolean]
         $IsObjectDataStoreClustered,
+
+        [System.Boolean]
+        $IsGraphStoreClustered,
 
         [System.String]
         $DataStoreInstallDirectory
@@ -525,6 +532,15 @@ function Invoke-RegisterOrConfigureDataStore
         $dsSettings.add("referer",$Referer)
     }
 
+    if($DataStoreTypes -icontains "GraphStore" -and (($VersionArray[0] -eq 11 -and $VersionArray[1] -eq 5) -or ($VersionArray[0] -gt 11))){
+        if($IsGraphStoreClustered){
+            $dsSettings.add("storeSetting.graphStore",@{deploymentMode="cluster"})
+        }else{
+            $dsSettings.add("storeSetting.graphStore",@{deploymentMode="singleInstance"})
+        }
+        $dsSettings.add("referer",$Referer)
+    }    
+
     $WebParams = @{ 
                     username = $ServerSiteAdminCredential.UserName
                     password = $ServerSiteAdminCredential.GetNetworkCredential().Password
@@ -550,7 +566,8 @@ function Invoke-RegisterOrConfigureDataStore
                                             -Referer $Referer -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
                                             -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential `
                                             -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
-                                            -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $DataStoreContentDirectory
+                                            -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $DataStoreContentDirectory `
+                                            -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version
 
                 $DatastoresToRegisterFlag = ($DatastoresToRegisterOrConfigure.Count -gt 0)
             }            
@@ -611,6 +628,9 @@ function Get-DataStoreTypesToRegisterOrConfigure
     [CmdletBinding()]
     param(
         [System.String]
+        $Version,
+
+        [System.String]
         $ServerURL, 
 
         [System.String]
@@ -640,6 +660,9 @@ function Get-DataStoreTypesToRegisterOrConfigure
         [System.Boolean]
         $IsObjectDataStoreClustered,
 
+        [System.Boolean]
+        $IsGraphStoreClustered,
+
         [System.String]
         $DataStoreContentDirectory
     )
@@ -660,15 +683,21 @@ function Get-DataStoreTypesToRegisterOrConfigure
         }elseif($dstype -ieq 'GraphStore'){
             $dsTestResult = $DataStoreInfo.graphStore.registered
         }elseif($dstype -ieq 'ObjectStore'){
-            $ObjectStoreConfigFile = Join-Path $DataStoreContentDirectory "etc\ozobjectstore-config.json"
-            if(Test-Path $ObjectStoreConfigFile){
-                $ObjectConfig = (Get-Content $ObjectStoreConfigFile | ConvertFrom-Json)
-                $dsTestResult = ($ObjectConfig.'datastore.registered') -ieq $True
+            if($DataStoreInfo.currentVersion -ieq "11.0.0" -or $DataStoreInfo.currentVersion -ieq "11.1.0"){
+                $ObjectStoreConfigFile = Join-Path $DataStoreContentDirectory "etc\ozobjectstore-config.json"
+                if(Test-Path $ObjectStoreConfigFile){
+                    $ObjectConfig = (Get-Content $ObjectStoreConfigFile | ConvertFrom-Json)
+                    $dsTestResult = ($ObjectConfig.'datastore.registered') -ieq $True
+                }else{
+                    $dsTestResult = $False
+                }
             }else{
-                $dsTestResult = $False
+                $dsTestResult = $DataStoreInfo.objectStore.registered
             }
         }
-        $serverTestResult = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -IsObjectDataStoreClustered $IsObjectDataStoreClustered -Verbose
+        $serverTestResult = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN `
+                                                    -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -IsObjectDataStoreClustered $IsObjectDataStoreClustered `
+                                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version -Verbose
 
         if($dsTestResult -and $serverTestResult){
             Write-Verbose "The machine with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
@@ -680,42 +709,13 @@ function Get-DataStoreTypesToRegisterOrConfigure
 
     $DatastoresToRegister
 }
-
-function Get-DataStoreInfo
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $DataStoreAdminEndpoint,
-        
-        [System.Management.Automation.PSCredential]
-        $ServerSiteAdminCredential, 
-        
-        [System.String]
-        $ServerSiteUrl,
-        
-        [System.String]
-        $Referer
-    )
-
-    $WebParams = @{ 
-                    f = 'json'
-                    username = $ServerSiteAdminCredential.UserName
-                    password = $ServerSiteAdminCredential.GetNetworkCredential().Password
-                    serverURL = $ServerSiteUrl      
-                    dsSettings = '{"features":{"feature.egdb":true,"feature.nosqldb":true,"feature.bigdata":true,"feature.graphstore":true,"feature.ozobjectstore":true}}'
-                    getConfigureInfo = 'true'
-                }       
-
-   $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'  
-   Wait-ForUrl -Url "$($DataStoreConfigureUrl)?f=json" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -HttpMethod 'GET' -Verbose
-   Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -Verbose 
-}
-
 function Test-DataStoreRegistered
 {
     [CmdletBinding()]
     param(
+        [System.String]
+        $Version,
+
         [System.String]
         $ServerURL, 
 
@@ -735,7 +735,10 @@ function Test-DataStoreRegistered
         $IsTileCacheDataStoreClustered,
 
         [System.Boolean]
-        $IsObjectDataStoreClustered
+        $IsObjectDataStoreClustered,
+
+        [System.Boolean]
+        $IsGraphStoreClustered 
     )
 
     $result = $false
@@ -744,7 +747,7 @@ function Test-DataStoreRegistered
         $DBType ='nosql'
     }
     elseif($Type -like "ObjectStore"){
-        $DBType = "cloudStore"
+        $DBType = "objectStore"
     }
     else{
         $DBType ='egdb'
@@ -754,13 +757,13 @@ function Test-DataStoreRegistered
     $response = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $DBType } -Referer $Referer -Verbose
     
     $registered= $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Measure-Object).Count -gt 0
-    if($DBType -ieq 'nosql' -or $DBType -ieq 'cloudStore'){
+    if($DBType -ieq 'nosql'){
         $registered = $($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Measure-Object).Count -gt 0
     }
 
     if($registered){
         $DB = $($response.items | Where-Object { $_.provider -ieq 'ArcGIS Data Store' } | Select-Object -First 1)
-        if($DBType -ieq 'nosql' -or $DBType -ieq 'cloudStore'){
+        if($DBType -ieq 'nosql'){
             $DB = ($response.items | Where-Object { ($_.provider -ieq 'ArcGIS Data Store') -and ($_.info.dsFeature -ieq $Type) } | Select-Object -First 1)
         }
 
@@ -802,6 +805,39 @@ function Test-DataStoreRegistered
                 }else{
                     #$result = $false
                     throw "[ERROR] Object store Architecture is set to Cluster. Cannot be converted to Single Instance."
+                }
+            }
+        }
+
+        if($result -and ($Type -like "GraphStore")){
+            $VersionArray = $Version.Split(".")
+            if($Version -ieq "11.5" -or $VersionArray[0] -gt 11){
+               if($IsGraphStoreClustered){
+                    if($DB.info.deploymentMode -ieq "singleInstance"){ 
+                        Write-Verbose "Graph store architecture is already set to Single Instance. A backup location needs to be configured to be converted to Cluster mode."
+                        # Check if backup location is configured
+                        $GraphStoreBackupLocations = Get-DataStoreBackupLocation -DataStoreType "GraphStore" -DataStoreInstallDirectory $DataStoreInstallDirectory -Verbose
+                        $BackupLocation = ($GraphStoreBackupLocations | Select-Object -First 1 )
+                        if($null -eq $BackupLocation){
+                            # if only one machine is present, don't throw an error, just add a warning. 
+                            # If multiple machines are present, throw an error.
+                            $NumberOfGraphStoreMachines = $DB.info.machines.Count
+                            if($NumberOfGraphStoreMachines -eq 1){
+                                Write-Verbose "[WARNING] Graph store backup location is not configured."
+                            }else{
+                                throw "[ERROR] Graph store backup location is not configured. Cannot be converted to Cluster mode without a backup location."
+                            }
+                        }
+                    }else{
+                        Write-Verbose "Graph store architecture is already set to Cluster."
+                    }
+                }else{
+                    if($DB.info.deploymentMode -ieq "singleInstance"){
+                        Write-Verbose "Graph store Architecture is already set to Single Instance."
+                    }else{
+                        #$result = $false
+                        throw "[ERROR] Graph store Architecture is set to Cluster. Cannot be converted to Single Instance."
+                    }
                 }
             }
         }

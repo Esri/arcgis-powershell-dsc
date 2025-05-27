@@ -3,12 +3,9 @@
         [System.Management.Automation.PSCredential]
         $SiteAdministratorCredential,
 
-        [System.Boolean]
-        $ServiceCredentialIsDomainAccount,
-
         [System.String]
         $ServerMachineName,
-
+        
 		[Parameter(Mandatory=$false)]
         [System.Boolean]
         $DebugMode
@@ -23,9 +20,9 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
-        
+
         $InstallDir = "$($env:SystemDrive)\\arcgis\\datastore"
         $DataStoreContentDirectory = "$($env:SystemDrive)\\arcgis\\datastore\\content"
        

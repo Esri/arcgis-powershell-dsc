@@ -60,11 +60,15 @@
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
-        $EnableMSILogging = $false
+        $EnableMSILogging = $false,
+
+        [System.String]
+        $JavaWebServerType
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_WebAdaptor
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_WebAdaptor, ArcGIS_Tomcat
+
 
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -81,7 +85,8 @@
             foreach($WA in $Node.WebAdaptorConfig){
                 if($WA.Role -ieq $WebAdaptorRole){
                     $LastWAName = "UnregisterWebAdaptor$($Node.NodeName)-$($WA.Context)"
-
+                    # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
+                    $WAAdminAccessEnabled = if((@("11.5") -icontains $Version)) {$true} else {$WA.AdminAccessEnabled}
                     ArcGIS_WebAdaptor $LastWAName
                     {
                         Version             = $OldVersion
@@ -92,13 +97,41 @@
                         Context             = $WA.Context
                         OverwriteFlag       = $False
                         SiteAdministrator   = $SiteAdministratorCredential
-                        AdminAccessEnabled  = $WA.AdminAccessEnabled
+                        AdminAccessEnabled  = $WAAdminAccessEnabled
                         IsJavaWebAdaptor    = $IsJavaWebAdaptor
                         JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                        JavaWebServerType   = $JavaWebServerType
                     }
                 }
             }
-            
+            $WebAdaptorDependsOn = @()
+            if($null -ne $ConfigurationData.TomcatConfig) {
+                $ApacheTomcatConfig = $ConfigurationData.TomcatConfig
+
+                if ($ApacheTomcatConfig.ContainsKey("OldVersion") -and $ApacheTomcatConfig.ContainsKey("OldServiceName")){
+                    Write-Verbose "Existing Tomcat configuration found: Installed Version = $($ApacheTomcatConfig.OldVersion), Installed Service Name = $($ApacheTomcatConfig.OldServiceName)."
+                    ArcGIS_Tomcat ApacheTomcatUninstall {
+                        Version                = $ApacheTomcatConfig.OldVersion
+                        Ensure                 = "Absent"
+                        ServiceName            = $ApacheTomcatConfig.OldServiceName
+                        DependsOn              = "[ArcGIS_WebAdaptor]$($LastWAName)"
+                    }
+                    ArcGIS_Tomcat ApacheTomcatInstall
+                    {
+                        Version = $ApacheTomcatConfig.Version
+                        Ensure = "Present"
+                        ServiceName = $ApacheTomcatConfig.ServiceName
+                        InstallerArchivePath = $ApacheTomcatConfig.Path
+                        InstallDirectory = $ApacheTomcatConfig.InstallDir
+                        SSLProtocols = $ApacheTomcatConfig.SSLProtocol
+                        ExternalDNSName = if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{ $MachineFQDN }
+                        CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{ $null}
+                        CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{ $null}
+                        DependsOn = "[ArcGIS_Tomcat]ApacheTomcatUninstall" # Ensures old Tomcat is removed first
+                    }
+                    $WebAdaptorDependsOn += "[ArcGIS_Tomcat]ApacheTomcatInstall"
+                }
+            }
             # Uninstall of old Java Web Adaptor handled separately
             
             # Install Java Web Adaptor
@@ -106,6 +139,7 @@
             if($JavaInstallDir){
                 $WAArguments += " INSTALLDIR=`"$($JavaInstallDir)`""
             }
+            $WebAdaptorDependsOn += "[ArcGIS_WebAdaptor]$LastWAName"
 
             ArcGIS_Install WebAdaptorJavaInstall
             { 
@@ -190,6 +224,7 @@
 
         foreach($WA in $Node.WebAdaptorConfig){
             if($WA.Role -ieq $WebAdaptorRole){
+                $WAAdminAccessEnabled = if((@("11.5") -icontains $Version)) {$true} else {$WA.AdminAccessEnabled}
                 ArcGIS_WebAdaptor "ConfigureWebAdaptor$($Node.NodeName)-$($WA.Context)"
                 {
                     Version             = $Version
@@ -200,9 +235,10 @@
                     Context             = $WA.Context
                     OverwriteFlag       = $False
                     SiteAdministrator   = $SiteAdministratorCredential
-                    AdminAccessEnabled  = $WA.AdminAccessEnabled
+                    AdminAccessEnabled  = $WAAdminAccessEnabled
                     IsJavaWebAdaptor    = $IsJavaWebAdaptor
                     JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    JavaWebServerType   = $JavaWebServerType
                     DependsOn           = $Depends
                 }
                 $Depends += @("[ArcGIS_WebAdaptor]ConfigureWebAdaptor$($Node.NodeName)-$($WA.Context)")

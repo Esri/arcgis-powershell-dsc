@@ -3,7 +3,11 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4
+        $Version = "11.5"
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsAllInOneBaseDeploy = $false
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -18,6 +22,14 @@
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
         $SiteAdministratorCredential
+
+        ,[Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $PortalAdministratorSecurityQuestionCredential
+
+        ,[Parameter(Mandatory=$False)]
+        [System.String]
+        $PortalAdministratorEmail
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -143,6 +155,7 @@
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_PortalSettings
     Import-DscResource -Name ArcGIS_Federation
+    Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
    
     $FileShareRootPath = $FileSharePath
     if(-not($UseExistingFileShare)) { 
@@ -242,12 +255,18 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
         
         ArcGIS_Disk DiskSizeCheck
         {
             HostName = $env:ComputerName
+        }
+
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = if($IsAllInOneBaseDeploy){ "DataStore,Server,Portal" }else{ "Portal" }
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -304,7 +323,7 @@
                     $PortalDependsOn += '[ArcGIS_Service_Account]Portal_Service_Account'
             
                 
-                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles))
+                    if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential)
                     {    
                         $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                         $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -379,7 +398,7 @@
                             Access                = "Allow" 
                             State                 = "Enabled" 
                             Profile               = ("Domain","Private","Public")
-                            RemotePort            = ("7654","7120","7220", "7005", "7099", "7199", "5701", "5702","5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication
+                            RemotePort            =("7654","7120","7220", "7005", "7099", "7199")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication
                             Direction             = "Outbound"                       
                             Protocol              = "TCP" 
                             DependsOn             = $PortalDependsOn
@@ -395,7 +414,7 @@
                             Access                = "Allow" 
                             State                 = "Enabled" 
                             Profile               = ("Domain","Private","Public")
-                            LocalPort             = ("7120","7220", "5701", "5702","5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701, 5702 and 5703
+                            LocalPort             = ("7120","7220")  # Elastic Search uses 7120,7220
                             Protocol              = "TCP" 
                             DependsOn             = $PortalDependsOn
                         }  
@@ -427,7 +446,7 @@
                                 Access                = "Allow" 
                                 State                 = "Enabled" 
                                 Profile               = ("Domain","Private","Public")
-                                RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                                LocalPort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
                                 Protocol              = "TCP" 
                             }  
                             $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
@@ -443,11 +462,10 @@
                         UserLicenseTypeId                     = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
                         PortalAdministrator                   = $SiteAdministratorCredential 
                         DependsOn                             = $PortalDependsOn
-                        AdminEmail                            = 'portaladmin@admin.com'
+                        AdminEmail                            = $PortalAdministratorEmail
                         AdminFullName                         = $SiteAdministratorCredential.UserName
                         AdminDescription                      = 'Portal Administrator'
-                        AdminSecurityQuestionIndex            = 1
-                        AdminSecurityAnswer                   = 'timbukto'
+                        AdminSecurityQuestionCredential       = if($PortalAdministratorSecurityQuestionCredential.UserName -ine "PlaceHolder"){ $PortalAdministratorSecurityQuestionCredential }else{ $null }
                         Join                                  = $Join
                         IsHAPortal                            = $IsHAPortal
                         PeerMachineHostName                   = if($Join) { $PortalHostName } else { $PeerMachineName }
@@ -533,7 +551,12 @@
             
             if(-not($IsUpdatingCertificates))
             {
-                foreach($ServiceToStop in @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server', 'WorkflowManager'))
+                $ServicesToStop = @('ArcGIS Server', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server','ArcGIS Mission Server', 'WorkflowManager')
+                if($IsAllInOneBaseDeploy -ieq 'True'){
+                    $ServicesToStop = @('ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'WorkflowManager')
+                }
+
+                foreach($ServiceToStop in $ServicesToStop)
                 {
                     if(Get-Service $ServiceToStop -ErrorAction Ignore) 
                     {

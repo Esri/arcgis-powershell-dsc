@@ -568,8 +568,8 @@ function Invoke-CreateSite
     }
 
     # make sure Tomcat is up and running BEFORE sending a request
-    Write-Verbose "Waiting for Server 'https://$($FQDN):11443/arcgis/admin' to initialize"
-    Wait-ForUrl -Url $baseHostUrl -SleepTimeInSeconds 5 -HttpMethod 'GET' -Verbose
+    Write-Verbose "Waiting for Server '$($baseHostUrl)/arcgis/admin' to initialize"
+    Wait-ForUrl -Url "$($baseHostUrl)/arcgis/admin" -SleepTimeInSeconds 5 -HttpMethod 'GET' -Verbose
 
     $httpRequestBody = ConvertTo-HttpBody -props $requestParams
     $response = Invoke-RestMethod -Method Post -Uri $createNewSiteUrl -Body $httpRequestBody -TimeoutSec $TimeOut 

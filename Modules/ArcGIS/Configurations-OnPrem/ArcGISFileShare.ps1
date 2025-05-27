@@ -28,7 +28,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_FileShare
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_FileShare
 
     Node $AllNodes.NodeName 
     {   
@@ -46,7 +46,7 @@
                 {
                     UserName = $ServiceCredential.UserName
                     Password = $ServiceCredential
-                    FullName = 'ArcGIS Run As Account'
+                    FullName = 'ArcGIS Service Account'
                     Ensure = "Present"
                     PasswordChangeRequired = $false
                     PasswordNeverExpires = $true

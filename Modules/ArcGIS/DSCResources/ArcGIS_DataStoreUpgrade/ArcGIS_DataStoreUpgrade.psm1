@@ -93,7 +93,7 @@ function Set-TargetResource
 
     #Hit the server endpoint to get the replication role
     $DSInfoResponse = Get-DataStoreInfo -DataStoreAdminEndpoint "https://localhost:2443/arcgis/datastoreadmin" -ServerSiteAdminCredential $SiteAdministrator `
-                                -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" -Token $token.token -Referer $Referer
+                                -ServerSiteUrl "https://$($ServerHostName):6443/arcgis" -Referer $Referer
     if($DSInfoResponse.error) {
         Write-Verbose "Error Response - $($response.error | ConvertTo-Json)"
         throw [string]::Format("ERROR: failed. {0}" , $response.error.message)
@@ -144,7 +144,13 @@ function Set-TargetResource
     if($DSInfoResponse.spatioTemporal.registered) {
         $dstypesarray.Add('spatiotemporal')
     }
-    
+    if($DSInfoResponse.graphStore.registered) {
+        $dstypesarray.Add('graph')
+    }
+    if($DSInfoResponse.objectStore.registered) {
+        $dstypesarray.Add('object')
+    }
+
     if($dstypesarray.Length -gt 0){
         $dstypes = $dstypesarray -join ","
         Write-Verbose $dstypes
@@ -170,12 +176,12 @@ function Set-TargetResource
         $err = $p.StandardError.ReadToEnd()
         if($p.ExitCode -eq 0) {                    
             Write-Verbose "Upgraded correctly"
-            $result = $true
         }else {
-            Write-Verbose "Upgraded did not succeed. Process exit code:- $($p.ExitCode)"
+            Write-Verbose "Datastore upgrade did not succeed. Process exit code:- $($p.ExitCode)"
             if($err -and $err.Length -gt 0) {
                 Write-Verbose $err
             }
+            throw "Datastore upgrade failed. Process exit code:- $($p.ExitCode). Error - $($err)"
         }
     }
 }
@@ -221,42 +227,5 @@ function Test-TargetResource
 
     $result
 }
-
-function Get-DataStoreInfo
-{
-    [CmdletBinding()]
-    param(
-        [System.String]
-        $DataStoreAdminEndpoint, 
-
-        [System.Management.Automation.PSCredential]
-        $ServerSiteAdminCredential, 
-
-        [System.String]
-        $ServerSiteUrl,
-
-        [System.String]
-        $Token, 
-
-        [System.String]
-        $Referer
-    )
-
-    $WebParams = @{ 
-                    f = 'json'
-                    username = $ServerSiteAdminCredential.UserName
-                    password = $ServerSiteAdminCredential.GetNetworkCredential().Password
-                    serverURL = $ServerSiteUrl      
-                    dsSettings = '{"features":{"feature.egdb":true,"feature.nosqldb":true,"feature.bigdata":true,"feature.graphstore":true,"feature.objectstore":true}}'
-                    getConfigureInfo = 'true'
-                  }  
-        
-   $DataStoreConfigureUrl = $DataStoreAdminEndpoint.TrimEnd('/') + '/configure'   
-   Wait-ForUrl -Url  $DataStoreConfigureUrl -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 20
-   Invoke-ArcGISWebRequest -Url $DataStoreConfigureUrl -HttpFormParameters $WebParams -Referer $Referer -HttpMethod 'POST' -Verbose 
-   
-}
-
-
 
 Export-ModuleMember -Function *-TargetResource

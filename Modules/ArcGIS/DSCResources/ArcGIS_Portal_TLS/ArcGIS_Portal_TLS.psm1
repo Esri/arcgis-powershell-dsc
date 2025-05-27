@@ -63,7 +63,13 @@ function Set-TargetResource
         $SslRootOrIntermediate,
 
         [System.Boolean]
-        $EnableHSTS
+        $EnableHSTS,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true,
+
+        [System.Boolean]
+        $ForceImportCertificate = $false
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -87,6 +93,7 @@ function Set-TargetResource
     $Info = Invoke-ArcGISWebRequest -Url "$($PortalUrl)/arcgis/portaladmin/" -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -Verbose -HttpMethod 'GET'
     $VersionArray = "$($Info.version)".Split('.')
     [System.Boolean]$VersionGreaterThan1071 = ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))
+    [System.Boolean]$VersionGreaterThanOrEqualTo11_3 = ($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3)
 
     if($CertificateFileLocation) 
 	{
@@ -117,13 +124,15 @@ function Set-TargetResource
                 $cert.Import($CertificateFileLocation, $CertificatePassword.GetNetworkCredential().Password, 'DefaultKeySet')
                 $NewCertThumbprint = $cert.Thumbprint
                 Write-Verbose "Thumbprint for the supplied certificate is $NewCertThumbprint"
-                if($CertForMachine.sha1Fingerprint -ine $NewCertThumbprint){
+                if($CertForMachine.sha1Fingerprint -ine $NewCertThumbprint -or $ForceImportCertificate){
                     $ImportExistingCertFlag = $True
+                    Write-Verbose "Force import certificate is: $ForceImportCertificate"
                     Write-Verbose "Importing exsting certificate with alias $($WebServerCertificateAlias)-temp"
                     try{
                         Import-ExistingCertificate -PortalURL $PortalURL -Token $token.token `
                                                     -Referer $Referer -CertAlias "$($WebServerCertificateAlias)-temp" -CertificateFilePath $CertificateFileLocation `
-                                                    -CertificatePassword $CertificatePassword -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071
+                                                    -CertificatePassword $CertificatePassword -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 `
+                                                    -VersionGreaterThanOrEqualTo11_3 $VersionGreaterThanOrEqualTo11_3 -ImportCertificateChain $ImportCertificateChain
                         $DeleteTempCert = $True
                     }catch{
                         throw "[WARNING] Error Import-ExistingCertificate:- $_"
@@ -151,14 +160,16 @@ function Set-TargetResource
                 Write-Verbose "Importing exsting certificate with alias $WebServerCertificateAlias"
                 try{
                     Import-ExistingCertificate -PortalURL $PortalURL -Token $token.token `
-                        -Referer $Referer -CertAlias $WebServerCertificateAlias -CertificateFilePath $CertificateFileLocation -CertificatePassword $CertificatePassword -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 
+                        -Referer $Referer -CertAlias $WebServerCertificateAlias -CertificateFilePath $CertificateFileLocation -CertificatePassword $CertificatePassword `
+                         -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 `
+                         -VersionGreaterThanOrEqualTo11_3 $VersionGreaterThanOrEqualTo11_3 -ImportCertificateChain $ImportCertificateChain 
                 }catch{
                     throw "[WARNING] Error Import-ExistingCertificate:- $_"
                 }
             }
             
             $Certs = Get-SSLCertificatesForPortal -PortalURL $PortalURL -Token $token.token -Referer $Referer -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071
-            if(($Certs.webServerCertificateAlias -ine $WebServerCertificateAlias) -or $ImportExistingCertFlag) {
+            if(($Certs.webServerCertificateAlias -ine $WebServerCertificateAlias) -or $ForceImportCertificate) {
                 Write-Verbose "Updating Alias to use $WebServerCertificateAlias"
                 try{
                     Update-PortalSSLCertificate -PortalURL $PortalURL -Token $token.token -Referer $Referer -CertAlias $WebServerCertificateAlias -MachineName $FQDN -VersionGreaterThan1071 $VersionGreaterThan1071 -Verbose
@@ -270,7 +281,13 @@ function Test-TargetResource
         $SslRootOrIntermediate,
 
         [System.Boolean]
-        $EnableHSTS
+        $EnableHSTS,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true,
+
+        [System.Boolean]
+        $ForceImportCertificate = $false
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -295,6 +312,7 @@ function Test-TargetResource
     $Info = Invoke-ArcGISWebRequest -Url "$($PortalURL)/arcgis/portaladmin/" -HttpFormParameters @{f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
     $VersionArray = "$($Info.version)".Split('.')
     [System.Boolean]$VersionGreaterThan1071 = ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))
+    [System.Boolean]$VersionGreaterThanOrEqualTo11_3 = ($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3)
 
     if($WebServerCertificateAlias){
         Write-Verbose "Retrieve SSL Certificate for Portal from $FQDN and checking for Alias $WebServerCertificateAlias"
@@ -363,6 +381,12 @@ function Test-TargetResource
         }else{
             Write-Verbose "Enabled HSTS matches the expected state $EnableHSTS"
         }
+    }
+
+    if ($VersionGreaterThanOrEqualTo11_3 `
+    -and ($ForceImportCertificate)) {
+        $result = $False
+        Write-Verbose "Force import certificate is True"
     }
 
     $result
@@ -456,11 +480,19 @@ function Import-ExistingCertificate
         $MachineName,
 
         [System.Boolean]
-        $VersionGreaterThan1071
+        $VersionGreaterThan1071,
+
+        [System.Boolean]
+        $VersionGreaterThanOrEqualTo11_3,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true
     )
     $ImportCertUrl = if($VersionGreaterThan1071){ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/machines/$MachineName/sslCertificates/importExistingServerCertificate" }else{ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/security/sslCertificates/importExistingServerCertificate" }
-    
-    $props = @{ f= 'json'; token = $Token; alias = $CertAlias; password = $CertificatePassword.GetNetworkCredential().Password  }    
+    $props = @{ f= 'json'; token = $Token; alias = $CertAlias; password = $CertificatePassword.GetNetworkCredential().Password  }
+    if ($VersionGreaterThanOrEqualTo11_3) {
+        $props["importCertificateChain"] = $ImportCertificateChain
+    }
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
     if($res) {
         $response = $res | ConvertFrom-Json
@@ -493,7 +525,10 @@ function Import-RootOrIntermediateCertificate
         $MachineName,
 
         [System.Boolean]
-        $VersionGreaterThan1071
+        $VersionGreaterThan1071,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true
     )
 
     $ImportCertUrl = if($VersionGreaterThan1071){ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/machines/$MachineName/sslCertificates/importRootOrIntermediate" }else{ $PortalURL.TrimEnd("/") + "/arcgis/portaladmin/security/sslCertificates/importRootOrIntermediate" }
@@ -536,7 +571,7 @@ function Update-HSTSSetting
     
     $sslProtocols = if($null -eq $SSLCertsObject.cipherSuites) { "TLSv1.2,TLSv1.1,TLSv1" }else{ $SSLCertsObject.sslProtocols }
     $cipherSuites = if($null -eq $SSLCertsObject.cipherSuites){ "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,TLS_DHE_RSA_WITH_AES_256_CBC_SHA,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_CBC_SHA256,TLS_RSA_WITH_AES_256_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA" }else{ $SSLCertsObject.cipherSuites }
-    $WebParams = @{ f = 'json'; token = $Token; webServerCertificateAlias = $SSLCertsObject.webServerCertificateAlias; sslProtocols = $sslProtocols ; cipherSuites = $cipherSuites; HSTSEnabled = "$HSTSEnabled";}
+    $WebParams = @{ f = 'json'; token = $Token; webServerCertificateAlias = $SSLCertsObject.webServerCertificateAlias; sslProtocols = $sslProtocols ; cipherSuites = $cipherSuites; HSTSEnabled = "$($HSTSEnabled)".ToLower();}
     
     Invoke-ArcGISWebRequest -Url $URL -HttpFormParameters $WebParams -Referer $Referer
 }

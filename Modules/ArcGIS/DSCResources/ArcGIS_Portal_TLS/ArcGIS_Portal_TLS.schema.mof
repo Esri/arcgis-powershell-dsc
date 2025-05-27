@@ -9,5 +9,7 @@ class ArcGIS_Portal_TLS : OMI_BaseResource
     [Write, Description("Portal Web Server SSL Certificate Alias")] String WebServerCertificateAlias;
 	[Write, Description("List of RootOrIntermediate Certificates")] String SslRootOrIntermediate;
 	[Write, Description("Enable HTTP Strict Transport Security (HSTS)")] Boolean EnableHSTS;
+	[Write, Description("Allow to import certificate chain")] Boolean ImportCertificateChain;
+	[Write, Description("Force importing the certificates")] Boolean ForceImportCertificate;
 };
 

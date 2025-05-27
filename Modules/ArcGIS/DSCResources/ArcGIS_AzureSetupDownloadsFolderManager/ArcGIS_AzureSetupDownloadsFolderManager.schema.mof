@@ -1,0 +1,12 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_AzureSetupDownloadsFolderManager")]
+class ArcGIS_AzureSetupDownloadsFolderManager : OMI_BaseResource
+{
+	[Key] String Version;
+	[Key] String OperationType;
+	[Key] String ComponentNames;
+	[Write] String ServerRole;
+	[Write] String UpgradeSetupsSourceFileSharePath;
+	[Write, EmbeddedInstance("MSFT_Credential")] String UpgradeSetupsSourceFileShareCredentials;
+	[Write] String AdditionalFilesOrFolderToDelete[];
+};

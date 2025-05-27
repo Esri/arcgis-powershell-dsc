@@ -3,7 +3,11 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4
+        $Version = "11.5"
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $IsAllInOneBaseDeploy = $false
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
@@ -161,6 +165,7 @@
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_LogHarvester
     Import-DscResource -Name ArcGIS_ServerSettings
+    Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
     
     $FileShareRootPath = $FileSharePath
     if(-not($UseExistingFileShare)) { 
@@ -251,12 +256,18 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
         
         ArcGIS_Disk DiskSizeCheck
         {
             HostName = $env:ComputerName
+        }
+
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = if($IsAllInOneBaseDeploy){ "DataStore,Server,Portal" }else{ "Server" }
         }
                 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -308,7 +319,7 @@
                     }
                     $ServerDependsOn += '[ArcGIS_Service_Account]Server_Service_Account'
                 
-                    if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
+                    if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential) 
                     {
                         $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                         $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -391,8 +402,6 @@
                         DependsOn                               = $ServerDependsOn
                     }
                     $ServerDependsOn += '[ArcGIS_Server]Server'
-
-                    
                 }
             }
             
@@ -448,7 +457,12 @@
             }
 
             if(-not($IsUpdatingCertificates)){
-                foreach($ServiceToStop in @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'WorkflowManager'))
+                $ServicesToStop = @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'WorkflowManager')
+                if($IsAllInOneBaseDeploy -ieq 'True'){
+                    $ServicesToStop = @('ArcGISGeoEvent', 'ArcGISGeoEventGateway', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'WorkflowManager')
+                }
+
+                foreach($ServiceToStop in $ServicesToStop)
                 {
                     if(Get-Service $ServiceToStop -ErrorAction Ignore) 
                     {

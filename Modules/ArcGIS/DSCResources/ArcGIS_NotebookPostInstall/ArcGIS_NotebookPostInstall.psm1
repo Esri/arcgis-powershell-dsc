@@ -50,7 +50,7 @@ function Set-TargetResource {
                 Invoke-PostInstallUtility -Arguments "-l $ImagePath" -Verbose
                 Write-Verbose "Container image at path $ImagePath loaded."
             }catch{
-                throw "[ERROR] Error Loading Container Image at path - $ImagePath - $_"
+                Write-Verbose "[WARNING] Error Loading Container Image at path - $ImagePath - $_"
             }
         }
     }
@@ -135,15 +135,13 @@ function Invoke-PostInstallUtility
         $p = [System.Diagnostics.Process]::Start($psi)
         $p.WaitForExit()
         $op = $p.StandardOutput.ReadToEnd()
+        Write-Verbose $op
         if($p.ExitCode -eq 0) {
-            Write-Verbose $op
             if($op -icontains 'error' -or $op -icontains 'failed') { throw "$op"}
         }else{
             $err = $p.StandardError.ReadToEnd()
-            Write-Verbose $err
-            if($err -and $err.Length -gt 0) {
-                throw "Output - $op. Error - $err"
-            }
+            Write-Verbose "Exit Code: $($p.ExitCode). Error - $err"
+            throw "Output - $op. Error - $err"
         }
     }else{
         throw "Post Install Utility Tool not found."

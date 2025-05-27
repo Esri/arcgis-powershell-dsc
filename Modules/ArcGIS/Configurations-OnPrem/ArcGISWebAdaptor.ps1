@@ -29,13 +29,17 @@
         [System.String]
         $JavaWebServerWebAppDirectory,
 
+        [System.String]
+        $JavaWebServerType,
+
         [Parameter(Mandatory=$False)]
         [System.String]
         $OverrideHTTPSBinding = $True
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
+
 
     Node $AllNodes.NodeName
     {
@@ -106,6 +110,8 @@
 
         foreach($WA in $Node.WebAdaptorConfig){
             if($WA.Role -ieq "Server" -and $PrimaryServerMachine){
+                # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
+                $WAAdminAccessEnabled = if((@("11.5") -icontains $Version)) {$true} elseif(@("MissionServer", "NotebookServer", "VideoServer") -iContains  $ServerRole) {$true} else {$WA.AdminAccessEnabled}
                 ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)-$($WA.Context)"
                 {
                     Version             = $Version
@@ -116,9 +122,10 @@
                     Context             = $WA.Context
                     OverwriteFlag       = $False
                     SiteAdministrator   = $ServerPrimarySiteAdminCredential
-                    AdminAccessEnabled  = if(@("MissionServer", "NotebookServer", "VideoServer") -iContains  $ServerRole){ $true }else{ $WA.AdminAccessEnabled }
+                    AdminAccessEnabled  = $WAAdminAccessEnabled
                     IsJavaWebAdaptor    = $IsJavaWebAdaptor
                     JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    JavaWebServerType   = $JavaWebServerType
                     DependsOn           = $Depends
                 }
                 $Depends += "[ArcGIS_WebAdaptor]ConfigureServerWebAdaptor$($Node.NodeName)-$($WA.Context)"
@@ -137,6 +144,7 @@
                     SiteAdministrator   = $PortalAdministratorCredential
                     IsJavaWebAdaptor    = $IsJavaWebAdaptor
                     JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $JavaWebServerWebAppDirectory }else{ $null }
+                    JavaWebServerType   = $JavaWebServerType
                     DependsOn           = $Depends
                 }
 

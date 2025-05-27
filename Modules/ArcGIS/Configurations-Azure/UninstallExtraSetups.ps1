@@ -2,7 +2,7 @@ Configuration UninstallExtraSetups {
     param(
         [Parameter(Mandatory = $false)]
         [System.String]
-        $Version = 11.4,
+        $Version = "11.5",
 
         [Parameter(Mandatory = $false)]
         [System.String]
@@ -25,12 +25,7 @@ Configuration UninstallExtraSetups {
 
     Node localhost
     {
-        $FoldersToDelete = @("C:\\ArcGIS\\Deployment\\Downloads")
-        if($MachineRolesArray -iContains "Server" -and $ServerRole -ieq "NotebookServer"){
-            $FoldersToDelete = @("C:\\ArcGIS\\Deployment\\Downloads\\SQLNativeClient","C:\\ArcGIS\\Deployment\\Downloads\\WorkflowManagerServer","C:\\ArcGIS\\Deployment\\Downloads\\GeoEvent","C:\\ArcGIS\\Deployment\\Downloads\\Server", "C:\\ArcGIS\\Deployment\\Downloads\\MissionServer", 
-            "C:\\ArcGIS\\Deployment\\Downloads\\VideoServer", "C:\\ArcGIS\\Deployment\\Downloads\\Portal", "C:\\ArcGIS\\Deployment\\Downloads\\WebStyles", "C:\\ArcGIS\\Deployment\\Downloads\\DataStore")
-        }
-        
+        $FoldersToDelete = @()
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "WorkflowManagerServer"){
             ArcGIS_Install WorkflowManagerServerUninstall {
                 Name    = "WorkflowManagerServer"
@@ -119,30 +114,12 @@ Configuration UninstallExtraSetups {
             }
             $FoldersToDelete += @("C:\\ArcGIS\\DataStore")
         }
-        
-        foreach($FolderToDelete in $FoldersToDelete){
-            $FileNameResourceName = $FolderToDelete.Replace('\', '_').Replace(':', '_')
-            
-            # Script resource to delete folder recursively and swallow any errors that may occur
-            Script "RemoveFolder-$FileNameResourceName"
-            {
-                GetScript = { $null }
-                TestScript = { 
-                    Write-Verbose "Checking if folder '$($using:FolderToDelete)' exists"
-                    $result = Test-Path $using:FolderToDelete 
-                    Write-Verbose "Folder '$($using:FolderToDelete)' exists: $result"
-                    return -not($result)
-                }
-                SetScript = { 
-                    try{
-                        Write-Verbose "Deleting folder '$($using:FolderToDelete)'"
-                        Remove-Item -Path $using:FolderToDelete -Recurse -Force
-                        Write-Verbose "Folder '$($using:FolderToDelete)' deleted"
-                    }catch{
-                        Write-Verbose "[WARNING] Error trying to delete folder '$($using:FolderToDelete)' - $($_.Exception.Message)"
-                    }
-                }
-            }
+
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = if($MachineRolesArray -iContains "Server" -and $ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "All" }
+            AdditionalFilesOrFolderToDelete = $FoldersToDelete
         }
     }
 }

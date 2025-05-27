@@ -5,6 +5,15 @@
         [System.String]
         $Version,
 
+        [Parameter(Mandatory=$True)]
+        [ValidateSet('Relational','TileCache','SpatioTemporal','GraphStore','ObjectStore')]
+        [System.String]
+        $DataStoreType,
+
+        [Parameter(Mandatory=$true)]
+        [System.Int32]
+        $DataStoreMachineCount,
+
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
@@ -37,27 +46,11 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $PrimaryDataStore,
+        $PrimaryDataStoreMachine,
         
         [Parameter(Mandatory=$False)]
-        [System.String]
-        $PrimaryBigDataStore,
-        
-        [Parameter(Mandatory=$False)]
-        [System.String]
-        $PrimaryTileCache,
-
-        [Parameter(Mandatory=$False)]
-        [System.String]
-        $PrimaryGraphDataStore,
-
-        [Parameter(Mandatory=$False)]
-        [System.String]
-        $PrimaryObjectDataStore,
-
-        [Parameter(Mandatory=$False)]
-        [System.Boolean]
-        $EnableObjectDataStoreClustering,
+        [System.Array]
+        $Backups = $null,
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -77,7 +70,9 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_WaitForComponent
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_DataStoreBackup
+
+    $VersionArray = $Version.Split('.')
 
     Node $AllNodes.NodeName 
     {
@@ -87,8 +82,7 @@
                 CertificateId = $Node.Thumbprint
             }
         }
-
-        $VersionArray = $Version.Split(".")
+       
         $Depends = @()
 
         ArcGIS_xFirewall DataStore_FirewallRules
@@ -105,8 +99,7 @@
             DependsOn             = $Depends
         } 
 
-
-        if(($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'Relational' }  | Measure-Object).Count -gt 0){
+        if($DataStoreType -ieq 'Relational'){
             ArcGIS_xFirewall Relational_DataStore_FirewallRules
             {
                 Name                  = "ArcGISRelationalDataStore" 
@@ -122,8 +115,7 @@
             }
             $Depends += '[ArcGIS_xFirewall]Relational_DataStore_FirewallRules'
 
-            $IsMultiMachineDataStore = (($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'Relational' } | Measure-Object).Count -gt 1)
-            if($IsMultiMachineDataStore)
+            if($DataStoreMachineCount -gt 1)
             {
                 # Allow outbound traffic so that database replication can take place
                 ArcGIS_xFirewall Relational_DataStore_FirewallRules_OutBound
@@ -144,7 +136,7 @@
             }
 
             if($VersionArray[0] -gt 10){
-                ArcGIS_xFirewall Queue_DataStore_FirewallRules_OutBound
+                ArcGIS_xFirewall Queue_DataStore_FirewallRules
                 {
                     Name                  = "ArcGISQueueDataStore-Out" 
                     DisplayName           = "ArcGIS Queue Data Store Out" 
@@ -157,11 +149,28 @@
                     Protocol              = "TCP" 
                     DependsOn             = $Depends
                 }
-                $Depends += '[ArcGIS_xFirewall]Queue_DataStore_FirewallRules_OutBound'
+                $Depends += '[ArcGIS_xFirewall]Queue_DataStore_FirewallRules'
+            }
+
+            if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 5)){
+                ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
+                {
+                    Name                  = "ArcGISMemoryCacheDataStore" 
+                    DisplayName           = "ArcGIS Memory Cache Data Store" 
+                    DisplayGroup          = "ArcGIS Data Store" 
+                    Ensure                = 'Present'  
+                    Access                = "Allow" 
+                    State                 = "Enabled" 
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = ("9820","9840","9850")
+                    Protocol              = "TCP" 
+                    DependsOn             = $Depends
+                }
+                $Depends += '[ArcGIS_xFirewall]MemoryCache_DataStore_FirewallRules'
             }
         }
 
-        if(($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' } | Measure-Object).Count -gt 0){
+        if($DataStoreType -ieq  'TileCache'){
             ArcGIS_xFirewall TileCache_DataStore_FirewallRules
 		    {
                 Name                  = "ArcGISTileCacheDataStore" 
@@ -193,8 +202,7 @@
             } 
             $Depends += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
 
-            $TileCacheMachineCount = ($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' } | Measure-Object).Count
-            if(($TileCacheMachineCount -gt 1) -and (($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))){
+            if(($DataStoreMachineCount -gt 1) -and (($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))){
                 ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
                 {
                     Name                  = "ArcGISMultiMachineTileCacheDataStore" 
@@ -228,8 +236,7 @@
             }
         }
 
-        if(($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'SpatioTemporal' }  | Measure-Object).Count -gt 0)
-        {
+        if($DataStoreType -ieq 'SpatioTemporal'){
             ArcGIS_xFirewall SpatioTemporalDataStore_FirewallRules
             {
                 Name                  = "ArcGISSpatioTemporalDataStore" 
@@ -245,9 +252,8 @@
             } 
             $Depends += '[ArcGIS_xFirewall]SpatioTemporalDataStore_FirewallRules'
         }
-
-        $GraphStoreMachineCount = ($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'GraphStore' } | Measure-Object).Count
-        if($GraphStoreMachineCount -gt 0){
+        
+        if($DataStoreType -ieq 'GraphStore'){
             ArcGIS_xFirewall GraphDataStore_FirewallRules
             {
                 Name                  = "ArcGISGraphDataStore" 
@@ -257,15 +263,16 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = if($GraphStoreMachineCount -gt 1){ ("9829","9831") }else{("9829")}
+                # if the machine count is greater than 2, then it is a clustered graph store with 3 machines
+                # else it is a graph store in primary standby mode or single machine deployment
+                LocalPort             = if($DataStoreMachineCount -gt 1){ if($DataStoreMachineCount -gt 2){ ("9828","9829","9830","9831") }else{ ("9829","9831") } }else{ ("9829") }
                 Protocol              = "TCP" 
                 DependsOn             = $Depends
             } 
             $Depends += '[ArcGIS_xFirewall]GraphDataStore_FirewallRules'
         }
 
-        $ObjectStoreMachineCount = ($AllNodes | Where-Object { $_.DataStoreTypes -icontains 'ObjectStore' } | Measure-Object).Count
-        if($ObjectStoreMachineCount -gt 0){
+        if($DataStoreType -ieq 'ObjectStore'){
             ArcGIS_xFirewall ObjectDataStore_FirewallRules
 		    {
 			    Name                  = "ArcGISObjectDataStore" 
@@ -280,7 +287,12 @@
 		    }
             $Depends += '[ArcGIS_xFirewall]ObjectDataStore_FirewallRules'
 
-            if($EnableObjectDataStoreClustering -and $ObjectStoreMachineCount -gt 2){
+            if($DataStoreMachineCount -gt 2){
+                $ObjectStorePorts = @("9820", "9830", "9840", "9880", "29874", "29876", "29882","29875","29877","29883","29860-29863","29858","29859")
+                if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 5)){
+                    $ObjectStorePorts = @("29860-29863","29858","29859")
+                }
+
                 ArcGIS_xFirewall ObjectDataStore_MultiMachine_FirewallRules
                 {
                     Name                  = "ArcGISObjectMultiMachineDataStore" 
@@ -290,7 +302,7 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("9820", "9830", "9840", "9880", "29874", "29876", "29882","29875","29877","29883","29860-29863","29858","29859")
+                    LocalPort             = $ObjectStorePorts
                     Protocol              = "TCP" 
                 }
                 $Depends += @('[ArcGIS_xFirewall]ObjectDataStore_MultiMachine_FirewallRules')
@@ -311,143 +323,7 @@
         }
         $Depends += '[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account'
 
-        
-        $IsStandByRelational = (($Node.NodeName -ine $PrimaryDataStore) -and $Node.DataStoreTypes -icontains 'Relational')
-        if($IsStandByRelational)
-        {
-            if($UsesSSL){
-                ArcGIS_WaitForComponent "WaitForRelationalDataStore$($PrimaryDataStore)"{
-                    Component = "DataStore"
-                    InvokingComponent = "DataStore"
-                    ComponentHostName = $PrimaryServerMachine
-                    ComponentContext = "arcgis"
-                    Credential = $ServerPrimarySiteAdminCredential
-                    Ensure = "Present"
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                }
-                $DependsOn += "[ArcGIS_WaitForComponent]WaitForRelationalDataStore$($PrimaryDataStore)"
-            }else{
-                WaitForAll "WaitForAllRelationalDataStore$($PrimaryDataStore)"
-                {
-                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryDataStore)"
-                    NodeName = $PrimaryDataStore
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                    DependsOn = $Depends
-                }
-                $Depends += "[WaitForAll]WaitForAllRelationalDataStore$($PrimaryDataStore)"
-            }
-        }
-
-        if(($PrimaryBigDataStore -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'SpatioTemporal'))
-        {
-            if($UsesSSL){
-                ArcGIS_WaitForComponent "WaitForBigDataStore$($PrimaryBigDataStore)"{
-                    Component = "SpatioTemporal"
-                    InvokingComponent = "DataStore"
-                    ComponentHostName = $PrimaryServerMachine
-                    ComponentContext = "arcgis"
-                    Credential = $ServerPrimarySiteAdminCredential
-                    Ensure = "Present"
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                }
-                $DependsOn += "[ArcGIS_WaitForComponent]WaitForBigDataStore$($PrimaryBigDataStore)"
-            }else{
-                WaitForAll "WaitForAllBigDataStore$($PrimaryBigDataStore)"{
-                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryBigDataStore)"
-                    NodeName = $PrimaryBigDataStore
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                    DependsOn = $Depends
-                }
-                $Depends += "[WaitForAll]WaitForAllBigDataStore$($PrimaryBigDataStore)"
-            }
-        }
-
-        if(($PrimaryTileCache -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'TileCache'))
-        {
-            if($UsesSSL){
-                ArcGIS_WaitForComponent "WaitForTileCache$($PrimaryTileCache)"{
-                    Component = "TileCache"
-                    InvokingComponent = "DataStore"
-                    ComponentHostName = $PrimaryServerMachine
-                    ComponentContext = "arcgis"
-                    Credential = $ServerPrimarySiteAdminCredential
-                    Ensure = "Present"
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                }
-                $DependsOn += "[ArcGIS_WaitForComponent]WaitForTileCache$($PrimaryTileCache)"
-            }else{
-                WaitForAll "WaitForAllTileCache$($PrimaryTileCache)"{
-                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryTileCache)"
-                    NodeName = $PrimaryTileCache
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                    DependsOn = $Depends
-                }
-                $Depends += "[WaitForAll]WaitForAllTileCache$($PrimaryTileCache)"
-            }
-        }
-
-        if(($PrimaryGraphDataStore -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'GraphStore'))
-        {
-            if($UsesSSL){
-                ArcGIS_WaitForComponent "WaitForGraphDataStore$($PrimaryGraphDataStore)"{
-                    Component = "Graph"
-                    InvokingComponent = "DataStore"
-                    ComponentHostName = $PrimaryServerMachine
-                    ComponentContext = "arcgis"
-                    Credential = $ServerPrimarySiteAdminCredential
-                    Ensure = "Present"
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                }
-                $DependsOn += "[ArcGIS_WaitForComponent]WaitForGraphDataStore$($PrimaryGraphDataStore)"
-            }else{
-                WaitForAll "WaitForGraphDataStore$($PrimaryGraphDataStore)"{
-                    ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryGraphDataStore)"
-                    NodeName = $PrimaryGraphDataStore
-                    RetryIntervalSec = 60
-                    RetryCount = 100
-                    DependsOn = $Depends
-                }
-                $Depends += "[WaitForAll]WaitForGraphDataStore$($PrimaryGraphDataStore)"
-            }
-        }
-
-        if(($PrimaryObjectDataStore -ine $Node.NodeName) -and ($Node.DataStoreTypes -icontains 'ObjectStore')) {
-            if($EnableObjectDataStoreClustering){
-                if($UsesSSL){
-                    ArcGIS_WaitForComponent "WaitForObjectDataStore$($PrimaryObjectDataStore)"{
-                        Component = "Object"
-                        InvokingComponent = "DataStore"
-                        ComponentHostName = $PrimaryServerMachine
-                        ComponentContext = "arcgis"
-                        Credential = $ServerPrimarySiteAdminCredential
-                        Ensure = "Present"
-                        RetryIntervalSec = 60
-                        RetryCount = 100
-                    }
-                    $DependsOn += "[ArcGIS_WaitForComponent]WaitForObjectDataStore$($PrimaryObjectDataStore)"
-                }else{
-                    WaitForAll "WaitForAllObjectDataStore$($PrimaryObjectDataStore)"{
-                        ResourceName = "[ArcGIS_DataStore]DataStore$($PrimaryObjectDataStore)"
-                        NodeName = $PrimaryObjectDataStore
-                        RetryIntervalSec = 60
-                        RetryCount = 100
-                        DependsOn = $Depends
-                    }
-                    $Depends += "[WaitForAll]WaitForAllObjectDataStore$($PrimaryObjectDataStore)"
-                }
-            }else{
-                throw "Object Store in standalone mode only support single machine deployment."
-            }
-        }
-
-        ArcGIS_DataStore "DataStore$($Node.NodeName)"
+        ArcGIS_DataStore "$($DataStoreType)-DataStore$($Node.NodeName)"
         {
             DatastoreMachineHostName = $Node.NodeName
             Version = $Version
@@ -455,13 +331,33 @@
             SiteAdministrator = $ServerPrimarySiteAdminCredential
             ServerHostName = $PrimaryServerMachine
             ContentDirectory = $ContentDirectoryLocation
-            DependsOn = $Depends
-            IsStandby = $IsStandByRelational
-            DataStoreTypes = $Node.DataStoreTypes
+            DataStoreTypes = @($DataStoreType)
             EnableFailoverOnPrimaryStop = $EnableFailoverOnPrimaryStop
-            IsTileCacheDataStoreClustered = (($TileCacheMachineCount -gt 2) -or ($Version -ieq "10.8.0"))
-            IsObjectDataStoreClustered = ($ObjectStoreMachineCount -gt 2)
+            IsTileCacheDataStoreClustered =  if($DataStoreType -ieq 'TileCache'){ (($DataStoreMachineCount -gt 2) -or ($Version -ieq "10.8.0"))} else{ $False }
+            IsObjectDataStoreClustered = if($DataStoreType -ieq 'ObjectStore'){ ($DataStoreMachineCount -gt 2)} else{ $False }
+            IsGraphStoreClustered = if($DataStoreType -ieq 'GraphStore'){ ($DataStoreMachineCount -gt 2)} else{ $False }
             PITRState = if($EnablePointInTimeRecovery){ "Enabled" }else{ "Disabled" }
-        }     
+            DependsOn = $Depends
+        }
+        $DataStoreDependsOn = @("[ArcGIS_DataStore]$($DataStoreType)-DataStore$($Node.NodeName)")
+
+        if(($PrimaryDataStoreMachine -ieq $Node.NodeName) -and ($null -ne $Backups)){
+            foreach($Backup in $Backups) 
+			{
+                ArcGIS_DataStoreBackup "$($DataStoreType)-Backup-$($Backup.Name)"
+                {
+                    DataStoreType = $DataStoreType
+                    BackupType = $Backup.Type
+                    BackupName = $Backup.Name
+                    BackupLocation = $Backup.Location
+                    AWSS3Region = if($Backup.AWSS3Region){ $Backup.AWSS3Region }else{ $null}
+                    CloudBackupCredential = $Backup.CloudCredential
+                    IsDefault = $Backup.IsDefault
+                    ForceDefaultRelationalBackupUpdate = if($DataStoreType -eq 'Relational'){ $Backup.ForceDefaultRelationalBackupUpdate }else{ $False }
+                    ForceCloudCredentialsUpdate = $Backup.ForceCloudCredentialsUpdate
+                    DependsOn = $DataStoreDependsOn
+                }
+            }
+        }
     }
 }

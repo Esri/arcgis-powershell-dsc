@@ -48,12 +48,8 @@
 		$AdminDescription,
 
         [Parameter(Mandatory=$False)]
-        [System.Byte]
-        $AdminSecurityQuestionIndex,
-        
-        [Parameter(Mandatory=$False)]
-        [System.String]
-        $AdminSecurityAnswer,
+        [System.Management.Automation.PSCredential]
+        $AdminSecurityQuestionCredential,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -117,7 +113,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_xFirewall, ArcGIS_Portal, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_Portal_TLS
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_Portal, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_Portal_TLS
 
     if($null -ne $CloudStorageType)
     {
@@ -191,8 +187,16 @@
         }
         $Depends += @('[ArcGIS_xFirewall]Portal_FirewallRules')
         
+        $VersionArray = $Version.Split('.')
         if($IsMultiMachinePortal) 
         {
+            $PortalInboundPort = ("7120","7220", "7005", "7099", "7199", "5701", "5702", "5703") # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701 and 5702 (extra 2 
+            $PortalOutboundPort = ("7120","7220","5701", "5702", "5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
+            if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later, Hazelcast was replaced by ignite
+                $PortalInboundPort = ("7120","7220", "7005", "7099", "7199") 
+                $PortalOutboundPort = ("7120","7220")
+            }
+
             ArcGIS_xFirewall Portal_Database_OutBound
             {
                 Name                  = "PortalforArcGIS-Outbound" 
@@ -202,7 +206,7 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                RemotePort            = ("7120","7220", "7005", "7099", "7199", "5701", "5702", "5703")  # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701 and 5702 (extra 2 ports for situations where unable to get port)
+                RemotePort            = $PortalInboundPort
                 Direction             = "Outbound"                       
                 Protocol              = "TCP" 
             }  
@@ -217,12 +221,11 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = ("7120","7220","5701", "5702", "5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
+                LocalPort             = $PortalOutboundPort
                 Protocol              = "TCP" 
             }  
             $Depends += @('[ArcGIS_xFirewall]Portal_Database_InBound')
             
-            $VersionArray = $Version.Split('.')
             if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later
                 ArcGIS_xFirewall Portal_Ignite_OutBound
                 {
@@ -248,7 +251,7 @@
                     Access                = "Allow" 
                     State                 = "Enabled" 
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                    LocalPort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
                     Protocol              = "TCP" 
                 }  
                 $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
@@ -374,8 +377,7 @@
             AdminEmail = $AdminEmail
             AdminFullName = $AdminFullName
             AdminDescription = $AdminDescription
-            AdminSecurityQuestionIndex = $AdminSecurityQuestionIndex
-            AdminSecurityAnswer = $AdminSecurityAnswer
+            AdminSecurityQuestionCredential = $AdminSecurityQuestionCredential
             ContentDirectoryLocation = $ContentDirectoryLocation
             Join = if($Node.NodeName -ine $PrimaryPortalMachine) { $true } else { $false } 
             IsHAPortal = if($IsMultiMachinePortal){ $true } else { $false }
@@ -389,6 +391,17 @@
         }
         $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"
         
+        $ImportCertChainValue = $true  # default to true
+        $ForceImportCertificate = $false
+        if ([version]$Version -ge [version]"11.3") {
+            if ($Node.SSLCertificate -and $Node.SSLCertificate.ImportCertificateChain -ne $null) {
+                $ImportCertChainValue = $Node.SSLCertificate.ImportCertificateChain
+            }
+            if ($Node.SSLCertificate -and $Node.SSLCertificate.ForceImport -ne $null) {
+                $ForceImportCertificate = $Node.SSLCertificate.ForceImport
+            }
+        }
+
         ArcGIS_Portal_TLS ArcGIS_Portal_TLS
         {
             PortalHostName          = $Node.NodeName
@@ -398,6 +411,8 @@
             CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
             SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
             EnableHSTS = $EnableHSTS
+            ImportCertificateChain = $ImportCertChainValue
+            ForceImportCertificate = $ForceImportCertificate
             DependsOn               = $Depends
         }
     }   

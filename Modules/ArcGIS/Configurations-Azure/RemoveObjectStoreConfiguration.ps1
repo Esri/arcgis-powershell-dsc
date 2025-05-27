@@ -17,7 +17,7 @@ Configuration RemoveObjectStoreConfiguration
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
         ArcGIS_DataStoreItemServer UnRegisterObjectStore

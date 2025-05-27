@@ -22,7 +22,7 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Additional User Details - Full Name of the Administrator.
     .PARAMETER AdminDescription
         Additional User Details - Description for the Administrator.
-    .PARAMETER AdminSecurityQuestionIndex
+    .PARAMETER AdminSecurityQuestionCredential.Username
         Additional User Details - Security Questions Index
         0 - What city were you born in?
         1 - What was your high school mascot?
@@ -38,7 +38,7 @@ Import-Module -Name (Join-Path -Path $modulePath `
         11 - What is the title of your favorite book?
         12 - What is your dream job?
         13 - Where did you go on your first date?
-    .PARAMETER AdminSecurityAnswer
+    .PARAMETER AdminSecurityQuestionCredential.Password
         Additional User Details - Answer to the Security Question
     .PARAMETER Join
         Boolean to indicate if the machine being installed is a Secondary portal and is being joined with an existing portal
@@ -101,9 +101,6 @@ function Invoke-CreatePortalSite {
         $Description,
 
         [System.String]
-        $SecurityQuestionAnswer, 
-        
-        [System.String]
         $ContentDirectoryLocation,
         
         [System.String]
@@ -112,8 +109,8 @@ function Invoke-CreatePortalSite {
         [System.String]
         $ContentDirectoryCloudContainerName,
         
-        [System.Int32]
-        $SecurityQuestionIdx = 1,
+        [System.Management.Automation.PSCredential]
+        $AdminSecurityQuestionCredential,
 
 		[System.String]
 		$LicenseFilePath = $null,
@@ -208,8 +205,8 @@ function Invoke-CreatePortalSite {
                     fullname = $FullName
                     email = $Email
                     description = $Description
-                    securityQuestionIdx = $SecurityQuestionIdx
-                    securityQuestionAns = $SecurityQuestionAnswer
+                    securityQuestionIdx = $AdminSecurityQuestionCredential.UserName
+                    securityQuestionAns = $AdminSecurityQuestionCredential.GetNetworkCredential().Password
                     contentStore = ConvertTo-Json -Depth 5 $contentStore
                     f = 'json'
                 }
@@ -436,11 +433,8 @@ function Set-TargetResource {
         [System.String]
 		$AdminDescription,
 
-		[System.Byte]
-		$AdminSecurityQuestionIndex,
-
-		[System.String]
-		$AdminSecurityAnswer,
+		[System.Management.Automation.PSCredential]
+		$AdminSecurityQuestionCredential,
 
         [System.Boolean]
 		$Join,
@@ -558,7 +552,7 @@ function Set-TargetResource {
         
         $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -Verbose -HttpMethod "GET"
         if($SiteCreatedCheckResponse.error.message -ieq "Token Required." -and $SiteCreatedCheckResponse.error.code -eq 499){
-            Write-Verbose "Portal Site already is already created. Now checking if portal site is healthy."
+            Write-Verbose "Portal Site is already created. Now checking if portal site is healthy."
             $Attempts = 0
             $PortalReady = $False
             while(-not($PortalReady) -and ($Attempts -lt 2)) {
@@ -591,7 +585,7 @@ function Set-TargetResource {
                         Invoke-CreatePortalSite -Version $Version -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
                                             -FullName $AdminFullName -ContentDirectoryLocation $ContentDirectoryLocation `
                                             -Email $AdminEmail -Description $AdminDescription -UserLicenseTypeId $UserLicenseTypeId `
-                                            -SecurityQuestionIdx $AdminSecurityQuestionIndex -SecurityQuestionAnswer $AdminSecurityAnswer `
+                                            -AdminSecurityQuestionCredential $AdminSecurityQuestionCredential `
                                             -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
                                             -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath -EnableCreateSiteDebug $EnableCreateSiteDebug
                         
@@ -711,11 +705,8 @@ function Test-TargetResource {
         [System.String]
 		$AdminDescription,
 
-		[System.Byte]
-		$AdminSecurityQuestionIndex,
-
-		[System.String]
-		$AdminSecurityAnswer,
+        [System.Management.Automation.PSCredential]
+		$AdminSecurityQuestionCredential,
 
         [System.Boolean]
 		$Join,
@@ -827,7 +818,7 @@ function Test-TargetResource {
             Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose   
             $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -Verbose -HttpMethod "GET"
             if($SiteCreatedCheckResponse.error.message -ieq "Token Required." -and $SiteCreatedCheckResponse.error.code -eq 499){
-                Write-Verbose "Portal Site already is already created."
+                Write-Verbose "Portal Site is already created."
                 try {
                     $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
                     if (-not($token.token)) {

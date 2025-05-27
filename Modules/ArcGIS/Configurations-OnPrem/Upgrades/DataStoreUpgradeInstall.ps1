@@ -42,7 +42,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
     
     Node $AllNodes.NodeName {
 
@@ -85,55 +85,6 @@
             $Depends += "[ArcGIS_InstallPatch]DatastoreInstallPatch"
         }
 
-        # Fix for BDS Not Upgrading Bug - Setup needs to run as local account system
-        # But in that case it cannot access (C:\Windows\System32\config\systemprofile\AppData\Local)
-        if(($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -and -not($Version -eq "10.7.1"))
-        {
-            Script CreateUpgradeFile
-            {
-                GetScript = {
-                    $null
-                }
-                SetScript = {
-                    $ChangeObject = @{StartMode="Manual";}
-                    $DataStoreServiceStop = Get-CimInstance Win32_Service -filter "name='ArcGIS Data Store'" 
-                    $DataStoreStopServiceChangeModeReturnValue = ($DataStoreServiceStop | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
-                    if($DataStoreStopServiceChangeModeReturnValue -eq 0){
-                        $DataStoreServiceStopReturnValue = $DataStoreServiceStop | Invoke-CimMethod -Name StopService
-                        if($DataStoreServiceStopReturnValue -eq 0){
-                            Write-Verbose "Service Stop Operation successful."
-                            if (!(Test-Path "$($using:InstallDir)\etc\upgrade.txt"))
-                            {
-                                New-Item -path "$($using:InstallDir)\etc\" -name "upgrade.txt" -type "file" -value ""
-                                Write-Verbose "Created new file "
-                            }
-                            $DataStoreServiceStart = Get-CimInstance Win32_Service -filter "name='ArcGIS Data Store'" 
-                            $DataStoreStartServiceChangeModeReturnValue = ($DataStoreServiceStart | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
-                            if( $DataStoreStartServiceChangeModeReturnValue -eq 0){
-                                $DataStoreServiceStartReturnValue = $DataStoreServiceStart | Invoke-CimMethod -Name StartService
-                                if($DataStoreServiceStartReturnValue -eq 0){
-                                    Write-Verbose "Service Start Operation successful."
-                                }else{
-                                    throw "Service ArcGIS Data Store failed to start. Return value - $DataStoreServiceStartReturnValue"
-                                }
-                            }else{
-                                throw "Service ArcGIS Data Store Mode Change Failed. Return value - $DataStoreStartServiceChangeModeReturnValue"
-                            }
-                        }else{
-                            throw "Service ArcGIS Data Store failed to stop. Return value - $DataStoreServiceStopReturnValue"    
-                        }
-                    }else{
-                        throw "Service ArcGIS Data Store Mode Change Failed. Return value - $DataStoreStopServiceChangeModeReturnValue"
-                    }
-                }
-                TestScript = {
-                    $False
-                }
-                DependsOn = $Depends
-            }
-            $Depends += '[Script]CreateUpgradeFile'
-        }
-
         Service ArcGIS_DataStore_Service_Start
         {
             Name = 'ArcGIS Data Store'
@@ -170,5 +121,20 @@
                 Protocol              = "TCP" 
             } 
         }
+    }
+
+    if(($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -or $VersionArray[1] -ge 5)) -and $Node.HasRelationalStore){
+        ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
+        {
+            Name                  = "ArcGISMemoryCacheDataStore" 
+            DisplayName           = "ArcGIS Memory Cache Data Store" 
+            DisplayGroup          = "ArcGIS Data Store" 
+            Ensure                = 'Present'  
+            Access                = "Allow" 
+            State                 = "Enabled" 
+            Profile               = ("Domain","Private","Public")
+            LocalPort             = ("9820","9840","9850")
+            Protocol              = "TCP" 
+        } 
     }
 }
