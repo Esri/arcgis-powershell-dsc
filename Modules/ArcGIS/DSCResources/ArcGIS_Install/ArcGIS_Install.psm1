@@ -94,6 +94,7 @@ function Get-TargetResource
         [System.Boolean]
         $EnableMSILogging = $false,
 
+        [Parameter(Mandatory=$true)]
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -175,6 +176,7 @@ function Set-TargetResource
         [System.Boolean]
         $EnableMSILogging = $false,
 
+        [Parameter(Mandatory=$true)]
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -197,18 +199,34 @@ function Set-TargetResource
 
             # Install Web Deploy - msi package
             if($WebAdaptorWebDeployPath -and (Test-Path $WebAdaptorWebDeployPath)){
-                Invoke-StartProcess -ExecPath "msiexec" -Arguments "/i `"$WebAdaptorWebDeployPath`" ADDLOCAL=ALL /qn /norestart LicenseAccepted=`"0`"" -Verbose
+                
+                $regPathPatterns = @(
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                    'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' # For 32-bit apps on 64-bit OS
+                )
+                $webDeployRegEntry = Get-ItemProperty -Path $regPathPatterns -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Microsoft Web Deploy 4.0' }
+                if ($webDeployRegEntry -and $webDeployRegEntry.DisplayName -eq 'Microsoft Web Deploy 4.0') {
+                    Write-Verbose "Web Deploy 4.0 is already installed."
+                }else{
+                    Write-Verbose "Installing Web Deploy 4.0."
+                    Invoke-StartProcess -ExecPath "msiexec" -Arguments "/i `"$WebAdaptorWebDeployPath`" ADDLOCAL=ALL /qn /norestart LicenseAccepted=`"0`"" -Verbose
+                    Write-Verbose "Web Deploy 4.0 installed successfully."
+                }
             }                
 
             # Install DotNet Hosting bundle - exe package
             if($WebAdaptorDotnetHostingBundlePath -and (Test-Path $WebAdaptorDotnetHostingBundlePath)){
+                Write-Verbose "Installing DotNet Hosting Bundle."
                 Invoke-StartProcess -ExecPath $WebAdaptorDotnetHostingBundlePath -Arguments "/install /quiet /norestart" -Verbose
+                Write-Verbose "DotNet Hosting Bundle installed successfully."
             }
         }
 
         if(($Name -ieq 'Pro' -or $Name -ieq 'Server') -and $DotnetDesktopRuntimePath -and (Test-Path $DotnetDesktopRuntimePath)){
             # Install DotNet Desktop Runtime - exe package
+            Write-Verbose "Installing DotNet Desktop Runtime."
             Invoke-StartProcess -ExecPath $DotnetDesktopRuntimePath -Arguments "/install /quiet /norestart" -Verbose
+            Write-Verbose "DotNet Desktop Runtime installed successfully."
         }
 
         if($Name -ieq 'Pro' -and $ProEdgeWebView2RuntimePath -and (Test-Path $ProEdgeWebView2RuntimePath)){
@@ -218,16 +236,18 @@ function Set-TargetResource
             $EdgeWebView2Runtime32Installed = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
             if(-not(Test-Path $EdgeWebView2RuntimeInstalled) -and -not(Test-Path $EdgeWebView2Runtime64Installed) -and -not(Test-Path $EdgeWebView2Runtime32Installed)){
                 # Install Edge Web View 2 Runtime - exe package
+                Write-Verbose "Installing Edge WebView 2 Runtime."
                 Invoke-StartProcess -ExecPath $ProEdgeWebView2RuntimePath -Arguments "/silent /install" -Verbose
+                Write-Verbose "Edge WebView 2 Runtime installed successfully."
             }else{
-                Write-Verbose "Edge WebView 2 Runtime is already installed"
+                Write-Verbose "Edge WebView 2 Runtime is already installed."
             }
         }
 
         $ExecPath = $null
         if($Extract)
         {
-            Write-Verbose 'Self Extracting Installer'
+            Write-Verbose 'Self Extracting Installer - $Name'
 
             $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
             $ProdId = $ProductId
@@ -239,10 +259,10 @@ function Set-TargetResource
                 }
             }
 
-            $TempFolder = Join-Path ([System.IO.Path]::GetTempPath()) $ProdId
+            $TempFolder = (Join-Path $env:Temp $ProdId)
             if(Test-Path $TempFolder)
             {
-                Remove-Item -Path $TempFolder -Recurse 
+                Remove-Item -Path $TempFolder -Recurse -Force -Confirm:$false 
             }
             if(-not(Test-Path $TempFolder))
             {
@@ -286,7 +306,7 @@ function Set-TargetResource
                }               
             }   
         }else{
-            Write-Verbose "Installing Software using installer at $Path"
+            Write-Verbose "Installing software using installer at $Path"
             $ExecPath = $Path
         }
 
@@ -310,7 +330,7 @@ function Set-TargetResource
         if($FeatureSet.Count -gt 0){
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
@@ -327,7 +347,7 @@ function Set-TargetResource
                 }
             }else{
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -530,6 +550,7 @@ function Test-TargetResource
         [System.Boolean]
         $EnableMSILogging = $false,
 
+        [Parameter(Mandatory=$true)]
 		[ValidateSet("Present","Absent")]
 		[System.String]
 		$Ensure
@@ -538,7 +559,7 @@ function Test-TargetResource
 	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
-            if(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
+            if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
                 $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
@@ -546,7 +567,7 @@ function Test-TargetResource
             if($Version -ieq "10.9.1"){
                 # Get all the feature that are installed.
                 # Create an add and remove feature list
-            }elseif(@("11.0","11.1","11.2","11.3","11.4") -iContains $Version){
+            }elseif(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
                 #Get all the feature that are installed.
                 #Create an add and remove feature list
             }

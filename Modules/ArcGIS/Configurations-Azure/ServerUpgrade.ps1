@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4,
+        $Version = "11.5",
 
         [Parameter(Mandatory=$True)]
         [System.String]
@@ -18,11 +18,9 @@
 		[System.Management.Automation.PSCredential]
         $FileshareMachineCredential,
 
+        [parameter(Mandatory = $true)]
         [System.String]
-        $ServerInstallerPath,
-
-        [System.String]
-        $ServerInstallerVolumePath,
+        $UpgradeVMName,
 
         [System.String]
         $ServerLicenseFileUrl,
@@ -31,28 +29,8 @@
         $ServerRole,
         
 		[Parameter(Mandatory=$false)]
-        [System.String]
-        $GeoEventServerInstallerPath = "",
-        
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $WorkflowManagerServerInstallerPath = "",
-
-        [Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsNotebookServerWebAdaptorUpgrade = $False,
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $DotnetHostingBundleInstallerPath = "",
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $WebDeployInstallerPath = "",
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $WebAdaptorInstallerPath = "",
 
         [Parameter(Mandatory=$false)]
         [System.String]
@@ -97,22 +75,32 @@
     Import-DscResource -Name ArcGIS_MissionServerUpgrade
     Import-DscResource -Name ArcGIS_xFirewall 
     Import-DscResource -Name ArcGIS_WebAdaptor
+    Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
     
+    $ServiceCredentialUserName = $ServiceCredential.UserName
+    $UpgradeSetupsStagingPath = "C:\ArcGIS\Deployment\Downloads\$($Version)"
+
     Node localhost {
         LocalConfigurationManager
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
-		$Depends = @()
+		ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "All"
+        }
+        $Depends = @("[ArcGIS_AzureSetupDownloadsFolderManager]CleanupDownloadsFolder")
+        
         if(-Not($ServiceCredentialIsDomainAccount)){
             User ArcGIS_RunAsAccount
             {
                 UserName = $ServiceCredential.UserName
                 Password = $ServiceCredential
-                FullName = 'ArcGIS Run As Account'
+                FullName = 'ArcGIS Service Account'
                 Ensure = "Present"
             }
             $Depends += '[User]ArcGIS_RunAsAccount'
@@ -128,58 +116,65 @@
             $Depends += '[ArcGIS_Install]NotebookUninstallSamplesData'
         }
 
-		$InstallerFileName = Split-Path $ServerInstallerPath -Leaf
-		$InstallerPathOnMachine = "$env:TEMP\Server\$InstallerFileName"
-
-        File DownloadInstallerFromFileShare      
-		{            	
-			Ensure = "Present"              	
-			Type = "File"             	
-			SourcePath = $ServerInstallerPath 	
-			DestinationPath = $InstallerPathOnMachine     
-			Credential = $FileshareMachineCredential     
-			DependsOn = $Depends  
-        }
-        $Depends += '[File]DownloadInstallerFromFileShare'
-
-        $InstallerVolumePathOnMachine = ""
-        if(-not([string]::IsNullOrEmpty($ServerInstallerVolumePath))){
-            $InstallerVolumeFileName = Split-Path $ServerInstallerVolumePath -Leaf
-            $InstallerVolumePathOnMachine = "$env:TEMP\Server\$InstallerVolumeFileName"
-
-            File DownloadInstallerVolumeFromFileShare      
-            {            	
-                Ensure = "Present"              	
-                Type = "File"             	
-                SourcePath = $ServerInstallerVolumePath 	
-                DestinationPath = $InstallerVolumePathOnMachine     
-                Credential = $FileshareMachineCredential     
-                DependsOn = $Depends  
-            }
-            $Depends += '[File]DownloadInstallerVolumeFromFileShare'
-        }
-        
-        ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Stop
-        {
-            Name = 'ArcGISGeoEvent'
-            Credential = $ServiceCredential
-            StartupType = 'Manual'
-            State = 'Stopped'
+        ArcGIS_AzureSetupDownloadsFolderManager DownloadPortalUpgradeSetup{
+            Version = $Version
+            OperationType = 'DownloadUpgradeSetups'
+            ComponentNames = "Server"
+            ServerRole = $ServerRole
+            UpgradeSetupsSourceFileSharePath = "\\$($UpgradeVMName)\UpgradeSetups"
+            UpgradeSetupsSourceFileShareCredentials = $FileshareMachineCredential
             DependsOn = $Depends
         }
-        $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service_Stop"
+        $Depends += '[ArcGIS_AzureSetupDownloadsFolderManager]DownloadPortalUpgradeSetup'
 
-        if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
-        {
-            ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
+        $InstallerFileName = "ArcGISforServer.exe"
+        if($ServerRole -ieq "NotebookServer"){
+            $InstallerFileName = "NotebookServer.exe"
+        }
+        if($ServerRole -ieq "MissionServer"){
+            $InstallerFileName = "MissionServer.exe"
+        }
+		$InstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\$InstallerFileName"
+        $InstallerVolumePathOnMachine = ""
+        if($ServerRole -ine "NotebookServer" -and $ServerRole -ine "MissionServer"){
+            $InstallerVolumePathOnMachine = "$($InstallerPathOnMachine).001"
+        }
+
+        if(Get-Service 'ArcGISGeoEvent' -ErrorAction Ignore){
+            ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Stop
             {
-                Name		= 'ArcGISGeoEventGateway'
-                Credential  = $ServiceCredential
+                Name = 'ArcGISGeoEvent'
+                Credential = $ServiceCredential
                 StartupType = 'Manual'
                 State = 'Stopped'
-                DependsOn   = $Depends
+                DependsOn = $Depends
             }
-            $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
+            $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service_Stop"
+
+            if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
+            {
+                ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
+                {
+                    Name		= 'ArcGISGeoEventGateway'
+                    Credential  = $ServiceCredential
+                    StartupType = 'Manual'
+                    State = 'Stopped'
+                    DependsOn   = $Depends
+                }
+                $Depends += "[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service"
+            }
+        }
+
+        if(Get-Service 'WorkflowManager' -ErrorAction Ignore){
+            ArcGIS_WindowsService ArcGIS_WorkflowManager_Service_Stop
+            {
+                Name = 'WorkflowManager'
+                Credential = $ServiceCredential
+                StartupType = 'Manual'
+                State = 'Stopped'
+                DependsOn = $Depends
+            }
+            $Depends += "[ArcGIS_WindowsService]ArcGIS_WorkflowManager_Service_Stop"
         }
       
         ArcGIS_Install ServerUpgrade{
@@ -197,7 +192,7 @@
 
         $Depends += '[ArcGIS_Install]ServerUpgrade'
         
-		Script RemoveInstaller
+		Script RemoveServerInstaller
 		{
 			SetScript = 
 			{ 
@@ -209,9 +204,7 @@
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
 			GetScript = { $null }          
 		}
-        $Depends += '[Script]RemoveInstaller'
-
-        
+        $Depends += '[Script]RemoveServerInstaller'
 
         $ServerLicenseRole = $ServerRole
         if(-not($ServerRole) -or ($ServerRole -ieq "GeoEventServer")){
@@ -270,45 +263,12 @@
                     Ensure = "Absent"
                     DependsOn = $Depends
                 }
-    
-                $WebDeployFileName = Split-Path $WebDeployInstallerPath -Leaf
-                $WebDeployInstallerPathOnMachine = "$env:TEMP\WebAdaptor\$WebDeployFileName"
-    
-                File DownloadWebDeployInstallerFromFileShare      
-                {            	
-                    Ensure = "Present"              	
-                    Type = "File"             	
-                    SourcePath = $WebDeployInstallerPath 	
-                    DestinationPath = $WebDeployInstallerPathOnMachine     
-                    Credential = $FileshareMachineCredential     
-                    DependsOn = @('[ArcGIS_Install]WebAdaptorIISUninstall')
-                }
-    
-                $DotnetHostingBundleFileName = Split-Path $DotnetHostingBundleInstallerPath -Leaf
-                $DotnetHostingBundleInstallerPathOnMachine = "$env:TEMP\WebAdaptor\$DotnetHostingBundleFileName"
-    
-                File DownloadHostingBundleInstallerFromFileShare      
-                {            	
-                    Ensure = "Present"              	
-                    Type = "File"             	
-                    SourcePath = $DotnetHostingBundleInstallerPath 	
-                    DestinationPath = $DotnetHostingBundleInstallerPathOnMachine     
-                    Credential = $FileshareMachineCredential     
-                    DependsOn = @('[ArcGIS_Install]WebAdaptorIISUninstall')
-                }
-    
-                $WebAdaptorInstallerFileName = Split-Path $WebAdaptorInstallerPath -Leaf
-                $WebAdaptorInstallerPathOnMachine = "$env:TEMP\WebAdaptor\$WebAdaptorInstallerFileName"
-                File DownloadWebAdaptorInstallerFromFileShare      
-                {            	
-                    Ensure = "Present"              	
-                    Type = "File"             	
-                    SourcePath = $WebAdaptorInstallerPath 	
-                    DestinationPath = $WebAdaptorInstallerPathOnMachine     
-                    Credential = $FileshareMachineCredential     
-                    DependsOn = @('[ArcGIS_Install]WebAdaptorIISUninstall')
-                }
-    
+ 
+                $WebDeployInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\WebDeploy_amd64_en-US.msi"
+                $DotnetHostingBundleInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\dotnet-hosting-win.exe"
+                $NotebookContainerPathOnMachine = "$($UpgradeSetupsStagingPath)\arcgis-notebook-python-windows-$($Version).tar.gz"
+                $WebAdaptorInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\WebAdaptorIIS.exe"
+                
                 # Install the new hosting bundle
                 ArcGIS_Install "WebAdaptorInstall"
                 {
@@ -321,11 +281,10 @@
                     WebAdaptorDotnetHostingBundlePath = $DotnetHostingBundleInstallerPathOnMachine
                     WebAdaptorWebDeployPath = $WebDeployInstallerPathOnMachine
                     Ensure = "Present"
-                    DependsOn =  @('[File]DownloadWebDeployInstallerFromFileShare','[File]DownloadHostingBundleInstallerFromFileShare','[File]DownloadWebAdaptorInstallerFromFileShare')
+                    DependsOn =  @('[ArcGIS_Install]WebAdaptorIISUninstall')
                 }
     
                 $MachineFQDN = Get-FQDN $env:ComputerName
-    
                 ArcGIS_WebAdaptor "ConfigureWebAdaptor"
                 {
                     Version             = $Version
@@ -338,6 +297,25 @@
                     SiteAdministrator   = $SiteAdministratorCredential
                     AdminAccessEnabled  = $True
                     DependsOn           = @('[ArcGIS_Install]WebAdaptorInstall')
+                }
+
+                ArcGIS_NotebookPostInstall NotebookPostInstall {
+                    SiteName            = $NotebookWebAdaptorContext
+                    ContainerImagePaths = @($NotebookContainerPathOnMachine) # Add the path to the container images
+                    ExtractSamples      = $false
+                    DependsOn           = @('[ArcGIS_NotebookServerUpgrade]NotebookServerConfigureUpgrade')
+                    PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+                }
+
+                Script RemoveContainer
+                {
+                    SetScript = 
+                    { 
+                        Remove-Item $using:NotebookContainerPathOnMachine -Force
+                    }
+                    TestScript = { -not(Test-Path $using:NotebookContainerPathOnMachine) }
+                    GetScript = { $null }
+                    DependsOn = @('[ArcGIS_NotebookPostInstall]NotebookPostInstall','[ArcGIS_WebAdaptor]ConfigureWebAdaptor')
                 }
             }
             
@@ -375,22 +353,9 @@
                 GetScript   = { return @{} }                  
                 DependsOn   = $Depends
             }
-            $ServerDependsOn += '[Script]ArcGIS_GeoEvent_Service_Stop_for_Upgrade'
+            $Depends += '[Script]ArcGIS_GeoEvent_Service_Stop_for_Upgrade'
 
-            $GeoEventInstallerFileName = Split-Path $GeoEventServerInstallerPath -Leaf
-            $GeoEventInstallerPathOnMachine = "$env:TEMP\Server\$GeoEventInstallerFileName"
-
-            File GeoeventDownloadInstallerFromFileShare      
-            {            	
-                Ensure = "Present"              	
-                Type = "File"             	
-                SourcePath = $GeoEventServerInstallerPath 	
-                DestinationPath = $GeoEventInstallerPathOnMachine     
-                Credential = $FileshareMachineCredential     
-                DependsOn = $Depends  
-            }
-            $Depends += '[File]GeoeventDownloadInstallerFromFileShare'
-
+            $GeoEventInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\GeoEvent.exe"
             ArcGIS_Install GeoEventServerUpgrade{
                 Name = "GeoEvent"
                 Version = $Version
@@ -403,38 +368,7 @@
                 EnableMSILogging = $DebugMode
                 DependsOn = $Depends
             }
-
-            if($IsMultiMachineServerSite){
-                ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
-                {
-                        Name                  = "ArcGISGeoEventFirewallRulesCluster" 
-                        DisplayName           = "ArcGIS GeoEvent Extension Cluster" 
-                        DisplayGroup          = "ArcGIS GeoEvent Extension" 
-                        Ensure                = 'Present' 
-                        Access                = "Allow" 
-                        State                 = "Enabled" 
-                        Profile               = ("Domain","Private","Public")
-                        LocalPort             = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","5565","5575")
-                        Protocol              = "TCP" 
-                }
-                $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine"
-
-                ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine_OutBound
-                {
-                        Name                  = "ArcGISGeoEventFirewallRulesClusterOutbound" 
-                        DisplayName           = "ArcGIS GeoEvent Extension Cluster Outbound" 
-                        DisplayGroup          = "ArcGIS GeoEvent Extension" 
-                        Ensure                = 'Present' 
-                        Access                = "Allow" 
-                        State                 = "Enabled" 
-                        Profile               = ("Domain","Private","Public")
-                        RemotePort            = ("12181","12182","12190","27271","27272","27273","4181","4182","4190","9191","9192","9193","9194","9220","9320","5565","5575")
-                        Protocol              = "TCP" 
-                        Direction             = "Outbound"    
-                }
-                $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules_MultiMachine_OutBound"
-            }
-            
+ 
             ArcGIS_WindowsService ArcGIS_GeoEvent_Service_Start
             {
                 Name = 'ArcGISGeoEvent'
@@ -462,20 +396,7 @@
         if($ServerRole -ieq "WorkflowManagerServer"){
             $Depends += '[ArcGIS_ServerUpgrade]ServerConfigureUpgrade'
 
-            $WorkflowManagerServerInstallerFileName = Split-Path $WorkflowManagerServerInstallerPath -Leaf
-            $WorkflowManagerServerInstallerPathOnMachine = "$env:TEMP\WFMServer\$WorkflowManagerServerInstallerFileName"
-
-            File DownloadWorkflowManagerInstallerFromFileShare      
-            {            	
-                Ensure = "Present"              	
-                Type = "File"             	
-                SourcePath = $WorkflowManagerServerInstallerPath 	
-                DestinationPath = $WorkflowManagerServerInstallerPathOnMachine     
-                Credential = $FileshareMachineCredential     
-                DependsOn = $Depends  
-            }
-            $Depends += '[File]DownloadWorkflowManagerInstallerFromFileShare'
-            
+            $WorkflowManagerServerInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\WorkflowManagerServer.exe"
             ArcGIS_Install WorkflowManagerServerUpgrade
             {
                 Name = "WorkflowManagerServer"
@@ -504,7 +425,7 @@
 
             $VersionArray = $Version.Split(".")
             if($IsMultiMachineServerSite -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){ # 11.3 or later
-                $WfmPorts = @("13820", "13830", "13840", "9880")
+                $WfmPorts = @("13820", "13830", "13840", "9880", "11211")
 
                 ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
                 {
@@ -530,7 +451,7 @@
                     Access                = "Allow"
                     State                 = "Enabled"
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = $WfmPorts
+                    LocalPort            = $WfmPorts
                     Protocol              = "TCP"
                     Direction             = "Inbound"
                 }

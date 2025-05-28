@@ -7,7 +7,6 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    
     Node $AllNodes.NodeName {
         
         if($Node.Thumbprint){

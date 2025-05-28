@@ -11,8 +11,7 @@ class ArcGIS_Portal : OMI_BaseResource
 	[Write] String AdminEmail;
 	[Write] String AdminFullName;
 	[Write] String AdminDescription;
-	[Write] Uint8 AdminSecurityQuestionIndex;
-	[Write] String AdminSecurityAnswer;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AdminSecurityQuestionCredential;
 	[Write, Description("Is Joining Existing site")] Boolean Join;
 	[Write, Description("Is HA Portal")] Boolean IsHAPortal;
 	[Write, Description("Set logging to debug")] Boolean EnableDebugLogging;

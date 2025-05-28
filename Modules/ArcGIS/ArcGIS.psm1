@@ -1,4 +1,5 @@
-﻿function Get-FQDN
+﻿
+function Get-FQDN
 {    
     [CmdletBinding()]
     param(
@@ -19,7 +20,7 @@
                 if(Get-Command 'Resolve-DnsName' -ErrorAction Ignore) {
                     $DnsRecord = Resolve-DnsName -Name $MachineName -Type ANY -ErrorAction Ignore | Select-Object -First 1
                     if($null -eq $DnsRecord) {
-                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore
+                        $DnsRecord = Resolve-DnsName -Name $MachineName -Type A -ErrorAction Ignore | Select-Object -First 1
                     }
                 }
                 if($null -eq $DnsRecord) {
@@ -364,7 +365,7 @@ function Invoke-BuildArcGISAzureImage
     if(($Pro3Installer | Measure-Object).Count -gt 0)
     {
         $Path = (Join-Path $ExecutionContext.InvokeCommand.ExpandString($Pro3Installer.LocalPath) $Pro3Installer.RemotePath)
-        $TempFolder = Join-Path ([System.IO.Path]::GetTempPath()) "Pro3Installer"
+        $TempFolder = Join-Path $env:Temp "Pro3Installer"
         New-Item $TempFolder -ItemType directory            
 
         Write-Host "Extracting $Path to $TempFolder"
@@ -505,6 +506,7 @@ function Invoke-CreateNodeToAdd
                                 Path = if($dscert.Path){ $dscert.Path }else{ $null }
                                 Password = $null
                                 Type = if($target -ilike "$TargetComponent-*"){ $target.Split('-')[1] }else{ "WebServer" }
+                                ImportCertificateChain = if($dscert.ImportCertificateChain){$dscert.ImportCertificateChain}else{$true}
                             }
                 
                             if($dscert.Password `
@@ -525,6 +527,8 @@ function Invoke-CreateNodeToAdd
                     CName = if($SSLCertificate.CNameFQDN){ $SSLCertificate.CNameFQDN }else{ $null }
                     Path = if($SSLCertificate.Path){ $SSLCertificate.Path }else{ $null }
                     Password = $null
+                    ImportCertificateChain = if ($null -ne $SSLCertificate.ImportCertificateChain) { $SSLCertificate.ImportCertificateChain } else { $true }
+                    ForceImport = if ($null -ne $SSLCertificate.ForceImport) { $SSLCertificate.ForceImport } else { $false }
                 }
     
                 if($SSLCertificate.Password `
@@ -646,6 +650,8 @@ function Get-DownloadsInstallsConfigurationData
                             CName = if($SSLCertificate.CNameFQDN){ $SSLCertificate.CNameFQDN }else{ $null }
                             Path = if($SSLCertificate.Path){ $SSLCertificate.Path }else{ $null }
                             Password = $null
+                            ImportCertificateChain = if ($null -ne $SSLCertificate.ImportCertificateChain) { $SSLCertificate.ImportCertificateChain } else { $true }
+                            ForceImport = if ($null -ne $SSLCertificate.ForceImport) { $SSLCertificate.ForceImport } else { $false }
                         }
 
                         if($SSLCertificate.Password -or $SSLCertificate.PasswordFilePath -or $SSLCertificate.PasswordEnvironmentVariableName){
@@ -734,6 +740,10 @@ function Get-DownloadsInstallsConfigurationData
     if($ConfigData.ConfigData.WebAdaptor -and $ConfigData.ConfigData.WebAdaptor.AdminAccessEnabled){
         $ConfigData.ConfigData.WebAdaptor.Remove("AdminAccessEnabled")
     }
+    # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
+    if((@("11.5") -icontains $ConfigData.ConfigData.Version) -and $ConfigData.ConfigData.WebAdaptor){
+        $ConfigData.ConfigData.WebAdaptor.Remove("AdminAccessEnabled")
+    }
     if($ConfigData.ConfigData.Pro -and $ConfigData.ConfigData.Pro.LicenseFilePath){
         $ConfigData.ConfigData.Pro.Remove("LicenseFilePath")
     }
@@ -803,6 +813,18 @@ function Invoke-ArcGISConfiguration
                 }
             }
         }
+        # Validate Java Web Server Type
+        if ($ConfigurationParamsHashtable.ConfigData.WebAdaptor -and $ConfigurationParamsHashtable.ConfigData.WebAdaptor.IsJavaWebAdaptor) {
+            Test-IsValidJavaServerType -JavaWebServerType $ConfigurationParamsHashtable.ConfigData.WebAdaptor.JavaWebServerType
+
+            if ($ConfigurationParamsHashtable.ConfigData.WebAdaptor.Installer `
+            -and $ConfigurationParamsHashtable.ConfigData.WebAdaptor.Installer.ApacheTomcat) 
+            {
+                Test-IsValidTomcatConfig -TomcatConfig $ConfigurationParamsHashtable.ConfigData.WebAdaptor.Installer.ApacheTomcat `
+                -EnterpriseVersionArray $EnterpriseVersionArray -EnterpriseVersion $EnterpriseVersion
+            }
+        }
+        
 
         $ServiceCredential = $null
         $ServiceCredentialIsDomainAccount = $False
@@ -895,7 +917,7 @@ function Invoke-ArcGISConfiguration
         }
 
         $ConfigurationName = if($Mode -ieq "Uninstall"){ "ArcGISUninstall" }else{ "ArcGISInstall" }
-        
+
         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $InstallArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
 
         #License Deployment
@@ -1315,7 +1337,11 @@ function Invoke-ArcGISConfiguration
                             $WebsiteId = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId }else{ 1}
 
                             $WebAdaptorAdminAccessEnabledSupported = -not(@("NotebookServer","MissionServer","VideoServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole)
-
+                            if((@("11.5") -icontains $EnterpriseVersion)){
+                                # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
+                                $WAAdminAccessEnabled = $true
+                                $WebAdaptorAdminAccessEnabledSupported = $true
+                            }
                             $WANode = ( Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'WebAdaptor' -ServerContext $ServerContext -PortalContext $PortalContext -WebAdaptorAdminAccessEnabled $WAAdminAccessEnabled -IsJavaWebAdaptor $IsJavaWebAdaptor -WebAdaptorWebSiteId $WebsiteId -WebAdaptorAdminAccessEnabledSupported $WebAdaptorAdminAccessEnabledSupported )
 
                             if(($WANode.WebAdaptorConfig | Where-Object { $_.Role -ieq "Server" }| Measure-Object).Count -gt 0){
@@ -1356,12 +1382,12 @@ function Invoke-ArcGISConfiguration
                             if($DsTypes -icontains "GraphStore"){
                                 $PrimaryGraphDataStoreNodeToAdd = (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'DataStore' -DataStoreType "GraphStore")
                                 $GraphDataStoreCD.AllNodes += $PrimaryGraphDataStoreNodeToAdd
-                                if($null -eq $GraphDataStore){ $PrimaryGraphDataStore = $PrimaryGraphDataStoreNodeToAdd }
+                                if($null -eq $PrimaryGraphDataStore){ $PrimaryGraphDataStore = $PrimaryGraphDataStoreNodeToAdd }
                             }
                             if($DsTypes -icontains "ObjectStore"){
                                 $PrimaryObjectDataStoreNodeToAdd = (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'DataStore' -DataStoreType "ObjectStore")
                                 $ObjectDataStoreCD.AllNodes += $PrimaryObjectDataStoreNodeToAdd
-                                if($null -eq $ObjectDataStore){ $PrimaryObjectDataStore = $PrimaryObjectDataStoreNodeToAdd }
+                                if($null -eq $PrimaryObjectDataStore){ $PrimaryObjectDataStore = $PrimaryObjectDataStoreNodeToAdd }
                             }
 
                             if($Node.SslCertificates -and (($Node.SslCertificates | Where-Object { $_.Target -ilike "DataStore*" } | Measure-Object).Count -gt 0))
@@ -1727,14 +1753,25 @@ function Invoke-ArcGISConfiguration
                             AdminEmail = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Email
                             AdminFullName = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.FullName){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.FullName }else{ $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.UserName }
                             AdminDescription = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Description){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.Description }else{ "Portal Administrator" }
-                            AdminSecurityQuestionIndex = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex
-                            AdminSecurityAnswer = $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswer
                             LicenseFilePath = if($ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath){ $ConfigurationParamsHashtable.ConfigData.Portal.LicenseFilePath }else{ $null }
                             UserLicenseTypeId = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalLicenseUserTypeId }else{ $null }
                             EnableHSTS = if($ConfigurationParamsHashtable.ConfigData.Portal.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Portal.EnableHSTS }else{ $False }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
+
+                        if($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswerFilePath){
+                            if(-not(Test-Path $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswerFilePath)){
+                                throw "Password file $($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswerFilePath) does not exist."
+                            }
+                            $PortalAdminSecurityQuestionPassword = (Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswerFilePath | ConvertTo-SecureString )
+                        }elseif($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswerEnvironmentVariableName){
+                            $PortalAdminSecurityQuestionPassword = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswerEnvironmentVariableName)
+                        }elseif($ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswer){
+                            $PortalAdminSecurityQuestionPassword = (ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityAnswer -AsPlainText -Force)
+                        }
+
+                        $PortalArgs['AdminSecurityQuestionCredential'] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex, $PortalAdminSecurityQuestionPassword)
 
                         if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount){
                             $ContentStoreAzureBlobAuthenticationType = "AccessKey"
@@ -1852,6 +1889,7 @@ function Invoke-ArcGISConfiguration
                             OverrideHTTPSBinding = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding }else{ $True }
                             IsJavaWebAdaptor = $IsJavaWebAdaptor
                             JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null }
+                            JavaWebServerType = $ConfigurationParamsHashtable.ConfigData.WebAdaptor.JavaWebServerType
                         }
                         if($ServerCheck){
                             $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
@@ -1860,11 +1898,10 @@ function Invoke-ArcGISConfiguration
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                     }
                     
-                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $RelationalDataStoreCheck){
-                        $JobFlag = $False
-                        $RelationalDataStoreArgs = @{
+                    $CommonDataStoreArgs = @{}
+                    if($RelationalDataStoreCheck -or $BigDataStoreCheck -or $TileCacheDataStoreCheck -or $GraphDataStoreCheck -or $ObjectDataStoreCheck){
+                        $CommonDataStoreArgs = @{
                             Version = $EnterpriseVersion
-                            ConfigurationData = $RelationalDataStoreCD
                             ServiceCredential = $ServiceCredential
                             ForceServiceCredentialUpdate = $ForceServiceCredentialUpdate
                             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
@@ -1872,388 +1909,125 @@ function Invoke-ArcGISConfiguration
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
-                            PrimaryDataStore = $PrimaryDataStore.NodeName
-                            EnableFailoverOnPrimaryStop = if($ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop }else{ $False }
-                            EnablePointInTimeRecovery = if($ConfigurationParamsHashtable.ConfigData.DataStore.EnablePointInTimeRecovery){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnablePointInTimeRecovery }else{ $False }
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
-                        
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $RelationalDataStoreArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
-                        
-                        if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.Relational -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.Relational.Count -gt 0){
-                            $JobFlag = $False
-                            $RelationalDataStoreBackupArgs = @{
-                                ConfigurationData = $RelationalDataStoreCD
-                                PrimaryDataStore = $PrimaryDataStore.NodeName
-                            }
-                            $RelationalBackups = @()
-                            for ( $i = 0; $i -lt $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.Relational.Count; $i++ ){
-                                $BackupObject = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.Relational[$i]
-                                if($BackupObject.IsDefault -and $BackupObject.Type -ne "fs"){
-                                    throw "Default back up for Relational DataStore can only be a local path or shared file location at $EnterpriseVersion"
-                                }
-                            
-                                $Backup = @{
-                                    Type = $BackupObject.Type
-                                    Name = $BackupObject.Name
-                                    Location = $BackupObject.Location                                    
-                                    IsDefault = if($BackupObject.IsDefault){ $BackupObject.IsDefault }else{ $False }
-                                    ForceDefaultRelationalBackupUpdate = if($BackupObject.ForceBackupLocationUpdate){ $BackupObject.ForceBackupLocationUpdate }else{ $False }
-                                }
+                    }
 
-                                if($BackupObject.Type -ine "fs")
-                                {
-                                    if($BackupObject.CloudStorageAccount){
-                                        $Backup["ForceCloudCredentialsUpdate"] = if($BackupObject.CloudStorageAccount.ForceUpdate){ $BackupObject.CloudStorageAccount.ForceUpdate }else{ $False }
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $RelationalDataStoreCheck){
+                        $JobFlag = $False
 
-                                        if($BackupObject.Type -ieq "azure"){
-                                            $Pos = $BackupObject.CloudStorageAccount.UserName.IndexOf('.blob.')
-                                            if(-not($Pos -gt -1))
-                                            {
-                                                throw "Error - Invalid Backup Azure Blob Storage Account"
-                                            } 
-                                        }
-
-                                        if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
-                                            if($BackupObject.CloudStorageAccount.AWSS3Region){
-                                                $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
-                                            }else{
-                                                throw "Error - No region specified for AWS S3 bucket"
-                                            }
-                                        }
-                                        
-                                        if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
-                                            $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
-                                            $Backup["CloudCredential"] = $BackupCloudStorageCredentials
-                                        }else{
-                                            $Backup["CloudCredential"] = $null
-                                        }
-                                    }else{
-                                        throw "No cloud credentials provided for Cloud Backup type $($Backup.Type) and Location $($Backup.Location)"
-                                    }
-                                }
-                                
-                                $RelationalBackups += $Backup
-                            }
-                            $RelationalDataStoreBackupArgs["RelationalBackups"] = $RelationalBackups
-                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStoreBackup" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $RelationalDataStoreBackupArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                        $RelationalDataStoreArgs = @{
+                            DataStoreArguments= $CommonDataStoreArgs
+                            DataStoreConfigData = $RelationalDataStoreCD
+                            DataStoreType = "Relational"
+                            PrimaryDataStoreMachine = $PrimaryDataStore.NodeName
+                            EnableFailoverOnPrimaryStop = if($ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop }else{ $False }
+                            EnablePointInTimeRecovery = if($ConfigurationParamsHashtable.ConfigData.DataStore.EnablePointInTimeRecovery){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnablePointInTimeRecovery }else{ $False }
                         }
+
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
+                            $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.Relational){
+                            
+                            $RelationalDataStoreArgs["Backups"] = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.Relational
+                        }
+
+                        $JobFlag = Invoke-DataStoreConfigureScript @RelationalDataStoreArgs 
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $BigDataStoreCheck){
                         $JobFlag = $False
                         $BigDataStoreArgs = @{
-                            Version = $EnterpriseVersion
-                            ConfigurationData = $BigDataStoreCD
-                            ServiceCredential = $ServiceCredential
-                            ForceServiceCredentialUpdate = $ForceServiceCredentialUpdate
-                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
-                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
-                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
-                            ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
-                            PrimaryBigDataStore = $PrimaryBigDataStore.NodeName
-                            UsesSSL = $UseSSL
-                            DebugMode = $DebugMode
+                            DataStoreArguments= $CommonDataStoreArgs
+                            DataStoreConfigData = $BigDataStoreCD
+                            DataStoreType = "SpatioTemporal"
+                            PrimaryDataStoreMachine = $PrimaryBigDataStore.NodeName
                         }
 
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $BigDataStoreArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
-
-                        if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.SpatioTemporal -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.SpatioTemporal.Count -gt 0){                            
-                            $JobFlag = $False
-                            $BigDataStoreBackupArgs = @{
-                                ConfigurationData = $BigDataStoreCD
-                                PrimaryBigDataStore = $PrimaryBigDataStore.NodeName
-                            }
-                            $SpatioTemporalBackups = @()
-                            for ( $i = 0; $i -lt $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.SpatioTemporal.Count; $i++ ){
-                                $BackupObject = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.SpatioTemporal[$i]
-                                $Backup = @{
-                                    Type = $BackupObject.Type
-                                    Name = $BackupObject.Name
-                                    Location = $BackupObject.Location                                    
-                                    IsDefault = if($BackupObject.IsDefault){ $BackupObject.IsDefault }else{ $False }
-                                }
-
-                                if($BackupObject.Type -ine "fs")
-                                {
-                                    if($BackupObject.CloudStorageAccount){
-                                        $Backup["ForceCloudCredentialsUpdate"] = if($BackupObject.CloudStorageAccount.ForceUpdate){ $BackupObject.CloudStorageAccount.ForceUpdate }else{ $False }
-                                        
-                                        if($BackupObject.Type -ieq "azure"){
-                                            $Pos = $BackupObject.CloudStorageAccount.UserName.IndexOf('.blob.')
-                                            if(-not($Pos -gt -1))
-                                            {
-                                                throw "Error - Invalid Backup Azure Blob Storage Account"
-                                            }
-                                        }
-
-                                        if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
-                                            if($BackupObject.CloudStorageAccount.AWSS3Region){
-                                                $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
-                                            }else{
-                                                throw "Error - No region specified for AWS S3 bucket"
-                                            }
-                                        }
-
-                                        if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
-                                            $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
-                                            $Backup["CloudCredential"] = $BackupCloudStorageCredentials
-                                        }else{
-                                            $Backup["CloudCredential"] = $null
-                                        }
-                                    }else{
-                                        throw "No cloud credentials provided for Cloud Backup type $($Backup.Type) and Location $($Backup.Location)"
-                                    }
-                                }
-                                
-                                $SpatioTemporalBackups += $Backup
-                            }
-                            $BigDataStoreBackupArgs["SpatioTemporalBackups"] = $SpatioTemporalBackups
-                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStoreBackup" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $BigDataStoreBackupArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
+                            $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.SpatioTemporal){                            
+                            
+                            $BigDataStoreArgs["Backups"] = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.SpatioTemporal
                         }
+
+                        $JobFlag = Invoke-DataStoreConfigureScript @BigDataStoreArgs
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $TileCacheDataStoreCheck){
                         $JobFlag = $False
                         $TileCacheDataStoreArgs = @{
-                            Version = $EnterpriseVersion
-                            ConfigurationData = $TileCacheDataStoreCD
-                            ServiceCredential = $ServiceCredential
-                            ForceServiceCredentialUpdate = $ForceServiceCredentialUpdate
-                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
-                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
-                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
-                            ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
-                            PrimaryTileCache = $PrimaryTileCache.NodeName
-                            UsesSSL = $UseSSL
-                            DebugMode = $DebugMode
+                            DataStoreArguments= $CommonDataStoreArgs
+                            DataStoreConfigData = $TileCacheDataStoreCD
+                            DataStoreType = "TileCache"
+                            PrimaryDataStoreMachine = $PrimaryTileCache.NodeName
                         }
 
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $TileCacheDataStoreArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
+                            $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.TileCache){
 
-                        if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.TileCache -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.TileCache.Count -gt 0){
-                            $JobFlag = $False
-                            $TileCacheDataStoreBackupArgs = @{
-                                ConfigurationData = $TileCacheDataStoreCD
-                                PrimaryTileCache = $PrimaryTileCache.NodeName
-                            }
-                            $TileCacheBackups = @()
-                            for ( $i = 0; $i -lt $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.TileCache.Count; $i++ ){
-                                $BackupObject = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.TileCache[$i]
-                                
-                                if($EnterpriseVersionArray[0] -eq 10 -and $EnterpriseVersionArray[1] -eq 7){
-                                    if($BackupObject.Name -ne "DEFAULT"){
-                                        throw "Backup for Tile Cache DataStore cannot have a backup name other than 'DEFAULT' at $EnterpriseVersion"
-                                    }
-                                    if($BackupObject.Type -ne "fs"){
-                                        throw "Backup of Tile Cache DataStore to a Cloud Store isn't supported at $EnterpriseVersion"
-                                    }
-                                }
+                            $TileCacheDataStoreArgs["Backups"] = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.TileCache
+                        }
 
-                                $Backup = @{
-                                    Type = $BackupObject.Type
-                                    Name = $BackupObject.Name
-                                    Location = $BackupObject.Location                                    
-                                    IsDefault = if($BackupObject.IsDefault){ $BackupObject.IsDefault }else{ $False }
-                                }
-
-                                if($BackupObject.Type -ine "fs")
-                                {
-                                    if($BackupObject.CloudStorageAccount){
-                                        $Backup["ForceCloudCredentialsUpdate"] = if($BackupObject.CloudStorageAccount.ForceUpdate){ $BackupObject.CloudStorageAccount.ForceUpdate }else{ $False }
-
-                                        if($BackupObject.Type -ieq "azure"){
-                                            $Pos = $BackupObject.CloudStorageAccount.UserName.IndexOf('.blob.')
-                                            if(-not($Pos -gt -1))
-                                            {
-                                                throw "Error - Invalid Backup Azure Blob Storage Account"
-                                            } 
-                                        }
-
-                                        if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
-                                            if($BackupObject.CloudStorageAccount.AWSS3Region){
-                                                $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
-                                            }else{
-                                                throw "Error - No region specified for AWS S3 bucket"
-                                            }
-                                        }                                        
-
-                                        if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
-                                            $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
-                                            $Backup["CloudCredential"] = $BackupCloudStorageCredentials
-                                        }else{
-                                            $Backup["CloudCredential"] = $null
-                                        }
-                                    }else{
-                                        throw "No cloud credentials provided for Cloud Backup type $($Backup.Type) and Location $($Backup.Location)"
-                                    }
-                                }
-                                $TileCacheBackups += $Backup
-                            }
-                            $TileCacheDataStoreBackupArgs["TileCacheBackups"] = $TileCacheBackups
-                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStoreBackup" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $TileCacheDataStoreBackupArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
-                        }                        
+                        $JobFlag = Invoke-DataStoreConfigureScript @TileCacheDataStoreArgs
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $GraphDataStoreCheck){
+                        $GraphStoreMachineCount  = ($GraphDataStoreCD.AllNodes | Measure-Object).Count
+
+                        if($EnterpriseVersion -eq "11.1"){
+                            if($GraphStoreMachineCount -gt 1){
+                                throw "Graph Store doesn't support more than one machine configuration at 11.1."
+                            }
+                        }
+                        elseif(@("11.2","11.3","11.4") -contains $EnterpriseVersion){
+                            if($GraphStoreMachineCount -gt 2){
+                                throw "Graph Store doesn't support more than two machine configuration."
+                            }
+                        }
+                        elseif($EnterpriseVersion -eq "11.5" -or $EnterpriseVersionArray[0] -gt 11){ 
+                            if(-not($GraphStoreMachineCount -eq 1 -or $GraphStoreMachineCount -eq 3)){
+                                throw "Graph Store supports either 1 machine (singleInstance) or 3 machine (cluster) configuration only."
+                            }
+                        }
+
                         $JobFlag = $False
                         $GraphDataStoreArgs = @{
-                            Version = $EnterpriseVersion
-                            ConfigurationData = $GraphDataStoreCD
-                            ServiceCredential = $ServiceCredential
-                            ForceServiceCredentialUpdate = $ForceServiceCredentialUpdate
-                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
-                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
-                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
-                            ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
-                            PrimaryGraphDataStore = $PrimaryGraphDataStore.NodeName
-                            UsesSSL = $UseSSL
-                            DebugMode = $DebugMode
+                            DataStoreArguments= $CommonDataStoreArgs
+                            DataStoreType = "GraphStore"
+                            DataStoreConfigData = $GraphDataStoreCD
+                            PrimaryDataStoreMachine = $PrimaryGraphDataStore.NodeName
                         }
 
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $GraphDataStoreArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
-
-                        if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.GraphStore -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.GraphStore.Count -gt 0){                            
-                            $JobFlag = $False
-                            $GraphStoreBackupArgs = @{
-                                ConfigurationData = $GraphDataStoreCD
-                                PrimaryGraphStore = $PrimaryGraphDataStore.NodeName
-                            }
-                            $GraphStoreBackups = @()
-                            for ( $i = 0; $i -lt $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.GraphStore.Count; $i++ ){
-                                $BackupObject = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.GraphStore[$i]
-                                $Backup = @{
-                                    Type = $BackupObject.Type
-                                    Name = $BackupObject.Name
-                                    Location = $BackupObject.Location                                    
-                                    IsDefault = if($BackupObject.IsDefault){ $BackupObject.IsDefault }else{ $False }
-                                }
-
-                                if($BackupObject.Type -ine "fs")
-                                {
-                                    if($BackupObject.CloudStorageAccount){
-                                        $Backup["ForceCloudCredentialsUpdate"] = if($BackupObject.CloudStorageAccount.ForceUpdate){ $BackupObject.CloudStorageAccount.ForceUpdate }else{ $False }
-                                        
-                                        if($BackupObject.Type -ieq "azure"){
-                                            $Pos = $BackupObject.CloudStorageAccount.UserName.IndexOf('.blob.')
-                                            if(-not($Pos -gt -1))
-                                            {
-                                                throw "Error - Invalid Backup Azure Blob Storage Account"
-                                            }
-                                        }
-
-                                        if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
-                                            if($BackupObject.CloudStorageAccount.AWSS3Region){
-                                                $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
-                                            }else{
-                                                throw "Error - No region specified for AWS S3 bucket"
-                                            }
-                                        }
-
-                                        if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
-                                            $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
-                                            $Backup["CloudCredential"] = $BackupCloudStorageCredentials
-                                        }else{
-                                            $Backup["CloudCredential"] = $null
-                                        }
-                                    }else{
-                                        throw "No cloud credentials provided for Cloud Backup type $($Backup.Type) and Location $($Backup.Location)"
-                                    }
-                                }
-                                
-                                $GraphStoreBackups += $Backup
-                            }
-                            $GraphStoreBackupArgs["GraphStoreBackups"] = $GraphStoreBackups
-                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStoreBackup" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $GraphStoreBackupArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
+                            $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.GraphStore){                            
+                            
+                            $GraphDataStoreArgs["Backups"] = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.GraphStore
                         }
+
+                        $JobFlag = Invoke-DataStoreConfigureScript @GraphDataStoreArgs
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ObjectDataStoreCheck){
                         $JobFlag = $False
                         $ObjectDataStoreArgs = @{
-                            Version = $EnterpriseVersion
-                            ConfigurationData = $ObjectDataStoreCD
-                            ServiceCredential = $ServiceCredential
-                            ForceServiceCredentialUpdate = $ForceServiceCredentialUpdate
-                            ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount 
-                            ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
-                            PrimaryServerMachine = $PrimaryServerMachine.NodeName
-                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
-                            ContentDirectoryLocation = $ConfigurationParamsHashtable.ConfigData.DataStore.ContentDirectoryLocation
-                            PrimaryObjectDataStore = $PrimaryObjectDataStore.NodeName
-                            UsesSSL = $UseSSL
-                            DebugMode = $DebugMode
+                            DataStoreArguments= $CommonDataStoreArgs
+                            DataStoreType = "ObjectStore"
+                            DataStoreConfigData = $ObjectDataStoreCD
+                            PrimaryDataStoreMachine = $PrimaryObjectDataStore.NodeName
                         }
                         $ObjectStoreMachineCount = ($ObjectDataStoreCD.AllNodes | Where-Object { $_.DataStoreTypes -icontains 'ObjectStore' } | Measure-Object).Count
                         if($ObjectStoreMachineCount -eq 2){
                             throw "Object Store doesn't support two machine configuration."
                         }
 
-                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ObjectDataStoreArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
-
-                        if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)  -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore -and $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore.Count -gt 0){                            
-                            $JobFlag = $False
-                            $ObjectStoreBackupArgs = @{
-                                ConfigurationData = $ObjectDataStoreCD
-                                PrimaryObjectStore = $PrimaryObjectDataStore.NodeName
-                            }
-                            $ObjectStoreBackups = @()
-                            for ( $i = 0; $i -lt $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore.Count; $i++ ){
-                                $BackupObject = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore[$i]
-                                $Backup = @{
-                                    Type = $BackupObject.Type
-                                    Name = $BackupObject.Name
-                                    Location = $BackupObject.Location                                    
-                                    IsDefault = if($BackupObject.IsDefault){ $BackupObject.IsDefault }else{ $False }
-                                }
-
-                                if($BackupObject.Type -ine "fs")
-                                {
-                                    if($BackupObject.CloudStorageAccount){
-                                        $Backup["ForceCloudCredentialsUpdate"] = if($BackupObject.CloudStorageAccount.ForceUpdate){ $BackupObject.CloudStorageAccount.ForceUpdate }else{ $False }
-                                        
-                                        if($BackupObject.Type -ieq "azure"){
-                                            $Pos = $BackupObject.CloudStorageAccount.UserName.IndexOf('.blob.')
-                                            if(-not($Pos -gt -1))
-                                            {
-                                                throw "Error - Invalid Backup Azure Blob Storage Account"
-                                            }
-                                        }
-
-                                        if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
-                                            if($BackupObject.CloudStorageAccount.AWSS3Region){
-                                                $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
-                                            }else{
-                                                throw "Error - No region specified for AWS S3 bucket"
-                                            }
-                                        }
-                                        
-                                        if($BackupObject.CloudStorageAccount.UserName){
-                                            $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
-                                            $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
-                                            $Backup["CloudCredential"] = $BackupCloudStorageCredentials
-                                        }else{
-                                            $Backup["CloudCredential"] = $null
-                                        }
-                                    }else{
-                                        throw "No cloud credentials provided for Cloud Backup type $($Backup.Type) and Location $($Backup.Location)"
-                                    }
-                                }
-                                
-                                $ObjectStoreBackups += $Backup
-                            }
-                            $ObjectStoreBackupArgs["ObjectStoreBackups"] = $ObjectStoreBackups
-                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStoreBackup" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ObjectStoreBackupArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                        if(($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2) -and `
+                            $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
+                            $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore.Count -gt 0){                            
+                            
+                            $ObjectDataStoreArgs["Backups"] = $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore
                         }
 
+                        $JobFlag = Invoke-DataStoreConfigureScript @ObjectDataStoreArgs
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $DataStoreCertificateUpdateCD.AllNodes.Count -gt 0){
@@ -2281,8 +2055,16 @@ function Invoke-ArcGISConfiguration
 
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISRasterDataStoreItem" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ArcGISRasterDataStoreItemArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                     }
-                    
+
+                    # Get server details
+                    $ServerDetails = $null
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
+                        $ServerDetails = Get-ServerEndpointDetails -ConfigData $ConfigurationParamsHashtable.ConfigData `
+                                    -ServerRole $ConfigurationParamsHashtable.ConfigData.ServerRole `
+                                    -PrimaryServerMachine $PrimaryServerMachine `
+                                    -ServerExternalDNSHostName $ServerExternalDNSHostName `
+                                    -WebAdaptorCheck $WebAdaptorCheck
+
                         $Federation = $False
                         $RemoteSiteAdministrator = $null
                         
@@ -2304,42 +2086,27 @@ function Invoke-ArcGISConfiguration
                         }
 
                         if($Federation){
-                            $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
-                            $ServerServiceURL = if($null -ne $ServerExternalDNSHostName){ $ServerExternalDNSHostName }else{  if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName } }
-                            $ServerServiceURLPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{if($ServerRole -ieq 'NotebookServer'){ 11443 }elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{6443}}
-                            $ServerServiceURLContext = if($null -ne $ConfigurationParamsHashtable.ConfigData.ServerContext){ $ConfigurationParamsHashtable.ConfigData.ServerContext }else{ 'arcgis' }
 
-                            $ServerSiteAdminURL = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ $PrimaryServerMachine.NodeName }
-                            $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){ 11443 }elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{ 6443 }
-                            if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
-                                $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
+                            if ($ConfigurationParamsHashtable.ConfigData.Federation -and
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ContainsKey('ServerHostName') -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ServerHostName -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ContainsKey('ServerUrlPort') -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ServerUrlPort -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ContainsKey('ServerContext') -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ServerContext -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ContainsKey('ServerAdminHostName') -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ServerAdminHostName -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ContainsKey('ServerAdminUrlPort') -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ServerAdminUrlPort -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ContainsKey('ServerAdminContext') -and 
+                                $ConfigurationParamsHashtable.ConfigData.Federation.ServerAdminContext) {
+                                    $ServerDetails.ServerServiceURL = $ConfigurationParamsHashtable.ConfigData.Federation.ServerHostName
+                                    $ServerDetails.ServerServiceURLPort   = $ConfigurationParamsHashtable.ConfigData.Federation.ServerUrlPort
+                                    $ServerDetails.ServerServiceURLContext= $ConfigurationParamsHashtable.ConfigData.Federation.ServerContext
+                                    $ServerDetails.ServerSiteAdminURL     = $ConfigurationParamsHashtable.ConfigData.Federation.ServerAdminHostName
+                                    $ServerDetails.ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Federation.ServerAdminUrlPort
+                                    $ServerDetails.ServerSiteAdminContext = $ConfigurationParamsHashtable.ConfigData.Federation.ServerAdminContext
                             }
-                            $ServerSiteAdminURLContext = 'arcgis'
-
-                            if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
-                                $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerSiteAdminURLPort = if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq 'MissionServer'){ 20443 }elseif($ServerRole -ieq 'VideoServer'){ 21443 }else{ 6443 }
-                                if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
-                                    $ServerSiteAdminURLPort = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
-                                }
-                                $ServerSiteAdminURLContext = 'arcgis'
-                            }else{
-                                if(-not($WebAdaptorCheck) -or ($ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled -or ($ServerRole -ieq 'NotebookServer') -or ($ServerRole -ieq 'MissionServer') -or ($ServerRole -ieq 'VideoServer'))){ 
-                                    # Check this for LB when no WAs specified
-                                    if($ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer){
-                                        $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.ExternalLoadBalancer
-                                        $ServerSiteAdminURLContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
-                                        $ServerSiteAdminURLPort = 443
-                                    }else{
-                                        if(($null -ne $ServerExternalDNSHostName) <#-and $ServerWAAdminAccessEnabled#>){
-                                            $ServerSiteAdminURL = $ServerExternalDNSHostName
-                                            $ServerSiteAdminURLContext = $ConfigurationParamsHashtable.ConfigData.ServerContext
-                                            $ServerSiteAdminURLPort = 443
-                                        }
-                                    }
-                                }
-                            }
-
                             $ServerFunctions = @()
                             $ServerRole = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             
@@ -2362,12 +2129,12 @@ function Invoke-ArcGISConfiguration
                                 PortalHostName = $PortalHostName
                                 PortalPort = $PortalPort
                                 PortalContext = $PortalContext
-                                ServerHostName = $ServerServiceURL
-                                ServerPort = $ServerServiceURLPort
-                                ServerContext = $ServerServiceURLContext
-                                ServerSiteAdminUrlHostName = $ServerSiteAdminURL
-                                ServerSiteAdminUrlPort = $ServerSiteAdminURLPort
-                                ServerSiteAdminUrlContext = $ServerSiteAdminURLContext
+                                ServerHostName = $ServerDetails.ServerServiceURL
+                                ServerPort = $ServerDetails.ServerServiceURLPort
+                                ServerContext = $ServerDetails.ServerServiceURLContext
+                                ServerSiteAdminUrlHostName = $ServerDetails.ServerSiteAdminURL
+                                ServerSiteAdminUrlPort = $ServerDetails.ServerSiteAdminURLPort
+                                ServerSiteAdminUrlContext = $ServerDetails.ServerSiteAdminContext
                                 ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                                 RemoteSiteAdministrator = if($ConfigurationParamsHashtable.ConfigData.Federation){ $RemoteSiteAdministrator }else{ $PortalAdministratorCredential }
                                 IsHostingServer = ($ServerCheck -and $PortalCheck -and $DataStoreCheck) #Check for relational ds only
@@ -2398,33 +2165,27 @@ function Invoke-ArcGISConfiguration
                             Write-Information -InformationAction Continue "Portal Admin URL - https://$PortalAdminUrl/portaladmin"
                             Write-Information -InformationAction Continue "Portal URL - https://$PortalUrl/home"    
                         }
-                        if($ServerCheck){
-                            $PrimaryServerCName = if($PrimaryServerMachine.SSLCertificate){ $PrimaryServerMachine.SSLCertificate.CName }else{ Get-FQDN $PrimaryServerMachine.NodeName }
-                            $Port =  if($ServerRole -ieq 'NotebookServer'){11443}elseif($ServerRole -ieq "MissionServer"){20443}elseif($ServerRole -ieq "VideoServer"){21443}else{6443}                            
-                            $ServerAdminURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            $ServerManagerURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            $ServerURL = "$($PrimaryServerCName):$($Port)/arcgis"
-                            
-                            if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer){
-                                if($ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort){
-                                    $Port = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancerPort
-                                }
-                                $ServerSiteAdminURL = $ConfigurationParamsHashtable.ConfigData.Server.InternalLoadBalancer
-                                $ServerAdminURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
-                                $ServerManagerURL = "$($ServerSiteAdminURL):$($Port)/arcgis"
+                        if($ServerCheck -and $null -ne $ServerDetails ){
+                            # Define URLs with conditional port inclusion
+                            $ServerAdminURL = if ($ServerDetails.ServerSiteAdminURLPort -eq 443) {
+                                "$($ServerDetails.ServerSiteAdminURL)/$($ServerDetails.ServerSiteAdminContext)"
+                            } else {
+                                "$($ServerDetails.ServerSiteAdminURL):$($ServerDetails.ServerSiteAdminURLPort)/$($ServerDetails.ServerSiteAdminContext)"
                             }
-                            
-                            if($null -ne $ServerExternalDNSHostName){
-                                $ServerURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
-                                if(-not($WebAdaptorCheck) -or $ConfigurationParamsHashtable.ConfigData.WebAdaptor.AdminAccessEnabled){
-                                    $ServerAdminURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
-                                    $ServerManagerURL = "$($ServerExternalDNSHostName)/$($ConfigurationParamsHashtable.ConfigData.ServerContext)"
-                                }
-                            }
-
                             Write-Information -InformationAction Continue "Server Admin URL - https://$ServerAdminURL/admin"
+
+                            $ServerURL = if([string]::IsNullOrEmpty($ConfigurationParamsHashtable.ConfigData.ServerContext)){
+                                $ServerAdminURL
+                            }
+                            else {
+                                if ($ServerDetails.ServerServiceURLPort -eq 443) {
+                                    "$($ServerDetails.ServerServiceURL)/$($ServerDetails.ServerServiceURLContext)"
+                                } else {
+                                    "$($ServerDetails.ServerServiceURL):$($ServerDetails.ServerServiceURLPort)/$($ServerDetails.ServerServiceURLContext)"
+                                }
+                            }
                             if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer','VideoServer'))){
-                                Write-Information -InformationAction Continue "Server Manager URL - https://$ServerManagerURL/manager"
+                                Write-Information -InformationAction Continue "Server Manager URL - https://$ServerURL/manager"
                             }
                             Write-Information -InformationAction Continue "Server Rest URL - https://$ServerURL/rest"
                         }
@@ -2464,6 +2225,18 @@ function Invoke-ArcGISConfiguration
             if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 3){
                 if($cfHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $cfHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
                     throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update the server role in the configuration file and try again."
+                }
+            }
+
+            # Validate Java Web Server Type for both configurations
+            if ($cfHashtable.ConfigData.WebAdaptor -and $cfHashtable.ConfigData.WebAdaptor.IsJavaWebAdaptor) {
+                Test-IsValidJavaServerType -JavaWebServerType $cfHashtable.ConfigData.WebAdaptor.JavaWebServerType
+
+                if ($cfHashtable.ConfigData.WebAdaptor.Installer `
+                -and $cfHashtable.ConfigData.WebAdaptor.Installer.ApacheTomcat) 
+                {
+                    Test-IsValidTomcatConfig -TomcatConfig $cfHashtable.ConfigData.WebAdaptor.Installer.ApacheTomcat `
+                    -EnterpriseVersionArray $VersionArray -EnterpriseVersion $EnterpriseVersion
                 }
             }
             
@@ -2537,9 +2310,6 @@ function Invoke-ArcGISConfiguration
             }
             if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
                 $JobFlag = Invoke-ServerUpgradeScript -cf $NonEnterpiseConfig -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode
-            }
-            if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0 -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
-                $JobFlag = Invoke-DataStoreUpgradeScript -DSConfig $NonEnterpiseConfig -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode
             }
             if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'DataStore'} | Measure-Object).Count -gt 0 -and ($NonEnterpiseConfig.AllNodes | Where-Object { $_.Role -icontains 'Server'} | Measure-Object).Count -gt 0){
                 $JobFlag = Invoke-DataStoreUpgradeScript -DSConfig $NonEnterpiseConfig -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode -EnableMSILogging $EnableMSILoggingMode
@@ -2650,6 +2420,130 @@ function Invoke-ArcGISConfiguration
         
         Write-Information -InformationAction Continue "Upgrade to version $($UpgradeVersion) is complete."
     }
+}
+
+function Invoke-DataStoreConfigureScript
+{
+    [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateSet('Relational','TileCache','SpatioTemporal','GraphStore','ObjectStore')]
+        [System.String]
+        $DataStoreType,
+
+        [Parameter(Mandatory=$true)]
+        $DataStoreArguments,
+
+        [Parameter(Mandatory=$true)]
+        $DataStoreConfigData,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $EnableFailoverOnPrimaryStop = $False,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $EnablePointInTimeRecovery = $False,
+
+        [Parameter(Mandatory=$true)]
+        [System.String]
+        $PrimaryDataStoreMachine,
+
+        [Parameter(Mandatory=$false)]
+        [System.Array]
+        $Backups
+    )
+
+    Write-Information -InformationAction Continue "Configuring ArcGIS DataStore of type $($DataStoreType)."
+
+    $DataStoreArguments["DataStoreType"] = $DataStoreType
+    $DataStoreArguments["PrimaryDataStoreMachine"] = $PrimaryDataStoreMachine
+    $DataStoreArguments["DataStoreMachineCount"] = ($DataStoreConfigData.AllNodes | Measure-Object).Count
+
+    if($DataStoreType -ieq "Relational"){
+        $DataStoreArguments["EnableFailoverOnPrimaryStop"] = $EnableFailoverOnPrimaryStop
+        $DataStoreArguments["EnablePointInTimeRecovery"] = $EnablePointInTimeRecovery
+    }
+
+    $EnterpriseVersionArray = $DataStoreArguments.Version.Split(".")
+
+    $BackupsResult = @()
+    if($Backups.Count -gt 0){
+        for ( $i = 0; $i -lt $Backups.Count; $i++ ){
+            $BackupObject = $Backups[$i]
+
+            if($DataStoreType -ieq "Relational"){
+                if($BackupObject.IsDefault -and $BackupObject.Type -ne "fs"){
+                    throw "Default back up for Relational DataStore can only be a local path or shared file location at $EnterpriseVersion"
+                }
+            }
+        
+            $Backup = @{
+                Type = $BackupObject.Type
+                Name = $BackupObject.Name
+                Location = $BackupObject.Location                                    
+                IsDefault = if($BackupObject.IsDefault){ $BackupObject.IsDefault }else{ $False }
+                ForceDefaultRelationalBackupUpdate = if($BackupObject.ForceBackupLocationUpdate){ $BackupObject.ForceBackupLocationUpdate }else{ $False }
+            }
+
+            # Force option is only available for default backup location for relational data store
+            if($DataStoreType -eq 'Relational' -and $BackupObject.ForceBackupLocationUpdate){
+                $Backup["ForceDefaultRelationalBackupUpdate"] = if($BackupObject.ForceBackupLocationUpdate){ $BackupObject.ForceBackupLocationUpdate }else{ $False }
+            }
+
+            if($BackupObject.Type -ine "fs")
+            {
+                if($BackupObject.CloudStorageAccount){
+                    $Backup["ForceCloudCredentialsUpdate"] = if($BackupObject.CloudStorageAccount.ForceUpdate){ $BackupObject.CloudStorageAccount.ForceUpdate }else{ $False }
+
+                    if($BackupObject.Type -ieq "azure"){
+                        $Pos = $BackupObject.CloudStorageAccount.UserName.IndexOf('.blob.')
+                        if(-not($Pos -gt -1))
+                        {
+                            throw "Error - Invalid Backup Azure Blob Storage Account"
+                        } 
+                    }
+
+                    if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
+                        if($BackupObject.CloudStorageAccount.AWSS3Region){
+                            $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
+                        }else{
+                            throw "Error - No region specified for AWS S3 bucket"
+                        }
+                    }
+                    
+                    if($BackupObject.CloudStorageAccount.UserName){
+                        $BackupCloudStorageAccountPassword = (Get-PasswordFromObject -Object $BackupObject.CloudStorageAccount)
+                        $BackupCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $BackupObject.CloudStorageAccount.UserName, $BackupCloudStorageAccountPassword )
+                        $Backup["CloudCredential"] = $BackupCloudStorageCredentials
+                    }else{
+                        $Backup["CloudCredential"] = $null
+                    }
+                }else{
+                    throw "No cloud credentials provided for Cloud Backup type $($Backup.Type) and Location $($Backup.Location)"
+                }
+            }
+            
+            $BackupsResult += $Backup
+        }
+    }
+
+    foreach($Node in $DataStoreConfigData.AllNodes){
+        $DataStoreArguments["ConfigurationData"] = @{ AllNodes = @($Node) }
+        if($Node.NodeName -ieq $PrimaryDataStoreMachine -and $BackupsResult.Count -gt 0){
+            $DataStoreArguments["Backups"] = $BackupsResult
+        }
+
+        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISDataStore" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $DataStoreArguments -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+        if($JobFlag[$JobFlag.Count - 1] -ne $True){
+            throw "Configuration of ArcGIS DataStore of type $($DataStoreType) failed."
+        }
+    }
+    
+    Write-Information -InformationAction Continue "Configuration of ArcGIS DataStore of type $($DataStoreType) is complete."
+
+    $JobFlag
 }
 
 function Invoke-JavaWebAdaptorUninstallUpgradeScript{
@@ -2883,7 +2777,16 @@ function Invoke-PortalUpgradeScript {
         $VersionArray = $PortalConfig.ConfigData.Version.Split('.')
         $PortalContext = if($PortalConfig.ConfigData.PortalContext){ $PortalConfig.ConfigData.PortalContext }else{ $null }
         $IsJavaWebAdaptor = if($PortalConfig.ConfigData.ContainsKey("WebAdaptor") -and $PortalConfig.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $PortalConfig.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
-        $WebAdaptorCD = @{ AllNodes = @() }
+        $WebAdaptorCD = @{
+            AllNodes  = @()
+            TomcatConfig = if ($PortalConfig.ConfigData.WebAdaptor.Installer `
+             -and $PortalConfig.ConfigData.WebAdaptor.Installer.ContainsKey("ApacheTomcat")) {
+                                        $PortalConfig.ConfigData.WebAdaptor.Installer.ApacheTomcat
+                                }
+                                else {
+                                    $null
+                                }
+        }
 
         foreach($Node in $PortalWANodes){
             $WANode = ( Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'WebAdaptor' -PortalContext $PortalContext -IsJavaWebAdaptor $IsJavaWebAdaptor -WebAdaptorWebSiteId $WebsiteId )
@@ -2911,7 +2814,8 @@ function Invoke-PortalUpgradeScript {
         if($IsJavaWebAdaptor){
             $WebAdaptorUpgradeArgs["IsJavaWebAdaptor"] = $IsJavaWebAdaptor
             $WebAdaptorUpgradeArgs["JavaInstallDir"] = if($IsJavaWebAdaptor){ $PortalConfig.ConfigData.WebAdaptor.Installer.InstallDir }else{ $null }
-            $WebAdaptorUpgradeArgs["JavaWebServerWebAppDirectory"] = if($IsJavaWebAdaptor){ $PortalConfig.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null } 
+            $WebAdaptorUpgradeArgs["JavaWebServerWebAppDirectory"] = if($IsJavaWebAdaptor){ $PortalConfig.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null }
+            $WebAdaptorUpgradeArgs["JavaWebServerType"] = $PortalConfig.ConfigData.WebAdaptor.JavaWebServerType
         }else{
             $WebAdaptorUpgradeArgs["DotnetHostingBundlePath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $PortalConfig.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
             $WebAdaptorUpgradeArgs["WebDeployPath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $PortalConfig.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
@@ -3137,11 +3041,11 @@ function Invoke-ServerUpgradeScript {
                 InstallDir = $cf.ConfigData.Server.Installer.InstallDir
                 IsMultiMachineServerSite = $IsMultiMachineServerSite
                 EnableMSILogging = $EnableMSILogging
-                EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
+                EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
                 Extensions = if($cf.ConfigData.Server.Extensions){ $cf.ConfigData.Server.Extensions }else{ $null }
                 DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
                 SkipPatchInstalls = if($cf.ConfigData.SkipPatchInstalls){ $cf.ConfigData.SkipPatchInstalls }else{ $False }
-                DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("DotnetDesktopRuntimePath")){ $cf.ConfigData.Server.Installer.DotnetDesktopRuntimePath } else { $null } } else { $null }
+                DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("DotnetDesktopRuntimePath")){ $cf.ConfigData.Server.Installer.DotnetDesktopRuntimePath } else { $null } } else { $null }
                 DebugMode = $DebugMode
             }
 
@@ -3203,13 +3107,29 @@ function Invoke-ServerUpgradeScript {
     $HasServerWANodes = ($ServerWANodes | Measure-Object).Count -gt 0
     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $HasServerWANodes){
         Write-Information -InformationAction Continue "Server WebAdaptor Upgrade"
-        $WebAdaptorCD = @{ AllNodes = @() }
+        $WebAdaptorCD = @{
+            AllNodes  = @()
+            TomcatConfig = if ($cf.ConfigData.WebAdaptor.Installer `
+             -and $cf.ConfigData.WebAdaptor.Installer.ContainsKey("ApacheTomcat")) {
+                                        $cf.ConfigData.WebAdaptor.Installer.ApacheTomcat
+                                }
+                                else {
+                                    $null
+                                }
+        }
 
         $IsJavaWebAdaptor = if($cf.ConfigData.ContainsKey("WebAdaptor") -and $cf.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $cf.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
         $WAAdminAccessEnabled = if($cf.ConfigData.WebAdaptor.AdminAccessEnabled){ $cf.ConfigData.WebAdaptor.AdminAccessEnabled }else{ $False }
         $WebsiteId = if($cf.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $cf.ConfigData.WebAdaptor.WebSiteId }else{ 1}
         $WebAdaptorAdminAccessEnabledSupported = -not($cf.ConfigData.ServerRole -ieq "NotebookServer" -or $cf.ConfigData.ServerRole -ieq "MissionServer" -or $cf.ConfigData.ServerRole -ieq "VideoServer")
         $ServerContext = if($cf.ConfigData.ServerContext){ $cf.ConfigData.ServerContext }else{ $null }
+
+        if((@("11.5") -icontains $Version)){
+            # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
+            $WAAdminAccessEnabled = $true
+            $WebAdaptorAdminAccessEnabledSupported = $true
+        }
+
         foreach($Node in $ServerWANodes){
             $WANode = (Invoke-CreateNodeToAdd -Node $Node -TargetComponent 'WebAdaptor' -ServerContext $ServerContext -WebAdaptorAdminAccessEnabled $WAAdminAccessEnabled -IsJavaWebAdaptor $IsJavaWebAdaptor -WebAdaptorWebSiteId $WebsiteId -WebAdaptorAdminAccessEnabledSupported $WebAdaptorAdminAccessEnabledSupported )
             $WebAdaptorCD.AllNodes += $WANode
@@ -3233,11 +3153,11 @@ function Invoke-ServerUpgradeScript {
             DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
             SkipPatchInstalls = if($cf.ConfigData.SkipPatchInstalls){ $cf.ConfigData.SkipPatchInstalls }else{ $False }
         }
-
         if($IsJavaWebAdaptor){
             $WebAdaptorUpgradeArgs["IsJavaWebAdaptor"] = $IsJavaWebAdaptor
             $WebAdaptorUpgradeArgs["JavaInstallDir"] = if($IsJavaWebAdaptor){ $cf.ConfigData.WebAdaptor.Installer.InstallDir }else{ $null }
             $WebAdaptorUpgradeArgs["JavaWebServerWebAppDirectory"] = if($IsJavaWebAdaptor){ $cf.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null }
+            $WebAdaptorUpgradeArgs["JavaWebServerType"] = $cf.ConfigData.WebAdaptor.JavaWebServerType
         }else{
             $WebAdaptorUpgradeArgs["DotnetHostingBundlePath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $cf.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
             $WebAdaptorUpgradeArgs["WebDeployPath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $cf.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
@@ -3299,10 +3219,19 @@ function Invoke-DataStoreUpgradeScript {
 
     $PrimaryDataStore = $null
     $PrimaryDataStoreCD = @{AllNodes = @()}
+    
     $PrimaryTileCache = $null
     $PrimaryTileCacheCD = @{AllNodes = @()}
+
     $PrimaryBigDataStore = $null
     $PrimaryBigDataStoreCD = @{AllNodes = @()}
+    
+    $PrimaryObjectStore = $null
+    $PrimaryObjectStoreCD = @{AllNodes = @()}
+    
+    $PrimaryGraphStore = $null
+    $PrimaryGraphStoreCD = @{AllNodes = @()}
+
     for ( $i = 0; $i -lt $DSConfig.AllNodes.count; $i++ ){
         $DSNode = $DSConfig.AllNodes[$i]
         if($DSNode.Role -icontains 'DataStore'){
@@ -3321,17 +3250,21 @@ function Invoke-DataStoreUpgradeScript {
                 $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
             }
             
-            if($DsTypes -icontains "Relational" -and ($null -eq $PrimaryDataStore))
-            {
-                $PrimaryDataStore = $DSNodeName
-                $PrimaryDataStoreCD.AllNodes += $NodeToAdd
+            if($DsTypes -icontains "Relational"){
+                $NodeToAdd["HasRelationalStore"] = $true
+                if($null -eq $PrimaryDataStore){
+                    $PrimaryDataStore = $DSNodeName
+                    $PrimaryDataStoreCD.AllNodes += $NodeToAdd
+                }
             }
+            
             if($DsTypes -icontains "SpatioTemporal" -and ($null -eq $PrimaryBigDataStore))
             {
                 $PrimaryBigDataStore = $DSNodeName
                 $PrimaryBigDataStoreCD.AllNodes += $NodeToAdd
             }
-            if($DsTypes -icontains "TileCache")
+
+            if($DsTypes -icontains "TileCache" -and ($null -eq $PrimaryTileCache))
             {
                 $NodeToAdd["HasMultiMachineTileCache"] = (($DSConfig.AllNodes | Where-Object { $_.DataStoreTypes -icontains 'TileCache' }  | Measure-Object).Count -gt 1)
 
@@ -3340,15 +3273,57 @@ function Invoke-DataStoreUpgradeScript {
                     $PrimaryTileCacheCD.AllNodes += $NodeToAdd
                 }
             }
+
+            if($DsTypes -icontains "GraphStore" -and ($null -eq $PrimaryGraphStore))
+            {
+                if($null -eq $PrimaryGraphStore){
+                    $PrimaryGraphStore = $DSNodeName
+                    $PrimaryGraphStoreCD.AllNodes += $NodeToAdd
+                }
+            }
+
+            if($DsTypes -icontains "ObjectStore" -and ($null -eq $PrimaryObjectStore))
+            {
+                if($null -eq $PrimaryObjectStore){
+                    $PrimaryObjectStore = $DSNodeName
+                    $PrimaryObjectStoreCD.AllNodes += $NodeToAdd
+                }
+            }
+
             $cd.AllNodes += $NodeToAdd 
         }
     }
 
+    $PrimaryTileCacheOnSeparateMachine = ($PrimaryTileCache -ine $PrimaryDataStore `
+                                            -and $PrimaryTileCache -ine $PrimaryGraphStore `
+                                            -and $PrimaryTileCache -ine $PrimaryBigDataStore `
+                                            -and $PrimaryTileCache -ine $PrimaryObjectStore)
+
+    $PrimaryBigDataStoreOnSeparateMachine = ($PrimaryBigDataStore -ine $PrimaryDataStore `
+                                            -and $PrimaryBigDataStore -ine $PrimaryGraphStore `
+                                            -and $PrimaryBigDataStore -ine $PrimaryTileCache `
+                                            -and $PrimaryBigDataStore -ine $PrimaryObjectStore)
+
+    $PrimaryObjectStoreOnSeparateMachine = ($PrimaryObjectStore -ine $PrimaryDataStore `
+                                            -and $PrimaryObjectStore -ine $PrimaryGraphStore `
+                                            -and $PrimaryObjectStore -ine $PrimaryTileCache `
+                                            -and $PrimaryObjectStore -ine $PrimaryBigDataStore)
+
+    $PrimaryGraphOnSeparateMachine = ($PrimaryGraphStore -ine $PrimaryDataStore `
+                                        -and $PrimaryGraphStore -ine $PrimaryBigDataStore `
+                                        -and $PrimaryGraphStore -ine $PrimaryTileCache `
+                                        -and $PrimaryGraphStore -ine $PrimaryObjectStore)
+
+
+
     $JobFlag = $False
+
+    # When EnableFailoverOnPrimaryStop is set to false, the DataStoreUpgradeInstall configuration will be called skipping the DataStoreUpgradePreInstall step.
+    # When EnableFailoverOnPrimaryStop is set to true, DataStoreUpgradePreInstall will be called on all nodes except the primary node.
     if($DSConfig.ConfigData.DataStore.EnableFailoverOnPrimaryStop){
         $DataStoreUpgradePreInstallArgs = @{
             ConfigurationData = $cd 
-            PrimaryDataStore = $PrimaryDataStore   
+            PrimaryDataStore = $PrimaryDataStore
         }
         $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradePreInstall" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradePreInstallArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
         if($JobFlag[$JobFlag.Count - 1] -ne $True){
@@ -3401,7 +3376,7 @@ function Invoke-DataStoreUpgradeScript {
         }
     }
     
-    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryTileCache)) -and ($PrimaryDataStore -ne $PrimaryTileCache)){
+    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryTileCache)) -and $PrimaryTileCacheOnSeparateMachine){
         $DataStoreUpgradeConfigureArgs = @{
             ConfigurationData = $PrimaryTileCacheCD
             ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -3416,7 +3391,7 @@ function Invoke-DataStoreUpgradeScript {
         }
     }
 
-    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryBigDataStore)) -and ($PrimaryDataStore -ne $PrimaryTileCache) -and ($PrimaryDataStore -ne $PrimaryBigDataStore)){
+    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryBigDataStore)) -and $PrimaryBigDataStoreOnSeparateMachine){
         $DataStoreUpgradeConfigureArgs = @{
             ConfigurationData = $PrimaryBigDataStoreCD
             ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
@@ -3427,9 +3402,40 @@ function Invoke-DataStoreUpgradeScript {
         }
         $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
         if($JobFlag[$JobFlag.Count - 1] -ne $True){
-            throw "Big Data Store Upgrade Configure Step failed."
+            throw "Spatiotemporal Big Data Store Upgrade Configure Step failed."
         }
     }
+    
+    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryObjectStore)) -and $PrimaryObjectStoreOnSeparateMachine){
+        $DataStoreUpgradeConfigureArgs = @{
+            ConfigurationData = $PrimaryObjectStoreCD
+            ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
+            ServerMachineName = $PrimaryServerMachine
+            ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
+            InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
+            Version = $DSConfig.ConfigData.Version
+        }
+        $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+        if($JobFlag[$JobFlag.Count - 1] -ne $True){
+            throw "Object Store Upgrade Configure Step failed."
+        }
+    }
+
+    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and -not([string]::IsNullOrEmpty($PrimaryGraphStore)) -and $PrimaryGraphOnSeparateMachine){
+        $DataStoreUpgradeConfigureArgs = @{
+            ConfigurationData = $PrimaryGraphStoreCD
+            ServerPrimarySiteAdminCredential = $DSSiteAdministratorCredential 
+            ServerMachineName = $PrimaryServerMachine
+            ContentDirectoryLocation = $DSConfig.ConfigData.DataStore.ContentDirectoryLocation 
+            InstallDir = $DSConfig.ConfigData.DataStore.Installer.InstallDir 
+            Version = $DSConfig.ConfigData.Version
+        }
+        $JobFlag = Invoke-DSCJob -ConfigurationName "DataStoreUpgradeConfigure" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $DataStoreUpgradeConfigureArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+        if($JobFlag[$JobFlag.Count - 1] -ne $True){
+            throw "Graph Store Upgrade Configure Step failed."
+        }
+    }
+
     $JobFlag
 }
 
@@ -3630,6 +3636,107 @@ function Get-ArcGISProductDetails
     $ResultsArray
 }
 
+# Function to set the Server details based on priority
+function Get-ServerEndpointDetails {
+    param(
+        [hashtable]
+        $ConfigData,
+
+        [string]
+        $ServerRole,
+
+        [PSCustomObject]
+        $PrimaryServerMachine,
+
+        [string]
+        $ServerExternalDNSHostName,
+
+        [System.Boolean]
+        $WebAdaptorCheck
+    )
+
+    # Validate inputs
+    if (-not $ConfigData) { throw "ConfigData is null or invalid." }
+    if (-not $PrimaryServerMachine -or -not $PrimaryServerMachine.NodeName) {
+        throw "PrimaryServerMachine is null or missing required properties."
+    }
+
+    $AdminAccessCheck = if (-not($WebAdaptorCheck)) {
+        $true
+    } elseif (
+        $ConfigData.WebAdaptor.AdminAccessEnabled -or
+        $ServerRole -in @('NotebookServer', 'MissionServer', 'VideoServer') -or
+        (@("11.5") -icontains $ConfigData.Version)
+            ) { $true } else { $false }
+
+    $DefaultAdminPort = switch ($ServerRole) {
+        'NotebookServer' { 11443 }
+        'MissionServer'  { 20443 }
+        'VideoServer'    { 21443 }
+        default          { 6443 }
+    }
+    $DefaultPort = if(-not [string]::IsNullOrEmpty($ServerExternalDNSHostName))
+    { 443 }
+    else
+    { $DefaultAdminPort }
+
+    $DefaultContext = if (-not [string]::IsNullOrEmpty($ConfigData.ServerContext)) {
+        $ConfigData.ServerContext
+    }
+    else { 'arcgis' }
+
+    $DefaultAdminContext = 'arcgis'
+
+    # Initialize with Priority 4 (Default to Primary Server Machine)
+    $DefaultServiceURL = if (-not [string]::IsNullOrEmpty($ServerExternalDNSHostName)) {
+        $ServerExternalDNSHostName
+    } elseif ($PrimaryServerMachine.SSLCertificate `
+              -and -not [string]::IsNullOrEmpty($PrimaryServerMachine.SSLCertificate.CName)) {
+        $PrimaryServerMachine.SSLCertificate.CName
+    } else {
+        Get-FQDN $PrimaryServerMachine.NodeName
+    }
+    $DefaultAdminServiceURL = if($PrimaryServerMachine.SSLCertificate `
+                                 -and -not [string]::IsNullOrWhiteSpace($PrimaryServerMachine.SSLCertificate.CName))
+                                 { $PrimaryServerMachine.SSLCertificate.CName }else{ $PrimaryServerMachine.NodeName }
+
+    $Result = @{
+        ServerServiceURL       = $DefaultServiceURL
+        ServerServiceURLPort   = $DefaultPort
+        ServerServiceURLContext= $DefaultContext
+        ServerSiteAdminURL     = $DefaultAdminServiceURL
+        ServerSiteAdminURLPort = $DefaultAdminPort
+        ServerSiteAdminContext = $DefaultAdminContext
+    }
+    # Check Priority 3: External Load Balancer
+    if (-not [string]::IsNullOrEmpty($ConfigData.Server.ExternalLoadBalancer)) {
+        $Result.ServerServiceURL       = $ConfigData.Server.ExternalLoadBalancer
+        $Result.ServerServiceURLPort   = 443
+        $Result.ServerServiceURLContext= $ConfigData.ServerContext
+
+        if($AdminAccessCheck) {
+            $Result.ServerSiteAdminURL     = $ConfigData.Server.ExternalLoadBalancer
+            $Result.ServerSiteAdminURLPort = 443
+            $Result.ServerSiteAdminContext = $ConfigData.ServerContext
+        }
+    }
+    else{
+        if($AdminAccessCheck -and -not [string]::IsNullOrEmpty($ServerExternalDNSHostName)){
+            $Result.ServerSiteAdminURL = $ServerExternalDNSHostName
+            $Result.ServerSiteAdminContext = $ConfigData.ServerContext
+            $Result.ServerSiteAdminURLPort = 443
+        }
+    }
+    # Check Priority 2: Internal Load Balancer
+    if (-not [string]::IsNullOrEmpty($ConfigData.Server.InternalLoadBalancer)) {
+        # internal load balance is used to set admin port and admin url
+        $Result.ServerSiteAdminURL     = $ConfigData.Server.InternalLoadBalancer
+        $Result.ServerSiteAdminURLPort = if($ConfigData.Server.InternalLoadBalancerPort){ $ConfigData.Server.InternalLoadBalancerPort }else{ $DefaultAdminPort }
+        $Result.ServerSiteAdminContext = $DefaultAdminContext
+    }
+    return $Result
+}
+
 function New-NotebookWorkspaceSMBGlobalMapping
 {
     [CmdletBinding()]
@@ -3651,6 +3758,60 @@ function New-NotebookWorkspaceSMBGlobalMapping
     $SecurePassword = Get-Content $WorkspaceUserFilePath | ConvertTo-SecureString
     $FSCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $Username, $SecurePassword )
     New-SmbGlobalMapping -RemotePath $RemotePath -LocalPath "$($DriveLetter):" -Credential $FSCredential -Verbose
+}
+
+function Test-IsValidJavaServerType {
+    param (
+        [string]$JavaWebServerType
+    )
+    
+    $ValidServerTypes = @("ApacheTomcat9", "ApacheTomcat10", "GlassFish", "JBoss", "WebSphere", "WebLogic")
+    
+    if (-not $JavaWebServerType) {
+        throw "[ERROR] JavaWebServerType is required. Allowed values are: $($ValidServerTypes -join ', ')."
+    }
+    
+    if (-not ($ValidServerTypes -icontains $JavaWebServerType)) {
+        throw "[ERROR] Invalid JavaWebServerType: '$JavaWebServerType'. Allowed values are: $($ValidServerTypes -join ', ')."
+    }
+    
+    if ($JavaWebServerType -eq "ApacheTomcat10") {
+        Write-Warning "User might need to clean up Tomcat 9 web app directory."
+    }
+}
+function Test-IsValidTomcatConfig {
+    param (
+        [hashtable]$TomcatConfig,
+        [array]$EnterpriseVersionArray,
+        [string]$EnterpriseVersion
+    )
+    
+    $RequiredProperties = @("Version", "Path", "InstallDir", "ServiceName", "SSLProtocol")
+    
+    foreach ($prop in $RequiredProperties) {
+        if (-not $TomcatConfig.ContainsKey($prop) -or [string]::IsNullOrEmpty($TomcatConfig[$prop])) {
+            throw "[ERROR] Apache Tomcat configuration is missing required property '$prop'."
+        }
+    }
+    
+    $TomcatVersion = $TomcatConfig.Version
+    if ($TomcatVersion) {
+        $TomcatVersionArray = $TomcatVersion.Split(".")
+        $TomcatMajor = [int]$TomcatVersionArray[0]
+        $EnterpriseMajor = [int]$EnterpriseVersionArray[0]
+        $EnterpriseMinor = [int]$EnterpriseVersionArray[1]
+
+        if (($EnterpriseMajor -eq 10) -or ($EnterpriseMajor -eq 11 -and $EnterpriseMinor -lt 5)) {
+            if ($TomcatMajor -ne 9) {
+                throw "[ERROR] For ArcGIS Enterprise version $EnterpriseVersion, only Apache Tomcat version 9.x is supported."
+            }
+        }
+        elseif ($EnterpriseMajor -eq 11 -and $EnterpriseMinor -eq 5) {
+            if ($TomcatMajor -notin @(9, 10)) {
+                throw "[ERROR] For ArcGIS Enterprise version 11.5, Apache Tomcat version must be either 9.x or 10.x."
+            }
+        }
+    }
 }
 
 Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `

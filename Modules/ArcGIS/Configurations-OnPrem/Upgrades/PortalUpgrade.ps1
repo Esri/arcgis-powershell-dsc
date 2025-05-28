@@ -60,7 +60,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_Service_Account, ArcGIS_InstallPatch, ArcGIS_xFirewall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_Service_Account, ArcGIS_InstallPatch, ArcGIS_xFirewall
 
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -108,7 +108,7 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                LocalPort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
                 Protocol              = "TCP" 
             }  
             $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')

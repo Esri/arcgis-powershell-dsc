@@ -73,7 +73,16 @@ function Set-TargetResource
         $EnableHTTPSOnly,
 
         [System.Boolean]
-        $EnableHSTS
+        $EnableHSTS,
+
+        [System.String]
+        $Version,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true,
+
+        [System.Boolean]
+        $ForceImportCertificate = $false
 	)
 
     if($CertificateFileLocation -and -not(Test-Path $CertificateFileLocation)){
@@ -170,7 +179,7 @@ function Set-TargetResource
 			Write-Verbose "Adding Host mapping for $WebServerCertificateAlias"
 			Add-HostMapping -hostname $WebServerCertificateAlias -ipaddress $WebServerCertificateAlias        
 		}
-        
+
         $DeleteTempCert = $False
         $ImportCert = $False
         $UpdateWebAlias = $False
@@ -191,14 +200,15 @@ function Set-TargetResource
             $ExistingCertThumbprint = $CertForMachine.Thumbprint
             Write-Verbose "Existing Cert Issuer $ExistingCertIssuer with Thumbprint $ExistingCertThumbprint"
             $machineDetails = Get-MachineDetails -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName
-            if($ExistingCertThumbprint -ine $NewCertThumbprint){ #Certificate Thumbprint doesn't match
-                if($WebServerCertificateAlias -ieq $machineDetails.webServerCertificateAlias){
+            if($ExistingCertThumbprint -ine $NewCertThumbprint -or $ForceImportCertificate){ #Certificate Thumbprint doesn't match
+                if($WebServerCertificateAlias -ieq $machineDetails.webServerCertificateAlias -or $ForceImportCertificate){
                     $DeleteTempCert = $True
                     #Upload Temp Cert
+                    Write-Verbose "Force import certificate is: $ForceImportCertificate"
                     Write-Verbose "Importing Supplied Certificate with Alias $($WebServerCertificateAlias)-temp"
                     Import-ExistingCertificate -ServerUrl $ServerUrl -Token $token.token -Referer $Referer `
                         -MachineName $MachineName -CertAlias "$($WebServerCertificateAlias)-temp" -CertificatePassword $CertificatePassword `
-                        -CertificateFilePath $CertificateFileLocation -ServerType $ServerType
+                        -CertificateFilePath $CertificateFileLocation -ServerType $ServerType -ImportCertificateChain $ImportCertificateChain -Version $Version
 
                     #Update Web Alias to Temp Cert
                     Write-Verbose "Updating to temp SSL Certificate for machine [$MachineName]"
@@ -243,7 +253,7 @@ function Set-TargetResource
             Write-Verbose "Importing Supplied Certificate with Alias $WebServerCertificateAlias"
             Import-ExistingCertificate -ServerUrl $ServerUrl -Token $token.token -Referer $Referer `
                     -MachineName $MachineName -CertAlias $WebServerCertificateAlias -CertificatePassword $CertificatePassword `
-                    -CertificateFilePath $CertificateFileLocation -ServerType $ServerType
+                    -CertificateFilePath $CertificateFileLocation -ServerType $ServerType -ImportCertificateChain $ImportCertificateChain -Version $Version
         }
 
         if($UpdateWebAlias){
@@ -368,7 +378,16 @@ function Test-TargetResource
         $EnableHTTPSOnly,
 
         [System.Boolean]
-        $EnableHSTS
+        $EnableHSTS,
+
+        [System.String]
+        $Version,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true,
+
+        [System.Boolean]
+        $ForceImportCertificate = $false
 	)
 
     if($CertificateFileLocation -and -not(Test-Path $CertificateFileLocation)){
@@ -462,6 +481,8 @@ function Test-TargetResource
                 $ExistingCertIssuer = $CertForMachine.Issuer    
                 $ExistingCertThumbprint = $CertForMachine.Thumbprint
                 Write-Verbose "Existing Cert Issuer $ExistingCertIssuer and Thumbprint $ExistingCertThumbprint"
+
+                # Compare thumbprints and alias
                 $machineDetails = Get-MachineDetails -ServerURL $ServerUrl -Token $token.token -Referer $Referer -MachineName $MachineName
                 if($ExistingCertThumbprint -ine $NewCertThumbprint){ #Certificate Thumbprint doesn't match
                     Write-Verbose "Thumbprints for Certificate with Alias $WebServerCertificateAlias doesn't match that of existing cetificate."
@@ -502,7 +523,12 @@ function Test-TargetResource
             }
         }
     }
-
+    if ($Version -and ([version]$Version -ge [version]"11.3") `
+    -and (-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer" -or $ServerType -ieq "VideoServer")) `
+    -and ($ForceImportCertificate)) {
+        $result = $false
+        Write-Verbose "Force import certificate is True"
+    }
 	Write-Verbose "Returning $result from Test-TargetResource"
     $result
 }
@@ -592,11 +618,22 @@ function Import-ExistingCertificate
         $CertificateFilePath,
         
         [System.String]
-        $ServerType
+        $ServerType,
+
+        [System.String]
+        $Version,
+
+        [System.Boolean]
+        $ImportCertificateChain = $true
     )
 
     $ImportCACertUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/machines/$MachineName/sslCertificates/importExistingServerCertificate"
-    $props = @{ f= 'json';  alias = $CertAlias; certPassword = $CertificatePassword.GetNetworkCredential().Password  }    
+    $props = @{ f= 'json';  alias = $CertAlias; certPassword = $CertificatePassword.GetNetworkCredential().Password  }
+    # Conditionally add importCertificateChain if Version is >= 11.3
+    if ($Version -and ([version]$Version -ge [version]"11.3") `
+    -and (-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer" -or $ServerType -ieq "VideoServer"))) {
+        $props["importCertificateChain"] = $ImportCertificateChain
+    }
 
     $Header = @{}
     if(-not($ServerType -ieq "NotebookServer" -or $ServerType -ieq "MissionServer" -or $ServerType -ieq "VideoServer")){

@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4
+        $Version = "11.5"
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -134,14 +134,6 @@
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
-        $InstallDockerEngine = $False
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $DockerEngineBinariesArchiveUrl
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Boolean]
         $UseArcGISWebAdaptorForNotebookServer = $False
         
         ,[Parameter(Mandatory=$false)]
@@ -171,7 +163,6 @@
 	Import-DscResource -Name ArcGIS_License
     Import-DscResource -Name ArcGIS_NotebookServer
     Import-DscResource -Name ArcGIS_NotebookServerSettings
-    #Import-DscResource -Name ArcGIS_NotebookPostInstall
     Import-DscResource -Name ArcGIS_Server_TLS
     Import-DscResource -Name ArcGIS_Service_Account
     Import-DscResource -Name ArcGIS_WindowsService
@@ -185,7 +176,7 @@
     Import-DscResource -Name ArcGIS_WebAdaptor
     Import-DscResource -Name ArcGIS_IIS_TLS
     Import-DscResource -Name ArcGIS_NotebookServerWorkspaceSetup
-    Import-DscResource -Name ArcGIS_NotebookServerDockerEngine
+    Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
 	
     $FileShareRootPath = $FileSharePath
     if(-not($UseExistingFileShare)) { 
@@ -288,7 +279,7 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
         
         $DependsOn = @()
@@ -296,6 +287,13 @@
 		ArcGIS_Disk DiskSizeCheck
         {
             HostName = $env:ComputerName
+        }
+
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "Server"
+            ServerRole = "NotebookServer"
         }
 
         $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -315,40 +313,21 @@
 				$DependsOn += '[User]ArcGIS_RunAsAccount'
 			}
 
-            if($InstallDockerEngine -and $DockerEngineBinariesArchiveUrl){
-
-                WindowsFeature containers
-                {
-                    Name  = 'Containers'
-                    Ensure = 'Present'
-                    DependsOn = $DependsOn
-                }
-                $DependsOn += '[WindowsFeature]containers'
-
-                ArcGIS_PendingReboot PendingReboot
-                {
-                    Name = 'PendingReboot'
-                    DependsOn = $DependsOn
-                }
-                $DependsOn += '[ArcGIS_PendingReboot]PendingReboot'
-
-                ArcGIS_NotebookServerDockerEngine InstallDockerEngine
-                {
-                    SiteName = $Context
-                    DockerEngineBinariesArchiveUrl = $DockerEngineBinariesArchiveUrl
-                    ServiceCredentialUsername = $ServiceCredential.UserName
-                    ForceUpdate = $False
-                    DependsOn = $DependsOn
-                }
-                $DependsOn += '[ArcGIS_NotebookServerDockerEngine]InstallDockerEngine'
-
-                ArcGIS_PendingReboot PendingRebootAfterDockerInstall
-                {
-                    Name = 'PendingRebootAfterDockerInstall'
-                    DependsOn = $DependsOn
-                }
-                $DependsOn += '[ArcGIS_PendingReboot]PendingRebootAfterDockerInstall'
+            # Install Notebook Server
+            ArcGIS_Install NotebookServerInstall
+            {
+                Name = "NotebookServer"
+                Version = $Version
+                Path = "$($env:SystemDrive)\\ArcGIS\\Deployment\\Downloads\\NotebookServer\\NotebookServer.exe"
+                Extract = $True
+                Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($env:SystemDrive)\\ArcGIS\\NotebookServer`""
+                ServiceCredential = $ServiceCredential
+                ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
+                EnableMSILogging = $DebugMode
+                Ensure = "Present"
+                DependsOn = $DependsOn
             }
+            $DependsOn += '[ArcGIS_Install]NotebookServerInstall'
 
             $Accounts = @('NT AUTHORITY\SYSTEM')
             if($ServiceCredential) { $Accounts += $ServiceCredential.GetNetworkCredential().UserName }
@@ -385,8 +364,7 @@
                     }
                     $DependsOn += '[ArcGIS_xSmbShare]FileShare'
                 }else{
-                    # create folders in existing file share
-                    
+                    # create folders in existing file share                    
 
                 }
             }
@@ -406,8 +384,13 @@
                 $DependsOn += '[ArcGIS_NotebookServerWorkspaceSetup]GlobalSMBMappingSetup'
             
                 $WAAdditionFilesPath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\AdditionalFiles"
+                $WAInstallPath = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\WebAdaptorIIS.exe"
                 if(-not(Test-Path $WAAdditionFilesPath)){
-                    throw "Required additional files for Web Adaptor were not found at $WAAdditionFilesPath"
+                    $WAAdditionFilesPath = "C:\\ArcGIS\\Deployment\\Downloads\\$($Version)"
+                    if(-not(Test-Path $WAAdditionFilesPath)){
+                         throw "Required additional files for Web Adaptor were not found at $WAAdditionFilesPath"
+                    }
+                    $WAInstallPath = "$($WAAdditionFilesPath)\\WebAdaptorIIS.exe"
                 }
                     
                 $dotnetHostingBundlePath = Get-ChildItem -Path $WAAdditionFilesPath -Filter "*dotnet-hosting*" -Recurse | Select-Object -ExpandProperty FullName
@@ -424,7 +407,7 @@
                 {
                     Name = "WebAdaptorIIS"
                     Version = $Version 
-                    Path = "C:\\ArcGIS\\Deployment\\Downloads\\WebAdaptorIIS\\WebAdaptorIIS.exe"
+                    Path = $WAInstallPath
                     Extract = $True
                     Arguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Context) WEBSITE_ID=1 CONFIGUREIIS=TRUE "
                     WebAdaptorContext = $Context
@@ -469,7 +452,7 @@
 				$DependsOn += '[ArcGIS_License]ServerLicense'
             }
 		    
-            if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
+            if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential) 
             {
                   $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                   $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -551,23 +534,6 @@
                 DependsOn                               = $DependsOn
             }
             $DependsOn += '[ArcGIS_NotebookServerSettings]NotebookServerSettings'
-
-            if($InstallDockerEngine){
-                $NBAdditionFilesPath = "C:\\ArcGIS\\Deployment\\Downloads\\NotebookServer\\AdditionalFiles"
-                if((Test-Path $NBAdditionFilesPath) -and $UseArcGISWebAdaptorForNotebookServer){
-                    $containerPath = Get-ChildItem -Path $NBAdditionFilesPath -Filter "*arcgis-notebook-python-windows*" -Recurse | Select-Object -ExpandProperty FullName
-                    if(-not([string]::IsNullOrEmpty($containerPath))){
-                        ArcGIS_NotebookPostInstall NotebookPostInstall {
-                            SiteName            = $Context
-                            ContainerImagePaths = @($containerPath) # Add the path to the container images
-                            ExtractSamples      = $false
-                            DependsOn           = $DependsOn
-                            PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-                        }
-                        $DependsOn += '[ArcGIS_NotebookPostInstall]NotebookPostInstall'
-                    }
-                }
-            }
         }
 
         if($HasValidServiceCredential){
@@ -684,7 +650,7 @@
 		}
 
 		# Import TLS certificates from GIS on the hosting server
-		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $GisServerMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 

@@ -176,8 +176,8 @@ function Set-TargetResource
                     $Pos = $CloudBackupCredential.UserName.IndexOf('.blob.')
                     if($Pos -gt -1) 
                     {
-                        $CloudCredentialUserName = $CloudCredentialUserName.Substring(0, $Pos)
-                        $EndpointSuffix = $CloudCredentialUserName.Substring($Pos + 6)
+                        $CloudCredentialUserName = $CloudBackupCredential.UserName.Substring(0, $Pos)
+                        $EndpointSuffix = $CloudBackupCredential.UserName.Substring($Pos + 6)
                     }
                     else
                     {
@@ -198,7 +198,7 @@ function Set-TargetResource
 
         $ExistingBackup = ($AllExistingBackupLocations | Where-Object { $_.Location -ieq $BackupLocation } | Select-Object -First 1 )
         if($null -ne $ExistingBackup){
-            Write-Verbose "Backup with location '$BackupLocation' found for  $DataStoreType Datastore"
+            Write-Verbose "Backup with location '$BackupLocation' found for $DataStoreType Datastore"
             $UpdateBackupLocation = $False
             if(($BackupType -ne "fs") -and $ForceCloudCredentialsUpdate){
                 Write-Verbose "Forcing Credentials update for backup with location '$BackupLocation' for $DataStoreType Datastore"
@@ -356,7 +356,7 @@ function Test-TargetResource
                 $result = $False
             }
         }else{
-            Write-Verbose "No Backup of type '$BackupType', location '$BackupLocation' and name '$BackupName' found for  $DataStoreType Datastore"
+            Write-Verbose "No Backup of type '$BackupType', location '$BackupLocation' and name '$BackupName' found for $DataStoreType Datastore"
             $result = $False
         }
         if($result -and ($DataStoreType -ne "Relational") -and $IsDefault -and (($null -eq $ExistingBackup) -or (($null -ne $ExistingBackup) -and -not($ExistingBackup.IsDefault)))){

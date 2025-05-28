@@ -51,7 +51,7 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
         if($PortalLicenseFileUrl) {

@@ -20,7 +20,7 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
         
         Service ArcGIS_DataStore_Service_Stop

@@ -3,20 +3,12 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4,
+        $Version = "11.5",
 
-		[parameter(Mandatory = $true)]
+        [parameter(Mandatory = $true)]
         [System.String]
-        $PortalInstallerPath,
+        $UpgradeVMName,
 
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $PortalInstallerVolumePath,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $WebStylesInstallerPath,
-		
 		[parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
         $FileshareMachineCredential,
@@ -60,12 +52,14 @@
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
     
+    $UpgradeSetupsStagingPath = "C:\ArcGIS\Deployment\Downloads\$($Version)"
+
     Node localhost {
         LocalConfigurationManager
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
         if(-Not($ServiceCredentialIsDomainAccount)){
@@ -73,12 +67,17 @@
             {
                 UserName = $ServiceCredential.UserName
                 Password = $ServiceCredential
-                FullName = 'ArcGIS Run As Account'
+                FullName = 'ArcGIS Service Account'
                 Ensure = "Present"
             }
         }
 
-        $Depends = @()
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "All"
+        }
+        $Depends = @("[ArcGIS_AzureSetupDownloadsFolderManager]CleanupDownloadsFolder")
 
         $VersionArray = $Version.Split(".")
         if($IsMultiMachinePortal -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){ # 11.3 or later
@@ -106,48 +105,32 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                RemotePort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
+                LocalPort            = ("7820","7830", "7840") # Ignite uses 7820,7830,7840
                 Protocol              = "TCP" 
             }  
             $Depends += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
         }
 
-        $InstallerFileName = Split-Path $PortalInstallerPath -Leaf
-        $InstallerPathOnMachine = "$env:TEMP\portal\$InstallerFileName"
-        
-		File DownloadInstallerFromFileShare      
-		{            	
-			Ensure = "Present"              	
-			Type = "File"             	
-			SourcePath = $PortalInstallerPath 	
-			DestinationPath = $InstallerPathOnMachine    
-			Credential = $FileshareMachineCredential     
-			DependsOn = $Depends  
+        ArcGIS_AzureSetupDownloadsFolderManager DownloadPortalUpgradeSetup{
+            Version = $Version
+            OperationType = 'DownloadUpgradeSetups'
+            ComponentNames = "Portal"
+            UpgradeSetupsSourceFileSharePath = "\\$($UpgradeVMName)\UpgradeSetups"
+            UpgradeSetupsSourceFileShareCredentials = $FileshareMachineCredential
+            DependsOn = $Depends
         }
-        $Depends += '[File]DownloadInstallerFromFileShare'
-
-        $InstallerVolumePathOnMachine = ""
-        if(-not([string]::IsNullOrEmpty($PortalInstallerVolumePath))){
-            $InstallerVolumeFileName = Split-Path $PortalInstallerVolumePath -Leaf
-            $InstallerVolumePathOnMachine = "$env:TEMP\portal\$InstallerVolumeFileName"
-
-            File DownloadInstallerVolumeFromFileShare      
-            {            	
-                Ensure = "Present"              	
-                Type = "File"             	
-                SourcePath = $PortalInstallerVolumePath 	
-                DestinationPath = $InstallerVolumePathOnMachine     
-                Credential = $FileshareMachineCredential     
-                DependsOn = $Depends  
-            }
-            $Depends += '[File]DownloadInstallerVolumeFromFileShare'
-        }
+        $Depends += '[ArcGIS_AzureSetupDownloadsFolderManager]DownloadPortalUpgradeSetup'
         
+        
+        $PortalInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\PortalforArcGIS.exe"
+		$PortalInstallerVolumePathOnMachine = "$($UpgradeSetupsStagingPath)\PortalforArcGIS.exe.001"
+        $WebStylesInstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\WebStyles.exe"
+
         ArcGIS_Install PortalUpgradeInstall
         { 
             Name = "Portal"
             Version = $Version
-            Path = $InstallerPathOnMachine
+            Path = $PortalInstallerPathOnMachine
             Arguments = "/qn ACCEPTEULA=YES";
             ServiceCredential = $ServiceCredential
             ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
@@ -156,38 +139,7 @@
             EnableMSILogging = $DebugMode
             DependsOn = $Depends
         }
-
 		$Depends += '[ArcGIS_Install]PortalUpgradeInstall'
-        
-		Script RemoveInstaller
-		{
-			SetScript = 
-			{ 
-				Remove-Item $using:InstallerPathOnMachine -Force
-                if(-not([string]::IsNullOrEmpty($using:InstallerVolumePathOnMachine))){
-                    Remove-Item $using:InstallerVolumePathOnMachine -Force
-                }
-			}
-			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
-			GetScript = { $null }
-            DependsOn = $Depends
-		}
-            
-        $Depends += '[Script]RemoveInstaller'
-
-        $WebStylesInstallerFileName = Split-Path $WebStylesInstallerPath -Leaf
-        $WebStylesInstallerPathOnMachine = "$env:TEMP\webstyles\$WebStylesInstallerFileName"
-        
-        File DownloadWebStylesInstallerFromFileShare      
-        {            	
-            Ensure = "Present"              	
-            Type = "File"             	
-            SourcePath = $WebStylesInstallerPath 	
-            DestinationPath = $WebStylesInstallerPathOnMachine    
-            Credential = $FileshareMachineCredential     
-            DependsOn = $Depends  
-        }
-        $Depends += '[File]DownloadWebStylesInstallerFromFileShare'
         
         ArcGIS_Install "WebStylesInstall"
         { 
@@ -199,20 +151,27 @@
             EnableMSILogging = $DebugMode
             DependsOn = $Depends
         }
-
         $Depends += '[ArcGIS_Install]WebStylesInstall'
 
-        Script RemoveWebStylesInstaller
-        {
-            SetScript = 
-            { 
-                Remove-Item $using:WebStylesInstallerPathOnMachine -Force
-            }
-            TestScript = { -not(Test-Path $using:WebStylesInstallerPathOnMachine) }
-            GetScript = { $null }
-            DependsOn = $Depends          
-        }
-        $Depends += '[Script]RemoveWebStylesInstaller'
+        Script RemovePortalAndWebStyleInstallers
+		{
+			SetScript = 
+			{ 
+                if(-not([string]::IsNullOrEmpty($using:PortalInstallerVolumePathOnMachine)) -and (Test-Path $using:PortalInstallerPathOnMachine)){
+				    Remove-Item $using:PortalInstallerPathOnMachine -Force
+                }
+                if(-not([string]::IsNullOrEmpty($using:PortalInstallerVolumePathOnMachine)) -and (Test-Path $using:PortalInstallerVolumePathOnMachine)){
+                    Remove-Item $using:PortalInstallerVolumePathOnMachine -Force
+                }
+                if(-not([string]::IsNullOrEmpty($using:WebStylesInstallerPathOnMachine)) -and (Test-Path $using:WebStylesInstallerPathOnMachine)){
+                    Remove-Item $using:WebStylesInstallerPathOnMachine -Force
+                }
+			}
+			TestScript = { -not(Test-Path $using:PortalInstallerPathOnMachine) -and -not(Test-Path $using:PortalInstallerVolumePathOnMachine) -and -not(Test-Path $using:WebStylesInstallerPathOnMachine) }
+			GetScript = { $null }
+            DependsOn = $Depends
+		}
+        $Depends += '[Script]RemovePortalAndWebStyleInstallers'
         
         ArcGIS_WindowsService Portal_for_ArcGIS_Service
         {

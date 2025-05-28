@@ -22,7 +22,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_InstallMsiPackage, ArcGIS_InstallPatch, ArcGIS_xFirewall, ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_InstallMsiPackage, ArcGIS_InstallPatch, ArcGIS_xFirewall, ArcGIS_Tomcat
 
     Node $AllNodes.NodeName {
 
@@ -363,7 +363,7 @@
                     $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
 
                     $DsFeatureSet = $Null
-                    if(@("11.0","11.1","11.2","11.3","11.4") -iContains $ConfigurationData.ConfigData.Version) {
+                    if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $ConfigurationData.ConfigData.Version) {
                         $DsFeatureSet = $Node.DataStoreTypes
                         if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
                             $DsFeatureSet = @("ALL")
@@ -401,27 +401,42 @@
                 {   
                     $IsJavaWebAdaptor =if($ConfigurationData.ConfigData.WebAdaptor.ContainsKey("IsJavaWebAdaptor")){ $ConfigurationData.ConfigData.WebAdaptor.IsJavaWebAdaptor }else{ $False }
                     if($IsJavaWebAdaptor){
-                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("ApacheTomcat")){
-                            $MachineFQDN = Get-FQDN $Node.NodeName
-                            $ApacheTomcatConfig = $ConfigurationData.ConfigData.WebAdaptor.Installer.ApacheTomcat
-                            ArcGIS_Tomcat InstallApacheTomcat
-                            {
-                                Version = $ApacheTomcatConfig.Version
-                                ServiceName = $ApacheTomcatConfig.ServiceName
-                                InstallerArchivePath = $ApacheTomcatConfig.Path
-                                InstallDirectory = $ApacheTomcatConfig.InstallDir
-                                SSLProtocols = $ApacheTomcatConfig.SSLProtocols
-                                ExternalDNSName = if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{ $MachineFQDN }
-                                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{ $null}
-                                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{ $null}
-                            }
-                        }
-
+                        $TomcatDependsOn = @()
+                        $TomcatInstall = @()
                         $WAArguments = "/qn ACCEPTEULA=YES"
                         if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("InstallDir")){
                             $WAArguments += " INSTALLDIR=`"$($ConfigurationData.ConfigData.WebAdaptor.Installer.InstallDir)`""
                         }
+                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("ApacheTomcat")){
+                            $MachineFQDN = Get-FQDN $Node.NodeName
+                            $ApacheTomcatConfig = $ConfigurationData.ConfigData.WebAdaptor.Installer.ApacheTomcat
 
+                            # Check if old Tomcat exists, Uninstall old Web Adaptor first
+                            if ($ApacheTomcatConfig.ContainsKey("OldVersion") -and $ApacheTomcatConfig.ContainsKey("OldServiceName")){
+                                Write-Verbose "Existing Tomcat configuration found: Version = $($ApacheTomcatConfig.OldVersion), Installed Service Name = $($ApacheTomcatConfig.OldServiceName)."
+                                    $TomcatDependsOn += "[ArcGIS_Tomcat]ApacheTomcatUninstall"
+
+                                    ArcGIS_Tomcat ApacheTomcatUninstall {
+                                        Version                = $ApacheTomcatConfig.OldVersion
+                                        Ensure                 = "Absent"
+                                        ServiceName            = $ApacheTomcatConfig.OldServiceName
+                                    }
+                            }
+                            $TomcatInstall += "[ArcGIS_Tomcat]ApacheTomcatInstall"
+                            ArcGIS_Tomcat ApacheTomcatInstall
+                            {
+                                Version = $ApacheTomcatConfig.Version
+                                Ensure = "Present"
+                                ServiceName = $ApacheTomcatConfig.ServiceName
+                                InstallerArchivePath = $ApacheTomcatConfig.Path
+                                InstallDirectory = $ApacheTomcatConfig.InstallDir
+                                SSLProtocols = $ApacheTomcatConfig.SSLProtocol
+                                ExternalDNSName = if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{ $MachineFQDN }
+                                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{ $null}
+                                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{ $null}
+                                DependsOn = $TomcatDependsOn # Ensures old Tomcat is removed first
+                            }
+                        }
                         ArcGIS_Install WebAdaptorJavaInstall
                         { 
                             Name = "WebAdaptorJava"
@@ -431,6 +446,7 @@
                             Arguments = $WAArguments
                             EnableMSILogging = $EnableMSILogging
                             Ensure = "Present"
+                            DependsOn = $TomcatInstall # Ensures Tomcat is installed first
                         }
 
                         if ($ConfigurationData.ConfigData.WebAdaptor.Installer.PatchesDir -and -not($SkipPatchInstalls)) { 
@@ -662,7 +678,7 @@
                     if($ConfigurationData.ConfigData.Pro.Extensions){
                         foreach ($Extension in $ConfigurationData.ConfigData.Pro.Extensions.GetEnumerator()) 
                         {
-                            $Arguments = "/qn"
+                            $Arguments = "/qn ALLUSERS=1"
                             $ProExtensionFeatureSet = @()
                             if($Extension.Value.Features -and $Extension.Value.Features.Count -gt 0){
 								if($Extension.Value.Features -icontains "ALL"){

@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.4"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.5"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -210,20 +210,6 @@
             }
 
             $ServiceToStopList = @('ArcGIS Server','Portal for ArcGIS','ArcGIS Data Store')
-
-            if($Installers.Name -icontains "GeoEvent"){
-                $ServiceToStopList += "ArcGISGeoEventGateway"
-                $ServiceToStopList += "ArcGISGeoEvent"
-            } 
-            if($Installers.Name -icontains "Notebook Server"){
-                $ServiceToStopList += "ArcGIS Notebook Server"
-            }
-            if($Installers.Name -icontains "Mission Server"){
-                $ServiceToStopList += "ArcGIS Mission Server"
-            }
-            if($Installers.Name -icontains "Workflow Manager Server"){
-                $ServiceToStopList += "WorkflowManager"
-            }
 
             $ServiceToStopList | ForEach-Object{
                 Service "StopService-$($_.Replace(' ', '_'))"

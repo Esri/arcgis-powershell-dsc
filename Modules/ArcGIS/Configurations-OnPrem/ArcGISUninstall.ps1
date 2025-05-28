@@ -14,7 +14,7 @@
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install,ArcGIS_FileShare
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install,ArcGIS_FileShare, ArcGIS_Tomcat
     
     Node $AllNodes.NodeName
     {   
@@ -140,6 +140,16 @@
                             Name = "WebAdaptorJava"
                             Version = $ConfigurationData.ConfigData.Version
                             Ensure = "Absent"
+                        }
+                        $MachineFQDN = Get-FQDN $Node.NodeName
+                        if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("ApacheTomcat")) {
+                            $ApacheTomcatConfig = $ConfigurationData.ConfigData.WebAdaptor.Installer.ApacheTomcat
+                            ArcGIS_Tomcat ApacheTomcatUninstall {
+                                Version                = $ApacheTomcatConfig.Version
+                                Ensure                 = "Absent"
+                                ServiceName            = $ApacheTomcatConfig.ServiceName
+                                DependsOn              = "[ArcGIS_Install]WebAdaptorJavaUninstall" # Ensures WebAdaptor is uninstalled first
+                            }
                         }
                     }else{
                         foreach($WA in $Node.WebAdaptorConfig){

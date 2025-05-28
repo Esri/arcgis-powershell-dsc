@@ -17,7 +17,7 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
         $DatabaseAdminUserName = $DatabaseAdminCredential.UserName

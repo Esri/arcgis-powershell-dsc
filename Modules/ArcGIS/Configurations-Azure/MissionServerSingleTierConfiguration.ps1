@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4
+        $Version = "11.5"
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -165,6 +165,8 @@
     Import-DscResource -Name ArcGIS_xSmbShare
 	Import-DscResource -Name ArcGIS_Disk  
     Import-DscResource -Name ArcGIS_TLSCertificateImport
+    Import-DscResource -Name ArcGIS_Install
+    Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
 
     
     $FileShareRootPath = $FileSharePath
@@ -262,7 +264,7 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
          
 		$DependsOn = @()
@@ -278,6 +280,13 @@
             Ensure = 'Present'
         }
         $DependsOn += '[WindowsFeature]websockets'
+
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "Server"
+            ServerRole = "MissionServer"
+        }
         
 		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
@@ -297,6 +306,22 @@
                     $DependsOn += '[User]ArcGIS_RunAsAccount'
                 }
                 
+                # Install Notebook Server
+                ArcGIS_Install MissionServerInstall
+                {
+                    Name = "MissionServer"
+                    Version = $Version
+                    Path = "$($env:SystemDrive)\\ArcGIS\\Deployment\\Downloads\\MissionServer\\MissionServer.exe"
+                    Extract = $True
+                    Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($env:SystemDrive)\\ArcGIS\\MissionServer`""
+                    ServiceCredential = $ServiceCredential
+                    ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
+                    EnableMSILogging = $DebugMode
+                    Ensure = "Present"
+                    DependsOn = $DependsOn
+                }
+                $DependsOn += '[ArcGIS_Install]MissionServerInstall'
+
                 if(-not($Join)){
                     if(-not($UseExistingFileShare)){
                         File FileShareLocationPath
@@ -375,7 +400,7 @@
                     $DependsOn += '[ArcGIS_License]ServerLicense'
                 }
 
-                if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
+                if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential) 
                 {
                     $filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
                     $storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -505,7 +530,7 @@
         }
 
         # Import TLS certificates from portal machines on the hosting server
-		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $PortalMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 
@@ -526,7 +551,7 @@
 		}
 
 		# Import TLS certificates from GIS on the hosting server
-		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $GisServerMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 

@@ -3,7 +3,7 @@
 	param(
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4
+        $Version = "11.5"
 		
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -175,7 +175,7 @@
         [System.Boolean]
         $IsUpdatingCertificates = $False
 
-        ,[Parameter(Mandatory=$false)]
+		,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $DebugMode
     )
@@ -209,9 +209,10 @@
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_DataStoreItemServer
 	Import-DscResource -Name ArcGIS_TLSCertificateImport
-	Import-DscResource -Name ArcGIS_GeoEvent
 	Import-DscResource -Name ArcGIS_Disk
 	Import-DscResource -Name ArcGIS_LogHarvester
+	Import-DscResource -Name ArcGIS_Install
+	Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
     
 	$FileShareRootPath = $FileSharePath
     if(-not($UseExistingFileShare)) { 
@@ -302,11 +303,8 @@
         }
     }
 
-	$ServicesToStop = @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server')
-	if($ServerFunctionsArray -iContains 'WorkflowManagerServer'){
-		$ServicesToStop += @('ArcGISGeoEvent', 'ArcGISGeoEventGateway')
-	}
-	if($ServerRole -ieq 'GeoEventServer'){
+	$ServicesToStop = @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'ArcGISGeoEvent', 'ArcGISGeoEventGateway')
+	if(-not($ServerFunctionsArray -iContains 'WorkflowManagerServer')){
 		$ServicesToStop += 'WorkflowManager'
 	}
 
@@ -316,13 +314,21 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
 		}
 		
 		ArcGIS_Disk DiskSizeCheck
         {
             HostName = $env:ComputerName
         }
+
+		ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "Server"
+            ServerRole = $ServerRole
+        }
+
 
 		$RemoteFederationDependsOn = @() 
 		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
@@ -342,6 +348,25 @@
 						PasswordNeverExpires	= $true
 					}
 					$ServerDependsOn += '[User]ArcGIS_RunAsAccount'
+				}
+
+				$ServerDependsOn = @()
+				
+				if($ServerRole -ieq "WorkflowManagerServer"){
+					ArcGIS_Install WorkflowManagerServerInstall
+					{
+						Name = "WorkflowManagerServer"
+						Version = $Version
+						Path = "$($env:SystemDrive)\\ArcGIS\\Deployment\\Downloads\\WorkflowManagerServer\\WorkflowManagerServer.exe"
+						Extract = $True
+						Arguments = "/qn ACCEPTEULA=YES"
+						ServiceCredential = $ServiceCredential
+						ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+						EnableMSILogging = $DebugMode
+						Ensure = "Present"
+						DependsOn = @('[User]ArcGIS_RunAsAccount')
+					}
+					$ServerDependsOn += @('[ArcGIS_Install]WorkflowManagerServerInstall')
 				}
 
 				ArcGIS_WindowsService ArcGIS_for_Server_Service
@@ -374,7 +399,7 @@
 					$ServerDependsOn += '[ArcGIS_License]ServerLicense'
 				}
 			
-				if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
+				if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential) 
 				{
 					$filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
 					$storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -446,81 +471,6 @@
 					}
 				}			
 				
-				$IsGeoEventServer = ($ServerRole -ieq 'GeoEventServer')
-				if($IsGeoEventServer) 
-				{
-					WindowsFeature websockets
-					{
-						Name  = 'Web-WebSockets'
-						Ensure = 'Present'
-					}
-
-					ArcGIS_xFirewall GeoEvent_FirewallRules_External_Port
-					{
-						Name                  = "ArcGISGeoEventFirewallRulesClusterExternal" 
-						DisplayName           = "ArcGIS GeoEvent Extension Cluster External" 
-						DisplayGroup          = "ArcGIS GeoEvent Extension" 
-						Ensure                = 'Present' 
-						Access                = "Allow" 
-						State                 = "Enabled" 
-						Profile               = ("Domain","Private","Public")
-						LocalPort             = ("6143")
-						Protocol              = "TCP" 
-					}
-					$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRules_External_Port')
-
-					$DependsOnGeoevent = @('[ArcGIS_ServerSettings]ServerSettings')
-
-					if(-Not($ServiceCredentialIsDomainAccount)){
-						ArcGIS_Service_Account GeoEvent_RunAs_Account
-						{
-							Name		 = 'ArcGISGeoEvent'
-							RunAsAccount = $ServiceCredential
-							IsDomainAccount = $ServiceCredentialIsDomainAccount
-							Ensure       = 'Present'
-							DependsOn    = $DependsOnGeoevent
-							DataDir      = '$env:ProgramData\Esri\GeoEvent'
-						}  
-						$DependsOnGeoevent += '[ArcGIS_Service_Account]GeoEvent_RunAs_Account'
-					}
-
-					if(Get-Service 'ArcGISGeoEvent' -ErrorAction Ignore) 
-					{
-						ArcGIS_WindowsService ArcGIS_GeoEvent_Service
-						{
-							Name		= 'ArcGISGeoEvent'
-							Credential  = $ServiceCredential
-							StartupType = if($IsGeoEventServer) { 'Automatic' } else { 'Manual' }
-							State		= if($IsGeoEventServer) { 'Running' } else { 'Stopped' }
-							DependsOn   = $DependsOnGeoevent
-						}
-						$DependsOnGeoevent += '[ArcGIS_WindowsService]ArcGIS_GeoEvent_Service'
-
-						if(Get-Service 'ArcGISGeoEventGateway' -ErrorAction Ignore) 
-						{
-							ArcGIS_WindowsService ArcGIS_GeoEventGateway_Service
-							{
-								Name		= 'ArcGISGeoEventGateway'
-								Credential  = $ServiceCredential
-								StartupType = if($IsGeoEventServer) { 'Automatic' } else { 'Manual' }
-								State		= if($IsGeoEventServer) { 'Running' } else { 'Stopped' }
-								DependsOn   = $DependsOnGeoevent
-							}
-							$DependsOnGeoevent += '[ArcGIS_WindowsService]ArcGIS_GeoEventGateway_Service'
-						}
-
-						ArcGIS_GeoEvent ArcGIS_GeoEvent
-						{
-							Name	                  = 'ArcGIS GeoEvent'
-							Ensure	                  = 'Present'
-							SiteAdministrator         = $SiteAdministratorCredential
-							WebSocketContextUrl       = "wss://$($ExternalDNSHostName)/$($GeoeventContext)wss"
-							Version					  = $Version
-							DependsOn				  = $DependsOnGeoevent
-						}
-					}
-				}
-
 				ArcGIS_LogHarvester ServerLogHarvester
 				{
 					ComponentType = "Server"
@@ -612,7 +562,7 @@
 					$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
 		
 					if($IsMultiMachineServer){
-						$WfmPorts = @("13820", "13830", "13840", "9880")
+						$WfmPorts = @("13820", "13830", "13840", "9880","11211")
 		
 						ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
 						{
@@ -638,7 +588,7 @@
 							Access                = "Allow"
 							State                 = "Enabled"
 							Profile               = ("Domain","Private","Public")
-							RemotePort            = $WfmPorts
+							LocalPort            = $WfmPorts
 							Protocol              = "TCP"
 							Direction             = "Inbound"
 						}
@@ -942,7 +892,7 @@
         }
 
 		# Import TLS certificates from portal machines on the hosting server
-		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $PortalMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 
@@ -961,7 +911,7 @@
 		}
 
 		# Import TLS certificates from GIS on the hosting server
-		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $GisServerMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 

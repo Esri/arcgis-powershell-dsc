@@ -146,7 +146,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_xFirewall, ArcGIS_Server, ArcGIS_Service_Account, ArcGIS_GeoEvent, ArcGIS_WaitForComponent, ArcGIS_Server_TLS, ArcGIS_Server_RegisterDirectories
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_Server, ArcGIS_Service_Account, ArcGIS_GeoEvent, ArcGIS_WaitForComponent, ArcGIS_Server_TLS, ArcGIS_Server_RegisterDirectories
 
     if($null -ne $ConfigStoreCloudStorageType) 
     {
@@ -456,6 +456,17 @@
             ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
         }
         $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
+        
+        $ImportCertChainValue = $true  # default to true
+        $ForceImportCertificate = $false
+        if ([version]$Version -ge [version]"11.3") {
+            if ($Node.SSLCertificate -and $Node.SSLCertificate.ImportCertificateChain -ne $null) {
+                $ImportCertChainValue = $Node.SSLCertificate.ImportCertificateChain
+            }
+            if ($Node.SSLCertificate -and $Node.SSLCertificate.ForceImport -ne $null) {
+                $ForceImportCertificate = $Node.SSLCertificate.ForceImport
+            }
+        }
 
         ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
         {
@@ -468,6 +479,9 @@
             EnableHTTPSOnly = $EnableHTTPSOnly
             EnableHSTS = $EnableHSTS
             ServerType = "GeneralPurposeServer"
+            Version    = $Version
+            ImportCertificateChain = $ImportCertChainValue
+            ForceImportCertificate = $ForceImportCertificate
             DependsOn = $Depends
         }
         $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
@@ -675,7 +689,7 @@
                     Access                = "Allow"
                     State                 = "Enabled"
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = $WfmPorts
+                    LocalPort             = $WfmPorts
                     Protocol              = "TCP"
                     Direction             = "Inbound"
                     DependsOn             = $Depends

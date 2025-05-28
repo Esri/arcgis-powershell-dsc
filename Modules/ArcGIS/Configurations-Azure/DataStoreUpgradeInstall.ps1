@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4,
+        $Version = "11.5",
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -14,14 +14,14 @@
         $FileshareMachineCredential,
 
         [System.String]
-        $InstallerPath,
+        $UpgradeVMName,
+
+        [System.Boolean]
+        $HasRelationalDataStore = $false,
         
 		[Parameter(Mandatory=$false)]
         [System.Boolean]
-        $DebugMode,
-
-        [System.String]
-        $TileCacheMachineNames
+        $DebugMode
     )
     
 	function Get-FileNameFromUrl
@@ -45,30 +45,50 @@
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_WindowsService
+    Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
     
+    $UpgradeSetupsStagingPath = "C:\ArcGIS\Deployment\Downloads\$($Version)"
     Node localhost {
         LocalConfigurationManager
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
         }
 
-        $Depends = @()
-        $InstallerFileName = Split-Path $InstallerPath -Leaf
-        $InstallerPathOnMachine = "$env:TEMP\datastore\$InstallerFileName" 
-        
-		File DownloadInstallerFromFileShare      
-		{            	
-			Ensure = "Present"              	
-			Type = "File"             	
-			SourcePath = $InstallerPath 	
-			DestinationPath =  $InstallerPathOnMachine     
-			Credential = $FileshareMachineCredential     
-			DependsOn = $Depends  
-		}
-        $Depends += '[File]DownloadInstallerFromFileShare'
+        ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "All"
+        }
+        $Depends = @("[ArcGIS_AzureSetupDownloadsFolderManager]CleanupDownloadsFolder")
 
+        if($HasRelationalDataStore){
+            ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
+            {
+                Name                  = "ArcGISMemoryCacheDataStore" 
+                DisplayName           = "ArcGIS Memory Cache Data Store" 
+                DisplayGroup          = "ArcGIS Data Store" 
+                Ensure                = 'Present'  
+                Access                = "Allow" 
+                State                 = "Enabled" 
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = ("9820","9840","9850")
+                Protocol              = "TCP" 
+            }
+        }
+        
+        ArcGIS_AzureSetupDownloadsFolderManager DownloadDataStoreUpgradeSetup{
+            Version = $Version
+            OperationType = 'DownloadUpgradeSetups'
+            ComponentNames = "DataStore"
+            UpgradeSetupsSourceFileSharePath = "\\$($UpgradeVMName)\UpgradeSetups"
+            UpgradeSetupsSourceFileShareCredentials = $FileshareMachineCredential
+            DependsOn = $Depends
+        }
+        $Depends += '[ArcGIS_AzureSetupDownloadsFolderManager]DownloadDataStoreUpgradeSetup'
+
+        $InstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\DataStore.exe"
         #ArcGIS Data Store 10.3 or 10.3.1, you must manually provide this account full control to your ArcGIS Data Store content directory 
         ArcGIS_Install DataStoreUpgrade{
             Name = "DataStore"
@@ -84,7 +104,7 @@
         }
         $Depends += '[ArcGIS_Install]DataStoreUpgrade'
         
-        Script RemoveInstaller
+        Script RemoveDataStoreInstaller
 		{
 			SetScript = 
 			{ 
@@ -93,7 +113,7 @@
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
 			GetScript = { $null }          
 		}    
-        $Depends += '[Script]RemoveInstaller'
+        $Depends += '[Script]RemoveDataStoreInstaller'
 
         ArcGIS_WindowsService ArcGIS_DataStore_Service_Start
         {

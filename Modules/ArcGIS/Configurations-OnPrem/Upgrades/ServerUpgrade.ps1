@@ -107,7 +107,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.4.0 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -463,7 +463,7 @@
                     Access                = "Allow"
                     State                 = "Enabled"
                     Profile               = ("Domain","Private","Public")
-                    RemotePort            = $WfmPorts
+                    LocalPort             = $WfmPorts
                     Protocol              = "TCP"
                     Direction             = "Inbound"
                     DependsOn             = $Depends

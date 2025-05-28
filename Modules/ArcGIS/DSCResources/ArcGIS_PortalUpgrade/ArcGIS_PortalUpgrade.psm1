@@ -275,10 +275,14 @@ function Set-TargetResource
             $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
             $ResponseJSON = (ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)
             Write-Verbose "Response received from post upgrade step $ResponseJSON" 
-            if($postUpgradeResponse.status -ieq "success"){
+            if($postUpgradeResponse.status -ieq "success" -or $postUpgradeResponse.status -ieq "success with warnings"){
+                Write-Verbose "Post Upgrade Step Successful"
+                if($postUpgradeResponse.status -ieq 'success with warnings'){
+                    Write-Verbose "[WARNING]:- $(ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)"
+                }
+
                 Write-Verbose "Sleeping for $($postUpgradeResponse.recheckAfterSeconds*3) seconds"
                 Start-Sleep -Seconds ($postUpgradeResponse.recheckAfterSeconds*3)
-                Write-Verbose "Post Upgrade Step Successful"
             }else{
                 throw  "[ERROR]:- $(ConvertTo-Json $ResponseJSON -Compress -Depth 5)"
             }

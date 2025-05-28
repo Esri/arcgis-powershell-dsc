@@ -3,7 +3,7 @@
 	param(
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $Version = 11.4
+        $Version = "11.5"
 		
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -174,10 +174,10 @@
 		,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
-        
-        ,[Parameter(Mandatory=$false)]
+
+		,[Parameter(Mandatory=$false)]
         [System.Boolean]
-        $DebugMode
+        $DebugMode		
 	)
 	
 
@@ -215,6 +215,8 @@
 	Import-DscResource -Name ArcGIS_GeoEvent	
     Import-DscResource -Name ArcGIS_LogHarvester
 	Import-DscResource -Name ArcGIS_Server_RegisterDirectories
+	Import-DscResource -Name ArcGIS_Install
+	Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
 	
 	$FileShareRootPath = $FileSharePath
 	if(-not($UseExistingFileShare)) { 
@@ -307,11 +309,11 @@
     }
 
 	$ServicesToStop = @('Portal for ArcGIS', 'ArcGIS Data Store', 'ArcGIS Notebook Server', 'ArcGIS Mission Server')
-	if($ServerFunctionsArray -iContains 'WorkflowManagerServer'){
-		$ServicesToStop += @('ArcGISGeoEvent', 'ArcGISGeoEventGateway')
-	}
-	if($ServerRole -ieq 'GeoEventServer'){
+	if(-not($ServerFunctionsArray -iContains 'WorkflowManagerServer')){
 		$ServicesToStop += 'WorkflowManager'
+	}
+	if($ServerRole -ine 'GeoEventServer'){
+		$ServicesToStop += @('ArcGISGeoEvent', 'ArcGISGeoEventGateway')
 	}
 
 	Node localhost
@@ -320,7 +322,7 @@
         {
 			ActionAfterReboot = 'ContinueConfiguration'            
             ConfigurationMode = 'ApplyOnly'    
-            RebootNodeIfNeeded = $true
+            RebootNodeIfNeeded = $false
 		}
 		
 		ArcGIS_Disk DiskSizeCheck
@@ -328,6 +330,13 @@
             HostName = $env:ComputerName
         }    
         
+		ArcGIS_AzureSetupDownloadsFolderManager CleanupDownloadsFolder{
+            Version = $Version
+            OperationType = 'CleanupDownloadsFolder'
+            ComponentNames = "Server"
+            ServerRole = $ServerRole
+        }
+
 		$RemoteFederationDependsOn = @()
 		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
@@ -346,6 +355,39 @@
 				}
 
 				$ServerDependsOn = @()
+				if($ServerRole -ieq "GeoEventServer"){
+					ArcGIS_Install GeoEventServerInstall
+					{
+						Name = "GeoEvent"
+						Version = $Version
+						Path = "$($env:SystemDrive)\\ArcGIS\\Deployment\\Downloads\\GeoEvent\\GeoEvent.exe"
+						Extract = $True
+						Arguments = "/qn ACCEPTEULA=YES"
+						ServiceCredential = $ServiceCredential
+						ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
+						EnableMSILogging = $DebugMode
+						Ensure = "Present"
+						DependsOn = @('[User]ArcGIS_RunAsAccount')
+					}
+					$ServerDependsOn += @('[ArcGIS_Install]GeoEventServerInstall')
+				}
+				if($ServerFunctionsArray -iContains 'WorkflowManagerServer'){
+					ArcGIS_Install WorkflowManagerServerInstall
+					{
+						Name = "WorkflowManagerServer"
+						Version = $Version
+						Path = "$($env:SystemDrive)\\ArcGIS\\Deployment\\Downloads\\WorkflowManagerServer\\WorkflowManagerServer.exe"
+						Extract = $True
+						Arguments = "/qn ACCEPTEULA=YES"
+						ServiceCredential = $ServiceCredential
+						ServiceCredentialIsDomainAccount =  $ServiceCredentialIsDomainAccount
+						EnableMSILogging = $DebugMode
+						Ensure = "Present"
+						DependsOn = @('[User]ArcGIS_RunAsAccount')
+					}
+					$ServerDependsOn += @('[ArcGIS_Install]WorkflowManagerServerInstall')
+				}
+
 				if(-not($Join)) { 
 					if(-not($UseExistingFileShare)){
 						File FileShareLocationPath
@@ -370,8 +412,6 @@
 						$ServerDependsOn += '[ArcGIS_xSmbShare]FileShare'
 					}else{
 						# create folders in existing file share
-						
-
 					}
 				}
 
@@ -405,7 +445,7 @@
 					$ServerDependsOn += '[ArcGIS_License]ServerLicense'
 				}					
 			
-				if($AzureFilesEndpoint -and $StorageAccountCredential -and ($UseAzureFiles)) 
+				if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential) 
 				{
 					$filesStorageAccountName = $AzureFilesEndpoint.Substring(0, $AzureFilesEndpoint.IndexOf('.'))
 					$storageAccountKey       = $StorageAccountCredential.GetNetworkCredential().Password
@@ -668,7 +708,7 @@
 					$DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
 		
 					if($IsMultiMachineServer){
-						$WfmPorts = @("13820", "13830", "13840", "9880")
+						$WfmPorts = @("13820", "13830", "13840", "9880", "11211")
 		
 						ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
 						{
@@ -694,7 +734,7 @@
 							Access                = "Allow"
 							State                 = "Enabled"
 							Profile               = ("Domain","Private","Public")
-							RemotePort            = $WfmPorts
+							LocalPort             = $WfmPorts
 							Protocol              = "TCP"
 							Direction             = "Inbound"
 						}
@@ -1000,7 +1040,7 @@
 		}
 
 		# Import TLS certificates from portal machines on the hosting server
-		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($PortalMachineNamesOnHostingServer -and $PortalMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $PortalMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 
@@ -1020,7 +1060,7 @@
 		}
 
 		# Import TLS certificates from GIS on the hosting server
-		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential)
+		if($GisServerMachineNamesOnHostingServer -and $GisServerMachineNamesOnHostingServer.Length -gt 0 -and $PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder")
 		{
 			$MachineNames = $GisServerMachineNamesOnHostingServer -split ','
 			foreach($MachineName in $MachineNames) 
