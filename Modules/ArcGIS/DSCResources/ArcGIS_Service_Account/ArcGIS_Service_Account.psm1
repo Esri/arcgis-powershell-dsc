@@ -59,7 +59,12 @@ function Get-TargetResource
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $SetStartupToAutomatic = $false
+        $SetStartupToAutomatic = $false,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("Automatic","AutomaticDelayedStart","Manual","Disabled")]
+        [System.String]
+        $SetServiceStartupType = "Automatic"
 	)
 
 	$null
@@ -100,7 +105,12 @@ function Set-TargetResource
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $SetStartupToAutomatic = $false
+        $SetStartupToAutomatic = $false,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("Automatic","AutomaticDelayedStart","Manual","Disabled")]
+        [System.String]
+        $SetServiceStartupType = "Automatic"
 	)
 
     if($Ensure -ieq 'Present') {
@@ -375,7 +385,7 @@ function Set-TargetResource
                         Set-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -StartupType "Automatic" -Verbose
                     }
                 }else{
-                    $ServiceStartUpType = if($Name -ieq 'ArcGIS Notebook Server'){ "AutomaticDelayedStart" }else{ "Automatic" }
+                    $ServiceStartUpType = if($Name -ieq 'ArcGIS Notebook Server'){ "AutomaticDelayedStart" }else{ $SetServiceStartUpType }
                     $ServiceStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $Name -ExpectedStartupType $ServiceStartUpType -Verbose) # TODO - why is this check failing ?
                     if(-not($ServiceStartupTypeIsAuto)){
                         Write-Verbose "Setting Startup Type for $Name to '$($ServiceStartUpType)'"
@@ -439,7 +449,12 @@ function Test-TargetResource
 
         [parameter(Mandatory = $false)]
         [System.Boolean]
-        $SetStartupToAutomatic = $false
+        $SetStartupToAutomatic = $false,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("Automatic","AutomaticDelayedStart","Manual","Disabled")]
+        [System.String]
+        $SetServiceStartupType = "Automatic"
 	)
 
     $result = $true

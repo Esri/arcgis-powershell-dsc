@@ -18,6 +18,11 @@
         [System.Boolean]
         $ServiceCredentialIsMSA = $false,
 
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("Automatic","AutomaticDelayedStart","Manual","Disabled")]
+        [System.String]
+        $ServiceStartupType = "Automatic",
+
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
@@ -352,6 +357,7 @@
             IsDomainAccount = $ServiceCredentialIsDomainAccount
             IsMSAAccount = $ServiceCredentialIsMSA
             SetStartupToAutomatic = $True
+            SetServiceStartupType = $ServiceStartupType
         }
 
         $Depends += '[ArcGIS_Service_Account]Server_RunAs_Account' 
