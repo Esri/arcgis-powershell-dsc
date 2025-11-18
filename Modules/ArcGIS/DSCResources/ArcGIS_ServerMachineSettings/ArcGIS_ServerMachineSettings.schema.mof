@@ -1,0 +1,9 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_ServerMachineSettings")]
+class ArcGIS_ServerMachineSettings : OMI_BaseResource
+{
+	[Key] String ServerHostName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+	[Write] Sint32 SocMaximumHeapSize;
+};
+

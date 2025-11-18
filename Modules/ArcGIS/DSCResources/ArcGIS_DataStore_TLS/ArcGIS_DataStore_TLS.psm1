@@ -76,7 +76,7 @@ function Set-TargetResource
     
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
 
-    $ServiceName = 'ArcGIS Data Store'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'DataStore'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $DataStoreInstallDirectory = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir.TrimEnd('\')  
 
@@ -103,7 +103,7 @@ function Set-TargetResource
             Write-Verbose "Thumbprint of certificate configured with datastore matches the certificate provided"
         }
     }else{
-        if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 2){
+        if($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 2)){
             Write-Verbose "Updating Certificate of type $CertificateType which is supported for ArcGIS Data Store version $Version"
             $CertType = $CertificateType.ToLower()
             if($CertificateType -ieq 'GraphStore'){

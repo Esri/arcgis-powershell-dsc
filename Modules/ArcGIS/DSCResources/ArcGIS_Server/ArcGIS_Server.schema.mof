@@ -2,21 +2,51 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Server")]
 class ArcGIS_Server : OMI_BaseResource
 {
-	[Write] String Version;
+	[Key] String Version;
+	[Key, Description("Is Joining Existing site")] Boolean Join;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write] String ServerHostName;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
     [Write] String ConfigurationStoreLocation;
-	[Key] String ServerDirectoriesRootLocation;
+	[Write] String ServerDirectoriesRootLocation;
 	[Write] String ServerDirectories;
 	[Write] String ServerLogsLocation;
 	[Write] String LocalRepositoryPath;
-	[Write] String ConfigStoreCloudStorageConnectionString;
-	[Write] String ConfigStoreCloudStorageConnectionSecret;
-	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-    [Write, Description("Is Joining Existing site")] Boolean Join;
 	[Write] String PeerServerHostName;
     [Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
 	[Write, Description("Enable Usage Metering")] Boolean EnableUsageMetering;
-	
+	[Write, ValueMap{"None","Azure","AWS"}, Values{"None","Azure","AWS"}, Description("Cloud Storage Type")] String CloudProvider;
+	[Write] Boolean IsCloudNativeServer;
+	[Write] String CloudNamespace;
+	[Write] String CloudNativeTags;
+	[Write] String CloudNativeLocalDirectory;
+	[Write, ValueMap{"AccessKey","IAMRole","None"}, Values{"AccessKey","IAMRole","None"}] String AWSCloudAuthenticationType;
+	[Write] String AWSRegion;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AWSCloudAccessKeyCredential;
+	[Write, ValueMap{"AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None"}, Values{"AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None"}] String AzureCloudAuthenticationType;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudStorageAccountCredential;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudServicePrincipalCredential;
+	[Write] String AzureCloudServicePrincipalTenantId;
+	[Write] String AzureCloudServicePrincipalAuthorityHost;
+	[Write] String AzureCloudUserAssignedIdentityClientId;
+	[Write] String AWSCloudNativeS3BucketName;
+	[Write] String AWSCloudNativeS3RegionEndpointURL;
+	[Write] String AWSCloudNativeS3RootDir;
+	[Write] String AWSCloudNativeDynamoDBRegionEndpointURL;
+	[Write] String AWSCloudNativeQueueServiceRegionEndpointURL;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudNativeStorageAccountCredential;
+	[Write] String AzureCloudNativeStorageAccountContainerName;
+	[Write] String AzureCloudNativeStorageAccountRootDir;
+	[Write] String AzureCloudNativeStorageAccountAccountEndpointUrl;
+	[Write] String AzureCloudNativeStorageAccountRegionEndpointUrl;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudNativeCosmosDBAccountCredential;
+	[Write] String AzureCloudNativeCosmosDBAccountEndpointUrl;
+	[Write] String AzureCloudNativeCosmosDBRegionEndpointUrl;
+	[Write] String AzureCloudNativeCosmosDBAccountDatabaseId;
+	[Write] String AzureCloudNativeCosmosDBAccountSubscriptionId;
+	[Write] String AzureCloudNativeCosmosDBAccountResourceGroupName;
+	[Write, ValueMap{"Direct","Gateway"}, Values{"Direct","Gateway"}] String AzureCloudNativeCosmosDBAccountConnectionMode;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudNativeServiceBusNamespaceCredential;
+	[Write] String AzureCloudNativeServiceBusNamespaceEndpointUrl;
+	[Write] String AzureCloudNativeServiceBusNamespaceRegionEndpointUrl;
 };
-

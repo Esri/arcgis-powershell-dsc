@@ -119,7 +119,7 @@ function Invoke-PostInstallUtility
         $Arguments
     )
 
-    $ServiceName = 'ArcGIS Notebook Server'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'NotebookServer'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
     $PostInstallUtilityToolPath = (Join-Path $InstallDir ( Join-Path 'tools' ( Join-Path 'postInstallUtility' 'PostInstallUtility.bat')))

@@ -2,7 +2,7 @@ Configuration UninstallExtraSetups {
     param(
         [Parameter(Mandatory = $false)]
         [System.String]
-        $Version = "11.5",
+        $Version = "12.0",
 
         [Parameter(Mandatory = $false)]
         [System.String]
@@ -105,7 +105,7 @@ Configuration UninstallExtraSetups {
             $FoldersToDelete += @("C:\\ArcGIS\\Portal","C:\\portalforarcgis")
         }
         
-        if (-not($MachineRolesArray -icontains 'DataStore' -or $MachineRolesArray -icontains 'SpatiotemporalDataStore' -or $MachineRolesArray -icontains 'GraphDataStore' -or $MachineRolesArray -icontains 'ObjectDataStore' -or $MachineRolesArray -icontains 'TileCacheDataStore')){
+        if (-not($MachineRolesArray -icontains 'DataStore' -or $MachineRolesArray -icontains 'SpatiotemporalDataStore' -or $MachineRolesArray -icontains 'GraphDataStore' -or $MachineRolesArray -icontains 'ObjectDataStore')){
             ArcGIS_Install DataStoreUninstall
             { 
                 Name = "DataStore"

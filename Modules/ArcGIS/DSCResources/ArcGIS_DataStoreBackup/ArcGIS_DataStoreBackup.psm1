@@ -101,7 +101,7 @@ function Set-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
-    $ServiceName = 'ArcGIS Data Store'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'DataStore'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $RegKeyObject = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore)
 
@@ -110,7 +110,7 @@ function Set-TargetResource
     
     Write-Verbose "Version of DataStore is $RealVersion"
     $VersionArray = $RealVersion.Split('.')
-    if(-not($VersionArray[0] -eq 11) -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7)){
+    if($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7){
         throw "ArcGIS_DataStoreBackup resource doesn't support ArcGIS DataStore 10.6.1 and below"
     }
     
@@ -278,7 +278,7 @@ function Test-TargetResource
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $true
-    $ServiceName = 'ArcGIS Data Store'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'DataStore'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $RegKeyObject = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore)
 
@@ -287,7 +287,7 @@ function Test-TargetResource
     
     Write-Verbose "Version of DataStore is $RealVersion"
     $VersionArray = $RealVersion.Split('.')
-    if(-not($VersionArray[0] -eq 11) -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7)){
+    if($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 7){
         throw "ArcGIS_DataStoreBackup resource doesn't support ArcGIS DataStore 10.6.1 and below"
     }
     

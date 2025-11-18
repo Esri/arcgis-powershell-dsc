@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "11.5"
+        $Version = "12.0"
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -47,31 +47,32 @@
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
+        [ValidateSet('AccessKey','ServicePrincipal','UserAssignedIdentity')]
         $CloudStorageAuthenticationType = "AccessKey"
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $UserAssignedIdentityClientId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServicePrincipalAuthorityHost
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServicePrincipalTenantId
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $ServicePrincipalCredential
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
         $StorageAccountCredential
-
+        
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $StorageAccountUserAssignedIdentityClientId
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $StorageAccountServicePrincipalTenantId
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $StorageAccountServicePrincipalAuthorityHost
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Management.Automation.PSCredential]
-        $StorageAccountServicePrincipalCredential
-
-        ,[Parameter(Mandatory=$false)]
-        [System.String]
-        $PublicKeySSLCertificateFileUrl
+        $PublicKeySSLCertificateFileName
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -79,7 +80,7 @@
                 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $ServerLicenseFileUrl
+        $ServerLicenseFileName
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
@@ -130,27 +131,15 @@
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
+
+        ,[Parameter(Mandatory=$True)]
+        [System.Management.Automation.PSCredential]
+        $DeploymentArtifactCredentials
         
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $DebugMode
     )
-
-    function Get-FileNameFromUrl
-    {
-        param(
-            [string]$Url
-        )
-        $FileName = $Url
-        if($FileName) {
-            $pos = $FileName.IndexOf('?')
-            if($pos -gt 0) { 
-                $FileName = $FileName.Substring(0, $pos) 
-            } 
-            $FileName = $FileName.Substring($FileName.LastIndexOf('/')+1)   
-        }     
-        $FileName
-    }
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
@@ -167,6 +156,7 @@
     Import-DscResource -Name ArcGIS_TLSCertificateImport
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
+    Import-DscResource -Name ArcGIS_HostNameSettings
 
     $FileShareRootPath = $FileSharePath
     if(-not($UseExistingFileShare)) { 
@@ -182,81 +172,63 @@
 	}
 
     $ServerCertificateFileName  = 'SSLCertificateForServer.pfx'
-    $ServerCertificateLocalFilePath =  (Join-Path $env:TEMP $ServerCertificateFileName)
+    $LocalCertificatePath = "$($env:SystemDrive)\\ArcGIS\\Certs"
+    if(-not(Test-Path $LocalCertificatePath)){
+        New-Item -Path $LocalCertificatePath -ItemType directory -ErrorAction Stop | Out-Null
+    }
+    
+    $ServerCertificateLocalFilePath =  (Join-Path $LocalCertificatePath $ServerCertificateFileName)
 
     $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $ServerCertificateFileLocation = "$($FileSharePath)\Certs\$ServerCertificateFileName"
-	if($UseExistingFileShare)
-    {
-        $ServerCertificateFileLocation = "$($FileSharePath)\$($FolderName)\$($Context)\$ServerCertificateFileName"
-    }
 
     ##
     ## Download license files
     ##
-    if($ServerLicenseFileUrl) {
-        $ServerLicenseFileName = Get-FileNameFromUrl $ServerLicenseFileUrl
-        Invoke-WebRequest -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-    }  
-    
-    if($PublicKeySSLCertificateFileUrl){
-		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
-		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
-	}
+    $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
+    if($HasValidServiceCredential) {
+        if($ServerLicenseFileName) {
+            $ServerLicenseFileUrl = "$($DeploymentArtifactCredentials.UserName)/$($ServerLicenseFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $ServerLicenseFileName -Uri $ServerLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
+        }   
+        
+        if($PublicKeySSLCertificateFileName){
+            $PublicKeySSLCertificateFileUrl = "$($DeploymentArtifactCredentials.UserName)/$($PublicKeySSLCertificateFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+        }
+
+        if($ServerCertificateFileName){
+            $ServerCertificateFileUrl = "$($DeploymentArtifactCredentials.UserName)/Certs/$($ServerCertificateFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $ServerCertificateLocalFilePath -Uri $ServerCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+        }
+    }
 
     $ServerHostName = ($ServerMachineNames -split ',') | Select-Object -First 1
 
-    $ConfigStoreLocation  = "$($FileSharePath)\$FolderName\$($Context)\config-store"
-    $ServerDirsLocation   = "$($FileSharePath)\$FolderName\$($Context)\server-dirs" 
-    
     $Join = ($env:ComputerName -ine $ServerHostName)
 	$IsMultiMachineServer = (($ServerMachineNames -split ',').Length -gt 1)
 	$LastServerHostName = ($ServerMachineNames -split ',') | Select-Object -Last 1
-
+    
+    $ConfigStoreLocation = $null
+    $ServerDirsLocation = $null
     if($UseCloudStorage -and $StorageAccountCredential) 
     {
         $Namespace = $ExternalDNSHostName
         $Pos = $Namespace.IndexOf('.')
         if($Pos -gt 0) { $Namespace = $Namespace.Substring(0, $Pos) }        
         $Namespace = [System.Text.RegularExpressions.Regex]::Replace($Namespace, '[\W]', '') # Sanitize
-        $AccountName = $StorageAccountCredential.UserName
-		$EndpointSuffix = ''
-        $Pos = $StorageAccountCredential.UserName.IndexOf('.blob.')
-        if($Pos -gt -1) {
-            $AccountName = $StorageAccountCredential.UserName.Substring(0, $Pos)
-			$EndpointSuffix = $StorageAccountCredential.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
-        }
         if($UseAzureFiles) {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')   
             $FileShareName = $FileShareName.ToLower() # Azure file shares need to be lower case       
             $ConfigStoreLocation  = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($Context)\config-store"
             $ServerDirsLocation   = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($Context)\server-dirs" 
-        }
-        else {
-            if(-not($Join)){
-                $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($Namespace)$($Context)$($EndpointSuffix);DefaultEndpointsProtocol=https;"
-                $ConfigStoreCloudStorageAccountName = "AccountName=$($AccountName)"
-                if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
-                    $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
-                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($StorageAccountServicePrincipalTenantId);ClientId=$($StorageAccountServicePrincipalCredential.Username)"
-                    if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
-						$ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
-					}
-                    $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
-                }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
-                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId)"
-                    $ConfigStoreCloudStorageConnectionSecret = ""
-                }elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
-                    $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
-                    $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($StorageAccountCredential.GetNetworkCredential().Password)"
-                }else{
-                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($StorageAccountCredential.GetNetworkCredential().Password)"
-                }
-            }
-        }
+        }else{
+            $ServerDirsLocation   = "$($FileSharePath)\$FolderName\$($Context)\server-dirs"
+        } 
+    }else {
+        $ConfigStoreLocation  = "$($FileSharePath)\$FolderName\$($Context)\config-store"
+        $ServerDirsLocation   = "$($FileSharePath)\$FolderName\$($Context)\server-dirs" 
     }
-
+    
     Node localhost
 	{ 
         LocalConfigurationManager
@@ -287,8 +259,7 @@
             ServerRole = "MissionServer"
         }
         
-		$HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
-        if($HasValidServiceCredential) 
+		if($HasValidServiceCredential) 
         {
             if(-not($IsUpdatingCertificates)){
                 if(-Not($ServiceCredentialIsDomainAccount)){
@@ -410,6 +381,13 @@
                     }
                 }
 
+                ArcGIS_HostNameSettings MissionServerHostNameSettings{
+                    ComponentName   = "MissionServer"
+                    Version         = $Version
+                    DependsOn       = $DependsOn
+                }
+                $DependsOn += '[ArcGIS_HostNameSettings]MissionServerHostNameSettings'
+
                 ArcGIS_MissionServer MissionServer
                 {
                     Ensure                                  = 'Present'
@@ -418,9 +396,14 @@
                     DependsOn                               = $DependsOn
                     ServerDirectoriesRootLocation           = $ServerDirsLocation
                     LogLevel                                = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
-                    ConfigStoreCloudStorageConnectionString = if(-not($Join)){ $ConfigStoreCloudStorageConnectionString }else{ $null }
-                    ConfigStoreCloudStorageAccountName      = if(-not($Join)){ $ConfigStoreCloudStorageAccountName }else{ $null }
-                    ConfigStoreCloudStorageConnectionSecret = if(-not($Join)){ $ConfigStoreCloudStorageConnectionSecret }else{ $null }
+                    CloudProvider                           = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join)){ "Azure" }else{ "None" }
+                    CloudNamespace                          = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join)){ "$($Namespace)$($Context)" }else{ $null }
+                    AzureCloudAuthenticationType = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join)){ $CloudStorageAuthenticationType }else{ "None" }
+                    AzureCloudStorageAccountCredential = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join)){ $StorageAccountCredential }else{ $null }
+                    AzureCloudServicePrincipalCredential = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join) -and $CloudStorageAuthenticationType -ieq "ServicePrincipal"){ $ServicePrincipalCredential }else{ $null }
+                    AzureCloudServicePrincipalTenantId = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join) -and $CloudStorageAuthenticationType -ieq "ServicePrincipal"){ $ServicePrincipalTenantId }else{ $null }
+                    AzureCloudServicePrincipalAuthorityHost = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join) -and $CloudStorageAuthenticationType -ieq "ServicePrincipal"){ $ServicePrincipalAuthorityHost }else{ $null }
+                    AzureCloudUserAssignedIdentityClientId = if($UseCloudStorage -and -not($UseAzureFiles) -and -not($Join) -and $CloudStorageAuthenticationType -ieq "UserAssignedIdentity"){ $UserAssignedIdentityClientId }else{ $null }
                     Join                                    = $Join
                     Version                                 = $Version
                     PeerServerHostName                      = $ServerHostName
@@ -428,29 +411,6 @@
                 $DependsOn += "[ArcGIS_MissionServer]MissionServer"
             }
 
-            Script CopyCertificateFileToLocalMachine
-            {
-                GetScript = {
-                    $null
-                }
-                SetScript = {    
-                    Write-Verbose "Copying from $using:ServerCertificateFileLocation to $using:ServerCertificateLocalFilePath"      
-                    $PsDrive = New-PsDrive -Name X -Root $using:FileShareRootPath -PSProvider FileSystem                 
-                    Write-Verbose "Mapped Drive $($PsDrive.Name) to $using:FileShareRootPath"              
-                    Copy-Item -Path $using:ServerCertificateFileLocation -Destination $using:ServerCertificateLocalFilePath -Force  
-                    if($PsDrive) {
-                        Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
-                        Remove-PsDrive -Name $PsDrive.Name -Force       
-                    }       
-                }
-                TestScript = {   
-                    $false
-                }
-                DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-                PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-            }
-            $DependsOn += @('[Script]CopyCertificateFileToLocalMachine')
-    
             ArcGIS_Server_TLS Server_TLS
             {
                 ServerHostName             = $env:ComputerName
@@ -458,8 +418,8 @@
                 WebServerCertificateAlias  = "ApplicationGateway"
                 CertificateFileLocation    = $ServerCertificateLocalFilePath
                 CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
-                ServerType                 = $ServerFunctions
-                DependsOn                  = if(-not($IsUpdatingCertificates)){ @('[ArcGIS_MissionServer]MissionServer','[Script]CopyCertificateFileToLocalMachine') }else{ @('[Script]CopyCertificateFileToLocalMachine') }
+                ServerType                 = "MissionServer"
+                DependsOn                  = if(-not($IsUpdatingCertificates)){ @('[ArcGIS_MissionServer]MissionServer') }else{ @() }
                 SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
             }
             $DependsOn += @('[ArcGIS_Server_TLS]Server_TLS')

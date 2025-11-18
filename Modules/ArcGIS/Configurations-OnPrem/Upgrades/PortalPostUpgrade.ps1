@@ -6,10 +6,6 @@
         $PortalSiteAdministratorCredential,
         
         [parameter(Mandatory = $false)]
-        [System.Boolean]
-        $SetOnlyHostNamePropertiesFile = $False,
-
-        [parameter(Mandatory = $false)]
         [System.String]
         $Version,
 
@@ -19,7 +15,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_PortalUpgrade
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_PortalUpgrade
 
     Node $AllNodes.NodeName {
         
@@ -35,7 +31,6 @@
             PortalAdministrator = $PortalSiteAdministratorCredential 
             PortalHostName = $Node.NodeName
             LicenseFilePath = $Node.PortalLicenseFilePath
-            SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
             Version = $Version
             EnableUpgradeSiteDebug = $DebugMode
         }

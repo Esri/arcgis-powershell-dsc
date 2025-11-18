@@ -4,7 +4,6 @@ class ArcGIS_PortalUpgrade : OMI_BaseResource
 	[Key] String PortalHostName;
 	[Write, EmbeddedInstance("MSFT_Credential")] String PortalAdministrator;
 	[Write] String LicenseFilePath;
-	[Write] Boolean SetOnlyHostNamePropertiesFile;
 	[Write] String Version;
 	[Write] Boolean ImportExternalPublicCertAsRoot;
 	[Write] Boolean EnableUpgradeSiteDebug;

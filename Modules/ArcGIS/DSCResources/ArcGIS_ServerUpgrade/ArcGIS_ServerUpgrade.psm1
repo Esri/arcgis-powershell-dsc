@@ -64,40 +64,10 @@ function Set-TargetResource
 	Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin'"
     Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET'
 
-    $ServiceName = 'ArcGIS Server'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-    $RestartRequired = $false
-    $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-    if($configuredHostName -ine $FQDN){
-        Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
-        if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-            # Need to restart the service to pick up the hostname 
-            $RestartRequired = $true 
-        }
-    }
-
     if(Test-Install -Name "Server" -Version $Version){
         Write-Verbose "Installed Version of ArcGIS Server is $Version"
     }else{
         throw "ArcGIS Server not upgraded to required Version $Version"
-    }
-
-    if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-        Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
-        if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
-                # Need to restart the service to pick up the EC2
-                $RestartRequired = $true
-            }  
-    }
-
-    if($RestartRequired) {
-        Restart-ArcGISService -ServiceName $ServiceName -Verbose
-
-        Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
-        Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
-        Start-Sleep -Seconds 30
     }
 
     $Referer = "http://localhost"
@@ -110,7 +80,7 @@ function Set-TargetResource
     [string]$ServerUpgradeUrl = $ServerSiteURL.TrimEnd('/') + "/arcgis/admin/upgrade"
     Write-Verbose "Making request to $ServerUpgradeUrl to Upgrade the site"
     $UpgradeParameters = @{f = 'json'; runAsync='true'}
-    if($VersionArray[0] -ieq "11"){
+    if($VersionArray[0] -gt 10 -and $EnableUpgradeSiteDebug){
         $UpgradeParameters.Add("enableDebug", 'true')
     }
 
@@ -127,13 +97,13 @@ function Set-TargetResource
             $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters $UpgradeParameters -Referer $Referer -Verbose -HttpMethod 'GET'
             
             Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $ResponseStatus)"
-            if(($ResponseStatus.upgradeStatus -ine 'IN_PROGRESS') -and ($VersionArray[0] -ieq "11" -and $VersionArray[1] -gt "3")){
+            if(($ResponseStatus.upgradeStatus -ine 'IN_PROGRESS') -and (($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -gt 3))){
                 foreach($Stage in $Stages){
                     Write-Verbose "$($Stage.name) : $($Stage.state)"
                 }
             }
 
-            if($ResponseStatus.upgradeStatus -ieq 'Success' -or (($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error'))){
+            if($ResponseStatus.upgradeStatus -ieq 'Success' -or $ResponseStatus.upgradeStatus -ieq 'Success with warnings'  -or (($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error'))){
                 if(Test-ServerUpgradeStatus -ServerSiteURL $ServerSiteURL -Referer $Referer -Version $Version -Verbose){
                     $ServerReady = $True
                     break
@@ -233,6 +203,7 @@ function Test-ServerUpgradeStatus
     $Info = Invoke-ArcGISWebRequest -Url ($ServerSiteURL.TrimEnd('/') + "/arcgis/rest/info") -HttpFormParameters @{f = 'json';} -Referer $Referer -Verbose
     $currentversion = "$($Info.currentVersion)"
     Write-Verbose "Current Version Installed - $currentversion"
+    
     if($currentversion -ieq "10.51"){
         $currentversion = "10.5.1"
     }elseif($currentversion -ieq "10.61"){
@@ -245,9 +216,15 @@ function Test-ServerUpgradeStatus
         $currentversion = "10.9.1"
     }
 
-    if(($Version.Split('.').Length -gt 1) -and ($Version.Split('.')[1] -eq $currentversion.Split('.')[1])){
-        if($Version.Split('.').Length -eq 3){
-            if($Version.Split('.')[2] -eq $currentversion.Split('.')[2]){
+    $VersionArray = $Version.Split('.')
+    $CurrentVersionArray = $currentversion.Split('.')
+    if($currentversion.Split('.').Length -eq 1){
+        $CurrentVersionArray = @($currentversion, "0")
+    }
+
+    if(($VersionArray.Length -gt 1) -and ($VersionArray[1] -eq $CurrentVersionArray[1])){
+        if($VersionArray.Length -eq 3){
+            if($VersionArray[2] -eq $CurrentVersionArray[2]){
                 Write-Verbose 'Server Upgrade Successful'
                 return $True
             }

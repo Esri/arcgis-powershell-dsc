@@ -36,7 +36,7 @@ function Get-TargetResource {
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore")]
+		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore", "TileCache")]
 		$DataStoreType,
 
 		[System.String]
@@ -82,7 +82,7 @@ function Set-TargetResource {
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore")]
+		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare", "ObjectStore", "TileCache")]
 		$DataStoreType,
 
 		[System.String]
@@ -164,7 +164,7 @@ function Test-TargetResource {
 
 		[parameter(Mandatory = $true)]
 		[System.String]
-		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare","ObjectStore")]
+		[ValidateSet("Folder", "CloudStore", "RasterStore", "BigDataFileShare","ObjectStore", "TileCache")]
 		$DataStoreType,
 
 		[System.String]
@@ -186,6 +186,10 @@ function Test-TargetResource {
 	$Referer = 'http://locahost'
 	$token = Get-ServerToken -ServerEndPoint $ServerUrl -ServerSiteName $ServerSiteName -Credential $SiteAdministrator -Referer $Referer 
 	
+	if($Ensure -ieq "Present" -and $DataStoreType -ieq "TileCache"){
+		throw "TileCache Data Store registration is not supported in ArcGIS_DataStoreItemServer. Please use the ArcGIS_DataStore resource to register TileCache Data Store."
+	}
+
 	$DataStoreItemUrl = $ServerURL.TrimEnd('/') + '/' + $ServerSiteName + '/admin/data' 
 	$DataStoreItemTest = Test-DataStoreItemExists -ItemName $Name -DataStoreItemUrl $DataStoreItemUrl -Token $token.token -Referer $Referer -DataStoreType $DataStoreType
 	if($DataStoreItemTest){
@@ -233,11 +237,14 @@ function Get-DsItems
 	$DataStoreItems = Invoke-ArcGISWebRequest -Url $DataItemsUrl -HttpFormParameters  @{ f = 'json'; token = $Token; types = $TypeString; ancestorPath = $AncestorPath } -Referer $Referer 
 	if($ItemName -ieq "OzoneObjectStore"){
 		return ($DataStoreItems.items | Where-Object { $_.provider -ieq "ArcGIS Data Store" })
-	}else{
+	}
+	elseif( $ItemName -ieq "TileCache"){
+		return ($DataStoreItems.items | Where-Object { $_.provider -ieq "ArcGIS Data Store" -and ($_.info.dsFeature -ieq $DataStoreType)})
+	}
+	else{
 		return ($DataStoreItems.items | Where-Object { $_.path -ieq "$($AncestorPath)/$($ItemName)" })
 	}
 }
-
 
 function Test-DataStoreItemExists {
 	[CmdletBinding()]
@@ -282,6 +289,10 @@ function Get-DSAncestorPathOrItemType {
 	elseif ($DataStoreType -ieq 'ObjectStore') {
 		$TypeString = "objectStore"
 		$AncestorPath = "/cloudStores"
+	}
+	elseif ($DataStoreType -ieq 'TileCache') {
+		$TypeString = "nosql"
+		$AncestorPath = "/nosqlDatabases"
 	}
 	elseif ($DataStoreType -ieq 'BigDataFileShare') { 
 		$TypeString = "bigDataFileShare"

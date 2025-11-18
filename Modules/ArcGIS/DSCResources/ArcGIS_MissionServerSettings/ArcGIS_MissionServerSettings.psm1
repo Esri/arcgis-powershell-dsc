@@ -50,8 +50,7 @@ function Set-TargetResource
 {
 	[CmdletBinding()]
 	[OutputType([System.Collections.Hashtable])]
-	param
-	(	
+	param(	
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -68,6 +67,36 @@ function Set-TargetResource
         [System.Management.Automation.PSCredential]
         $SiteAdministrator,
 
+        [parameter(Mandatory = $false)]
+        [System.string]                 
+        $HttpProxyHost,
+
+        [parameter(Mandatory = $false)]
+        [AllowNull()]
+        [Nullable[System.UInt32]]                
+        $HttpProxyPort,
+
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]           
+        $HttpProxyCredential,
+
+        [parameter(Mandatory = $false)]
+        [System.string]                 
+        $HttpsProxyHost,
+
+        [parameter(Mandatory = $false)]
+        [AllowNull()]
+        [Nullable[System.UInt32]]                
+        $HttpsProxyPort,
+
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]           
+        $HttpsProxyCredential,
+
+        [parameter(Mandatory = $false)]
+        [System.string]                 
+        $NonProxyHosts,
+        
         [System.Boolean]
         $DisableServiceDirectory
 	)
@@ -83,7 +112,7 @@ function Set-TargetResource
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):20443"
-    $ServiceName = 'ArcGIS Mission Server'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'MissionServer'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
     
@@ -123,6 +152,108 @@ function Set-TargetResource
         $AdminSettingsModified = $True
     }
 
+    # checking forward proxy settings
+	if ($HttpProxyHost) {
+		if(-not($systemProperties.HttpProxyHost)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpProxyHost' -Value $HttpProxyHost
+		}else{
+			$systemProperties.HttpProxyHost = $HttpProxyHost
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.HttpProxyHost) {
+        # JSON removed it, so clear it
+        $systemProperties.PSObject.Properties.Remove('httpProxyHost')
+        $AdminSettingsModified = $true
+    }
+	if ($HttpProxyPort) {
+		if(-not($systemProperties.HttpProxyPort)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpProxyPort' -Value $HttpProxyPort
+		}else{
+			$systemProperties.HttpProxyPort = $HttpProxyPort
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.HttpProxyPort) {
+        $systemProperties.PSObject.Properties.Remove('httpProxyPort')
+        $AdminSettingsModified = $true
+    }
+	if ($HttpProxyCredential) {
+		if(-not($systemProperties.HttpProxyUser)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpProxyUser' -Value $HttpProxyCredential.UserName
+		}else{
+			$systemProperties.HttpProxyUser = $HttpProxyCredential.UserName
+		}
+		if(-not($systemProperties.HttpProxyPassword)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpProxyPassword' -Value $HttpProxyCredential.GetNetworkCredential().Password
+		}else{
+			$systemProperties.HttpProxyPassword = $HttpProxyCredential.GetNetworkCredential().Password
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.HttpProxyUser -or $systemProperties.HttpProxyPassword) {
+        $systemProperties.PSObject.Properties.Remove('httpProxyUser')
+        $systemProperties.PSObject.Properties.Remove('httpProxyPassword')
+        $AdminSettingsModified = $true
+    }
+	# Forward proxy HTTPS Proxy: set or clear
+	if ($HttpsProxyHost) {
+		if(-not($systemProperties.HttpsProxyHost)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpsProxyHost' -Value $HttpsProxyHost
+		}else{
+			$systemProperties.HttpsProxyHost = $HttpsProxyHost
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.HttpsProxyHost) {
+        # JSON removed it, so clear it
+        $systemProperties.PSObject.Properties.Remove('httpsProxyHost')
+        $AdminSettingsModified = $true
+    }
+	if ($HttpsProxyPort) {
+		if(-not($systemProperties.HttpsProxyPort)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpsProxyPort' -Value $HttpsProxyPort
+		}else{
+			$systemProperties.HttpsProxyPort = $HttpsProxyPort
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.HttpsProxyPort) {
+        $systemProperties.PSObject.Properties.Remove('httpsProxyPort')
+        $AdminSettingsModified = $true
+    }
+	if ($HttpsProxyCredential) {
+		if(-not($systemProperties.HttpsProxyUser)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpsProxyUser' -Value $HttpsProxyCredential.UserName
+		}else{
+			$systemProperties.HttpsProxyUser = $HttpsProxyCredential.UserName
+		}
+		if(-not($systemProperties.HttpsProxyPassword)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'httpsProxyPassword' -Value $HttpsProxyCredential.GetNetworkCredential().Password
+		}else{
+			$systemProperties.HttpsProxyPassword = $HttpsProxyCredential.GetNetworkCredential().Password
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.HttpsProxyUser -or $systemProperties.HttpsProxyPassword) {
+        $systemProperties.PSObject.Properties.Remove('httpsProxyUser')
+        $systemProperties.PSObject.Properties.Remove('httpsProxyPassword')
+        $AdminSettingsModified = $true
+    }
+
+	if ($NonProxyHosts) {
+		if(-not($systemProperties.NonProxyHosts)) {
+			Add-Member -InputObject $systemProperties -MemberType NoteProperty -Name 'nonProxyHosts' -Value $NonProxyHosts
+		}else{
+			$systemProperties.NonProxyHosts = $NonProxyHosts
+		}
+		$AdminSettingsModified = $true
+	}
+	elseif ($systemProperties.NonProxyHosts) {
+        $systemProperties.PSObject.Properties.Remove('nonProxyHosts')
+        $AdminSettingsModified = $true
+    }
+
     if($AdminSettingsModified){
         Set-AdminSettings -ServerUrl $ServerUrl -SettingUrl "arcgis/admin/system/properties/update" -Token $token.token -Properties $systemProperties
 
@@ -154,8 +285,7 @@ function Test-TargetResource
 {
     [CmdletBinding()]
 	[OutputType([System.Boolean])]
-	param
-    (   
+	param(   
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
@@ -171,6 +301,36 @@ function Test-TargetResource
         [parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $SiteAdministrator,
+
+        [parameter(Mandatory = $false)]
+        [System.String]                
+        $HttpProxyHost,
+
+        [parameter(Mandatory = $false)]
+        [AllowNull()]
+        [Nullable[System.UInt32]]                    
+        $HttpProxyPort,
+
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]           
+        $HttpProxyCredential,
+
+        [parameter(Mandatory = $false)]
+        [System.string]                 
+        $HttpsProxyHost,
+
+        [parameter(Mandatory = $false)]
+        [AllowNull()]
+        [Nullable[System.UInt32]]                    
+        $HttpsProxyPort,
+
+        [parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]           
+        $HttpsProxyCredential,
+
+        [parameter(Mandatory = $false)]
+        [System.string]                 
+        $NonProxyHosts,
 
         [System.Boolean]
         $DisableServiceDirectory
@@ -212,6 +372,74 @@ function Test-TargetResource
     if($result -and $systemProperties.disableServicesDirectory -ine $DisableServiceDirectory){
         Write-Verbose "DisableServicesDirectory for Mission Server doesn't match expected value '$DisableServiceDirectory'"
         $result = $false
+    }
+    #--- begin proxy test block ---
+    $ProtocolSettings = @(
+        [PSCustomObject]@{ Prefix = 'Http';  CredentialParam = 'HttpProxyCredential'  },
+        [PSCustomObject]@{ Prefix = 'Https'; CredentialParam = 'HttpsProxyCredential' }
+    )
+    foreach ($Protocol in $ProtocolSettings) {
+        $Prefix                 = $Protocol.Prefix
+        $ProxyHostParamName     = "${Prefix}ProxyHost"
+        $ProxyPortParamName     = "${Prefix}ProxyPort"
+        $ProxyCredentialParam   = $Protocol.CredentialParam
+
+        # Grab the parameter values by name
+        $ProxyHostValue         = Get-Variable -Name $ProxyHostParamName       -ValueOnly
+        $ProxyPortValue         = Get-Variable -Name $ProxyPortParamName       -ValueOnly
+        $ProxyCredentialValue   = Get-Variable -Name $ProxyCredentialParam     -ValueOnly
+
+        # Grab the server’s current system properties
+        $ServerProxyHost        = $systemProperties."${Prefix}ProxyHost"
+        $ServerProxyPort        = $systemProperties."${Prefix}ProxyPort"
+        $ServerProxyUser        = $systemProperties."${Prefix}ProxyUser"
+        $ServerProxyPassword    = $systemProperties."${Prefix}ProxyPassword"
+
+        # If user supplied any proxy info, compare them
+        if ($ProxyHostValue -or $ProxyPortValue -or $ProxyCredentialValue) {
+            if ($ProxyHostValue -and $ServerProxyHost -ne $ProxyHostValue) {
+                Write-Verbose "$Prefix ProxyHost mismatch (`"$ServerProxyHost`" vs `"$ProxyHostValue`")"
+                $result = $false
+            }
+            if ($ProxyPortValue -and $ServerProxyPort -ne $ProxyPortValue) {
+                Write-Verbose "$Prefix ProxyPort mismatch (`"$ServerProxyPort`" vs `"$ProxyPortValue`")"
+                $result = $false
+            }
+            if ($ProxyCredentialValue) {
+                $UserName = $ProxyCredentialValue.UserName
+                $Password = $ProxyCredentialValue.GetNetworkCredential().Password
+
+                if ($ServerProxyUser -ne $UserName) {
+                    Write-Verbose "$Prefix ProxyUser mismatch (`"$ServerProxyUser`" vs `"$UserName`")"
+                    $result = $false
+                }
+                if ($ServerProxyPassword -ne $Password) {
+                    Write-Verbose "$Prefix ProxyPassword mismatch"
+                    $result = $false
+                }
+            }
+        }
+        # Otherwise, if nothing in JSON but server has a value => mismatch
+        elseif ($ServerProxyHost -or $ServerProxyPort -or $ServerProxyUser -or $ServerProxyPassword) {
+            Write-Verbose "$Prefix proxy present on server but absent in JSON"
+            $result = $false
+        }
+
+        if (-not $result) { break }
+    }
+
+    # NonProxyHosts
+    if ($result) {
+        if ($NonProxyHosts) {
+            if ($systemProperties.NonProxyHosts -ne $NonProxyHosts) {
+                Write-Verbose "NonProxyHosts mismatch (`"$($systemProperties.NonProxyHosts)`" vs `"$NonProxyHosts`")"
+                $result = $false
+            }
+        }
+        elseif ($systemProperties.NonProxyHosts) {
+            Write-Verbose "NonProxyHosts present on server but absent in JSON"
+            $result = $false
+        }
     }
 
     $result

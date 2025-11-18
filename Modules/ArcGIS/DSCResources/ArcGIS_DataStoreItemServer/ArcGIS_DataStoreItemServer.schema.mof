@@ -8,7 +8,7 @@ class ArcGIS_DataStoreItemServer : OMI_BaseResource
 	[Write] String ServerHostName;
 	[Write] String ServerHostPort;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-	[Write, ValueMap{"Folder","CloudStore","RasterStore","BigDataFileShare","ObjectStore"}, Values{"Folder","CloudStore","RasterStore","BigDataFileShare","ObjectStore"}] String DataStoreType;
+	[Write, ValueMap{"Folder","CloudStore","RasterStore","BigDataFileShare","ObjectStore", "TileCache"}, Values{"Folder","CloudStore","RasterStore","BigDataFileShare","ObjectStore", "TileCache"}] String DataStoreType;
 	[Write] String ConnectionString;
 	[Write, EmbeddedInstance("MSFT_Credential")] String ConnectionSecret;
 	[Write] Boolean ForceUpdate;

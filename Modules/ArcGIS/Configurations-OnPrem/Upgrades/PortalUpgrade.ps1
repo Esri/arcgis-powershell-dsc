@@ -60,7 +60,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_Service_Account, ArcGIS_InstallPatch, ArcGIS_xFirewall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install, ArcGIS_Service_Account, ArcGIS_InstallPatch, ArcGIS_xFirewall, ArcGIS_HostNameSettings
 
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -73,7 +73,7 @@
         $VersionArray = $Version.Split(".")
 
         $Depends = @()
-        if(($VersionArray[0] -eq 11) -or $Version -eq "10.9.1"){
+        if(($VersionArray[0] -gt 10) -or $Version -eq "10.9.1"){
             ArcGIS_Install WFMExtensionUninstall
             {
                 Name = "WorkflowManagerWebApp"
@@ -83,7 +83,7 @@
             $Depends += '[ArcGIS_Install]WFMExtensionUninstall'
         }
         
-        if($IsMultiMachinePortal -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){ # 11.3 or later
+        if($IsMultiMachinePortal -and (($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3))){ # 11.3 or later
             ArcGIS_xFirewall Portal_Ignite_OutBound
             {
                 Name                  = "PortalforArcGIS-Ignite-Outbound" 
@@ -120,7 +120,7 @@
             Version = $Version
             Path = $InstallerPath
             Extract = $InstallerIsSelfExtracting
-            Arguments = if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){"/qn ACCEPTEULA=YES"}else{"/qn"}
+            Arguments = if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){"/qn ACCEPTEULA=YES"}else{"/qn"}
             ServiceCredential = $ServiceAccount
             ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
             ServiceCredentialIsMSA = $IsServiceAccountMSA
@@ -130,7 +130,7 @@
         }
         $Depends += '[ArcGIS_Install]PortalUpgrade'
 
-        if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $WebStylesInstallerPath){
+        if(($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $WebStylesInstallerPath){
             ArcGIS_Install "WebStylesInstall"
             { 
                 Name = "WebStyles"
@@ -173,8 +173,13 @@
             IsMSAAccount = $IsServiceAccountMSA
             SetStartupToAutomatic = $True
         }
-        $Depends += '[ArcGIS_Service_Account]Portal_RunAs_Account'
 
-
+        ArcGIS_HostNameSettings PortalHostNameSettings
+        {
+            ComponentName   = "Portal"
+            Version         = $Version
+            HostName        = $Node.NodeName
+            DependsOn       = @('[ArcGIS_Service_Account]Portal_RunAs_Account')
+        }
     }
 }

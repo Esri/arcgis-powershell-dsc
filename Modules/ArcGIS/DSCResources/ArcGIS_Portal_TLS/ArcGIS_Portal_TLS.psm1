@@ -92,7 +92,7 @@ function Set-TargetResource
     }
     $Info = Invoke-ArcGISWebRequest -Url "$($PortalUrl)/arcgis/portaladmin/" -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -Verbose -HttpMethod 'GET'
     $VersionArray = "$($Info.version)".Split('.')
-    [System.Boolean]$VersionGreaterThan1071 = ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))
+    [System.Boolean]$VersionGreaterThan1071 = ($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))
     [System.Boolean]$VersionGreaterThanOrEqualTo11_3 = ($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3)
 
     if($CertificateFileLocation) 
@@ -311,7 +311,7 @@ function Test-TargetResource
 
     $Info = Invoke-ArcGISWebRequest -Url "$($PortalURL)/arcgis/portaladmin/" -HttpFormParameters @{f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
     $VersionArray = "$($Info.version)".Split('.')
-    [System.Boolean]$VersionGreaterThan1071 = ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))
+    [System.Boolean]$VersionGreaterThan1071 = ($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))
     [System.Boolean]$VersionGreaterThanOrEqualTo11_3 = ($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3)
 
     if($WebServerCertificateAlias){

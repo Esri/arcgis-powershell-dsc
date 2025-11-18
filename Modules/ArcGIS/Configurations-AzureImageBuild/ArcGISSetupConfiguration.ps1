@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License11.5"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License12.0"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }
@@ -48,6 +48,16 @@
             ValueData   = "TRUE"
         }
         $Depends += "[Registry]VolumeShadowcopyService"
+
+        Registry DiagnosticDataCollectionRequired
+        {
+          Ensure      = "Present"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
+          ValueName   = "AllowTelemetry"
+          ValueData   = 0
+        }
+        $Depends += "[Registry]DiagnosticDataCollectionRequired"
+
 
         Script SetAutomaticPageFileManagement
         {

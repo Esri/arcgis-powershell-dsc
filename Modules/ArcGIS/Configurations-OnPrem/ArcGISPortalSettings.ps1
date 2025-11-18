@@ -18,6 +18,36 @@
         $PortalContext,
 
         [Parameter(Mandatory=$false)]
+        [System.String] 
+        $HttpProxyHost,
+
+        [Parameter(Mandatory=$false)]
+        [AllowNull()]
+        [Nullable[System.UInt32]]    
+        $HttpProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential] 
+        $HttpProxyCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.String] 
+        $HttpsProxyHost,
+
+        [Parameter(Mandatory=$false)]
+        [AllowNull()]
+        [Nullable[System.UInt32]]    
+        $HttpsProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential] 
+        $HttpsProxyCredential,
+
+        [Parameter(Mandatory=$false)]
+        [System.String] 
+        $NonProxyHosts,
+
+        [Parameter(Mandatory=$false)]
         [System.String]
         $InternalLoadBalancer,
 
@@ -76,7 +106,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_PortalSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_PortalSettings
     
     Node $AllNodes.NodeName
     {
@@ -107,6 +137,15 @@
                 PortalEndPointContext   = if($InternalLoadBalancer -or !$ExternalDNSHostName){ 'arcgis' }else{ $PortalContext }
                 PortalEndPointPort      = $PortalEndpointPort
                 PortalAdministrator     = $PortalAdministratorCredential
+                HttpProxyHost     = $HttpProxyHost
+                HttpProxyPort     = $HttpProxyPort
+                HttpProxyCredential  = $HttpProxyCredential
+
+                HttpsProxyPort    = $HttpsProxyPort
+                HttpsProxyHost    = $HttpsProxyHost
+                HttpsProxyCredential = $HttpsProxyCredential
+                
+                NonProxyHosts     = $NonProxyHosts
                 ADServiceUser           = $ADServiceCredential
                 EnableAutomaticAccountCreation = if($EnableAutomaticAccountCreation) { $true } else { $false }
                 DefaultRoleForUser      = $DefaultRoleForUser

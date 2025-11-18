@@ -332,7 +332,7 @@ function Get-PatchManifestFromESRIDownloads
 
     $MinifiedVersion = $Version.Replace(".","")
     $wc = New-Object System.Net.WebClient
-    $PatchManifestJsonString = $wc.DownloadString("https://downloads.esri.com/patch_notification/patches.json")
+    $PatchManifestJsonString = $wc.DownloadString("https://content.esri.com/patch_notification/patches.json")
     $wc.Dispose()
     $AllPatches = ConvertFrom-Json $PatchManifestJsonString
 	$ParsedPatchesObject = [ordered]@{}
@@ -400,6 +400,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\Server11.3\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.4\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server11.5\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server12.0\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.6\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.7\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.8\Server\Updates\*",
@@ -410,6 +411,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.3\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.4\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.5\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent12.0\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.4\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\Desktop10.5\Updates\*" ,
@@ -425,7 +427,8 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.2\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.3\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.4\Updates\*",
-        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.5\Updates\*"
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.5\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 12.0\Updates\*"
     )
     
     foreach($RegPath in $RegPaths){
@@ -459,7 +462,8 @@ function Install-Patch
     )
 
     if(Test-Path $mspPath){
-        $arguments = "/update "+ '"' + $mspPath +'"' + " /quiet"
+        $arguments = "/p "+ '"' + $mspPath +'" /qb REINSTALLMODE="ecmus" REINSTALL="ALL"'
+        #$arguments = "/update "+ '"' + $mspPath +'"' + " /quiet"
         Write-Verbose $arguments
         try {
             $PatchInstallProc = Start-Process -FilePath msiexec.exe -ArgumentList $Arguments -Wait -Verbose -PassThru

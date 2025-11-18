@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "11.5"
+        $Version = "12.0"
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -39,14 +39,6 @@
         [System.Boolean]
         $IsMultiMachineSpatioTemporalDataStore = $false
 
-        ,[Parameter(Mandatory=$false)]
-        [System.Boolean]
-        $IsMultiMachineTileCacheDataStore = $false
-
-        ,[Parameter(Mandatory=$false)]
-        [System.Boolean]
-        $IsTileCacheDataStoreClustered = $false
-
         ,[Parameter(Mandatory=$true)]
         [System.String]
         $ServerMachineNames
@@ -64,6 +56,7 @@
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_Disk
     Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
+    Import-DscResource -Name ArcGIS_HostNameSettings
     
     $ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1
@@ -186,7 +179,7 @@
                     $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
                 }
 
-                if($Version -ieq "11.5"){
+                if($Version -ieq "12.0"){
                     ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
                     {
                         Name                  = "ArcGISMemoryCacheDataStore" 
@@ -200,69 +193,6 @@
                         Protocol              = "TCP" 
                     }
                     $DataStoreDependsOn += '[ArcGIS_xFirewall]MemoryCache_DataStore_FirewallRules'
-                }
-            }
-
-            if($DataStoreTypes -icontains "TileCache")
-            {
-                ArcGIS_xFirewall TileCache_DataStore_FirewallRules
-                {
-                    Name                  = "ArcGISTileCacheDataStore" 
-                    DisplayName           = "ArcGIS Tile Cache Data Store" 
-                    DisplayGroup          = "ArcGIS Tile Cache Data Store" 
-                    Ensure                = 'Present' 
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("2443", "29079-29082")
-                    Protocol              = "TCP" 
-                }
-                $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_DataStore_FirewallRules')
-    
-                ArcGIS_xFirewall TileCache_FirewallRules_OutBound
-                {
-                    Name                  = "ArcGISTileCacheDataStore-Out" 
-                    DisplayName           = "ArcGIS TileCache Data Store Out" 
-                    DisplayGroup          = "ArcGIS TileCache Data Store" 
-                    Ensure                = 'Present'
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = ("29079-29082")
-                    Direction             = "Outbound"                        
-                    Protocol              = "TCP" 
-                } 
-                $DataStoreDependsOn += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
-    
-                if($IsMultiMachineTileCacheDataStore){
-                    ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
-                    {
-                        Name                  = "ArcGISMultiMachineTileCacheDataStore" 
-                        DisplayName           = "ArcGIS Multi Machine Tile Cache Data Store" 
-                        DisplayGroup          = "ArcGIS Tile Cache Data Store" 
-                        Ensure                = 'Present' 
-                        Access                = "Allow" 
-                        State                 = "Enabled" 
-                        Profile               = ("Domain","Private","Public")
-                        LocalPort             = ("4369","29083-29090")   
-                        Protocol              = "TCP" 
-                    }
-                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_DataStore_FirewallRules')
-                    
-                    ArcGIS_xFirewall MultiMachine_TileCache_FirewallRules_OutBound
-                    {
-                        Name                  = "ArcGISMultiMachineTileCacheDataStore-Out" 
-                        DisplayName           = "ArcGIS Multi Machine TileCache Data Store Out" 
-                        DisplayGroup          = "ArcGIS TileCache Data Store" 
-                        Ensure                = 'Present'
-                        Access                = "Allow" 
-                        State                 = "Enabled" 
-                        Profile               = ("Domain","Private","Public")
-                        LocalPort             = ("4369","29083-29090")  
-                        Direction             = "Outbound"                        
-                        Protocol              = "TCP" 
-                    } 
-                    $DataStoreDependsOn += @('[ArcGIS_xFirewall]MultiMachine_TileCache_FirewallRules_OutBound')
                 }
             }
 
@@ -315,6 +245,13 @@
                 $DataStoreDependsOn += @('[ArcGIS_xFirewall]GraphDataStore_FirewallRules')
             }
 
+            ArcGIS_HostNameSettings DataStoreHostNameSettings{
+                ComponentName   = "DataStore"
+                Version         = $Version
+                DependsOn       = $DataStoreDependsOn
+            }
+            $DataStoreDependsOn += '[ArcGIS_HostNameSettings]DataStoreHostNameSettings'
+
             ArcGIS_DataStore DataStore
 		    {
 			    Ensure                     = 'Present'
@@ -323,7 +260,6 @@
 			    ServerHostName             = $ServerMachineName
 			    ContentDirectory           = $DataStoreContentDirectory
 			    DataStoreTypes             = $DataStoreTypes
-                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
                 IsGraphStoreClustered      = $IsMultiMachineGraphStore
                 EnableFailoverOnPrimaryStop= $true
 			    DependsOn                  = $DataStoreDependsOn

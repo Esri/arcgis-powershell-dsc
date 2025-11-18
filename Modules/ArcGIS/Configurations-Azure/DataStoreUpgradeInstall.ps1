@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "11.5",
+        $Version = "12.0",
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -24,23 +24,7 @@
         $DebugMode
     )
     
-	function Get-FileNameFromUrl
-    {
-        param(
-            [string]$Url
-        )
-        $FileName = $Url
-        if($FileName) {
-            $pos = $FileName.IndexOf('?')
-            if($pos -gt 0) { 
-                $FileName = $FileName.Substring(0, $pos) 
-            } 
-            $FileName = $FileName.Substring($FileName.LastIndexOf('/')+1)   
-        }     
-        $FileName
-    }
-
-    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+	Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install
     Import-DscResource -Name ArcGIS_xFirewall
@@ -89,6 +73,7 @@
         $Depends += '[ArcGIS_AzureSetupDownloadsFolderManager]DownloadDataStoreUpgradeSetup'
 
         $InstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\DataStore.exe"
+        $InstallerVolumePathOnMachine = "$($UpgradeSetupsStagingPath)\DataStore.exe.001"
         #ArcGIS Data Store 10.3 or 10.3.1, you must manually provide this account full control to your ArcGIS Data Store content directory 
         ArcGIS_Install DataStoreUpgrade{
             Name = "DataStore"
@@ -108,9 +93,14 @@
 		{
 			SetScript = 
 			{ 
-				Remove-Item $using:InstallerPathOnMachine -Force
+                if(-not([string]::IsNullOrEmpty($using:InstallerPathOnMachine)) -and (Test-Path $using:InstallerPathOnMachine)){
+				    Remove-Item $using:InstallerPathOnMachine -Force
+                }
+                if(-not([string]::IsNullOrEmpty($using:InstallerVolumePathOnMachine)) -and (Test-Path $using:InstallerVolumePathOnMachine)){
+                    Remove-Item $using:InstallerVolumePathOnMachine -Force
+                }
 			}
-			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) }
+			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) -and -not(Test-Path $using:InstallerVolumePathOnMachine)  }
 			GetScript = { $null }          
 		}    
         $Depends += '[Script]RemoveDataStoreInstaller'

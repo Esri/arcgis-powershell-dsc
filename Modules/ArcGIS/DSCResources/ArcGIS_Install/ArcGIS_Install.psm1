@@ -116,10 +116,6 @@ function Set-TargetResource
 		[System.String]
         $Path,
 
-        [parameter(Mandatory = $false)]
-		[System.String[]]
-        $VolumePaths,
-
         [Parameter(Mandatory=$false)]
         [System.Boolean]
         $Extract = $True,
@@ -247,13 +243,13 @@ function Set-TargetResource
         $ExecPath = $null
         if($Extract)
         {
-            Write-Verbose 'Self Extracting Installer - $Name'
+            Write-Verbose "Self Extracting Installer - $Name"
 
             $ProdIdObject = if(-not($ProductId)){ Get-ComponentCode -ComponentName $ComponentName -Version $Version }else{ $ProductId }
             $ProdId = $ProductId
             if(-not($ProductId)){
                 if($IsWebAdaptorIIS){
-                    $ProdId =  $ProdIdObject[0] 
+                    $ProdId = $ProdIdObject[0]
                 }else{
                     $ProdId = $ProdIdObject
                 }
@@ -264,21 +260,22 @@ function Set-TargetResource
             {
                 Remove-Item -Path $TempFolder -Recurse -Force -Confirm:$false 
             }
+
             if(-not(Test-Path $TempFolder))
             {
                 New-Item $TempFolder -ItemType directory            
-            }  
+            }
 
             Write-Verbose "Extracting $Path to $TempFolder"
             $ArgumentsList = "/s /d $TempFolder"
             $VersionSplit = $Version.Split('.')
-            if($VersionSplit[0] -eq 11 -and $VersionSplit[1] -gt 2){
+            if($VersionSplit[0] -gt 11 -or ($VersionSplit[0] -eq 11 -and $VersionSplit[1] -gt 2)){
                 $ArgumentsList = "/s /d $TempFolder /x"
             }
             $SetupExtractProc = (Start-Process -FilePath $Path -ArgumentList $ArgumentsList -Wait -NoNewWindow  -Verbose -PassThru)
 
             if($SetupExtractProc.ExitCode -ne 0){
-                if($VersionSplit[0] -eq 11 -and $VersionSplit[1] -gt 2 -and ($ComponentName -ieq "Server" -or $ComponentName -ieq "Portal")){
+                if(($VersionSplit[0] -gt 11 -or ($VersionSplit[0] -eq 11 -and $VersionSplit[1] -gt 2)) -and ($ComponentName -ieq "Server" -or $ComponentName -ieq "Portal")){
                     #TODO - generalize this at a later point
                     if(-not(Test-Path "$($Path).001")){
                         throw "Associated Volume of the setup is not found at $Path. Please make sure all the volumes are present in the same location"
@@ -330,7 +327,7 @@ function Set-TargetResource
         if($FeatureSet.Count -gt 0){
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
@@ -347,7 +344,7 @@ function Set-TargetResource
                 }
             }else{
                 if($Name -ieq "DataStore"){
-                    if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
+                    if(@("11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $Version){
                         $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -559,7 +556,7 @@ function Test-TargetResource
 	$result = Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
-            if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
+            if(@("11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $Version){
                 $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
@@ -567,7 +564,7 @@ function Test-TargetResource
             if($Version -ieq "10.9.1"){
                 # Get all the feature that are installed.
                 # Create an add and remove feature list
-            }elseif(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){
+            }elseif(@("11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $Version){
                 #Get all the feature that are installed.
                 #Create an add and remove feature list
             }

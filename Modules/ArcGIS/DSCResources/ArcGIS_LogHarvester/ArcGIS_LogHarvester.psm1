@@ -87,7 +87,7 @@ function Set-TargetResource
     $ServiceName = $null
     if($ComponentType -eq "Server"){
         Write-Verbose "Configuring Server Log Harvester Plugin"
-        $ServiceName = 'ArcGIS Server'
+        $ServiceName = Get-ArcGISServiceName -ComponentName 'Server'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
         $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir 
         $NodeAgentFilePath = Join-Path $InstallDir 'framework\etc\NodeAgentExt.xml'
@@ -217,7 +217,7 @@ function Test-TargetResource
 
     $result = $true
     if($ComponentType -eq "Server"){
-        $ServiceName = 'ArcGIS Server'
+        $ServiceName = Get-ArcGISServiceName -ComponentName 'Server'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
         $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir 
         if($EnableLogHarvesterPlugin){

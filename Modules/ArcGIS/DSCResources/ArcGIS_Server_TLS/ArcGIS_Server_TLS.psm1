@@ -89,16 +89,13 @@ function Set-TargetResource
         throw "Certificate File '$CertificateFileLocation' is not found or inaccessible"
     }
     
-    $ServiceName = "ArcGIS Server"
+    $ServiceName = Get-ArcGISServiceName -ComponentName $ServerType
     $SitePort = 6443
     if($ServerType -ieq "NotebookServer"){
-        $ServiceName = "ArcGIS Notebook Server"
         $SitePort = 11443
     }elseif($ServerType -ieq "MissionServer"){
-        $ServiceName = "ArcGIS Mission Server"
         $SitePort = 20443
     }elseif($ServerType -ieq "VideoServer"){
-        $ServiceName = "ArcGIS Video Server"
         $SitePort = 21443
     }
     

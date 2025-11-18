@@ -20,12 +20,6 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Path to Mission Server Root Directories - Can be a Physical Location or Network Share Address
     .PARAMETER ServerDirectories
         Default Server Directories Object.
-    .PARAMETER ConfigStoreCloudStorageConnectionString
-        Connection string to Azure Cloud Storage Account to configure a Site with config store using a Cloud Store
-    .PARAMETER ConfigStoreCloudStorageAccountName
-        Account Name of the Azure Cloud Storage Account to configure a Site with config store using a Cloud Store
-    .PARAMETER ConfigStoreCloudStorageConnectionSecret
-        Connection string Secret to Azure Cloud Storage Account to configure a Site with config store using a Cloud Store
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER LogLevel
@@ -53,18 +47,6 @@ function Get-TargetResource
         [System.String]
         $ConfigurationStoreLocation,
 
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionString,
-        
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageAccountName,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
         [parameter(Mandatory = $true)]
         [System.String]
         $ServerDirectoriesRootLocation,
@@ -91,7 +73,54 @@ function Get-TargetResource
         
         [parameter(Mandatory = $false)]
         [System.String]
-        $LogLevel
+        $LogLevel,
+
+        [parameter(Mandatory = $False)]    
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential
     )
 
     $null
@@ -119,18 +148,6 @@ function Set-TargetResource
         [System.String]
         $ConfigurationStoreLocation,
 
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionString,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageAccountName,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
         [parameter(Mandatory = $true)]
         [System.String]
         $ServerDirectoriesRootLocation,
@@ -157,7 +174,54 @@ function Set-TargetResource
         
         [parameter(Mandatory = $false)]
         [System.String]
-        $LogLevel
+        $LogLevel,
+
+        [parameter(Mandatory = $false)]    
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential
 	)
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -169,36 +233,13 @@ function Set-TargetResource
 
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
-
-    $ServiceName = 'ArcGIS Mission Server'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
+    Write-Verbose "Mission Server Version is $Version"
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'MissionServer'
     
 	Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
     Wait-ForUrl "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET'
     if($Ensure -ieq 'Present') {       
         $Referer = 'http://localhost' 
-        $RestartRequired = $false
-
-        Write-Verbose "Mission Server Version is $Version"
-        if($Version -ne "10.8"){
-            $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-            if($configuredHostName -ine $FQDN){
-                Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
-                if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-                    # Need to restart the service to pick up the hostname 
-                    $RestartRequired = $true 
-                }
-            }
-        }
-
-        if($RestartRequired) {
-			Restart-ArcGISService -ServiceName $ServiceName -Verbose
-
-			Write-Verbose "Waiting for Server 'https://$($FQDN):20443/arcgis/admin' to initialize"
-            Wait-ForUrl "https://$($FQDN):20443/arcgis/admin" -HttpMethod 'GET' -Verbose
-        }
-
         $ServerUrl = "https://$($FQDN):20443"
         Write-Verbose "Checking for Mission Server site on '$ServerUrl'"
         $siteExists = $false
@@ -216,6 +257,39 @@ function Set-TargetResource
                 Join-Site -ServerName $PeerServerHostName -Credential $SiteAdministrator -Referer $Referer
                 Write-Verbose 'Joined Site'
             }else{
+
+                $ServerArgs = @{
+                    Version = $Version
+                    ServerUrl = $ServerUrl
+                    Credential = $SiteAdministrator
+                    ConfigurationStoreLocation = $ConfigurationStoreLocation
+                    ServerDirectoriesRootLocation = $ServerDirectoriesRootLocation
+                    ServerDirectories = $ServerDirectories
+                    ServerLogsLocation = $ServerLogsLocation
+                    LogLevel = $LogLevel
+                }
+
+                if($CloudProvider -ine "None"){
+                     $ServerArgs["CloudNamespace"] = $CloudNamespace
+
+                    if($CloudProvider -ieq "Azure"){
+                        $ServerArgs["CloudProvider"] = "AZURE"
+                        $ServerArgs["AzureCloudAuthenticationType"] = $AzureCloudAuthenticationType
+                        $ServerArgs["AzureCloudServicePrincipalCredential"] = $AzureCloudServicePrincipalCredential
+                        $ServerArgs["AzureCloudServicePrincipalTenantId"] = $AzureCloudServicePrincipalTenantId
+                        $ServerArgs["AzureCloudServicePrincipalAuthorityHost"] = $AzureCloudServicePrincipalAuthorityHost
+                        $ServerArgs["AzureCloudUserAssignedIdentityClientId"] = $AzureCloudUserAssignedIdentityClientId
+                        $ServerArgs["AzureCloudStorageAccountCredential"] = $AzureCloudStorageAccountCredential
+                    }
+
+                    if($CloudProvider -ieq "AWS"){
+                        $ServerArgs["CloudProvider"] = "AWS"
+                        $ServerArgs["AWSCloudAuthenticationType"] = $AWSCloudAuthenticationType
+                        $ServerArgs["AWSRegion"] = $AWSRegion
+                        $ServerArgs["AWSCloudAccessKeyCredential"] = $AWSCloudAccessKeyCredential
+                    }
+                }
+
                 [int]$Attempt = 1
                 [bool]$Done = $false
                 while(-not($Done) -and ($Attempt -le 3)) {
@@ -224,12 +298,9 @@ function Set-TargetResource
                         if($Attempt -gt 1) {
                             Write-Verbose "Attempt # $Attempt"   
                         }            
-                        Invoke-CreateSite -ServerURL $ServerUrl -Credential $SiteAdministrator -ConfigurationStoreLocation $ConfigurationStoreLocation `
-                                        -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation -Version $Version `
-                                        -ServerDirectories $ServerDirectories -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
-                                        -ConfigStoreCloudStorageAccountName $ConfigStoreCloudStorageAccountName `
-                                        -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
-                                        -ServerLogsLocation $ServerLogsLocation -LogLevel $LogLevel -Verbose
+
+                        Invoke-CreateSite @ServerArgs -Verbose
+
                         $Done = $true
                         Write-Verbose 'Created Site'
                     }catch{
@@ -313,18 +384,6 @@ function Test-TargetResource
         [System.String]
         $ConfigurationStoreLocation,
 
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionString,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageAccountName,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
         [parameter(Mandatory = $true)]
         [System.String]
         $ServerDirectoriesRootLocation,
@@ -351,12 +410,60 @@ function Test-TargetResource
         
         [parameter(Mandatory = $false)]
         [System.String]
-        $LogLevel
+        $LogLevel,
+        
+        [parameter(Mandatory = $False)]    
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential
     )
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
+    Write-Verbose "Mission Server Version is $Version"
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):20443"
     $result = $false
@@ -388,18 +495,6 @@ function Test-TargetResource
         }
     }
 
-    Write-Verbose "Mission Server Version is $Version"
-    if($result -and ($Version -ne "10.8")) {
-        $ServiceName = 'ArcGIS Mission Server'
-        $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-        $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir 
-        $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-        if($configuredHostName -ine $FQDN){
-            Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$FQDN'"
-            $result = $false
-        }
-    }
-
     if($Ensure -ieq 'Present') {
 	    $result   
     }
@@ -426,15 +521,6 @@ function Invoke-CreateSite
         $ConfigurationStoreLocation,
 
         [System.String]
-        $ConfigStoreCloudStorageConnectionString,
-
-        [System.String]
-        $ConfigStoreCloudStorageAccountName,
-
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
-        [System.String]
         $ServerDirectoriesRootLocation,
 
         [System.String]
@@ -447,7 +533,53 @@ function Invoke-CreateSite
         $ServerLogsLocation,
 
         [System.String]
-        $LogLevel = "WARNING"
+        $LogLevel = "WARNING",
+
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential
     )
   
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"  
@@ -455,28 +587,62 @@ function Invoke-CreateSite
     Write-Verbose "Mission Server Version - $Version"
     
     $configStoreConnection = $null
-    if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0)
+    if($CloudProvider -ine "None")
     {
-        if(($ConfigStoreCloudStorageAccountName.IndexOf('AccountName=') -gt -1)){
+        if($CloudProvider -ieq "Azure"){
             Write-Verbose "Using Azure Cloud Storage for the config store"
-            $configStoreConnection = @{ 
-                    configPersistenceType = "AZURE";
-                    connectionString = $ConfigStoreCloudStorageConnectionString;
-                    username = $ConfigStoreCloudStorageAccountName.Replace([regex]::escape("AccountName="),[string]::Empty);
-                    password = $ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("AccountKey="),[string]::Empty);
-                    className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
+
+            $ConfigStoreAccountName = $AzureCloudStorageAccountCredential.UserName
+            $ConfigStoreEndpointSuffix = ''
+            $ConfigStorePos = $AzureCloudStorageAccountCredential.UserName.IndexOf('.blob.')
+            if($ConfigStorePos -gt -1) {
+                $ConfigStoreAccountName = $AzureCloudStorageAccountCredential.UserName.Substring(0, $ConfigStorePos)
+                $ConfigStoreEndpointSuffix = $AzureCloudStorageAccountCredential.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+                $ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
+            }
+
+            $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($CloudNamespace)$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
+            $ConfigStoreCloudStorageConnectionSecret = ""
+            if($AzureCloudAuthenticationType -ieq 'ServicePrincipal'){
+                $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($AzureCloudServicePrincipalTenantId);ClientId=$($AzureCloudServicePrincipalCredential.Username)"
+                if(-not([string]::IsNullOrEmpty($AzureCloudServicePrincipalAuthorityHost))){
+                    $ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($AzureCloudServicePrincipalAuthorityHost)" 
                 }
-        } else {
+                $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($AzureCloudServicePrincipalCredential.GetNetworkCredential().Password)"
+            }elseif($AzureCloudAuthenticationType -ieq 'UserAssignedIdentity'){
+                $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($AzureCloudUserAssignedIdentityClientId)"
+            }elseif($AzureCloudAuthenticationType -ieq 'SASToken'){
+                $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+                $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($AzureCloudStorageAccountCredential.GetNetworkCredential().Password)"
+            }else{
+                $ConfigStoreCloudStorageConnectionSecret = $AzureCloudStorageAccountCredential.GetNetworkCredential().Password
+            }
+
+            $configStoreConnection = @{ 
+                configPersistenceType = "AZURE";
+                connectionString = $ConfigStoreCloudStorageConnectionString;
+                username = $ConfigStoreAccountName;
+                password = $ConfigStoreCloudStorageConnectionSecret;
+                className = "com.esri.arcgis.carbon.persistence.impl.azure.AzureConfigPersistence"
+            }
+        }
+        
+        if($CloudProvider -ieq "AWS"){
             Write-Verbose "Using AWS Cloud Storage S3 for the config store"
+            
             $configStoreConnection = @{ 
                 configPersistenceType = "AMAZON";
-                connectionString = $ConfigStoreCloudStorageConnectionString;
+                connectionString = "NAMESPACE=$($CloudNamespace);REGION=$($AWSRegion);";
                 className = "com.esri.arcgis.carbon.persistence.impl.amazon.AmazonConfigPersistence"
             }
 
-            if($ConfigStoreCloudStorageAccountName -and $ConfigStoreCloudStorageAccountName.Length -gt 0){
-                $configStoreConnection.Add("username",$ConfigStoreCloudStorageAccountName.Replace([regex]::escape("ACCESS_KEY_ID="),[string]::Empty))
-                $configStoreConnection.Add("password",$ConfigStoreCloudStorageConnectionSecret.Replace([regex]::escape("SECRET_KEY="),[string]::Empty))
+            if($AWSCloudAuthenticationType -ieq "AccessKey"){
+                if($AzureCloudStorageAccountCredential -and $AzureCloudStorageAccountCredential.Length -gt 0){
+                    $configStoreConnection.Add("username",$AzureCloudStorageAccountCredential.UserName)
+                    $configStoreConnection.Add("password",$AzureCloudStorageAccountCredential.GetNetworkCredential().Password)
+                }else{
+                    throw "AWS Cloud Storage Access Key is not provided"
+                }
             }
         }
         $Timeout = 2 * $Timeout # Double the timeout if using cloud storage for the config store

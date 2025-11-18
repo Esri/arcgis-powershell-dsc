@@ -2,18 +2,28 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_NotebookServer")]
 class ArcGIS_NotebookServer : OMI_BaseResource
 {
-	[Write] String Version;
+	[Key] String Version;
 	[Write] String ServerHostName;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
     [Write] String ConfigurationStoreLocation;
 	[Key] String ServerDirectoriesRootLocation;
 	[Write] String ServerDirectories;
 	[Write] String ServerLogsLocation;
-	[Write] String ConfigStoreCloudStorageConnectionString;
-	[Write] String ConfigStoreCloudStorageAccountName;
-	[Write] String ConfigStoreCloudStorageConnectionSecret;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write, Description("Is Joining Existing site")] Boolean Join;
 	[Write] String PeerServerHostName;
 	[Write, ValueMap{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Values{"OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG"}, Description("Log Level")] String LogLevel;
+
+	[Write, ValueMap{"None","Azure","AWS"}, Values{"None","Azure","AWS"}, Description("Cloud Storage Type")] String CloudProvider;
+	[Write] String CloudNamespace;
+	[Write, ValueMap{"AccessKey","IAMRole","None"}, Values{"AccessKey","IAMRole","None"}] String AWSCloudAuthenticationType;
+	[Write] String AWSRegion;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AWSCloudAccessKeyCredential;
+	[Write, ValueMap{"AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None"}, Values{"AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None"}] String AzureCloudAuthenticationType;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudStorageAccountCredential;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureCloudServicePrincipalCredential;
+	[Write] String AzureCloudServicePrincipalTenantId;
+	[Write] String AzureCloudServicePrincipalAuthorityHost;
+	[Write] String AzureCloudUserAssignedIdentityClientId;
+
 };

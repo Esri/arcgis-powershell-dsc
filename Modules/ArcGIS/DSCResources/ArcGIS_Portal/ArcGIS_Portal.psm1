@@ -102,92 +102,134 @@ function Invoke-CreatePortalSite {
 
         [System.String]
         $ContentDirectoryLocation,
-        
-        [System.String]
-        $ContentDirectoryCloudConnectionString,
-        
-        [System.String]
-        $ContentDirectoryCloudContainerName,
-        
-        [System.Management.Automation.PSCredential]
-        $AdminSecurityQuestionCredential,
 
-		[System.String]
+        [System.String]
 		$LicenseFilePath = $null,
         
 		[System.String]
         $UserLicenseTypeId = $null,
+        
+        [System.Management.Automation.PSCredential]
+        $AdminSecurityQuestionCredential,
+
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSS3ContentBucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSAccessKeyCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureAuthenticationType = "None",
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $AzureContentBlobContainerName,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureStorageAccountCredential,
 
         [System.Boolean]
         $EnableCreateSiteDebug = $false
     )
 
-    if ($ContentDirectoryCloudConnectionString -and $ContentDirectoryCloudConnectionString.Length -gt 0) {
-        $Splits = $ContentDirectoryCloudConnectionString.Split(';')
-        
-        $ConnectionObj = @{}
-        $Splits | ForEach-Object {
-            if(-not([string]::IsNullOrEmpty($_))){
-                $Pos = $_.IndexOf('=')
-                $Key = $_.Substring(0, $Pos)
-                $Value = $_.Substring($Pos + 1)
-                $ConnectionObj[$Key] = $Value
-            }
-        }
-
-        if($ContentDirectoryCloudConnectionString.IndexOf('AccountName=') -gt -1){
-            $CredentialType = $ConnectionObj["CredentialType"]
-            $ConnectionString = @{
-                accountName = $ConnectionObj["AccountName"]
-                accountEndpoint = 'blob.' + $ConnectionObj["EndpointSuffix"] 
-                credentialType = $CredentialType
+    $contentStore = @{}
+    if($CloudProvider -ine "None"){
+        if($CloudProvider -ieq "Azure"){
+            $AccountName = $AzureStorageAccountCredential.UserName
+            $EndpointSuffix = ''
+            $Pos = $AzureStorageAccountCredential.UserName.IndexOf('.blob.')
+            if($Pos -gt -1) {
+                $AccountName = $AzureStorageAccountCredential.UserName.Substring(0, $Pos)
+                $EndpointSuffix = $AzureStorageAccountCredential.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
             }
             
-            if($CredentialType -ieq "accessKey"){
-                $ConnectionString["accountKey"] = $ConnectionObj["AccountKey"]
-            }elseif($CredentialType -ieq "userAssignedIdentity"){
-                $ConnectionString["managedIdentityClientId"] = $ConnectionObj["managedIdentityClientId"]
-            }elseif($CredentialType -ieq "sasToken"){
-                $ConnectionString["sasToken"] = $ConnectionObj["sasToken"]
-            }elseif($CredentialType -ieq "servicePrincipal"){
-                $ConnectionString["tenantId"] = $ConnectionObj["tenantId"]
-                $ConnectionString["clientId"] = $ConnectionObj["clientId"]
-                $ConnectionString["clientSecret"] = $ConnectionObj["clientSecret"]
-                if($ConnectionObj.ContainsKey("authorityHost") -and $ConnectionObj["authorityHost"] -ne ""){
-                    $ConnectionString["authorityHost"] = $ConnectionObj["authorityHost"]
+            $ConnectionString = @{
+                accountName = $AccountName
+                accountEndpoint = "blob.$($EndpointSuffix)"
+            }
+
+            if($AzureAuthenticationType -ieq "AccessKey"){
+                $ConnectionString["accountKey"] = $AzureStorageAccountCredential.GetNetworkCredential().Password
+                $ConnectionString["credentialType"] = "accessKey"
+            }elseif($AzureAuthenticationType -ieq "UserAssignedIdentity"){
+                $ConnectionString["managedIdentityClientId"] = $AzureUserAssignedIdentityClientId
+                $ConnectionString["credentialType"] = "userAssignedIdentity"
+            }elseif($AzureAuthenticationType -ieq "SASToken"){
+                $ConnectionString["sasToken"] = $AzureStorageAccountCredential.GetNetworkCredential().Password
+                $ConnectionString["credentialType"] = "sasToken"
+            }elseif($AzureAuthenticationType -ieq "ServicePrincipal"){
+                $ConnectionString["credentialType"] = "servicePrincipal"
+                $ConnectionString["tenantId"] = $AzureServicePrincipalTenantId
+                $ConnectionString["clientId"] = $AzureServicePrincipalCredential.UserName
+                $ConnectionString["clientSecret"] = $AzureServicePrincipalCredential.GetNetworkCredential().Password
+                if(-not([string]::IsNullOrEmpty($AzureServicePrincipalAuthorityHost))){
+                    $ConnectionString["authorityHost"] = $AzureServicePrincipalAuthorityHost
                 }
             }
- 
-            Write-Verbose "Using Content Store on Azure Cloud Storage $objectStoreLocation"
+
+            Write-Verbose "Using Content Store on Azure Cloud Storage"
             $contentStore = @{ 
                 type = 'cloudStore'
                 provider = 'Azure'
                 connectionString = $ConnectionString
-                objectStore = "https://$($ConnectionObj["AccountName"]).blob.$($ConnectionObj["EndpointSuffix"])/$ContentDirectoryCloudContainerName"
-            }        
-        } else {
-            Write-Verbose "Using Content Store in AWS S3 Storage $($ConnectionObj["NAMESPACE"])"
-            $AWSConnectionString = @{}
-            if($ConnectionObj.ContainsKey("ACCESS_KEY_ID") -and $ConnectionObj.ContainsKey("SECRET_KEY")){
-                $AWSConnectionString = @{
-                    region = $ConnectionObj["REGION"]
-                    credentialType = "accessKey"
-                    accessKeyId = $ConnectionObj["ACCESS_KEY_ID"]
-                    secretAccessKey = $ConnectionObj["SECRET_KEY"]
-                }
-            }else{
-                $AWSConnectionString = @{
-                    region = $ConnectionObj["REGION"]
-                    credentialType = "IAMRole"
-                }
+                objectStore = "https://$($AccountName).blob.$($EndpointSuffix)/$($AzureContentBlobContainerName)"
+            }
+        }elseif($CloudProvider -ieq "AWS"){
+
+            Write-Verbose "Using Content Store in AWS S3 Storage $($AWSS3ContentBucketName)"
+            $AWSConnectionString = @{
+                region = $AWSRegion
             }
 
+            if($AWSAuthenticationType -ieq "AccessKey"){
+                $AWSConnectionString["credentialType"] = "accessKey"
+                $AWSConnectionString["accessKeyId"] = $AWSAccessKeyCredential.UserName
+                $AWSConnectionString["secretAccessKey"] = $AWSAccessKeyCredential.GetNetworkCredential().Password
+            }else{
+                $AWSConnectionString["credentialType"] = "IAMRole"
+            }
+            
             $contentStore = @{ 
                 type = 'cloudStore'
                 provider = 'Amazon'
                 connectionString = $AWSConnectionString
-                objectStore = $ConnectionObj["NAMESPACE"]
+                objectStore = $AWSS3ContentBucketName
             }
+
         }
     }else{
         Write-Verbose "Using Content Store on File System at location $ContentDirectoryLocation"
@@ -212,7 +254,7 @@ function Invoke-CreatePortalSite {
                 }
     
     $VersionArray = $Version.Split('.')
-    if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 -and $EnableCreateSiteDebug){
+    if(($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 )) -and $EnableCreateSiteDebug){
         Write-Verbose "Enable Debug during create site operation"
         $WebParams["enableDebug"] = $EnableCreateSiteDebug
     }
@@ -313,7 +355,7 @@ function Join-PortalSite {
     if ($Response.error -and $Response.error.message) {
 		Write-Verbose "Error from Join Site:- $($Response.error.message)"
 
-		$ServiceName = 'Portal for ArcGIS'
+		$ServiceName = Get-ArcGISServiceName -ComponentName 'Portal'
 		Restart-ArcGISService -ServiceName $ServiceName -Verbose
 
 		Write-Verbose "Wait for endpoint 'https://$($PortalHostNameFQDN):7443/arcgis/portaladmin/' to initialize"
@@ -454,12 +496,58 @@ function Set-TargetResource {
         [System.String]
         $ContentDirectoryLocation,
 
+        [parameter(Mandatory = $True)]    
         [System.String]
-        $ContentDirectoryCloudConnectionString,
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
 
+        [Parameter(Mandatory=$False)]
         [System.String]
-        $ContentDirectoryCloudContainerName,
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSAuthenticationType = "None",
 
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $AWSS3ContentBucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSAccessKeyCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureStorageAccountCredential,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $AzureContentBlobContainerName,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
         [System.Boolean]
         $EnableCreateSiteDebug
     )
@@ -471,54 +559,8 @@ function Set-TargetResource {
 
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($PortalHostName){ Get-FQDN $PortalHostName }else{ Get-FQDN $env:COMPUTERNAME } 
-
-    $ServiceName = 'Portal for ArcGIS'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-    
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'Portal'
     $VersionArray = $Version.Split('.')
-
-    $RestartRequired = $false
-    $hostname = Get-ConfiguredHostName -InstallDir $InstallDir
-    if ($hostname -ieq $FQDN) {
-        Write-Verbose "Configured hostname '$hostname' matches expected value '$FQDN'"        
-    }
-    else {
-        Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'. Setting it"
-        if (Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-            # Need to restart the service to pick up the hostname 
-			Write-Verbose "hostname.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
-            $RestartRequired = $true 
-        }
-    }
-
-    if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-        Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
-        if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
-             # Need to restart the service to pick up the EC2
-             $RestartRequired = $true
-         }  
-    }
-
-    $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
-
-    if ((Test-Path -Path $InstallDir)) {    
-        $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
-        $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
-        $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
-        if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
-            Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
-        }
-        else {
-            Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' does not match expected value '$FQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-            if (Set-ConfiguredHostIdentifier -InstallDir $InstallDir -HostIdentifier $FQDN -HostIdentifierType $expectedHostIdentifierType) { 
-                # Need to restart the service to pick up the hostidentifier 
-                Write-Verbose "In Portal DataStore Hostidentifier.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
-                $RestartRequired = $true 
-            }
-        }
-    }
-
     $EnableHAPortalDebugLogging = if($IsHAPortal -and ($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8)){ $True }else{ $False }
 
 	if ($EnableHAPortalDebugLogging -or $EnableDebugLogging) {
@@ -527,14 +569,14 @@ function Set-TargetResource {
             Write-Verbose "Setup is Portal HA. Enable debug logging to troubleshoot JoinSite Failures"        
         }
         
-        if (Set-LoggingLevel -EnableDebugLogging $true) {
+        if (-not(Invoke-TestSetLoggingLevel -EnableDebugLogging $True -Verbose)) {
             $RestartRequired = $true
         }
     } else {
         if(-not($IsHAPortal)){
             Write-Verbose "Setup is Single machine Portal"
         }
-        if (Set-LoggingLevel -EnableDebugLogging $false) {
+        if (-not(Invoke-TestSetLoggingLevel -EnableDebugLogging $False -Verbose)) {
             $RestartRequired = $true
         }
     }
@@ -582,12 +624,47 @@ function Set-TargetResource {
                         Write-Verbose "Joined machine to portal site at peer $PeerMachineFQDN"   
                     } else {
                         Write-Verbose "Creating Portal Site" 
-                        Invoke-CreatePortalSite -Version $Version -PortalHostNameFQDN $FQDN -PortalSiteName 'arcgis' -Credential $PortalAdministrator `
-                                            -FullName $AdminFullName -ContentDirectoryLocation $ContentDirectoryLocation `
-                                            -Email $AdminEmail -Description $AdminDescription -UserLicenseTypeId $UserLicenseTypeId `
-                                            -AdminSecurityQuestionCredential $AdminSecurityQuestionCredential `
-                                            -ContentDirectoryCloudConnectionString $ContentDirectoryCloudConnectionString `
-                                            -ContentDirectoryCloudContainerName $ContentDirectoryCloudContainerName -LicenseFilePath $LicenseFilePath -EnableCreateSiteDebug $EnableCreateSiteDebug
+                        $PortalArguments = @{
+                            Version = $Version
+                            PortalHostNameFQDN = $FQDN
+                            PortalSiteName = 'arcgis'
+                            Credential = $PortalAdministrator
+                            FullName = $AdminFullName
+                            Email = $AdminEmail
+                            Description = $AdminDescription
+                            AdminSecurityQuestionCredential = $AdminSecurityQuestionCredential
+                            LicenseFilePath = $LicenseFilePath
+                            UserLicenseTypeId = $UserLicenseTypeId
+                            EnableCreateSiteDebug = $EnableCreateSiteDebug
+                        }
+
+                        if($CloudProvider -ieq "None"){
+                            $PortalArguments["ContentDirectoryLocation"] = $ContentDirectoryLocation
+                        }else{
+                            $PortalArguments["CloudProvider"] = $CloudProvider
+                            if($CloudProvider -ieq "Azure"){
+                                $PortalArguments["AzureAuthenticationType"] = $AzureAuthenticationType
+                                $PortalArguments["AzureContentBlobContainerName"] = $AzureContentBlobContainerName
+                                $PortalArguments["AzureStorageAccountCredential"] = $AzureStorageAccountCredential
+
+                                if($AzureAuthenticationType -ieq "ServicePrincipal"){
+                                    $PortalArguments["AzureServicePrincipalCredential"] = $AzureServicePrincipalCredential
+                                    $PortalArguments["AzureServicePrincipalTenantId"] = $AzureServicePrincipalTenantId
+                                    $PortalArguments["AzureServicePrincipalAuthorityHost"] = $AzureServicePrincipalAuthorityHost
+                                }elseif($AzureAuthenticationType -ieq "UserAssignedIdentity"){
+                                    $PortalArguments["AzureUserAssignedIdentityClientId"] = $AzureUserAssignedIdentityClientId
+                                }
+                            }elseif($CloudProvider -ieq "AWS"){
+                                $PortalArguments["AWSAuthenticationType"] = $AWSAuthenticationType
+                                $PortalArguments["AWSS3ContentBucketName"] = $AWSS3ContentBucketName
+                                $PortalArguments["AWSRegion"] = $AWSRegion
+                                if($AWSAuthenticationType -ieq "AccessKey"){
+                                    $PortalArguments["AWSAccessKeyCredential"] = $AWSAccessKeyCredential
+                                }
+                            }
+                        }
+
+                        Invoke-CreatePortalSite @PortalArguments -Verbose
                         
                         Write-Verbose 'Created Portal Site'
                     }
@@ -726,12 +803,58 @@ function Test-TargetResource {
         [System.String]
         $ContentDirectoryLocation,
 
+        [parameter(Mandatory = $True)]    
         [System.String]
-        $ContentDirectoryCloudConnectionString,
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
 
+        [Parameter(Mandatory=$False)]
         [System.String]
-        $ContentDirectoryCloudContainerName,
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSAuthenticationType = "None",
 
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $AWSS3ContentBucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSAccessKeyCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureStorageAccountCredential,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $AzureContentBlobContainerName,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
         [System.Boolean]
         $EnableCreateSiteDebug
 	)
@@ -741,77 +864,8 @@ function Test-TargetResource {
     $FQDN = if($PortalHostName){ Get-FQDN $PortalHostName }else{ Get-FQDN $env:COMPUTERNAME }
     $result = $false
 
-    $ServiceName = 'Portal for ArcGIS'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-    $hostname = Get-ConfiguredHostName -InstallDir $InstallDir
-    if ($hostname -ieq $FQDN) {
-        Write-Verbose "Configured hostname '$hostname' matches expected value '$FQDN'"
-        $result = $true
-    }
-    else {
-        Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'"
-        $result = $false
-    }
-
-    if($result) {
-        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-            Write-Verbose "Amazon Elements present in NodeAgentExt.xml. Will be removed in Set Method"
-            $result = $false
-        }         
-    }
-
-    if ($result) {
-        
-        $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
-
-        $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
-        $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
-		$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
-		if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
-            Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
-        }
-        else {
-			Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' does not match expected value '$FQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-			$result = $false
-        }
-    }
-
-    if ($result) {
-        $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-        $PropertiesFile = Join-Path $InstallDir 'framework\runtime\tomcat\conf\logging.properties'
-        @('org.apache.catalina.core.ContainerBase.[Catalina].[localhost].level', '1catalina.org.apache.juli.FileHandler.level', '2localhost.org.apache.juli.FileHandler.level', '3portal.org.apache.juli.FileHandler.level', 'java.util.logging.ConsoleHandler.level') | ForEach-Object {
-            if ($result) {
-                $PropertyName = $_
-                Write-Verbose "Property Name :- $PropertyName"
-                $DesiredLoggingLevel = $null
-                if ($EnableDebugLogging -or $IsHAPortal) {
-                    $DesiredLoggingLevel = 'ALL' 
-                }
-                else { 
-                    # Default values for the levels
-                    if ($PropertyName -eq '3portal.org.apache.juli.FileHandler.level') {
-                        $DesiredLoggingLevel = 'INFO' 
-                    }
-                    elseif ($PropertyName -eq 'java.util.logging.ConsoleHandler.level') {
-                        $DesiredLoggingLevel = 'FINE'
-                    }
-                    else {
-                        $DesiredLoggingLevel = 'SEVERE'
-                    }
-                }
-                $CurrentLoggingLevel = Get-PropertyFromPropertiesFile -PropertiesFilePath $PropertiesFile -PropertyName $PropertyName
-                if ($CurrentLoggingLevel -ne $DesiredLoggingLevel) {
-                    Write-Verbose "Portal Tomcat CurrentLoggingLevel '$CurrentLoggingLevel' does not match desired value of '$DesiredLoggingLevel'"
-                    $result = $false
-                }
-                else {
-                    Write-Verbose "Portal Tomcat CurrentLoggingLevel '$CurrentLoggingLevel' matches desired value of '$DesiredLoggingLevel'"
-                }
-            }
-        }        
-    }
+    $result = Invoke-TestSetLoggingLevel -EnableDebugLogging $EnableDebugLogging -TestOnly $true -Verbose
+    
     if ($result) {
         try{
             $Referer = 'http://localhost'
@@ -878,17 +932,20 @@ function Test-TargetResource {
     }
 }
 
-function Set-LoggingLevel {
+function Invoke-TestSetLoggingLevel {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     param
     (
         [System.Boolean]
-        $EnableDebugLogging
+        $EnableDebugLogging,
+
+        [System.Boolean]
+        $TestOnly = $false
     )
 
-    $ServiceRestartRequired = $false
-    $ServiceName = 'Portal for ArcGIS'
+    $ExpectedLogLevelFound = $True
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'Portal'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
     $PropertiesFile = Join-Path $InstallDir 'framework\runtime\tomcat\conf\logging.properties'
@@ -913,17 +970,22 @@ function Set-LoggingLevel {
             
         $CurrentLoggingLevel = Get-PropertyFromPropertiesFile -PropertiesFilePath $PropertiesFile -PropertyName $PropertyName
         if ($CurrentLoggingLevel -ne $DesiredLoggingLevel) {
-            Write-Verbose "Portal Tomcat CurrentLoggingLevel '$CurrentLoggingLevel' does not match desired value of '$DesiredLoggingLevel'. Updating it"
-            if (Confirm-PropertyInPropertiesFile -PropertiesFilePath $PropertiesFile -PropertyName $PropertyName -PropertyValue $DesiredLoggingLevel) {
-                Write-Verbose "Portal Tomcat logging level '$PropertyName' changed. Restart needed"
-                $ServiceRestartRequired = $true 
+            if($TestOnly){
+                Write-Verbose "Portal Tomcat CurrentLoggingLevel '$CurrentLoggingLevel' does not match desired value of '$DesiredLoggingLevel' for property '$PropertyName'"
+                $ExpectedLogLevelFound = $false
+            }else{
+                Write-Verbose "Portal Tomcat CurrentLoggingLevel '$CurrentLoggingLevel' does not match desired value of '$DesiredLoggingLevel'. Updating it"
+                if (Confirm-PropertyInPropertiesFile -PropertiesFilePath $PropertiesFile -PropertyName $PropertyName -PropertyValue $DesiredLoggingLevel) {
+                    Write-Verbose "Portal Tomcat logging level '$PropertyName' changed. Restart needed"
+                    $ExpectedLogLevelFound = $false 
+                }
             }
         }
         else {
             Write-Verbose "Portal Tomcat CurrentLoggingLevel '$CurrentLoggingLevel' matches desired value of '$DesiredLoggingLevel' for property '$PropertyName'"
         }
     }
-    $ServiceRestartRequired
+    $ExpectedLogLevelFound
 }
 
 function Get-PortalLogSettings {

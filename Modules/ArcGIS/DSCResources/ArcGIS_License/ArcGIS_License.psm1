@@ -281,7 +281,7 @@ function Invoke-LicenseSoftware
                 $ServerTypeName = "ArcGIS Video Server"
             }
             $InstallLocation = (Get-ArcGISProductDetails -ProductName $ServerTypeName).InstallLocation
-            if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 2){
+            if($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 2)){
                 $SoftwareAuthExePath = "$($InstallLocation)tools\SoftwareAuthorization\SoftwareAuthorization.exe"
             }else{
                 if(($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" -or $ServerRole -ieq "VideoServer") -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8))){

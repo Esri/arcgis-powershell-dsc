@@ -111,7 +111,7 @@ function Set-TargetResource
     }
 
     if(-not($Join) -and -not($UseAzureFiles) -and $IsSingleTier){
-        $ServiceName = 'ArcGIS Notebook Server'
+        $ServiceName = Get-ArcGISServiceName -ComponentName 'NotebookServer'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
         $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
         

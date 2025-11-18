@@ -60,15 +60,14 @@
         $UserLicenseTypeId,
 
         [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
-        [AllowNull()] 
+        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB", "None")]
         [System.String]
-        $CloudStorageType,
+        $CloudStorageType = "None",
 
         [Parameter(Mandatory=$False)]
-        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken")]
-        [AllowNull()] 
-        $ContentStoreAzureBlobAuthenticationType,
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None")]
+        [System.String] 
+        $ContentStoreAzureBlobAuthenticationType = "None",
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -86,12 +85,20 @@
         [System.String]
         $ContentStoreAzureBlobServicePrincipalAuthorityHost = $null,
 
+        [Parameter(Mandatory=$False)]
         [System.String]
         $AzureFileShareName,
 
+        [Parameter(Mandatory=$False)]
         [System.String]
         $CloudNamespace,
 
+        [Parameter(Mandatory=$False)]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        [System.String]
+        $ContentStoreAWSAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
         [System.String]
         $AWSRegion,
 
@@ -113,51 +120,14 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_Portal, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_Portal_TLS
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_xFirewall, ArcGIS_Portal, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_Portal_TLS, ArcGIS_HostNameSettings
 
-    if($null -ne $CloudStorageType)
+    if($CloudStorageType -ieq 'AzureFiles')
     {
-        if($CloudStorageType -ieq 'AWSS3DynamoDB') {
-            $ContentDirectoryCloudConnectionString = "NAMESPACE=$($CloudNamespace);REGION=$($AWSRegion);"
-            if($null -ne $CloudStorageCredentials){
-                $ContentDirectoryCloudConnectionString += "ACCESS_KEY_ID=$($CloudStorageCredentials.UserName);SECRET_KEY=$($CloudStorageCredentials.GetNetworkCredential().Password)"
-            }
-        }else{
-            if($null -ne $CloudStorageCredentials){
-                $AccountName = $CloudStorageCredentials.UserName
-                $EndpointSuffix = ''
-                $Pos = $CloudStorageCredentials.UserName.IndexOf('.blob.')
-                if($Pos -gt -1) {
-                    $AccountName = $CloudStorageCredentials.UserName.Substring(0, $Pos)
-                    $EndpointSuffix = $CloudStorageCredentials.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-                    $EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
-                }
-        
-                if($CloudStorageType -ieq 'AzureFiles') {
-                    $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}
-                    $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
-                    $ContentDirectoryLocation = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\portal\content"    
-                } else {
-                    $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($CloudNamespace)portal"
-                    $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName)$($EndpointSuffix)"
-                    if($ContentStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
-                        $ClientSecret = $ContentStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password
-                        $ContentDirectoryCloudConnectionString += ";tenantId=$($ContentStoreAzureBlobServicePrincipalTenantId);clientId=$($ContentStoreAzureBlobServicePrincipalCredentials.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
-                        if($ContentStoreAzureBlobServicePrincipalAuthorityHost -ne $null){
-                            $ContentDirectoryCloudConnectionString += ";authorityHost=$($ContentStoreAzureBlobServicePrincipalAuthorityHost)"
-                        }
-                    }elseif($ContentStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
-                        $ContentDirectoryCloudConnectionString += ";managedIdentityClientId=$($ContentStoreAzureBlobUserAssignedIdentityId);CredentialType=userAssignedIdentity"
-                    }elseif($ContentStoreAzureBlobAuthenticationType -ieq 'SASToken'){
-                        $SASToken = $CloudStorageCredentials.GetNetworkCredential().Password
-                        $ContentDirectoryCloudConnectionString += ";sasToken=$($SASToken);CredentialType=sasToken"
-                    }else{
-                        $AccountKey = $CloudStorageCredentials.GetNetworkCredential().Password
-                        $ContentDirectoryCloudConnectionString += ";AccountKey=$($AccountKey);CredentialType=accessKey"
-                    }
-                }
-            }
-        }
+        $Pos = $CloudStorageCredentials.UserName.IndexOf('.blob.')
+        $AzureFilesEndpoint = if($Pos -gt -1){$CloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$CloudStorageCredentials.UserName}
+        $AzureFileShareName = $AzureFileShareName.ToLower() # Azure file shares need to be lower case
+        $ContentDirectoryLocation = "\\$($AzureFilesEndpoint)\$AzureFileShareName\$($CloudNamespace)\portal\content"
     }
 
 
@@ -192,8 +162,8 @@
         {
             $PortalInboundPort = ("7120","7220", "7005", "7099", "7199", "5701", "5702", "5703") # Elastic Search uses 7120,7220 and Postgres uses 7654 for replication, Hazelcast uses 5701 and 5702 (extra 2 
             $PortalOutboundPort = ("7120","7220","5701", "5702", "5703")  # Elastic Search uses 7120,7220, Hazelcast uses 5701 and 5702
-            if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later, Hazelcast was replaced by ignite
-                $PortalInboundPort = ("7120","7220", "7005", "7099", "7199") 
+            if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3)){ # 11.3 or later, Hazelcast was replaced by ignite
+                $PortalInboundPort = ("7120","7220", "7005", "7099", "7199")
                 $PortalOutboundPort = ("7120","7220")
             }
 
@@ -225,8 +195,8 @@
                 Protocol              = "TCP" 
             }  
             $Depends += @('[ArcGIS_xFirewall]Portal_Database_InBound')
-            
-            if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later
+
+            if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3)){ # 11.3 or later
                 ArcGIS_xFirewall Portal_Ignite_OutBound
                 {
                     Name                  = "PortalforArcGIS-Ignite-Outbound" 
@@ -286,8 +256,15 @@
             IsDomainAccount = $ServiceCredentialIsDomainAccount
             IsMSAAccount    = $ServiceCredentialIsMSA
         }
-        
         $Depends += @('[ArcGIS_Service_Account]Portal_RunAs_Account')
+
+        ArcGIS_HostNameSettings PortalHostNameSettings{
+            ComponentName   = "Portal"
+            Version         = $Version
+            HostName        = $Node.NodeName
+            DependsOn       = $DependsOn
+        }
+        $DependsOn += '[ArcGIS_HostNameSettings]PortalHostNameSettings'
 
         if(-not($ServiceCredentialIsMSA) -and $AzureFilesEndpoint -and $CloudStorageCredentials -and ($CloudStorageType -ieq 'AzureFiles')) 
         {
@@ -384,10 +361,20 @@
             PeerMachineHostName = if($Node.NodeName -ine $PrimaryPortalMachine) { $PrimaryPortalMachine } else { "" } #add peer machine name
             EnableDebugLogging = if($DebugMode) { $true } else { $false }
             LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
-            ContentDirectoryCloudConnectionString = $ContentDirectoryCloudConnectionString							
-            ContentDirectoryCloudContainerName = $ContentDirectoryCloudContainerName
             EnableCreateSiteDebug = if($DebugMode) { $true } else { $false }
-            DependsOn =  $Depends
+            CloudProvider =  if($CloudStorageType -ieq 'AzureBlob') { "Azure" } elseif($CloudStorageType -ieq 'AWSS3DynamoDB') { "AWS" } else { "None" }
+            AWSAuthenticationType = if($CloudStorageType -ieq 'AWSS3DynamoDB') { $ContentStoreAWSAuthenticationType } else { "None" }
+            AWSRegion = if($CloudStorageType -ieq 'AWSS3DynamoDB') { $AWSRegion } else { $null }
+            AWSS3ContentBucketName = if($CloudStorageType -ieq 'AWSS3DynamoDB') { $CloudNamespace } else { $null }
+            AWSAccessKeyCredential =  if($CloudStorageType -ieq 'AWSS3DynamoDB') { $CloudStorageCredentials } else { $null }
+            AzureAuthenticationType = if($CloudStorageType -ieq 'AzureBlob') { $ContentStoreAzureBlobAuthenticationType } else { "None" }
+            AzureContentBlobContainerName = if($CloudStorageType -ieq 'AzureBlob') { "arcgis-portal-content-$($CloudNamespace)portal" } else { $null }
+            AzureStorageAccountCredential = if($CloudStorageType -ieq 'AzureBlob') { $CloudStorageCredentials } else { $null }
+            AzureServicePrincipalCredential = if($CloudStorageType -ieq 'AzureBlob') { $ContentStoreAzureBlobServicePrincipalCredentials } else { $null }
+            AzureServicePrincipalTenantId = if($CloudStorageType -ieq 'AzureBlob') { $ContentStoreAzureBlobServicePrincipalTenantId } else { $null }
+            AzureServicePrincipalAuthorityHost = if($CloudStorageType -ieq 'AzureBlob') {$ContentStoreAzureBlobServicePrincipalAuthorityHost } else { $null }
+            AzureUserAssignedIdentityClientId = if($CloudStorageType -ieq 'AzureBlob') { $ContentStoreAzureBlobUserAssignedIdentityId } else { $null }
+            DependsOn = $Depends
         }
         $Depends += "[ArcGIS_Portal]Portal$($Node.NodeName)"
         

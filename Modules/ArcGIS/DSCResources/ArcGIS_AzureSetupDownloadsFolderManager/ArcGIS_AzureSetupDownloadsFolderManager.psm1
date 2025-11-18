@@ -343,6 +343,22 @@ function Invoke-DownloadSetupFromUpgradeVM
             }else{
                 Write-Verbose "DataStore setup already exists at '$DSUpgradeSetupDestinationPath'"
             }
+
+            $VersionArray = $Version.Split(".")
+            if($VersionArray -gt 11){
+                # Copy the ds setup volume
+                $DSUpgradeSetupVolumePath = "$($PsDrive.Name):\DataStore\DataStore.exe.001"
+                $DSUpgradeSetupVolumeDestinationPath = "$($StagingPath)\DataStore.exe.001"
+                if(-not(Test-Path -Path $DSUpgradeSetupVolumeDestinationPath)){
+                    if(-not(Test-Path $DSUpgradeSetupVolumePath)){
+                        throw "Required datastore setup volume was not found."
+                    }
+                    Copy-Item -Path $DSUpgradeSetupVolumePath -Destination $DSUpgradeSetupVolumeDestinationPath -Force
+                    Write-Verbose "Copied Portal setup volume from '$DSUpgradeSetupVolumePath' to '$DSUpgradeSetupVolumeDestinationPath'"
+                }else{
+                    Write-Verbose "Portal setup volume already exists at '$DSUpgradeSetupVolumeDestinationPath'"
+                }
+            }
         }elseif($ComponentName -ieq "Server"){
             if($ServerRole -ieq "NotebookServer"){
                 # Copy notebook server setup
