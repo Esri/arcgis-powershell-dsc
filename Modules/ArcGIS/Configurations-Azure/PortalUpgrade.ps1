@@ -3,7 +3,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "11.5",
+        $Version = "12.0",
 
         [parameter(Mandatory = $true)]
         [System.String]
@@ -25,32 +25,21 @@
         [System.Boolean]
         $IsMultiMachinePortal,
 
+        [Parameter(Mandatory=$True)]
+        [System.Management.Automation.PSCredential]
+        $DeploymentArtifactCredentials,
+
 		[Parameter(Mandatory=$false)]
         [System.Boolean]
         $DebugMode
     )
 
-	function Get-FileNameFromUrl
-    {
-        param(
-            [string]$Url
-        )
-        $FileName = $Url
-        if($FileName) {
-            $pos = $FileName.IndexOf('?')
-            if($pos -gt 0) { 
-                $FileName = $FileName.Substring(0, $pos) 
-            } 
-            $FileName = $FileName.Substring($FileName.LastIndexOf('/')+1)   
-        }     
-        $FileName
-    }
-
-    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+	Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_Install 
     Import-DscResource -name ArcGIS_WindowsService
     Import-DscResource -Name ArcGIS_Service_Account
+    Import-DscResource -Name ArcGIS_HostNameSettings
     
     $UpgradeSetupsStagingPath = "C:\ArcGIS\Deployment\Downloads\$($Version)"
 
@@ -80,7 +69,7 @@
         $Depends = @("[ArcGIS_AzureSetupDownloadsFolderManager]CleanupDownloadsFolder")
 
         $VersionArray = $Version.Split(".")
-        if($IsMultiMachinePortal -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){ # 11.3 or later
+        if($IsMultiMachinePortal -and (($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3))){ # 11.3 or later
             ArcGIS_xFirewall Portal_Ignite_OutBound
             {
                 Name                  = "PortalforArcGIS-Ignite-Outbound" 
@@ -157,7 +146,7 @@
 		{
 			SetScript = 
 			{ 
-                if(-not([string]::IsNullOrEmpty($using:PortalInstallerVolumePathOnMachine)) -and (Test-Path $using:PortalInstallerPathOnMachine)){
+                if(-not([string]::IsNullOrEmpty($using:PortalInstallerPathOnMachine)) -and (Test-Path $using:PortalInstallerPathOnMachine)){
 				    Remove-Item $using:PortalInstallerPathOnMachine -Force
                 }
                 if(-not([string]::IsNullOrEmpty($using:PortalInstallerVolumePathOnMachine)) -and (Test-Path $using:PortalInstallerVolumePathOnMachine)){
@@ -194,6 +183,14 @@
 			Ensure          = 'Present'
             DependsOn       = if(-Not($ServiceCredentialIsDomainAccount)){@('[User]ArcGIS_RunAsAccount','[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}else{@('[ArcGIS_WindowsService]Portal_for_ArcGIS_Service')}
             DataDir         = $DataDirsForPortal
+        }
+
+        ArcGIS_HostNameSettings PortalHostNameSettings
+        {
+            ComponentName   = "Portal"
+            Version         = $Version
+            HostName        = $env:COMPUTERNAME
+            DependsOn       = @('[ArcGIS_Service_Account]Portal_Service_Account')
         }
     }
 }

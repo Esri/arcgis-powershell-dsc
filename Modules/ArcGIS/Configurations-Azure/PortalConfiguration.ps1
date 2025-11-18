@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "11.5"
+        $Version = "12.0"
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -41,8 +41,8 @@
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
-        $UseCloudStorage 
-
+        $UseCloudStorage
+        
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $UseAzureFiles 
@@ -57,23 +57,23 @@
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $StorageAccountUserAssignedIdentityClientId
+        $UserAssignedIdentityClientId
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $StorageAccountServicePrincipalTenantId
+        $ServicePrincipalTenantId
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $StorageAccountServicePrincipalAuthorityHost
+        $ServicePrincipalAuthorityHost
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
-        $StorageAccountServicePrincipalCredential
+        $ServicePrincipalCredential
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $PublicKeySSLCertificateFileUrl
+        $PublicKeySSLCertificateFileName
 
         ,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -81,7 +81,7 @@
                 
         ,[Parameter(Mandatory=$false)]
         [System.String]
-        $PortalLicenseFileUrl
+        $PortalLicenseFileName
 
         ,[Parameter(Mandatory=$false)]
         [System.String]
@@ -122,27 +122,15 @@
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $IsUpdatingCertificates = $False
+
+        ,[Parameter(Mandatory=$True)]
+        [System.Management.Automation.PSCredential]
+        $DeploymentArtifactCredentials
         
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $DebugMode
     )
-
-    function Get-FileNameFromUrl
-    {
-        param(
-            [string]$Url
-        )
-        $FileName = $Url
-        if($FileName) {
-            $pos = $FileName.IndexOf('?')
-            if($pos -gt 0) { 
-                $FileName = $FileName.Substring(0, $pos) 
-            } 
-            $FileName = $FileName.Substring($FileName.LastIndexOf('/')+1)   
-        }     
-        $FileName
-    }
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
@@ -156,6 +144,7 @@
     Import-DscResource -Name ArcGIS_PortalSettings
     Import-DscResource -Name ArcGIS_Federation
     Import-DscResource -Name ArcGIS_AzureSetupDownloadsFolderManager
+    Import-DscResource -Name ArcGIS_HostNameSettings
    
     $FileShareRootPath = $FileSharePath
     if(-not($UseExistingFileShare)) { 
@@ -167,29 +156,36 @@
     }
 
     $PortalCertificateFileName  = 'SSLCertificateForPortal.pfx'
-    $PortalCertificateLocalFilePath =  (Join-Path $env:TEMP $PortalCertificateFileName)
-
-    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
-    $PortalCertificateFileLocation = "$($FileSharePath)\Certs\$PortalCertificateFileName"
-    if($UseExistingFileShare)
-    {
-        $PortalCertificateFileLocation = "$($FileSharePath)\$($FolderName)\$($PortalContext)\$PortalCertificateFileName"
+    $LocalCertificatePath = "$($env:SystemDrive)\\ArcGIS\\Certs"
+    if(-not(Test-Path $LocalCertificatePath)){
+        New-Item -Path $LocalCertificatePath -ItemType directory -ErrorAction Stop | Out-Null
     }
     
+    $PortalCertificateLocalFilePath =  (Join-Path $LocalCertificatePath $PortalCertificateFileName)
+
+    $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.')).ToLower()
+
+    $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
+
     ##
     ## Download license file and certificate files
     ##
-    if($PortalLicenseFileUrl -and ($PortalLicenseFileUrl.Trim().Length -gt 0)) {
-        $PortalLicenseFileName = Get-FileNameFromUrl $PortalLicenseFileUrl
-        Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-    }   
-    
-    if($PublicKeySSLCertificateFileUrl){
-		$PublicKeySSLCertificateFileName = Get-FileNameFromUrl $PublicKeySSLCertificateFileUrl
-		Invoke-WebRequest -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
-	}
+    if($HasValidServiceCredential){
+        if($PortalLicenseFileName) {
+            $PortalLicenseFileUrl = "$($DeploymentArtifactCredentials.UserName)/$($PortalLicenseFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
+        }   
+        
+        if($PublicKeySSLCertificateFileName){
+            $PublicKeySSLCertificateFileUrl = "$($DeploymentArtifactCredentials.UserName)/$($PublicKeySSLCertificateFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $PublicKeySSLCertificateFileName -Uri $PublicKeySSLCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+        }
 
-    $ContentStoreLocation = "$($FileSharePath)\$FolderName\$($PortalContext)\content"
+        if($PortalCertificateFileName){
+            $PortalCertificateFileUrl = "$($DeploymentArtifactCredentials.UserName)/Certs/$($PortalCertificateFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $PortalCertificateLocalFilePath -Uri $PortalCertificateFileUrl -UseBasicParsing -ErrorAction Ignore
+        }
+    }
 
 	$ServerHostNames = ($ServerMachineNames -split ',')
     $ServerMachineName = $ServerHostNames | Select-Object -First 1
@@ -203,21 +199,14 @@
       $PeerMachineName = $PortalHostNames | Select-Object -Last 1
     }
     $IsHAPortal = ($PortalHostName -ine $PeerMachineName) -and ($PeerMachineName)
-
+    
+    $ContentStoreLocation = $null
     if($UseCloudStorage -and $StorageAccountCredential) 
     {
         $Namespace = $ExternalDNSHostName
         $Pos = $Namespace.IndexOf('.')
         if($Pos -gt 0) { $Namespace = $Namespace.Substring(0, $Pos) }        
         $Namespace = [System.Text.RegularExpressions.Regex]::Replace($Namespace, '[\W]', '') # Sanitize
-        $AccountName = $StorageAccountCredential.UserName
-		$EndpointSuffix = ''
-        $Pos = $StorageAccountCredential.UserName.IndexOf('.blob.')
-        if($Pos -gt -1) {
-            $AccountName = $StorageAccountCredential.UserName.Substring(0, $Pos)
-			$EndpointSuffix = $StorageAccountCredential.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-			$EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
-        }
 
         if($UseAzureFiles) {
             $AzureFilesEndpoint = $StorageAccountCredential.UserName.Replace('.blob.','.file.')                        
@@ -225,28 +214,8 @@
             $FolderName = $ExternalDNSHostName.Substring(0, $ExternalDNSHostName.IndexOf('.'))
             $ContentStoreLocation = "\\$($AzureFilesEndpoint)\$FileShareName\$FolderName\$($PortalContext)\content"    
         }
-        else {
-            if(-not($Join)){
-                $ContentDirectoryCloudContainerName = "arcgis-portal-content-$($Namespace)$($PortalContext)"
-                $ContentDirectoryCloudConnectionString = "DefaultEndpointsProtocol=https;AccountName=$($AccountName)$($EndpointSuffix)"
-                
-                if($CloudStorageAuthenticationType -ieq 'ServicePrincipal'){
-                    $ClientSecret = $StorageAccountServicePrincipalCredential.GetNetworkCredential().Password
-                    $ContentDirectoryCloudConnectionString += ";tenantId=$($StorageAccountServicePrincipalTenantId);clientId=$($StorageAccountServicePrincipalCredential.Username);clientSecret=$($ClientSecret);CredentialType=servicePrincipal"
-                    if(-not([string]::IsNullOrEmpty($StorageAccountServicePrincipalAuthorityHost))){
-						$ContentDirectoryCloudConnectionString += ";authorityHost=$($StorageAccountServicePrincipalAuthorityHost)" 
-					}
-                }elseif($CloudStorageAuthenticationType -ieq 'UserAssignedIdentity'){
-                    $ContentDirectoryCloudConnectionString += ";managedIdentityClientId=$($StorageAccountUserAssignedIdentityClientId);CredentialType=userAssignedIdentity"
-                }elseif($CloudStorageAuthenticationType -ieq 'SASToken'){
-                    $SASToken = $CloudStorageCredentials.GetNetworkCredential().Password
-                    $ContentDirectoryCloudConnectionString += ";sasToken=$($SASToken);CredentialType=sasToken"
-                }else{
-                    $AccountKey = $StorageAccountCredential.GetNetworkCredential().Password
-                    $ContentDirectoryCloudConnectionString += ";AccountKey=$($AccountKey);CredentialType=accessKey"
-                }
-            }
-        }
+    }else{
+        $ContentStoreLocation = "$($FileSharePath)\$FolderName\$($PortalContext)\content"
     }
 
 	Node localhost
@@ -269,7 +238,6 @@
             ComponentNames = if($IsAllInOneBaseDeploy){ "DataStore,Server,Portal" }else{ "Portal" }
         }
 
-        $HasValidServiceCredential = ($ServiceCredential -and ($ServiceCredential.GetNetworkCredential().Password -ine 'Placeholder'))
         if($HasValidServiceCredential) 
         {
             $PortalDependsOn = @()
@@ -321,7 +289,14 @@
                         DataDir         = @('HKLM:\SOFTWARE\ESRI\Portal for ArcGIS')  
                     }
                     $PortalDependsOn += '[ArcGIS_Service_Account]Portal_Service_Account'
-            
+                    
+                    ArcGIS_HostNameSettings PortalHostNameSettings{
+                        ComponentName   = "Portal"
+                        Version         = $Version
+                        HostName        = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
+                        DependsOn       = $PortalDependsOn
+                    }
+                    $PortalDependsOn += '[ArcGIS_HostNameSettings]PortalHostNameSettings'
                 
                     if($UseAzureFiles -and $AzureFilesEndpoint -and $StorageAccountCredential)
                     {    
@@ -421,7 +396,7 @@
                         $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Database_InBound')
 
                         $VersionArray = $Version.Split(".")
-                        if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){ # 11.3 or later
+                        if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3)){ # 11.3 or later
                             ArcGIS_xFirewall Portal_Ignite_OutBound
                             {
                                 Name                  = "PortalforArcGIS-Ignite-Outbound" 
@@ -451,61 +426,46 @@
                             }  
                             $PortalDependsOn += @('[ArcGIS_xFirewall]Portal_Ignite_InBound')
                         }
-                    }     
-
+                    }
+                    
+                    $CreateCloudSiteWithContentInAzureBlobContainer = $UseCloudStorage -and -not($UseAzureFiles) -and -not($Join)
                     ArcGIS_Portal Portal
                     {
-                        PortalHostName                        = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
-                        Version                               = $Version
-                        Ensure                                = 'Present'
-                        LicenseFilePath                       = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
-                        UserLicenseTypeId                     = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
-                        PortalAdministrator                   = $SiteAdministratorCredential 
-                        DependsOn                             = $PortalDependsOn
-                        AdminEmail                            = $PortalAdministratorEmail
-                        AdminFullName                         = $SiteAdministratorCredential.UserName
-                        AdminDescription                      = 'Portal Administrator'
-                        AdminSecurityQuestionCredential       = if($PortalAdministratorSecurityQuestionCredential.UserName -ine "PlaceHolder"){ $PortalAdministratorSecurityQuestionCredential }else{ $null }
-                        Join                                  = $Join
-                        IsHAPortal                            = $IsHAPortal
-                        PeerMachineHostName                   = if($Join) { $PortalHostName } else { $PeerMachineName }
-                        ContentDirectoryLocation              = if(-not($Join)){ $ContentStoreLocation }else{ $null }
-                        EnableDebugLogging                    = $DebugMode
-                        LogLevel                              = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
-                        ContentDirectoryCloudConnectionString = if(-not($Join)){ $ContentDirectoryCloudConnectionString }else{ $null }
-                        ContentDirectoryCloudContainerName    = if(-not($Join)){ $ContentDirectoryCloudContainerName }else{ $null }
+                        PortalHostName                      = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
+                        Version                             = $Version
+                        Ensure                              = 'Present'
+                        LicenseFilePath                     = if($PortalLicenseFileName){(Join-Path $(Get-Location).Path $PortalLicenseFileName)}else{$null}
+                        UserLicenseTypeId                   = if($PortalLicenseUserTypeId){$PortalLicenseUserTypeId}else{$null}
+                        PortalAdministrator                 = $SiteAdministratorCredential 
+                        DependsOn                           = $PortalDependsOn
+                        AdminEmail                          = $PortalAdministratorEmail
+                        AdminFullName                       = $SiteAdministratorCredential.UserName
+                        AdminDescription                    = 'Portal Administrator'
+                        AdminSecurityQuestionCredential     = if($PortalAdministratorSecurityQuestionCredential.UserName -ine "PlaceHolder"){ $PortalAdministratorSecurityQuestionCredential }else{ $null }
+                        Join                                = $Join
+                        IsHAPortal                          = $IsHAPortal
+                        PeerMachineHostName                 = if($Join) { $PortalHostName } else { $PeerMachineName }
+                        ContentDirectoryLocation            = if(-not($Join)){ $ContentStoreLocation }else{ $null }
+                        EnableDebugLogging                  = $DebugMode
+                        LogLevel                            = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
+                        CloudProvider                       = if($CreateCloudSiteWithContentInAzureBlobContainer) { "Azure" } else { "None" }
+                        AzureAuthenticationType             = if($CreateCloudSiteWithContentInAzureBlobContainer) { $CloudStorageAuthenticationType } else { "None" }
+                        AzureContentBlobContainerName       = if($CreateCloudSiteWithContentInAzureBlobContainer) { "arcgis-portal-content-$($Namespace)$($PortalContext)" } else { $null }
+                        AzureStorageAccountCredential       = if($CreateCloudSiteWithContentInAzureBlobContainer) { $StorageAccountCredential } else { $null }
+                        AzureServicePrincipalCredential     = if($CreateCloudSiteWithContentInAzureBlobContainer) { $ServicePrincipalCredential } else { $null }
+                        AzureServicePrincipalTenantId       = if($CreateCloudSiteWithContentInAzureBlobContainer) { $ServicePrincipalTenantId } else { $null }
+                        AzureServicePrincipalAuthorityHost  = if($CreateCloudSiteWithContentInAzureBlobContainer) { $ServicePrincipalAuthorityHost } else { $null }
+                        AzureUserAssignedIdentityClientId   = if($CreateCloudSiteWithContentInAzureBlobContainer) { $UserAssignedIdentityClientId } else { $null }
                     } 
                     $PortalDependsOn += @('[ArcGIS_Portal]Portal')
                 }
             }
 
-            if($IsUpdatingCertificates -or ($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) )){ #On add of new machine or update certificate op
-                
-                Script CopyCertificateFileToLocalMachine
-                {
-                    GetScript = {
-                        $null
-                    }
-                    SetScript = {    
-                        Write-Verbose "Copying from $using:PortalCertificateFileLocation to $using:PortalCertificateLocalFilePath"      
-                        $PsDrive = New-PsDrive -Name W -Root $using:FileShareRootPath -PSProvider FileSystem                              
-                        Copy-Item -Path $using:PortalCertificateFileLocation -Destination $using:PortalCertificateLocalFilePath -Force  
-                        if($PsDrive) {
-                            Write-Verbose "Removing Temporary Mapped Drive $($PsDrive.Name)"
-                            Remove-PsDrive -Name $PsDrive.Name -Force       
-                        }       
-                    }
-                    TestScript = {   
-                        $false
-                    }
-                    DependsOn             = if(-Not($ServiceCredentialIsDomainAccount) -and -not($IsUpdatingCertificates)){@('[User]ArcGIS_RunAsAccount')}else{@()}
-                    PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-                }
-                $PortalDependsOn += '[Script]CopyCertificateFileToLocalMachine'
-                
+            if($IsUpdatingCertificates -or ($PortalLicenseFileName -and ($PortalLicenseFileName.Trim().Length -gt 0) )) #On add of new machine or update certificate op
+            { 
                 ArcGIS_Portal_TLS ArcGIS_Portal_TLS
                 {
-                    PortalHostName = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
+                    PortalHostName          = if($PortalHostName -ieq $env:ComputerName){ $PortalHostName }else{ $PeerMachineName }
                     SiteAdministrator       = $SiteAdministratorCredential 
                     WebServerCertificateAlias= "ApplicationGateway"
                     CertificateFileLocation = $PortalCertificateLocalFilePath 

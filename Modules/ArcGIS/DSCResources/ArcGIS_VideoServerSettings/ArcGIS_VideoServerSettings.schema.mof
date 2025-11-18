@@ -5,4 +5,11 @@ class ArcGIS_VideoServerSettings : OMI_BaseResource
     [Write] String ServerHostName;
     [Key] String WebContextURL;
     [Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
+    [Write] String HttpProxyHost;
+    [Write] UInt32 HttpProxyPort;
+    [Write, EmbeddedInstance("MSFT_Credential")] String HttpProxyCredential;
+    [Write] String HttpsProxyHost;
+    [Write] UInt32 HttpsProxyPort;
+    [Write, EmbeddedInstance("MSFT_Credential")] String HttpsProxyCredential;
+    [Write] String NonProxyHosts;
 };

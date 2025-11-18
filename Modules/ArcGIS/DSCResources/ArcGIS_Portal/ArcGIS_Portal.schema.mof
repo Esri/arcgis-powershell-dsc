@@ -2,8 +2,8 @@
 [ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_Portal")]
 class ArcGIS_Portal : OMI_BaseResource
 {
+	[Key] String Version;
 	[Key] String PortalHostName;
-	[Write] String Version;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
 	[Write] String LicenseFilePath;
 	[Write] String UserLicenseTypeId;
@@ -18,8 +18,22 @@ class ArcGIS_Portal : OMI_BaseResource
 	[Write, Description("LogLevel")] String LogLevel;
 	[Write] String PeerMachineHostName;
 	[Write] String ContentDirectoryLocation;
-    [Write] String ContentDirectoryCloudConnectionString;
-    [Write] String ContentDirectoryCloudContainerName;
+
+	[Write, ValueMap{"None","Azure","AWS"}, Values{"None","Azure","AWS"}, Description("Cloud Storage Type")] String CloudProvider;
+	
+	[Write, ValueMap{"AccessKey","IAMRole","None"}, Values{"AccessKey","IAMRole","None"}] String AWSAuthenticationType;
+	[Write] String AWSRegion;
+	[Write] String AWSS3ContentBucketName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AWSAccessKeyCredential;
+
+	[Write, ValueMap{"AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None"}, Values{"AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken","None"}] String AzureAuthenticationType;
+	[Write] String AzureContentBlobContainerName;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureStorageAccountCredential;
+	[Write, EmbeddedInstance("MSFT_Credential")] String AzureServicePrincipalCredential;
+	[Write] String AzureServicePrincipalTenantId;
+	[Write] String AzureServicePrincipalAuthorityHost;
+	[Write] String AzureUserAssignedIdentityClientId;
+	
 	[Write] Boolean EnableCreateSiteDebug;
 };
 

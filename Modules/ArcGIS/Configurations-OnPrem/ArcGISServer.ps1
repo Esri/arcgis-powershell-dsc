@@ -47,13 +47,13 @@
         [System.String]
         $ConfigStoreLocation,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [System.String]
         $ServerDirectoriesRootLocation,
 
         [Parameter(Mandatory=$false)]
         [System.Array]
-        $ServerDirectories,
+        $ServerDirectories = $null,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -68,31 +68,152 @@
         $RegisteredDirectories,
 
         [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
-        [AllowNull()] 
         [System.String]
-        $ConfigStoreCloudStorageType,
+        [ValidateSet("Azure","AWS", "None")]
+        $CloudProvider = "None",
+
+        [parameter(Mandatory = $False)]    
+        [System.Boolean]
+        $IsCloudNativeServer = $False,
+
+        [parameter(Mandatory = $False)]    
+        [System.Array]
+        $CloudNativeTags = $null,
+
+        [parameter(Mandatory = $False)]    
+        [System.String]
+        $CloudNativeLocalDirectory = $False,
 
         [Parameter(Mandatory=$False)]
-        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity","SASToken")]
-        [AllowNull()] 
-        $ConfigStoreAzureBlobAuthenticationType,
+        [System.String]
+        $CloudNamespace = "None",
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ConfigStoreAzureBlobUserAssignedIdentityId = $null,
+        $AWSRegion = "None",
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ConfigStoreAzureBlobServicePrincipalTenantId = $null,
+        [ValidateSet("AccessKey","IAMRole","None")]
+        $AWSCloudAuthenticationType = "None",
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $ConfigStoreAzureBlobServicePrincipalCredentials = $null,
+        $AWSCloudAccessKeyCredential,
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ConfigStoreAzureBlobServicePrincipalAuthorityHost = $null,
+        $AWSCloudNativeS3BucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeDynamoDBRegionEndpointURL,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeQueueServiceRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey", "SASToken", "ServicePrincipal","UserAssignedIdentity","None")]
+        $AzureCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountContainerName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeCosmosDBAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountDatabaseId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountSubscriptionId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountResourceGroupName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("Direct","Gateway")]
+        $AzureCloudNativeCosmosDBAccountConnectionMode = "Gateway",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeServiceBusNamespaceCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $UsesAzureFilesForConfigStore = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ConfigStoreAzureFilesCredentials,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -100,21 +221,15 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ConfigStoreCloudNamespace,
+        $ConfigStoreAzureFilesCloudNamespace,
 
         [Parameter(Mandatory=$False)]
-        [System.String]
-        $ConfigStoreAWSRegion,
+        [System.Boolean]
+        $UsesAzureFilesForServerDirectories = $False,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $ConfigStoreCloudStorageCredentials,
-
-        [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles")]
-        [AllowNull()] 
-        [System.String]
-        $ServerDirectoriesCloudStorageType,
+        $ServerDirectoriesAzureFilesCredentials,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -122,11 +237,7 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ServerDirectoriesCloudNamespace,
-
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.PSCredential]
-        $ServerDirectoriesCloudStorageCredentials,
+        $ServerDirectoriesAzureFilesCloudNamespace,
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -139,6 +250,10 @@
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $UsesSSL = $False,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $WebSocketContextUrl,
         
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -146,58 +261,20 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_Server, ArcGIS_Service_Account, ArcGIS_GeoEvent, ArcGIS_WaitForComponent, ArcGIS_Server_TLS, ArcGIS_Server_RegisterDirectories
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_xFirewall, ArcGIS_Server, ArcGIS_Service_Account, ArcGIS_GeoEvent, ArcGIS_WaitForComponent, ArcGIS_Server_TLS, ArcGIS_Server_RegisterDirectories,ArcGIS_HostNameSettings
 
-    if($null -ne $ConfigStoreCloudStorageType) 
-    {
-        if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){
-            $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($ConfigStoreCloudNamespace);REGION=$($ConfigStoreAWSRegion);"
-            if($ConfigStoreCloudStorageCredentials){
-                $ConfigStoreCloudStorageConnectionSecret="ACCESS_KEY_ID=$($ConfigStoreCloudStorageCredentials.UserName);SECRET_KEY=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password);"
-            }
-        }else{
-            if($ConfigStoreCloudStorageCredentials){
-                $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
-                $ConfigStoreEndpointSuffix = ''
-                $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
-                if($ConfigStorePos -gt -1) {
-                    $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
-                    $ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-                    $ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
-                }
-
-                if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
-                    $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
-                    $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
-                    $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\server\config-store"
-                } else {
-                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)server$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($ConfigStoreAccountName)"
-                    if($ConfigStoreAzureBlobAuthenticationType -ieq 'ServicePrincipal'){
-                        $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($ConfigStoreAzureBlobServicePrincipalTenantId);ClientId=$($ConfigStoreAzureBlobServicePrincipalCredentials.Username)"
-                        if($ConfigStoreAzureBlobServicePrincipalAuthorityHost){
-                            $ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($ConfigStoreAzureBlobServicePrincipalAuthorityHost)"
-                        }    
-                        $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ConfigStoreAzureBlobServicePrincipalCredentials.GetNetworkCredential().Password)"
-                    }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'UserAssignedIdentity'){
-                        $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($ConfigStoreAzureBlobUserAssignedIdentityId)"
-                        $ConfigStoreCloudStorageConnectionSecret = ""
-                    }elseif($ConfigStoreAzureBlobAuthenticationType -ieq 'SASToken'){
-                        $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
-                        $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
-                    }else{
-                        $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
-                    }
-                }
-            }
-        }
+    if($UsesAzureFilesForConfigStore){
+        $ConfigStorePos = $ConfigStoreAzureFilesCredentials.UserName.IndexOf('.blob.')
+        $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){ $ConfigStoreAzureFilesCredentials.UserName.Replace('.blob.','.file.') }else{ $ConfigStoreAzureFilesCredentials.UserName }
+        $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
+        $ConfigStoreLocation = "\\$($ConfigStoreAzureFilesEndpoint)\$($ConfigStoreAzureFileShareName)\$($ConfigStoreAzureFilesCloudNamespace)\server\config-store"
     }
 
-    if(($null -ne $ServerDirectoriesCloudStorageType) -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles') -and $ServerDirectoriesCloudStorageCredentials) 
-    {
-        $ServerDirectoriesPos = $ServerDirectoriesCloudStorageCredentials.UserName.IndexOf('.blob.')
-        $ServerDirectoriesAzureFilesEndpoint = if($ServerDirectoriesPos -gt -1){$ServerDirectoriesCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{ $ServerDirectoriesCloudStorageCredentials.UserName }                   
+    if($UsesAzureFilesForServerDirectories){
+        $ServerDirectoriesPos = $ServerDirectoriesAzureFilesCredentials.UserName.IndexOf('.blob.')
+        $ServerDirectoriesAzureFilesEndpoint = if($ServerDirectoriesPos -gt -1){$ServerDirectoriesAzureFilesCredentials.UserName.Replace('.blob.','.file.')}else{ $ServerDirectoriesAzureFilesCredentials.UserName }                   
         $ServerDirectoriesAzureFileShareName = $ServerDirectoriesAzureFileShareName.ToLower() # Azure file shares need to be lower case
-        $ServerDirectoriesRootLocation   = "\\$($ServerDirectoriesAzureFilesEndpoint)\$ServerDirectoriesAzureFileShareName\$($ServerDirectoriesCloudNamespace)\server\server-dirs" 
+        $ServerDirectoriesRootLocation = "\\$($ServerDirectoriesAzureFilesEndpoint)\$($ServerDirectoriesAzureFileShareName)\$($ServerDirectoriesAzureFilesCloudNamespace)\server\server-dirs" 
     }
 
     Node $AllNodes.NodeName
@@ -228,31 +305,16 @@
                 Protocol              = "TCP" 
             }
             $Depends += '[ArcGIS_xFirewall]Server_FirewallRules'
-        }   
-        
+        }
         if($IsMultiMachineServer) 
         {
-            $Depends += '[ArcGIS_xFirewall]Server_FirewallRules_Internal' 
-            ArcGIS_xFirewall Server_FirewallRules_Internal
-            {
-                Name                  = "ArcGISServerInternal" 
-                DisplayName           = "ArcGIS for Server Internal RMI" 
-                DisplayGroup          = "ArcGIS for Server" 
-                Ensure                = "Present" 
-                Access                = "Allow" 
-                State                 = "Enabled" 
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("4000-4004")
-                Protocol              = "TCP" 
-            }
-
             if($ServerRole -ieq 'GeoAnalytics' -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoAnalytics")) 
             {  
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_InboundFirewallRules' 
                 $Depends += '[ArcGIS_xFirewall]GeoAnalytics_OutboundFirewallRules' 
 
                 $GeoAnalyticsPorts = @("7077")
-                if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){
+                if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){
                     $GeoAnalyticsPorts += @("12181","12182","12190")
                 }else{
                     $GeoAnalyticsPorts += @("2181","2182","2190")
@@ -315,17 +377,13 @@
         }
 
         $DataDirs = @()
-        if($null -ne $CloudStorageType){
-            if(-not($CloudStorageType -ieq 'AzureFiles')){
-                $DataDirs = @($ServerDirectoriesRootLocation)
-                if($ServerDirectories -ne $null){
-                    foreach($dir in $ServerDirectories){
-                        $DataDirs += $dir.physicalPath
-                    }
-                }
-            }
-        }else{
-            $DataDirs = @($ConfigStoreLocation,$ServerDirectoriesRootLocation) 
+        # Only add config store location if not using Azure Files for config store or is not using a cloud provider for config store
+        if($CloudProvider -ieq "None" -and -not($UsesAzureFilesForConfigStore)){
+            $DataDirs += @($ConfigStoreLocation)
+        }
+        # Only add server directories root location if not using Azure Files for server directories or is not using cloud native server deployment
+        if(-not($IsCloudNativeServer) -and -not($UsesAzureFilesForServerDirectories)){
+            $DataDirs += @($ServerDirectoriesRootLocation)
             if($ServerDirectories -ne $null){
                 foreach($dir in $ServerDirectories){
                     $DataDirs += $dir.physicalPath
@@ -334,11 +392,11 @@
         }
 
         if($null -ne $ServerLogsLocation){
-            $DataDirs += $ServerLogsLocation
+            $DataDirs += @($ServerLogsLocation)
         }
 
         if($null -ne $LocalRepositoryPath){
-            $DataDirs += $LocalRepositoryPath
+            $DataDirs += @($LocalRepositoryPath)
         }
 
         ArcGIS_Service_Account Server_RunAs_Account
@@ -356,11 +414,19 @@
 
         $Depends += '[ArcGIS_Service_Account]Server_RunAs_Account' 
 
-        if(-not($ServiceCredentialIsMSA)) 
+        ArcGIS_HostNameSettings ServerHostNameSettings{
+            ComponentName   = "Server"
+            Version         = $Version
+            HostName        = $Node.NodeName
+            DependsOn       = $DependsOn
+        }
+        $DependsOn += '[ArcGIS_HostNameSettings]ServerHostNameSettings'
+
+        if(-not($ServiceCredentialIsMSA) -and ($UsesAzureFilesForConfigStore -or $UsesAzureFilesForServerDirectories)) 
         {
-            if($ConfigStoreAzureFilesEndpoint -and $ConfigStoreCloudStorageCredentials -and ($ConfigStoreCloudStorageType -ieq 'AzureFiles')){
+            if($UsesAzureFilesForConfigStore -and $ConfigStoreAzureFilesEndpoint -and $ConfigStoreAzureFilesCredentials){
                 $ConfigStoreFilesStorageAccountName = $ConfigStoreAzureFilesEndpoint.Substring(0, $ConfigStoreAzureFilesEndpoint.IndexOf('.'))
-                $ConfigStoreStorageAccountKey       = $ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password
+                $ConfigStoreStorageAccountKey       = $ConfigStoreAzureFilesCredentials.GetNetworkCredential().Password
 
                 Script PersistConfigStoreCloudStorageCredentials
                 {
@@ -384,9 +450,9 @@
                 $Depends += '[Script]PersistConfigStoreCloudStorageCredentials'
             }
 
-            if($ServerDirectoriesAzureFilesEndpoint -and $ServerDirectoriesCloudStorageCredentials -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles')){
+            if($UsesAzureFilesForServerDirectories -and $ServerDirectoriesAzureFilesEndpoint -and $ServerDirectoriesAzureFilesCredentials){
                 $ServerDirectoriesFilesStorageAccountName = $ServerDirectoriesAzureFilesEndpoint.Substring(0, $ServerDirectoriesAzureFilesEndpoint.IndexOf('.'))
-                $ServerDirectoriesStorageAccountKey       = $ServerDirectoriesCloudStorageCredentials.GetNetworkCredential().Password
+                $ServerDirectoriesStorageAccountKey       = $ServerDirectoriesAzureFilesCredentials.GetNetworkCredential().Password
 
                 Script PersistServerDirectoriesCloudStorageCredentials
                 {
@@ -445,15 +511,47 @@
             SiteAdministrator = $ServerPrimarySiteAdminCredential
             ConfigurationStoreLocation = $ConfigStoreLocation
             ServerDirectoriesRootLocation = $ServerDirectoriesRootLocation
-            ServerDirectories = if($ServerDirectories -ne $null){ (ConvertTo-JSON $ServerDirectories -Depth 5) }else{ $null }
+            ServerDirectories = if($null -ne $ServerDirectories){ (ConvertTo-JSON $ServerDirectories -Depth 5) }else{ $null }
             ServerLogsLocation = $ServerLogsLocation
             LocalRepositoryPath = $LocalRepositoryPath
             Join =  if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false } 
             PeerServerHostName = $PrimaryServerMachine
             DependsOn = $Depends
-            LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }
-            ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-            ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+            LogLevel = if($DebugMode) { 'DEBUG' } else { 'WARNING' }            
+            CloudProvider = $CloudProvider
+            IsCloudNativeServer = $IsCloudNativeServer
+            CloudNamespace = $CloudNamespace
+            AWSCloudAuthenticationType = $AWSCloudAuthenticationType
+            AWSRegion = $AWSRegion
+            AWSCloudAccessKeyCredential = $AWSCloudAccessKeyCredential
+            AzureCloudAuthenticationType = $AzureCloudAuthenticationType
+            AzureCloudStorageAccountCredential = $AzureCloudStorageAccountCredential
+            AzureCloudServicePrincipalCredential = $AzureCloudServicePrincipalCredential
+            AzureCloudServicePrincipalTenantId = $AzureCloudServicePrincipalTenantId
+            AzureCloudServicePrincipalAuthorityHost = $AzureCloudServicePrincipalAuthorityHost
+            AzureCloudUserAssignedIdentityClientId = $AzureCloudUserAssignedIdentityClientId
+            CloudNativeTags = if($CloudNativeTags){(ConvertTo-JSON $CloudNativeTags -Depth 5 -Compress)}else{$null}
+            CloudNativeLocalDirectory = $CloudNativeLocalDirectory
+            AWSCloudNativeS3BucketName = $AWSCloudNativeS3BucketName
+            AWSCloudNativeS3RegionEndpointURL = $AWSCloudNativeS3RegionEndpointURL
+            AWSCloudNativeS3RootDir = $AWSCloudNativeS3RootDir
+            AWSCloudNativeDynamoDBRegionEndpointURL = $AWSCloudNativeDynamoDBRegionEndpointURL
+            AWSCloudNativeQueueServiceRegionEndpointURL = $AWSCloudNativeQueueServiceRegionEndpointURL
+            AzureCloudNativeStorageAccountCredential = $AzureCloudNativeStorageAccountCredential
+            AzureCloudNativeStorageAccountContainerName = $AzureCloudNativeStorageAccountContainerName
+            AzureCloudNativeStorageAccountRootDir = $AzureCloudNativeStorageAccountRootDir
+            AzureCloudNativeStorageAccountAccountEndpointUrl = $AzureCloudNativeStorageAccountAccountEndpointUrl
+            AzureCloudNativeStorageAccountRegionEndpointUrl = $AzureCloudNativeStorageAccountRegionEndpointUrl
+            AzureCloudNativeCosmosDBAccountCredential = $AzureCloudNativeCosmosDBAccountCredential
+            AzureCloudNativeCosmosDBAccountEndpointUrl = $AzureCloudNativeCosmosDBAccountEndpointUrl
+            AzureCloudNativeCosmosDBRegionEndpointUrl = $AzureCloudNativeCosmosDBRegionEndpointUrl
+            AzureCloudNativeCosmosDBAccountDatabaseId = $AzureCloudNativeCosmosDBAccountDatabaseId
+            AzureCloudNativeCosmosDBAccountSubscriptionId = $AzureCloudNativeCosmosDBAccountSubscriptionId
+            AzureCloudNativeCosmosDBAccountResourceGroupName = $AzureCloudNativeCosmosDBAccountResourceGroupName
+            AzureCloudNativeCosmosDBAccountConnectionMode = $AzureCloudNativeCosmosDBAccountConnectionMode
+            AzureCloudNativeServiceBusNamespaceCredential = $AzureCloudNativeServiceBusNamespaceCredential
+            AzureCloudNativeServiceBusNamespaceEndpointUrl  = $AzureCloudNativeServiceBusNamespaceEndpointUrl
+            AzureCloudNativeServiceBusNamespaceRegionEndpointUrl = $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
         }
         $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
         
@@ -478,7 +576,7 @@
             SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
             EnableHTTPSOnly = $EnableHTTPSOnly
             EnableHSTS = $EnableHSTS
-            ServerType = "GeneralPurposeServer"
+            ServerType = "Server"
             Version    = $Version
             ImportCertificateChain = $ImportCertChainValue
             ForceImportCertificate = $ForceImportCertificate
@@ -561,7 +659,7 @@
 				$ServerDependsOn += @('[ArcGIS_xFirewall]GeoEvent_FirewallRule_Zookeeper_Outbound','[ArcGIS_xFirewall]GeoEvent_FirewallRules_Zookeeper')
 
                 $GeoEventPorts = ("27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
-                if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){
+                if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){
                     $GeoEventPorts += @("12181","12182","12190")
                 }else{
                     $GeoEventPorts += @("2181","2182","2190")
@@ -613,6 +711,9 @@
                 }
                 $Depends += "[ArcGIS_xFirewall]GeoEventGatewayService_Firewall"
             }
+            if($null -eq $WebSocketContextUrl -or $WebSocketContextUrl -eq ""){
+                $WebSocketContextUrl = "wss://$(Get-FQDN $Node.NodeName):6143/arcgis"
+            }
 
             ArcGIS_GeoEvent ArcGIS_GeoEvent
             {
@@ -620,7 +721,7 @@
                 Name	                  = 'ArcGIS GeoEvent'
                 Ensure	                  =  "Present"
                 SiteAdministrator         = $ServerPrimarySiteAdminCredential
-                WebSocketContextUrl       = "wss://$(Get-FQDN $Node.NodeName):6143/arcgis" #Fix this
+                WebSocketContextUrl       = $WebSocketContextUrl
                 Version					  = $Version
                 DependsOn                 = $Depends
                 #SiteAdminUrl             = if($ConfigData.ExternalDNSName) { "https://$($ConfigData.ExternalDNSName)/arcgis/admin" } else { $null }
@@ -661,7 +762,7 @@
 
             if($IsMultiMachineServer){
                 $WfmPorts = @("9830", "9820", "9840", "9880")
-                if($VersionArray[0] -ieq 11 -and $VersionArray -ge 3){
+                if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3)){
                     $WfmPorts = @("13820", "13830", "13840", "9880")
                 }
                 ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound

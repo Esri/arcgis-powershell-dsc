@@ -67,7 +67,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_WebAdaptor, ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_WebAdaptor, ArcGIS_Tomcat
 
 
     Node $AllNodes.NodeName {
@@ -86,13 +86,13 @@
                 if($WA.Role -ieq $WebAdaptorRole){
                     $LastWAName = "UnregisterWebAdaptor$($Node.NodeName)-$($WA.Context)"
                     # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
-                    $WAAdminAccessEnabled = if((@("11.5") -icontains $Version)) {$true} else {$WA.AdminAccessEnabled}
+                    $WAAdminAccessEnabled = if((@("11.5","12.0") -icontains $Version)) {$true} else {$WA.AdminAccessEnabled}
                     ArcGIS_WebAdaptor $LastWAName
                     {
                         Version             = $OldVersion
                         Ensure              = "Absent"
                         Component           = $Component
-                        HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ (Get-FQDN $Node.NodeName) } 
+                        HostName            = if($WA.HostName){ $WA.HostName }elseif($Node.SSLCertificate){$Node.SSLCertificate.CName}else{ (Get-FQDN $Node.NodeName) } 
                         ComponentHostName   = (Get-FQDN $ComponentHostName)
                         Context             = $WA.Context
                         OverwriteFlag       = $False
@@ -185,7 +185,7 @@
 
                     $VersionArray = $Version.Split(".")
                     $WAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($WA.Context) WEBSITE_ID=$($WA.WebSiteId)"
-                    if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
+                    if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
                         $WAArguments += " CONFIGUREIIS=TRUE"
                     }
                     
@@ -224,13 +224,13 @@
 
         foreach($WA in $Node.WebAdaptorConfig){
             if($WA.Role -ieq $WebAdaptorRole){
-                $WAAdminAccessEnabled = if((@("11.5") -icontains $Version)) {$true} else {$WA.AdminAccessEnabled}
+                $WAAdminAccessEnabled = if((@("11.5","12.0") -icontains $Version)) {$true} else {$WA.AdminAccessEnabled}
                 ArcGIS_WebAdaptor "ConfigureWebAdaptor$($Node.NodeName)-$($WA.Context)"
                 {
                     Version             = $Version
                     Ensure              = "Present"
                     Component           = $Component
-                    HostName            = if($Node.SSLCertificate){ $Node.SSLCertificate.CName }else{ (Get-FQDN $Node.NodeName) } 
+                    HostName            = if($WA.HostName){ $WA.HostName }elseif($Node.SSLCertificate){$Node.SSLCertificate.CName}else{ (Get-FQDN $Node.NodeName) } 
                     ComponentHostName   = (Get-FQDN $ComponentHostName)
                     Context             = $WA.Context
                     OverwriteFlag       = $False

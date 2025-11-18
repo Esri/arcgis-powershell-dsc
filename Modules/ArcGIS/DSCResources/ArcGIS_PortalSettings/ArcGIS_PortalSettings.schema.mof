@@ -23,5 +23,12 @@ class ArcGIS_PortalSettings : OMI_BaseResource
 	[Write, EmbeddedInstance("MSFT_Credential")] String EmailSettingsCredential;
 	[Write] Uint64 EmailSettingsSMTPPort;
 	[Write, ValueMap{"SSL","TLS","NONE"}, Values{"SSL","TLS","NONE"}] String EmailSettingsEncryptionMethod;
+	[Write] String HttpProxyHost;
+	[Write] UInt32 HttpProxyPort;
+	[Write, EmbeddedInstance("MSFT_Credential")] String HttpProxyCredential;
+	[Write] String HttpsProxyHost;
+	[Write] UInt32 HttpsProxyPort;
+	[Write, EmbeddedInstance("MSFT_Credential")] String HttpsProxyCredential;
+	[Write] String NonProxyHosts;
 };
 

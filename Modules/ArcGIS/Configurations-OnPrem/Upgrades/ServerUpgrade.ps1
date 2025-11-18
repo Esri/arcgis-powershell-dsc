@@ -107,7 +107,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account, ArcGIS_HostNameSettings
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -142,10 +142,10 @@
             $Depends += '[Service]ArcGIS_GeoEventGateway_Service_Stop'
         }
 
-        $ServerUpgradeInstallArguments = if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){"/qn ACCEPTEULA=YES"}else{"/qn"}
+        $ServerUpgradeInstallArguments = if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){"/qn ACCEPTEULA=YES"}else{"/qn"}
         $ServerFeatureSet = @()
         if($ServerTypeName -ieq "Server"){
-            if($VersionArray[0] -eq 11){
+            if($VersionArray[0] -gt 10){
                 if(-not($EnableDotnetSupport)){
                     $ServerFeatureSet = @("GIS_Server")
                 }
@@ -180,7 +180,7 @@
 
         if($ServerTypeName -ieq "Server" -and $null -ne $Extensions){
             
-            if(($VersionArray[0] -eq 11) -or ($Version -ieq "10.9.1")){
+            if(($VersionArray[0] -gt 10) -or ($Version -ieq "10.9.1")){
                 ArcGIS_Install "ServerUpgradeUninstallWorkflowManagerClasicExtension"
                 {
                     Name = "ServerWorkflowManagerClassic"
@@ -191,7 +191,7 @@
                 $Depends += '[ArcGIS_Install]ServerUpgradeUninstallWorkflowManagerClasicExtension'
             }
 
-            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
+            if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
                 ArcGIS_Install "ServerUpgradeUninstallLocationReferencingExtension"
                 {
                     Name = "ServerLocationReferencing"
@@ -270,7 +270,7 @@
             $Depends += '[ArcGIS_Install]NotebookUninstallSamplesData'
         }
 
-        if((($Node.ServerRole -ieq "GeoAnalytics") -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoAnalytics")) -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $IsMultiMachineServerSite){
+        if((($Node.ServerRole -ieq "GeoAnalytics") -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "GeoAnalytics")) -and ($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $IsMultiMachineServerSite){
             $GeoAnalyticsPorts = @("7077","12181","12182","12190")
             ArcGIS_xFirewall GeoAnalytics_InboundFirewallRules
             {
@@ -351,6 +351,14 @@
             $Depends += "[ArcGIS_License]WorkflowManagerServerLicense$($Node.NodeName)"
         }
 
+        ArcGIS_HostNameSettings ServerHostNameSettings{
+            ComponentName   = if($Node.ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($Node.ServerRole -ieq "MissionServer"){ "MissionServer" }elseif($Node.ServerRole -ieq "VideoServer"){ "VideoServer" }else{ "Server" } 
+            Version         = $Version
+            HostName        = $Node.NodeName
+            DependsOn       = $DependsOn
+        }
+        $Depends += '[ArcGIS_HostNameSettings]ServerHostNameSettings'
+
         if($Node.ServerRole -ieq "NotebookServer"){
             ArcGIS_NotebookServerUpgrade NotebookServerConfigureUpgrade{
                 Version = $Version
@@ -358,7 +366,7 @@
                 DependsOn = $Depends
             }
            
-            if(($ContainerImagePaths.Count -gt 0) -or (($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $NotebookServerSamplesDataPath)){
+            if(($ContainerImagePaths.Count -gt 0) -or (($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $NotebookServerSamplesDataPath)){
                 $Depends += '[ArcGIS_NotebookServerUpgrade]NotebookServerConfigureUpgrade'
 
                 if($IsServiceAccountMSA){
@@ -372,7 +380,7 @@
                     ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
                         SiteName            = 'arcgis' 
                         ContainerImagePaths = $ContainerImagePaths
-                        ExtractSamples      = (($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $NotebookServerSamplesDataPath)
+                        ExtractSamples      = (($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $NotebookServerSamplesDataPath)
                         DependsOn           = $Depends
                         PsDscRunAsCredential  = $ServiceAccount # Copy as arcgis account which has access to this share
                     }
@@ -435,7 +443,7 @@
 
             # MultiMachine upgrade
             $VersionArray = $Version.Split(".")
-            if($IsMultiMachineServerSite -and ($VersionArray[0] -ieq 11 -and $VersionArray -ge 3)){
+            if($IsMultiMachineServerSite -and (($VersionArray[0] -gt 11) -or ($VersionArray[0] -ieq 11 -and $VersionArray[1] -ge 3))){
                 $WfmPorts = @("13820", "13830", "13840", "9880")
 
                 ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
@@ -525,7 +533,7 @@
             }
             $Depends += "[ArcGIS_xFirewall]GeoEventService_Firewall"
 
-            if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $IsMultiMachineServerSite){
+            if(($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)) -and $IsMultiMachineServerSite){
                 $GeoEventPorts = ("12181","12182","12190","27271","27272","27273","9191","9192","9193","9194","9220","9320","5565","5575")
                 ArcGIS_xFirewall GeoEvent_FirewallRules_MultiMachine
                 {

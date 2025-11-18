@@ -47,11 +47,45 @@
         [System.String]
         $ServerLogsLocation = $null,
 
-        [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles","AzureBlob","AWSS3DynamoDB")]
-        [AllowNull()] 
         [System.String]
-        $ConfigStoreCloudStorageType,
+        [ValidateSet("Azure","AWS", "None")]
+        $CloudProvider = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole","None")]
+        [AllowNull()]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey", "SASToken", "ServicePrincipal","UserAssignedIdentity","None")]
+        [AllowNull()]
+        $AzureCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Boolean]
+        $UsesAzureFilesForConfigStore = $False,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $ConfigStoreAzureFilesCredentials,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -59,21 +93,15 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ConfigStoreCloudNamespace,
+        $ConfigStoreAzureFilesCloudNamespace,
 
         [Parameter(Mandatory=$False)]
-        [System.String]
-        $ConfigStoreAWSRegion,
+        [System.Boolean]
+        $UsesAzureFilesForServerDirectories = $False,
 
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $ConfigStoreCloudStorageCredentials,
-
-        [Parameter(Mandatory=$False)]
-        [ValidateSet("AzureFiles")]
-        [AllowNull()] 
-        [System.String]
-        $ServerDirectoriesCloudStorageType,
+        $ServerDirectoriesAzureFilesCredentials,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -81,11 +109,7 @@
 
         [Parameter(Mandatory=$False)]
         [System.String]
-        $ServerDirectoriesCloudNamespace,
-
-        [Parameter(Mandatory=$False)]
-        [System.Management.Automation.PSCredential]
-        $ServerDirectoriesCloudStorageCredentials,
+        $ServerDirectoriesAzureFilesCloudNamespace,
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
@@ -97,47 +121,20 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_VideoServer, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_VideoServer, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent, ArcGIS_HostNameSettings
     
-
-    if($null -ne $ConfigStoreCloudStorageType) {
-        if($ConfigStoreCloudStorageType -ieq "AWSS3DynamoDB"){
-            $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($ConfigStoreCloudNamespace);REGION=$($ConfigStoreAWSRegion);"
-            if($ConfigStoreCloudStorageCredentials){
-                $ConfigStoreCloudStorageAccountName = "ACCESS_KEY_ID=$($ConfigStoreCloudStorageCredentials.UserName)"
-                $ConfigStoreCloudStorageConnectionSecret="SECRET_KEY=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password);"
-            }
-        }else{
-            if($ConfigStoreCloudStorageCredentials){
-                $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName
-                $ConfigStoreEndpointSuffix = ''
-                $ConfigStorePos = $ConfigStoreCloudStorageCredentials.UserName.IndexOf('.blob.')
-                if($ConfigStorePos -gt -1) {
-                    $ConfigStoreAccountName = $ConfigStoreCloudStorageCredentials.UserName.Substring(0, $ConfigStorePos)
-                    $ConfigStoreEndpointSuffix = $ConfigStoreCloudStorageCredentials.UserName.Substring($ConfigStorePos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
-                    $ConfigStoreEndpointSuffix = ";EndpointSuffix=$($ConfigStoreEndpointSuffix)"
-                }
-        
-                if($ConfigStoreCloudStorageType -ieq 'AzureFiles') {
-                    $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){$ConfigStoreCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{$ConfigStoreCloudStorageCredentials.UserName}                   
-                    $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
-                    $ConfigStoreLocation  = "\\$($ConfigStoreAzureFilesEndpoint)\$ConfigStoreAzureFileShareName\$($ConfigStoreCloudNamespace)\videoserver\config-store"
-                }
-                else {
-                    $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($ConfigStoreCloudNamespace)videoserver$($ConfigStoreEndpointSuffix);DefaultEndpointsProtocol=https;"
-                    $ConfigStoreCloudStorageAccountName = "AccountName=$ConfigStoreAccountName"
-                    $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password)"
-                }
-            }
-        }
+    if($UsesAzureFilesForConfigStore){
+        $ConfigStorePos = $ConfigStoreAzureFilesCredentials.UserName.IndexOf('.blob.')
+        $ConfigStoreAzureFilesEndpoint = if($ConfigStorePos -gt -1){ $ConfigStoreAzureFilesCredentials.UserName.Replace('.blob.','.file.') }else{ $ConfigStoreAzureFilesCredentials.UserName }
+        $ConfigStoreAzureFileShareName = $ConfigStoreAzureFileShareName.ToLower() # Azure file shares need to be lower case
+        $ConfigStoreLocation = "\\$($ConfigStoreAzureFilesEndpoint)\$($ConfigStoreAzureFileShareName)\$($ConfigStoreAzureFilesCloudNamespace)\videoserver\config-store"
     }
-    
-    if(($null -ne $ServerDirectoriesCloudStorageType) -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles') -and $ServerDirectoriesCloudStorageCredentials)
-    {
-        $ServerDirectoriesPos = $ServerDirectoriesCloudStorageCredentials.UserName.IndexOf('.blob.')
-        $ServerDirectoriesAzureFilesEndpoint = if($ServerDirectoriesPos -gt -1){$ServerDirectoriesCloudStorageCredentials.UserName.Replace('.blob.','.file.')}else{ $ServerDirectoriesCloudStorageCredentials.UserName }                   
+
+    if($UsesAzureFilesForServerDirectories){
+        $ServerDirectoriesPos = $ServerDirectoriesAzureFilesCredentials.UserName.IndexOf('.blob.')
+        $ServerDirectoriesAzureFilesEndpoint = if($ServerDirectoriesPos -gt -1){$ServerDirectoriesAzureFilesCredentials.UserName.Replace('.blob.','.file.')}else{ $ServerDirectoriesAzureFilesCredentials.UserName }                   
         $ServerDirectoriesAzureFileShareName = $ServerDirectoriesAzureFileShareName.ToLower() # Azure file shares need to be lower case
-        $ServerDirectoriesRootLocation   = "\\$($ServerDirectoriesAzureFilesEndpoint)\$ServerDirectoriesAzureFileShareName\$($ServerDirectoriesCloudNamespace)\videoserver\server-dirs" 
+        $ServerDirectoriesRootLocation = "\\$($ServerDirectoriesAzureFilesEndpoint)\$($ServerDirectoriesAzureFileShareName)\$($ServerDirectoriesAzureFilesCloudNamespace)\videoserver\server-dirs" 
     }
 
     Node $AllNodes.NodeName
@@ -168,17 +165,13 @@
         $DependsOn += '[ArcGIS_xFirewall]VideoServer_FirewallRules'
 
         $DataDirs = @()
-        if($null -ne $CloudStorageType){
-            if(-not($CloudStorageType -ieq 'AzureFiles')){
-                $DataDirs = @($ServerDirectoriesRootLocation)
-                if($ServerDirectories -ne $null){
-                    foreach($dir in $ServerDirectories){
-                        $DataDirs += $dir.path
-                    }
-                }
-            }
-        }else{
-            $DataDirs = @($ConfigStoreLocation,$ServerDirectoriesRootLocation) 
+        # Only add config store location if not using Azure Files for config store or is not using a cloud provider for config store
+        if($CloudProvider -ieq "None" -and -not($UsesAzureFilesForConfigStore)){
+            $DataDirs += @($ConfigStoreLocation)
+        }
+        # Only add server directories root location if not using Azure Files for server directories
+        if(-not($UsesAzureFilesForServerDirectories)){
+            $DataDirs += @($ServerDirectoriesRootLocation)
             if($ServerDirectories -ne $null){
                 foreach($dir in $ServerDirectories){
                     $DataDirs += $dir.path
@@ -187,7 +180,7 @@
         }
 
         if($null -ne $ServerLogsLocation){
-            $DataDirs += $ServerLogsLocation
+            $DataDirs += @($ServerLogsLocation)
         }
 
         ArcGIS_Service_Account VideoServer_Service_Account
@@ -204,11 +197,18 @@
         }
         $DependsOn += '[ArcGIS_Service_Account]VideoServer_Service_Account'
 
-        if(-not($ServiceCredentialIsMSA)) 
+        ArcGIS_HostNameSettings VideoServerHostNameSettings{
+            ComponentName   = "VideoServer"
+            Version         = $Version
+            DependsOn       = $DependsOn
+        }
+        $DependsOn += '[ArcGIS_HostNameSettings]VideoServerHostNameSettings'
+
+        if(-not($ServiceCredentialIsMSA) -and ($UsesAzureFilesForConfigStore -or $UsesAzureFilesForServerDirectories)) 
         {
-            if($ConfigStoreAzureFilesEndpoint -and $ConfigStoreCloudStorageCredentials -and ($ConfigStoreCloudStorageType -ieq 'AzureFiles')){
+            if($UsesAzureFilesForConfigStore -and $ConfigStoreAzureFilesCredentials -and $ConfigStoreCloudStorageCredentials){
                 $ConfigStoreFilesStorageAccountName = $ConfigStoreAzureFilesEndpoint.Substring(0, $ConfigStoreAzureFilesEndpoint.IndexOf('.'))
-                $ConfigStoreStorageAccountKey       = $ConfigStoreCloudStorageCredentials.GetNetworkCredential().Password
+                $ConfigStoreStorageAccountKey       = $ConfigStoreAzureFilesCredentials.GetNetworkCredential().Password
 
                 Script PersistConfigStoreCloudStorageCredentials
                 {
@@ -232,9 +232,9 @@
                 $Depends += '[Script]PersistConfigStoreCloudStorageCredentials'
             }
 
-            if($ServerDirectoriesAzureFilesEndpoint -and $ServerDirectoriesCloudStorageCredentials -and ($ServerDirectoriesCloudStorageType -ieq 'AzureFiles')){
+            if($UsesAzureFilesForServerDirectories -and $ServerDirectoriesAzureFilesEndpoint -and $ServerDirectoriesAzureFilesCredentials){
                 $ServerDirectoriesFilesStorageAccountName = $ServerDirectoriesAzureFilesEndpoint.Substring(0, $ServerDirectoriesAzureFilesEndpoint.IndexOf('.'))
-                $ServerDirectoriesStorageAccountKey       = $ServerDirectoriesCloudStorageCredentials.GetNetworkCredential().Password
+                $ServerDirectoriesStorageAccountKey       = $ServerDirectoriesAzureFilesCredentials.GetNetworkCredential().Password
 
                 Script PersistServerDirectoriesCloudStorageCredentials
                 {
@@ -294,14 +294,18 @@
             ServerDirectoriesRootLocation           = $ServerDirectoriesRootLocation
             ServerDirectories                       = if($ServerDirectories -ne $null){ (ConvertTo-JSON $ServerDirectories -Depth 5) }else{ $null }
             LogLevel                                = if($IsDebugMode) { 'DEBUG' } else { 'WARNING' }
-            ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
-            ConfigStoreCloudStorageAccountName      = $ConfigStoreCloudStorageAccountName
-            ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
             ServerLogsLocation                      = $ServerLogsLocation
             Join                                    = if($Node.NodeName -ine $PrimaryServerMachine) { $true } else { $false }
             PeerServerHostName                      = $PrimaryServerMachine
             Version                                 = $Version
             DependsOn                               = $DependsOn
+            CloudProvider                           = $CloudProvider
+            CloudNamespace                          = "$($CloudNamespace)videoserver"
+            AWSCloudAuthenticationType              = $AWSCloudAuthenticationType
+            AWSRegion                               = $AWSRegion
+            AWSCloudAccessKeyCredential             = $AWSCloudAccessKeyCredential
+            AzureCloudAuthenticationType            = $AzureCloudAuthenticationType
+            AzureCloudStorageAccountCredential      = $AzureCloudStorageAccountCredential
         }
         $DependsOn += "[ArcGIS_VideoServer]VideoServer$($Node.NodeName)"
 

@@ -150,10 +150,11 @@ function Set-TargetResource
             $InstallLocation = ($JavaWAInstalls | Select-Object -First 1).InstallLocation
             $ExecPath = Join-Path $InstallLocation $ConfigureToolPath
             $ArcGISWarFile = "arcgis.war"  # Default value
-
-            switch ($JavaWebServerType) {
-                "ApacheTomcat10" { $ArcGISWarFile = "arcgis_tomcat10.war" }
-                Default { $ArcGISWarFile = "arcgis.war" }
+            if([version]$Version -lt [version]"12.0"){
+                switch ($JavaWebServerType) {
+                    "ApacheTomcat10" { $ArcGISWarFile = "arcgis_tomcat10.war" }
+                    Default { $ArcGISWarFile = "arcgis.war" }
+                }
             }
 
             Write-Verbose "ArcGISWarFile is: $ArcGISWarFile"
@@ -171,7 +172,7 @@ function Set-TargetResource
             $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
             $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
             $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
-            if($Version.StartsWith("11.1") -or $Version.StartsWith("11.2") -or $Version.StartsWith("11.3") -or $Version.StartsWith("11.4") -or $Version.StartsWith("11.5")){
+            if(@("11.1", "11.2", "11.3", "11.4", "11.5", "12.0") -icontains $Version){
                 $ExecPath = Join-Path ${env:CommonProgramFiles} $ConfigureToolPath
             }
         }
@@ -354,7 +355,7 @@ function Test-TargetResource
             if($wa.InstallLocation -match "\\$($Context)\\"){
                 $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
                 $WAConfigSiteUrl = $null
-                if($wa.Version.StartsWith("11.1") -or $wa.Version.StartsWith("11.2") -or $Version.StartsWith("11.3") -or $Version.StartsWith("11.4") -or $Version.StartsWith("11.5")){
+                if(@("11.1", "11.2", "11.3", "11.4", "11.5", "12.0") -icontains $Version){
                     $WAConfig = (Get-Content $WAConfigPath | ConvertFrom-Json)
                     $WAConfigSiteUrl = if($Component -ieq "Portal"){ $WAConfig.portal.url }else{ $WAConfig.gisserver.url }
                 }else{
@@ -525,7 +526,7 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         }
 
         $VersionArray = $Version.Split('.')
-        if(($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")){
+        if(($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")){
             if($IsJavaWebAdaptor){
                 $Arguments += " -r false"
             }else{
@@ -534,7 +535,6 @@ function Start-ConfigureWebAdaptorCMDLineTool{
         }
     }
 	
-    Write-Host "The arguments to configur web adaptor are: $Arguments"
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $ExecPath
     $psi.Arguments = $Arguments
@@ -653,6 +653,7 @@ function Test-ArcGISJavaWebAdaptorBuildNumberToMatch
         "11.3" { "11.3" }
         "11.4" { "11.4" }
         "11.5" { "11.5" }
+        "12.0" { "12.0" }
         Default {
             throw "Version $VersionToMatch not supported"
         }

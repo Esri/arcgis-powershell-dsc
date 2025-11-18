@@ -152,14 +152,14 @@ function Set-TargetResource
         try {
             $DBType =  if($IsPostgres){ "POSTGRESQL" }else{ "SQLSERVER" } 
 
-            $ServiceName = 'ArcGIS Server'
+            $ServiceName = Get-ArcGISServiceName -ComponentName 'Server'
             $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
             $RealVersion = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).RealVersion
             $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
             Write-Verbose "RealVersion of ArcGIS Software Installed:- $RealVersion"
             $RealVersionArr = $RealVersion.Split(".")
             $Version = $RealVersionArr[0] + '.' + $RealVersionArr[1] 
-            $UsePython3 = ($RealVersion -eq "10.9.1" -or $RealVersionArr -eq 11)
+            $UsePython3 = ($RealVersion -eq "10.9.1" -or $RealVersionArr -gt 10)
             if($UsePython3){
                 $PythonInstallDir = Join-Path $InstallDir "\\framework\\runtime\\ArcGIS\\bin\\Python\\envs\\arcgispro-py3"
             }else{

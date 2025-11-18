@@ -3,7 +3,7 @@
     param(
         [parameter(Mandatory = $true)]
         [System.String]
-        $PortalLicenseFileUrl,
+        $PortalLicenseFileName,
 
         [Parameter(Mandatory=$false)]
         [System.String]
@@ -14,35 +14,19 @@
         $SiteAdministratorCredential,
         
         [parameter(Mandatory = $false)]
-        [System.Boolean]
-        $SetOnlyHostNamePropertiesFile,
-
-        [parameter(Mandatory = $false)]
         [System.String]
         $Version,
+
+        [Parameter(Mandatory=$True)]
+        [System.Management.Automation.PSCredential]
+        $DeploymentArtifactCredentials,
 		
 		[Parameter(Mandatory=$false)]
         [System.Boolean]
         $DebugMode		
     )
 
-	function Get-FileNameFromUrl
-    {
-        param(
-            [string]$Url
-        )
-        $FileName = $Url
-        if($FileName) {
-            $pos = $FileName.IndexOf('?')
-            if($pos -gt 0) { 
-                $FileName = $FileName.Substring(0, $pos) 
-            } 
-            $FileName = $FileName.Substring($FileName.LastIndexOf('/')+1)   
-        }     
-        $FileName
-    }
-
-    Import-DscResource -ModuleName PSDesiredStateConfiguration 
+	Import-DscResource -ModuleName PSDesiredStateConfiguration 
     Import-DSCResource -ModuleName ArcGIS
     Import-DscResource -Name ArcGIS_PortalUpgrade 
 
@@ -54,17 +38,16 @@
             RebootNodeIfNeeded = $false
         }
 
-        if($PortalLicenseFileUrl) {
-			$PortalLicenseFileName = Get-FileNameFromUrl $PortalLicenseFileUrl
-			Invoke-WebRequest -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
-		} 
+        if($PortalLicenseFileName) {
+            $PortalLicenseFileUrl = "$($DeploymentArtifactCredentials.UserName)/$($PortalLicenseFileName)$($DeploymentArtifactCredentials.GetNetworkCredential().Password)"
+            Invoke-WebRequest -Verbose:$False -OutFile $PortalLicenseFileName -Uri $PortalLicenseFileUrl -UseBasicParsing -ErrorAction Ignore
+        }  
 
         ArcGIS_PortalUpgrade PortalUpgrade
         {
             PortalAdministrator = $SiteAdministratorCredential 
             PortalHostName = $env:ComputerName
             LicenseFilePath = (Join-Path $(Get-Location).Path $PortalLicenseFileName) 
-            SetOnlyHostNamePropertiesFile = $SetOnlyHostNamePropertiesFile
             Version = $Version
             ImportExternalPublicCertAsRoot = $True
             EnableUpgradeSiteDebug = $DebugMode

@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_RemoteFile
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_RemoteFile
     
     Node $AllNodes.NodeName {
 
@@ -81,7 +81,7 @@
                         Ensure = $Ensure
                     }
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 -and $ConfigurationData.ConfigData.Server.Installer.VolumePaths){
+                    if(($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3)) -and $ConfigurationData.ConfigData.Server.Installer.VolumePaths){
                         foreach($VolumePath in $ConfigurationData.ConfigData.Server.Installer.VolumePaths){
                             $VolumeName = Split-Path $VolumePath -leaf
                             ArcGIS_RemoteFile "ServerVolumeDownload$($VolumeName)"
@@ -180,7 +180,7 @@
                         Ensure = $Ensure
                     }
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    if($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3 -and $ConfigurationData.ConfigData.Portal.Installer.VolumePaths){
+                    if(($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 3)) -and $ConfigurationData.ConfigData.Portal.Installer.VolumePaths){
                         foreach($VolumePath in $ConfigurationData.ConfigData.Portal.Installer.VolumePaths){
                             $VolumeName = Split-Path $VolumePath -leaf
                             ArcGIS_RemoteFile "PortalVolumeDownload$($VolumeName)"
@@ -195,7 +195,7 @@
                         }
                     }
 
-                    if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                    if(($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_RemoteFile "WebStyleDownload$($Node.NodeName)"
                         {
                             Source = $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath
@@ -242,6 +242,22 @@
                         Credential = $AGOCredential
                         ArcGISDownloadAPIFolderPath ="software/arcgis/$($ConfigurationData.ConfigData.Version)"
                         Ensure = $Ensure
+                    }
+
+                    $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
+                    if(($VersionArray[0] -gt 12) -and $ConfigurationData.ConfigData.DataStore.Installer.VolumePaths){
+                        foreach($VolumePath in $ConfigurationData.ConfigData.DataStore.Installer.VolumePaths){
+                            $VolumeName = Split-Path $VolumePath -leaf
+                            ArcGIS_RemoteFile "DataStoreVolumeDownload$($VolumeName)"
+                            {
+                                Source = $VolumePath
+                                Destination = $VolumePath
+                                FileSourceType = "ArcGISDownloadsAPI"
+                                Credential = $AGOCredential
+                                ArcGISDownloadAPIFolderPath = "software/arcgis/$($ConfigurationData.ConfigData.Version)"
+                                Ensure = $Ensure
+                            }
+                        }
                     }
                 }
                 'WebAdaptor'

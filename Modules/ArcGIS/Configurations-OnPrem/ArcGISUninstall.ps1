@@ -14,7 +14,7 @@
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install,ArcGIS_FileShare, ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install,ArcGIS_FileShare, ArcGIS_Tomcat
     
     Node $AllNodes.NodeName
     {   
@@ -113,7 +113,7 @@
                     }
 
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                    if(($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_Install "WebStylesUninstall$($Node.NodeName)"
                         { 
                             Name = "WebStyles"

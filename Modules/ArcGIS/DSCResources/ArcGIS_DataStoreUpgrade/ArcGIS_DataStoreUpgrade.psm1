@@ -103,7 +103,7 @@ function Set-TargetResource
     $dstypesarray = [System.Collections.ArrayList]@()
     
     if($DSInfoResponse.relational.registered) {
-        if($VersionArray[0] -eq 11 -or (($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $DSInfoResponse.currentVersion -ieq "10.8.1" )){
+        if($VersionArray[0] -gt 10 -or (($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or $DSInfoResponse.currentVersion -ieq "10.8.1" )){
             $datastoreConfigFilePath = "$ContentDirectory\\etc\\relational-config.json"
             $datastoreConfigJSONObject = (ConvertFrom-Json (Get-Content $datastoreConfigFilePath -Raw))
             $datastoreConfigHashtable = Convert-PSObjectToHashtable $datastoreConfigJSONObject 
@@ -119,7 +119,7 @@ function Set-TargetResource
         }
     }
     if($DSInfoResponse.tileCache.registered) {
-        if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){
+        if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){
             if($VersionArray[0] -eq 10 -and $VersionArray[1] -eq 8 -and $VersionArray[2] -eq 0){
                 Write-Verbose "TileCache Replication Role - $($datastoreConfigHashtable["store.tilecache"]["replication.role"])"
                 if($datastoreConfigHashtable["store.tilecache"]["replication.role"] -ieq "PRIMARY" -or $datastoreConfigHashtable["replication.role"] -ieq "CLUSTER_MEMBER"){

@@ -7,4 +7,11 @@ class ArcGIS_MissionServerSettings : OMI_BaseResource
     [Write] String WebSocketContextURL;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
     [Write, Description("Is Service Directory Disabled")] Boolean DisableServiceDirectory;
+    [Write] String HttpProxyHost;
+    [Write] UInt32 HttpProxyPort;
+    [Write, EmbeddedInstance("MSFT_Credential")] String HttpProxyCredential;
+    [Write] String HttpsProxyHost;
+    [Write] UInt32 HttpsProxyPort;
+    [Write, EmbeddedInstance("MSFT_Credential")] String HttpsProxyCredential;
+    [Write] String NonProxyHosts;
 };

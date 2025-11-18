@@ -22,7 +22,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_InstallMsiPackage, ArcGIS_InstallPatch, ArcGIS_xFirewall, ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install, ArcGIS_InstallMsiPackage, ArcGIS_InstallPatch, ArcGIS_xFirewall, ArcGIS_Tomcat
 
     Node $AllNodes.NodeName {
 
@@ -285,7 +285,7 @@
                     }
 
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
+                    if(($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7) -or $Version -ieq "10.7.1") -and $ConfigurationData.ConfigData.Portal.Installer.WebStylesPath){
                         ArcGIS_Install "WebStylesInstall$($Node.NodeName)"
                         { 
                             Name = "WebStyles"
@@ -363,7 +363,7 @@
                     $Arguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.DataStore.Installer.InstallDir)`""
 
                     $DsFeatureSet = $Null
-                    if(@("11.0","11.1","11.2","11.3","11.4","11.5") -iContains $ConfigurationData.ConfigData.Version) {
+                    if(@("11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $ConfigurationData.ConfigData.Version) {
                         $DsFeatureSet = $Node.DataStoreTypes
                         if($ConfigurationData.ConfigData.DataStore.Installer.InstallAllFeatures){
                             $DsFeatureSet = @("ALL")
@@ -486,7 +486,7 @@
                             
                             $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
                             $WAArguments = "/qn ACCEPTEULA=YES VDIRNAME=$($Context) WEBSITE_ID=$($WebSiteId)"
-                            if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
+                            if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){
                                 $WAArguments += " CONFIGUREIIS=TRUE"
                             }
                             
@@ -499,8 +499,8 @@
                                 Extract = if($ConfigurationData.ConfigData.WebAdaptor.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.WebAdaptor.Installer.IsSelfExtracting }else{ $True }
                                 Arguments = $WAArguments
                                 WebAdaptorContext = $Context
-                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
-                                WebAdaptorWebDeployPath = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
+                                WebAdaptorDotnetHostingBundlePath = if($VersionArray[0] -gt 10){ $ConfigurationData.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+                                WebAdaptorWebDeployPath = if($VersionArray[0] -gt 10){ $ConfigurationData.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
                                 EnableMSILogging = $EnableMSILogging
                                 Ensure = "Present"
                             }

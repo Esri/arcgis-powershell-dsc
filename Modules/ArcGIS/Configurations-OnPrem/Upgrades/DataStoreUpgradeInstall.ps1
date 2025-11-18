@@ -42,7 +42,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
     
     Node $AllNodes.NodeName {
 
@@ -63,7 +63,7 @@
             Version = $Version
             Path = $InstallerPath
             Extract = $InstallerIsSelfExtracting
-            Arguments = if($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){ "/qn ACCEPTEULA=YES"}else{ "/qn" }
+            Arguments = if($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 8)){ "/qn ACCEPTEULA=YES"}else{ "/qn" }
             ServiceCredential = $ServiceAccount
             ServiceCredentialIsDomainAccount =  $IsServiceAccountDomainAccount
             ServiceCredentialIsMSA = $IsServiceAccountMSA
@@ -93,7 +93,7 @@
             DependsOn = $Depends
         }
 
-        if(($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 7)) -and $Node.HasMultiMachineTileCache){
+        if(($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -or $VersionArray[1] -gt 7)) -and $Node.HasMultiMachineTileCache){
             ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
             {
                 Name                  = "ArcGISMultiMachineTileCacheDataStore" 
@@ -123,7 +123,7 @@
         }
     }
 
-    if(($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -or $VersionArray[1] -ge 5)) -and $Node.HasRelationalStore){
+    if(($VersionArray[0] -gt 11 -or $Version -ieq "11.5") -and $Node.HasRelationalStore){
         ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
         {
             Name                  = "ArcGISMemoryCacheDataStore" 

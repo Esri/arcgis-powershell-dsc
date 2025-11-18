@@ -1,0 +1,8 @@
+
+[ClassVersion("1.0.0.0"), FriendlyName("ArcGIS_HostNameSettings")]
+class ArcGIS_HostNameSettings : OMI_BaseResource
+{
+	[Key] String ComponentName;
+	[Key] String Version;
+    [Write] String HostName;
+};

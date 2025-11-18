@@ -100,14 +100,14 @@ function Set-TargetResource
 
     $op = $p.StandardOutput.ReadToEnd()
     if($op -and $op.Length -gt 0) {
-        Write-Host "Output:- $op"
+        Write-Verbose "Output:- $op"
     }
     $err = $p.StandardError.ReadToEnd()
     if($err -and $err.Length -gt 0) {
-        Write-Host $err
+        Write-Verbose $err
     }
     if($p.ExitCode -eq 0) {                    
-        Write-Host "WebGIS DR $($Action) finished successfully."
+        Write-Verbose "WebGIS DR $($Action) finished successfully."
     }else {
         throw "WebGIS DR $($Action) failed. Process exit code:- $($p.ExitCode). Error - $(err)"
     }

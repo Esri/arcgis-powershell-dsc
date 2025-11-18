@@ -741,7 +741,7 @@ function Get-DownloadsInstallsConfigurationData
         $ConfigData.ConfigData.WebAdaptor.Remove("AdminAccessEnabled")
     }
     # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
-    if((@("11.5") -icontains $ConfigData.ConfigData.Version) -and $ConfigData.ConfigData.WebAdaptor){
+    if((@("11.5","12.0") -icontains $ConfigData.ConfigData.Version) -and $ConfigData.ConfigData.WebAdaptor){
         $ConfigData.ConfigData.WebAdaptor.Remove("AdminAccessEnabled")
     }
     if($ConfigData.ConfigData.Pro -and $ConfigData.ConfigData.Pro.LicenseFilePath){
@@ -803,13 +803,20 @@ function Invoke-ArcGISConfiguration
         if($ConfigurationParamsHashtable.ConfigData.Version){
             $EnterpriseVersion = $ConfigurationParamsHashtable.ConfigData.Version
             $EnterpriseVersionArray = $EnterpriseVersion.Split(".")
-            if(-not(($EnterpriseVersionArray[0] -eq 10 -and $EnterpriseVersionArray[1] -ge 8) -or $EnterpriseVersionArray[0] -eq 11)){
+            if(-not(($EnterpriseVersionArray[0] -eq 10 -and $EnterpriseVersionArray[1] -ge 8) -or $EnterpriseVersionArray[0] -gt 10)){
                 throw "[ERROR] DSC Module only supports ArcGIS Enterprise 10.8 and above."
             }
 
-            if($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -gt 3){
+            if($EnterpriseVersionArray[0] -gt 11 -or ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -gt 3)){
                 if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
                     throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update your configuration file to modify the server role."
+                }
+            }
+
+            if($EnterpriseVersionArray[0] -gt 11){
+                $TileCacheDataStoreCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore' -and $_.DataStoreTypes -icontains "TileCache"} | Measure-Object).Count -gt 0)
+                if($TileCacheDataStoreCheck){
+                    throw "[ERROR] Starting at ArcGIS Enterprise 11.5, the Tile Cache Data Store is retired. Please update your configuration file."
                 }
             }
         }
@@ -854,8 +861,6 @@ function Invoke-ArcGISConfiguration
                 }
                 
                 $SAPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount)
-                
-
                 $WebGISDRRunAsAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($ConfigurationParamsHashtable.ConfigData.Portal.WebGISDR.RunAsAccount.UserName, $SAPassword )
             
                 $PortalCD = @{ AllNodes = @() }
@@ -1186,70 +1191,78 @@ function Invoke-ArcGISConfiguration
 
             if($JobFlag[$JobFlag.Count - 1] -eq $True -and ($Mode -ieq "InstallLicenseConfigure") -and -not($SkipConfigureStep)){
                 $ValidatePortalFileShare = $false
-                if($ConfigurationParamsHashtable.ConfigData.Portal){
-                    $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
-                    if($IsHAPortal) {
-                        if($MappedDriveOverrideFlag) {
-                            $ValidatePortalFileShare = $True
-                        } else {
-                            if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount){
-                                $ValidatePortalFileShare = $True
-                            }else{
-                                if($ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\')) { 
-                                    $ValidatePortalFileShare = $True
-                                } else {
-                                    throw "Config Directory Location path is not a fileshare path"
-                                }
+                $IsHAPortal = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Portal' }  | Measure-Object).Count -gt 1)
+                if($IsHAPortal){
+                    if($ConfigurationParamsHashtable.ConfigData.Portal){
+                        if($MappedDriveOverrideFlag -or $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount){
+                            # Nothing to do - Mapped Drive Override Flag is set or Portal Content Cloud Storage Account is set,
+                            # skip requirement for Portal Content Directory to be a fileshare path
+                        }else{
+                            # If Portal is HA, then Content Directory Location should be a fileshare path
+                            if($ConfigurationParamsHashtable.ConfigData.Portal.ContentDirectoryLocation.StartsWith('\')) { 
+                                # Nothing to do - Content Directory Location is a fileshare path
+                            } else {
+                                throw "Config Directory Location path is not a fileshare path"
                             }
                         }
-                    } else {
-                        $ValidatePortalFileShare = $True 
+                    }else{
+                        throw "Portal configuration is missing in the Config data block of the configuration file."
                     }
                 } else {
-                    $ValidatePortalFileShare = $True   
+                    # Portal is not HA, so skip requirement for Portal Content Directory to be a fileshare path
                 }
+                $ValidatePortalFileShare = $True
 
                 $ValidateServerFileShare = $false
                 $IsHAServer = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'Server' }  | Measure-Object).Count -gt 1)
                 if($IsHAServer) {
-                    if($MappedDriveOverrideFlag){
-                        $ValidateServerFileShare = $True
-                    }else{
-                        if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount){
-                            $ValidateServerFileShare = $True
+                    if($ConfigurationParamsHashtable.ConfigData.Server){
+                        if($MappedDriveOverrideFlag -or ((@("NotebookServer","MissionServer","VideoServer") -inotcontains $ServerRole) -and $ConfigurationParamsHashtable.ConfigData.Server.CloudServices)){
+                            # Mapped Drive Override Flag is set or Server cloud services (cloud native) is set for non carbon server roles,
+                            # skipping requirement for Server Directories and Config Store to be a fileshare path
                         }else{
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\')){
-                                $ValidateServerFileShare = $True
+                            # Validate for when server deployments have config store is in cloud store and server directories in a file location 
+                            # Validate config store location
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount){
+                                # Config Store is in cloud storage
                             }else{
-                                throw "Config Store Location is not a fileshare path"
+                                if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation.StartsWith('\')) {
+                                    # Config Store Location is a fileshare path
+                                } else {
+                                    throw "Config Store Location is not a fileshare path"
+                                }
                             }
-                        }
 
-                        $ValidateServerFileShare = $False
-                        if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType -ieq "AzureFiles"){
-                                $ValidateServerFileShare = $True
+                            $ValidateServerFileShare = $False
+                            # Server Directories reside in Azure Files, then skip requirement for Server Directories to be a fileshare path
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount -and $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType -ieq "AzureFiles"){
+                                #Server Directories reside in Azure Files, skipping requirement for Server Directories to be a fileshare path
                             }else{
-                                throw "Unsupported cloud storage account for server directories"
-                            }
-                        }else{
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\')){
-                                if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){
-                                    foreach($dir in $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){
-                                        if(-not($dir.physicalPath.StartsWith('\'))){
-                                            throw "One or more of Server Directories Location is not a fileshare path"
+                                if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation.StartsWith('\')){
+                                    # All Server directories are fileshare paths
+                                    if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){
+                                        foreach($dir in $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){ 
+                                            
+                                            $ServerDirPathToTest = if(@("NotebookServer","MissionServer","VideoServer") -icontains $ServerRole){ $dir.path }else{ $dir.physicalPath }
+                                            
+                                            if(-not($ServerDirPathToTest.StartsWith('\'))){
+                                                throw "One or more of Server Directories Location is not a fileshare path"
+                                            }
                                         }
                                     }
+                                    
+                                } else {
+                                    throw "Server Directories Root Location is not a fileshare path"
                                 }
-                                $ValidateServerFileShare = $True
-                            } else {
-                                throw "Server Directories Root Location is not a fileshare path"
                             }
                         }
+                    }else{
+                        throw "Server configuration is missing in the Config data block of the configuration file."
                     }
-                } else {
-                    $ValidateServerFileShare = $True 
+                }else{
+                    # ArcGIS Server is not HA, so skip requirement for Server Directories to be a fileshare path
                 }
+                $ValidateServerFileShare = $True
 
                 if($ValidateServerFileShare -and $ValidatePortalFileShare){
                     $FileShareCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'FileShare'} | Measure-Object).Count -gt 0)
@@ -1337,7 +1350,7 @@ function Invoke-ArcGISConfiguration
                             $WebsiteId = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.ContainsKey("WebSiteId")){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.WebSiteId }else{ 1}
 
                             $WebAdaptorAdminAccessEnabledSupported = -not(@("NotebookServer","MissionServer","VideoServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole)
-                            if((@("11.5") -icontains $EnterpriseVersion)){
+                            if($EnterpriseVersion -ieq "11.5" -or $EnterpriseVersionArray[0] -ge 12){
                                 # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
                                 $WAAdminAccessEnabled = $true
                                 $WebAdaptorAdminAccessEnabledSupported = $true
@@ -1439,6 +1452,7 @@ function Invoke-ArcGISConfiguration
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
                         $JobFlag = $False
+
                         $ServerArgs = @{
                             ConfigurationData = $ServerCD
                             Version = $EnterpriseVersion
@@ -1448,27 +1462,321 @@ function Invoke-ArcGISConfiguration
                             ServiceCredentialIsMSA = $ServiceCredentialIsMSA 
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
                             PrimaryServerMachine = $PrimaryServerMachine.NodeName
-                            ConfigStoreLocation = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation
-                            ServerDirectoriesRootLocation = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
-                            ServerDirectories = if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){$ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories}else{$null}
                             ServerLogsLocation = if($ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation){$ConfigurationParamsHashtable.ConfigData.Server.ServerLogsLocation}else{$null}
                             UsesSSL = $UseSSL
                             DebugMode = $DebugMode
                         }
 
-                        if(@("NotebookServer", "MissionServer", "VideoServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole){
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
-                                $ServerArgs["ContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
-                            }        
+                        # Cloud Native Server
+                        if($ConfigurationParamsHashtable.ConfigData.Server.CloudServices){
+                            if($EnterpriseVersionArray[0] -lt 12){
+                                throw "ArcGIS Server using cloud native is supported only on 12.0 and later versions."
+                            }
                             
-                            if($ConfigurationParamsHashtable.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
-                                if(@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $EnterpriseVersion){
-                                    $ServerArgs["ExtractNotebookServerSamplesData"] = $True
-                                }else{
-                                    throw "Notebook Server Samples Data Path is only supported for $EnterpriseVersion."
+                            $CloudProvider = $ConfigurationParamsHashtable.ConfigData.Server.CloudServices.Provider
+                            if(@("Azure", "AWS") -iContains $CloudProvider){
+                                $ServerArgs["CloudProvider"] = $CloudProvider
+                                $ServerArgs["IsCloudNativeServer"] = $True
+                                if($ConfigurationParamsHashtable.ConfigData.Server.CloudServices.Tags){
+                                    $ServerArgs["CloudNativeTags"] = $ConfigurationParamsHashtable.ConfigData.Server.CloudServices.Tags
                                 }
-                            }                      
+                               
+                                if($ConfigurationParamsHashtable.ConfigData.Server.CloudServices.Namespace){
+                                    $ServerArgs["CloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Server.CloudServices.Namespace
+                                }else{
+                                    throw "Namespace is required for ArcGIS Server with native Cloud Services."
+                                }
+
+                                if($ConfigurationParamsHashtable.ConfigData.Server.CloudServices.LocalDirectory){
+                                    $ServerArgs["CloudNativeLocalDirectory"] = $ConfigurationParamsHashtable.ConfigData.Server.CloudServices.LocalDirectory
+                                }
+
+                                if($CloudProvider -ieq "Azure"){
+                                    $AzureCloudProviderConfig = $ConfigurationParamsHashtable.ConfigData.Server.CloudServices.Azure
+                                    if($AzureCloudProviderConfig){
+                                        if($AzureCloudProviderConfig.Credential){
+                                            if(@("ServicePrincipal","UserAssignedIdentity") -icontains $AzureCloudProviderConfig.Credential.Type){
+                                                $ServerArgs["AzureCloudAuthenticationType"] = $AzureCloudProviderConfig.Credential.Type
+                                                if($AzureCloudProviderConfig.Credential.Type -ieq "ServicePrincipal"){
+                                                    $ServicePrincipalClientSecret = $null
+                                                    if($AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecretFilePath){
+                                                        if(-not(Test-Path $AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecretFilePath)){
+                                                            throw "Password file $($AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecretFilePath) does not exist."
+                                                        }
+                                                        $ServicePrincipalClientSecret = (Get-Content $AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString )
+                                                    }elseif($AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecretEnvironmentVariableName){
+                                                        $ServicePrincipalClientSecret = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecretEnvironmentVariableName)
+                                                    }elseif($AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecret){
+                                                        $ServicePrincipalClientSecret = (ConvertTo-SecureString $AzureCloudProviderConfig.Credential.ServicePrincipal.ClientSecret -AsPlainText -Force)
+                                                    }
+
+                                                    $ServerArgs["AzureCloudServicePrincipalCredential"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $AzureCloudProviderConfig.Credential.ServicePrincipal.ClientId, $ServicePrincipalClientSecret )  
+                                                    $ServerArgs["AzureCloudServicePrincipalTenantId"] = $AzureCloudProviderConfig.Credential.ServicePrincipal.TenantId
+                                                    $ServerArgs["AzureCloudServicePrincipalAuthorityHost"] = $AzureCloudProviderConfig.Credential.ServicePrincipal.AuthorityHost
+
+                                                }elseif($AzureCloudProviderConfig.Credential.Type -ieq "UserAssignedIdentity"){
+                                                    $ServerArgs["AzureCloudUserAssignedIdentityClientId"] = $AzureCloudProviderConfig.Credential.UserAssignedManagedIdentityClientId
+                                                }else{
+                                                    throw "Invalid Credential Type"
+                                                }
+                                            }
+                                        }else{
+                                            if(($AzureCloudProviderConfig.StorageAccount -and $AzureCloudProviderConfig.StorageAccount.Credential -and $AzureCloudProviderConfig.StorageAccount.Credential.Type -ieq "StorageAccountKey") `
+                                                -and ($AzureCloudProviderConfig.CosmosDBAccount -and $AzureCloudProviderConfig.CosmosDBAccount.Credential -and $AzureCloudProviderConfig.CosmosDBAccount.Credential.Type -ieq "CosmosDBAccountKey") `
+                                                -and ($AzureCloudProviderConfig.ServiceBusNamespace -and $AzureCloudProviderConfig.ServiceBusNamespace.Credential -and $AzureCloudProviderConfig.ServiceBusNamespace.Credential.Type -ieq "ServiceBusNamespaceAccessKey")){
+                                                $ServerArgs["AzureCloudAuthenticationType"] = "AccessKey"
+                                            }else{
+                                                throw "Invalid Credential Type"
+                                            }
+                                        }
+                                        
+                                        if($AzureCloudProviderConfig.StorageAccount){
+                                            if($AzureCloudProviderConfig.StorageAccount.Credential){
+                                                if(@("StorageAccountKey") -icontains $AzureCloudProviderConfig.StorageAccount.Credential.Type){
+                                                    if($AzureCloudProviderConfig.StorageAccount.Credential.Type -ieq "StorageAccountKey"){
+                                                        $AccountKeySecret = $null
+                                                        if($AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKeyFilePath){
+                                                            if(-not(Test-Path $AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKeyFilePath)){
+                                                                throw "Password file $($AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKeyFilePath) does not exist."
+                                                            }
+                                                            $AccountKeySecret = (Get-Content $AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKeyFilePath | ConvertTo-SecureString )
+                                                        }elseif($AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKeyEnvironmentVariableName){
+                                                            $AccountKeySecret = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKeyEnvironmentVariableName)
+                                                        }elseif($AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKey){
+                                                            $AccountKeySecret = (ConvertTo-SecureString $AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountKey -AsPlainText -Force)
+                                                        }
+                                                        $ServerArgs["AzureCloudNativeStorageAccountCredential"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $AzureCloudProviderConfig.StorageAccount.Credential.StorageAccountKey.AccountName, $AccountKeySecret )
+                                                    }
+                                                }else{
+                                                    throw "Invalid Credential Type"
+                                                }
+                                            }
+
+                                            $ServerArgs["AzureCloudNativeStorageAccountContainerName"] = $AzureCloudProviderConfig.StorageAccount.ContainerName
+                                            $ServerArgs["AzureCloudNativeStorageAccountRootDir"] = $AzureCloudProviderConfig.StorageAccount.RootDir
+                                            $ServerArgs["AzureCloudNativeStorageAccountAccountEndpointUrl"] = $AzureCloudProviderConfig.StorageAccount.AccountEndpointURL
+                                            if($AzureCloudProviderConfig.StorageAccount.RegionEndpointURL){
+                                                $ServerArgs["AzureCloudNativeStorageAccountRegionEndpointUrl"] = $AzureCloudProviderConfig.StorageAccount.RegionEndpointURL
+                                            }
+                                        }else{
+                                            throw "Azure Storage Account configuration is missing from Azure Cloud services configuration."
+                                        }
+
+                                        if($AzureCloudProviderConfig.CosmosDBAccount){
+                                            if($AzureCloudProviderConfig.CosmosDBAccount.Credential){
+                                                if(@("CosmosDBAccountKey") -icontains $AzureCloudProviderConfig.CosmosDBAccount.Credential.Type){
+                                                    if($AzureCloudProviderConfig.CosmosDBAccount.Credential.Type -ieq "CosmosDBAccountKey"){
+                                                        $AccountKeySecret = $null
+                                                        if($AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKeyFilePath){
+                                                            if(-not(Test-Path $AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKeyFilePath)){
+                                                                throw "Password file $($AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKeyFilePath) does not exist."
+                                                            }
+                                                            $AccountKeySecret = (Get-Content $AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKeyFilePath | ConvertTo-SecureString )
+                                                        }elseif($AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKeyEnvironmentVariableName){
+                                                            $AccountKeySecret = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKeyEnvironmentVariableName)
+                                                        }elseif($AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKey){
+                                                            $AccountKeySecret = (ConvertTo-SecureString $AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountKey -AsPlainText -Force)
+                                                        }
+                                                        $ServerArgs["AzureCloudNativeCosmosDBAccountCredential"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $AzureCloudProviderConfig.CosmosDBAccount.Credential.CosmosDBAccountKey.AccountName, $AccountKeySecret )
+                                                    }
+                                                }else{
+                                                    throw "Invalid Credential Type"
+                                                }
+                                            }else{
+                                                if($AzureCloudProviderConfig.CosmosDBAccount.SubscriptionId -and $AzureCloudProviderConfig.CosmosDBAccount.ResourceGroupName){
+                                                    $ServerArgs["AzureCloudNativeCosmosDBAccountSubscriptionId"] = $AzureCloudProviderConfig.CosmosDBAccount.SubscriptionId
+                                                    $ServerArgs["AzureCloudNativeCosmosDBAccountResourceGroupName"] = $AzureCloudProviderConfig.CosmosDBAccount.ResourceGroupName
+                                                }
+                                            }
+
+                                            $ServerArgs["AzureCloudNativeCosmosDBAccountEndpointUrl"] = $AzureCloudProviderConfig.CosmosDBAccount.AccountEndpointURL
+                                            $ServerArgs["AzureCloudNativeCosmosDBAccountDatabaseId"] = $AzureCloudProviderConfig.CosmosDBAccount.DatabaseId
+
+                                            if($AzureCloudProviderConfig.CosmosDBAccount.ConnectionMode){
+                                                $ServerArgs["AzureCloudNativeCosmosDBAccountConnectionMode"] = $AzureCloudProviderConfig.CosmosDBAccount.ConnectionMode
+                                            }
+
+                                            if($AzureCloudProviderConfig.CosmosDBAccount.RegionEndpointURL){
+                                                $ServerArgs["AzureCloudNativeCosmosDBRegionEndpointUrl"] = $AzureCloudProviderConfig.CosmosDBAccount.RegionEndpointURL
+                                            }
+                                        }else{
+                                            throw "Azure Cosmos DB configuration is missing from Azure Cloud services configuration."
+                                        }
+
+                                        if($AzureCloudProviderConfig.ServiceBusNamespace){
+                                            if($AzureCloudProviderConfig.ServiceBusNamespace.Credential){
+                                                if(@("ServiceBusNamespaceAccessKey") -icontains $AzureCloudProviderConfig.ServiceBusNamespace.Credential.Type){
+                                                    if($AzureCloudProviderConfig.ServiceBusNamespace.Credential.Type -ieq "ServiceBusNamespaceAccessKey"){
+                                                        $SharedAccessKeySecret = $null
+                                                        if($AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyFilePath){
+                                                            if(-not(Test-Path $AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyFilePath)){
+                                                                throw "Password file $($AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyFilePath) does not exist."
+                                                            }
+                                                            $SharedAccessKeySecret = (Get-Content $AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyFilePath | ConvertTo-SecureString )
+                                                        }elseif($AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyEnvironmentVariableName){
+                                                            $SharedAccessKeySecret = (Get-PasswordFromEnvironmentVariable -EnvironmentVariableName $AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyEnvironmentVariableName)
+                                                        }elseif($AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKey){
+                                                            $SharedAccessKeySecret = (ConvertTo-SecureString $AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKey -AsPlainText -Force)
+                                                        }
+                                                        $ServerArgs["AzureCloudNativeServiceBusNamespaceCredential"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $AzureCloudProviderConfig.ServiceBusNamespace.Credential.ServiceBusNamespaceAccessKey.SharedAccessKeyName, $SharedAccessKeySecret )
+                                                    }
+                                                }else{
+                                                    throw "Invalid Credential Type"
+                                                }
+                                            }
+
+                                            $ServerArgs["AzureCloudNativeServiceBusNamespaceEndpointUrl"] = $AzureCloudProviderConfig.ServiceBusNamespace.ServiceBusEndpointUrl
+
+                                            if($AzureCloudProviderConfig.ServiceBusNamespace.RegionEndpointURL){
+                                                $ServerArgs["AzureCloudNativeServiceBusNamespaceRegionEndpointUrl"] = $AzureCloudProviderConfig.ServiceBusNamespace.RegionEndpointURL
+                                            }
+                                        }else{
+                                            throw "Azure Service Bus Namespace configuration is missing from Azure Cloud services configuration."
+                                        }
+                                    }else{
+                                        throw "Azure Cloud Provider configuration is missing."
+                                    }
+                                }
+                                if($CloudProvider -ieq "AWS"){
+                                    $AWSCloudProviderConfig = $ConfigurationParamsHashtable.ConfigData.Server.CloudServices.AWS
+                                    if($AWSCloudProviderConfig){
+                                        if($AWSCloudProviderConfig.Region){
+                                            $ServerArgs["AWSRegion"] = $AWSCloudProviderConfig.Region
+                                        }else{
+                                            throw "Region configuration property is missing from AWS Cloud services configuration."
+                                        }
+                                        
+                                        if($AWSCloudProviderConfig.Credential){
+                                            if(@("AccessKey","IAMRole") -icontains $AWSCloudProviderConfig.Credential.Type){
+                                                $ServerArgs["AWSCloudAuthenticationType"] = $AWSCloudProviderConfig.Credential.Type
+                                                if($AWSCloudProviderConfig.Credential.Type -ieq "AccessKey"){
+                                                    # TODO - get from env variable
+                                                    $AccessKeySecret = if($AWSCloudProviderConfig.Credential.SecretKeyFilePath){ Get-Content $AWSCloudProviderConfig.Credential.AccessKey.SecretKeyFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AWSCloudProviderConfig.Credential.AccessKey.SecretKey -AsPlainText -Force }
+                                                    $ServerArgs["AWSCloudAccessKeyCredential"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $AWSCloudProviderConfig.Credential.AccessKey.AccessKeyId, $AccessKeySecret )
+                                                }
+                                            }else{
+                                                throw "Invalid Credential Type"
+                                            }
+                                        }else{
+                                            throw "Credential object is missing from AWS Cloud services configuration."
+                                        }
+
+                                        if($AWSCloudProviderConfig.AmazonS3){
+                                            if($AWSCloudProviderConfig.AmazonS3.Credential){
+                                                throw "Only global credentials are supported for Amazon Cloud Provider."
+                                            }
+                                            $ServerArgs["AWSCloudNativeS3BucketName"] = $AWSCloudProviderConfig.AmazonS3.BucketName
+                                            $ServerArgs["AWSCloudNativeS3RegionEndpointURL"] = $AWSCloudProviderConfig.AmazonS3.RegionEndpointURL
+                                            $ServerArgs["AWSCloudNativeS3RootDir"] = $AWSCloudProviderConfig.AmazonS3.RootDir
+                                        }else{
+                                            throw "AmazonS3 configuration is missing from AWS Cloud services configuration."
+                                        }
+
+                                        if($AWSCloudProviderConfig.AmazonDynamoDB){
+                                            if($AWSCloudProviderConfig.AmazonDynamoDB.Credential){
+                                                throw "Only global credentials are supported for Amazon Cloud Provider."
+                                            }
+                                            $ServerArgs["AWSCloudNativeDynamoDBRegionEndpointURL"] = $AWSCloudProviderConfig.AmazonDynamoDB.RegionEndpointURL
+                                        }else{
+                                            throw "Amazon Dynamo DB configuration is missing from AWS Cloud services configuration."
+                                        }
+
+                                        if($AWSCloudProviderConfig.AmazonQueueService){
+                                            if($AWSCloudProviderConfig.AmazonQueueService.Credential){
+                                                throw "Only global credentials are supported for Amazon Cloud Provider."
+                                            }
+                                            $ServerArgs["AWSCloudNativeQueueServiceRegionEndpointURL"] = $AWSCloudProviderConfig.AmazonQueueService.RegionEndpointURL
+                                        }else{
+                                            throw "Amazon Queue Service (SQS) configuration is missing from AWS Cloud services configuration."
+                                        }
+
+                                    }else{
+                                        throw "AWS Cloud Provider configuration is missing."
+                                    }
+                                }
+                            }else{
+                                throw "Invalid Cloud Services Provider"
+                            }
                         }else{
+                            $ServerArgs["ConfigStoreLocation"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreLocation
+                            $ServerArgs["ServerDirectoriesRootLocation"] = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesRootLocation
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories){
+                                $ServerArgs["ServerDirectories"] = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectories
+                            } 
+
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount){
+                                $ServerArgs["CloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudNamespace
+
+                                $ServerConfigStoreCloudStorageCredentials = $null
+                                if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Username -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Password -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordFilePath -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordEnvironmentVariableName)){
+                                    $ServerConfigStoreCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount)
+                                    $ServerConfigStoreCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.UserName, $ServerConfigStoreCloudStorageAccountPassword )
+                                }else{
+                                    # For Azure Files
+                                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AWSS3DynamoDB" -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AzureBlob" -and $ConfigStoreAzureBlobAuthenticationType -ne "UserAssignedIdentity" -and $ConfigStoreAzureBlobAuthenticationType -ne "ServicePrincipal")){
+                                        throw "No credentials provided for Cloud Storage for $($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType)"
+                                    }
+                                }
+
+                                $ConfigCloudStorageType = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType
+                                if($ConfigCloudStorageType -ieq "AWSS3DynamoDB"){
+                                    $ServerArgs["CloudProvider"] = "AWS"
+                                    $ServerArgs["AWSRegion"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AWSRegion
+                                    $ServerArgs["AWSCloudAuthenticationType"] = "IAMRole"
+                                    if($null -ine $ServerConfigStoreCloudStorageCredentials){
+                                        $ServerArgs["AWSCloudAuthenticationType"] = "AccessKey"
+                                        $ServerArgs["AWSCloudAccessKeyCredential"] = $ServerConfigStoreCloudStorageCredentials
+                                    }
+                                }elseif($ConfigCloudStorageType -ieq "AzureBlob"){
+                                    $ServerArgs["CloudProvider"] = "Azure"
+                                    $ConfigStoreAzureBlobAuthenticationType = "AccessKey"
+                                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobAuthenticationType){     
+                                        $ConfigStoreAzureBlobAuthenticationType = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobAuthenticationType 
+                                    }
+                                    $ServerArgs["AzureCloudAuthenticationType"] = $ConfigStoreAzureBlobAuthenticationType
+
+                                    if($null -eq $ServerConfigStoreCloudStorageCredentials){
+                                        $ServerConfigStoreCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.UserName, (ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force) )
+                                    }
+                                    $ServerArgs["AzureCloudStorageAccountCredential"] = $ServerConfigStoreCloudStorageCredentials
+
+                                    if($ConfigStoreAzureBlobAuthenticationType -ieq "UserAssignedIdentity"){
+                                        $ServerArgs["AzureCloudUserAssignedIdentityClientId"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobUserAssignedIdentityClientId
+                                    }elseif($ConfigStoreAzureBlobAuthenticationType -ieq "ServicePrincipal"){
+                                        $ServerArgs["AzureCloudServicePrincipalTenantId"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.TenantId
+                                        if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost){
+                                            $ServerArgs["AzureCloudServicePrincipalAuthorityHost"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost
+                                        }
+                                        $ConfigStoreAzureBlobServicePrincipalClientSecret = if( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecret -AsPlainText -Force }
+                                        $ServerArgs["AzureCloudServicePrincipalCredential"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientId, $ConfigStoreAzureBlobServicePrincipalClientSecret )
+                                    }
+                                }elseif($ConfigCloudStorageType -ieq "AzureFiles"){
+                                    $ServerArgs["UsesAzureFilesForConfigStore"] = $True
+                                    $ServerArgs["ConfigStoreAzureFileShareName"]  = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureFileShareName
+                                    $ServerArgs["ConfigStoreAzureFilesCloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudNamespace
+                                    $ServerArgs["ConfigStoreAzureFilesCredentials"] = $ServerConfigStoreCloudStorageCredentials
+                                }else{
+                                    throw "Invalid Cloud Storage Type"
+                                }
+                            }
+
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
+                                $ServerDirectoriesCloudStorageCredentials = $null
+                                if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
+                                    $ServerDirectoriesCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount)
+                                    $ServerDirectoriesCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.UserName, $ServerDirectoriesCloudStorageAccountPassword )
+                                }else{
+                                    throw "No credentials provided for Cloud Storage for $($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType)"
+                                }
+
+                                $ServerArgs["UsesAzureFilesForServerDirectories"] = $True
+                                $ServerArgs["ServerDirectoriesAzureFileShareName"]  = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.AzureFileShareName
+                                $ServerArgs["ServerDirectoriesAzureFilesCloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudNamespace
+                                $ServerArgs["ServerDirectoriesAzureFilesCredentials"] = $ServerDirectoriesCloudStorageCredentials
+                            }
+                        }
+
+                        if(@("NotebookServer", "MissionServer", "VideoServer") -iNotContains $ConfigurationParamsHashtable.ConfigData.ServerRole){
                             $ServerArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                             $ServerArgs["EnableHTTPSOnly"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
                             $ServerArgs["EnableHSTS"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS }else{ $False }
@@ -1482,69 +1790,27 @@ function Invoke-ArcGISConfiguration
                             $ServerArgs["LocalRepositoryPath"] = if($ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath){$ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath}else{$null}
                         }
 
-                        if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount){
-                            $ServerConfigStoreCloudStorageCredentials = $null
-                            $ConfigStoreAzureBlobAuthenticationType = "AccessKey"
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ieq "AzureBlob"){
-                                if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobAuthenticationType){     
-                                    $ConfigStoreAzureBlobAuthenticationType = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobAuthenticationType 
-                                }
-                                $ServerArgs["ConfigStoreAzureBlobAuthenticationType"] = $ConfigStoreAzureBlobAuthenticationType
-                                if($ConfigStoreAzureBlobAuthenticationType -ieq "UserAssignedIdentity"){
-                                    $ServerArgs["ConfigStoreAzureBlobUserAssignedIdentityId"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobUserAssignedIdentityClientId
-                                    
-                                }elseif($ConfigStoreAzureBlobAuthenticationType -ieq "ServicePrincipal"){
-                                    $ServerArgs["ConfigStoreAzureBlobServicePrincipalTenantId"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.TenantId
-                                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost){
-                                        $ServerArgs["ConfigStoreAzureBlobServicePrincipalAuthorityHost"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost
-                                    }
-                                    $ConfigStoreAzureBlobServicePrincipalClientSecret = if( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientSecret -AsPlainText -Force }
-                                    $ServerArgs["ConfigStoreAzureBlobServicePrincipalCredentials"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureBlobServicePrincipal.ClientId, $ConfigStoreAzureBlobServicePrincipalClientSecret )
-                                }
-                            }
-
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Username -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.Password -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordFilePath -or $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.PasswordEnvironmentVariableName)){
-                                $ServerConfigStoreCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount)
-                                $ServerConfigStoreCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.UserName, $ServerConfigStoreCloudStorageAccountPassword )
-                            }else{
-                                if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AWSS3DynamoDB" -and ($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AzureBlob" -and $ConfigStoreAzureBlobAuthenticationType -ne "UserAssignedIdentity" -and $ConfigStoreAzureBlobAuthenticationType -ne "ServicePrincipal")){
-                                    throw "No credentials provided for Cloud Storage for $($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType)"
-                                }else{
-                                    if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ne "AWSS3DynamoDB"){
-                                        $ServerConfigStoreCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.UserName, (ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force) )
-                                    }
-                                }
-                            }
-                            
-                            $ServerArgs["ConfigStoreCloudStorageType"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType
-                            $ServerArgs["ConfigStoreAzureFileShareName"]  = if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ieq "AzureFiles"){ $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AzureFileShareName }else{ $null }
-                            $ServerArgs["ConfigStoreCloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudNamespace
-                            $ServerArgs["ConfigStoreCloudStorageCredentials"] = $ServerConfigStoreCloudStorageCredentials
-                            $ServerArgs["ConfigStoreAWSRegion"] = if($ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.CloudStorageType -ieq "AWSS3DynamoDB"){ $ConfigurationParamsHashtable.ConfigData.Server.ConfigStoreCloudStorageAccount.AWSRegion }else{ $null }
-                        }
-
-                        if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
-                            $ServerDirectoriesCloudStorageCredentials = $null
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount){
-                                $ServerDirectoriesCloudStorageAccountPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount)
-                                $ServerDirectoriesCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.UserName, $ServerDirectoriesCloudStorageAccountPassword )
-                            }else{
-                                throw "No credentials provided for Cloud Storage for $($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType)"
-                            }
-
-                            $ServerArgs["ServerDirectoriesCloudStorageType"] = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType
-                            $ServerArgs["ServerDirectoriesAzureFileShareName"]  = if($ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudStorageType -ieq "AzureFiles"){ $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.AzureFileShareName }else{ $null }
-                            $ServerArgs["ServerDirectoriesCloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Server.ServerDirectoriesCloudStorageAccount.CloudNamespace
-                            $ServerArgs["ServerDirectoriesCloudStorageCredentials"] = $ServerDirectoriesCloudStorageCredentials
-                        }
-
                         $ConfigurationName = "ArcGISServer"
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){
+                            if($ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
+                                $ServerArgs["ContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
+                            }        
+                            
+                            if($ConfigurationParamsHashtable.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
+                                if(@("10.9","10.9.1","11.0","11.1","11.2","11.3") -icontains $EnterpriseVersion){
+                                    $ServerArgs["ExtractNotebookServerSamplesData"] = $True
+                                }else{
+                                    throw "Notebook Server Samples Data Path is only supported for $EnterpriseVersion."
+                                }
+                            } 
                             $ConfigurationName = "ArcGISNotebookServer"
                         }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
                             $ConfigurationName = "ArcGISMissionServer"
                         }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "VideoServer"){
                             $ConfigurationName = "ArcGISVideoServer"
+                        }else{
+                            $WebSocketContextUrl = $ConfigurationParamsHashtable.ConfigData.GeoEventServer.WebSocketContextUrl
+                            $ServerArgs["WebSocketContextUrl"] = $WebSocketContextUrl
                         }
 
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -1593,7 +1859,7 @@ function Invoke-ArcGISConfiguration
                     }
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.Server.DataStoreItems){
-                        if(-not($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
+                        if(-not($EnterpriseVersionArray[0] -gt 11 -or ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2))){
                             if(($ConfigurationParamsHashtable.ConfigData.Server.DataStoreItems | Where-Object { $_.CloudStoreAccount.Type -ieq "Azure" -and (@("ServicePrincipal","SASToken","UserAssignedIdentity") -icontains $_.CloudStoreAccount.AzureStorage.AuthenticationType) } |  Measure-Object).Count -gt 0){
                                 throw "Azure Cloud Data Store authentication using ServicePrincipal, SASToken or UserAssignedIdentity is only supported at 11.2 and later."
                             }
@@ -1605,7 +1871,7 @@ function Invoke-ArcGISConfiguration
                                 throw "Cloud-provided Object Store is not supported with ArcGIS Object Store. Please modify the configuration to use only one type of Object Store."
                             }
 
-                            if(-not($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 4)){
+                            if(-not($EnterpriseVersionArray[0] -gt 11 -or ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 4))){
                                 throw "Cloud-provided Object Store is only supported at 11.4 and later." 
                             }
                             if(($ObjectStoresObject | Measure-Object).Count -gt 1){
@@ -1642,8 +1908,10 @@ function Invoke-ArcGISConfiguration
                                         }
                                         #Add Default values
                                         if($AuthType -ieq "AccessKey"){
+                                            # TODO - get from env variable
                                             $ConnectionPassword = if( $AzureStorageObject.AccessKeyFilePath ){ Get-Content $DSItem.SDEUser.AccessKeyFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.AccessKey -AsPlainText -Force }
                                         }elseif($AuthType -ieq "SASToken"){
+                                            # TODO - get from env variable
                                             $ConnectionPassword = if( $AzureStorageObject.SASTokenFilePath ){ Get-Content $DSItem.SDEUser.SASTokenFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.SASToken -AsPlainText -Force }
                                         }elseif($AuthType -ieq "ServicePrincipal"){
                                             $ConnectionStringObject["AzureStorage"]["ServicePrincipalTenantId"] = $AzureStorageObject.ServicePrincipal.TenantId
@@ -1652,6 +1920,7 @@ function Invoke-ArcGISConfiguration
                                             }
 
                                             $ConnectionStringObject["AzureStorage"]["ServicePrincipalClientId"] = $AzureStorageObject.ServicePrincipal.ClientId
+                                            # TODO - get from env variable
                                             $ConnectionPassword = if( $AzureStorageObject.ServicePrincipal.ClientSecretFilePath ){ Get-Content $AzureStorageObject.ServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.ServicePrincipal.ClientSecret -AsPlainText -Force }
                                         }elseif($AuthType -ieq "UserAssignedIdentity"){
                                             $ConnectionStringObject["AzureStorage"]["UserAssignedIdentityClientId"] = $AzureStorageObject.UserAssignedIdentityClientId
@@ -1713,7 +1982,8 @@ function Invoke-ArcGISConfiguration
                     }
 
                     #Server Settings
-                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck)
+                    {
                         $ServerSettingsArgs = @{
                             ConfigurationData = $ServerCD
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
@@ -1725,7 +1995,7 @@ function Invoke-ArcGISConfiguration
                         $ConfigurationName = "ArcGISServerSettings"
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
                             $ConfigurationName = "ArcGISMissionServerSettings"
-                            $ServerArgs["DisableServiceDirectory"] = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
+                            $ServerSettingsArgs["DisableServiceDirectory"] = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
                         }elseif($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "VideoServer"){
                             $ConfigurationName = "ArcGISVideoServerSettings"
                             $ServerSettingsArgs.Remove("DisableServiceDirectory")
@@ -1734,8 +2004,37 @@ function Invoke-ArcGISConfiguration
                         }else{
                             $ServerSettingsArgs["SharedKey"] = if($ConfigurationParamsHashtable.ConfigData.Server.SharedKey){ $ConfigurationParamsHashtable.ConfigData.Server.SharedKey }else{ $null }
                         }
+
+
+                        $ForwardProxyMap  = $ConfigurationParamsHashtable.ConfigData.Server.ForwardProxy
+                        if($null -ne $ForwardProxyMap -and $ForwardProxyMap.Count -gt 0){
+                            # only call these if we actually got proxy settings
+                            Add-ForwardProxySettings -ForwardProxyMap $ForwardProxyMap -MapArgs ($ServerSettingsArgs)
+
+                        }
                         
                         $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerSettingsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                    }
+
+                    #machine Settings
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerCheck -and $ConfigurationParamsHashtable.ConfigData.ServerRole -eq "GeneralPurposeServer"){
+                        # 0 represents, no action will be taken
+                        $ParsedHeap = 0
+                        if ($ConfigurationParamsHashtable.ConfigData.Server.SocMaximumHeapSize) {
+                            $RawHeap = $ConfigurationParamsHashtable.ConfigData.Server.SocMaximumHeapSize
+                            if (-not [int]::TryParse("$RawHeap", [ref]$ParsedHeap)) {
+                                throw "Invalid SocMaximumHeapSize value '$RawHeap'. Must be an integer."
+                            }
+                        }
+                        
+                        $ServerMachineSettingsArgs = @{
+                            ConfigurationData = $ServerCD
+                            ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
+                            SocMaximumHeapSize = $ParsedHeap
+                        }
+                        $ConfigurationName = "ArcGISServerMachineSettings"
+                        
+                        $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerMachineSettingsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                     }     
 
                     if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $PortalCheck){
@@ -1774,8 +2073,8 @@ function Invoke-ArcGISConfiguration
                         $PortalArgs['AdminSecurityQuestionCredential'] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalAdministrator.SecurityQuestionIndex, $PortalAdminSecurityQuestionPassword)
 
                         if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount){
-                            $ContentStoreAzureBlobAuthenticationType = "AccessKey"
                             if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ieq "AzureBlob"){
+                                $ContentStoreAzureBlobAuthenticationType = "AccessKey"
                                 if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobAuthenticationType){     
                                     $ContentStoreAzureBlobAuthenticationType = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobAuthenticationType 
                                 }
@@ -1787,6 +2086,7 @@ function Invoke-ArcGISConfiguration
                                     if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost){
                                         $PortalArgs["ContentStoreAzureBlobServicePrincipalAuthorityHost"] = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.AuthorityHost
                                     }
+                                    # TODO - get from env variable
                                     $ConfigStoreAzureBlobServicePrincipalClientSecret = if( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath ){ Get-Content $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientSecretFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientSecret -AsPlainText -Force }
                                     
                                     $PortalArgs["ContentStoreAzureBlobServicePrincipalCredentials"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureBlobServicePrincipal.ClientId, $ConfigStoreAzureBlobServicePrincipalClientSecret )
@@ -1802,6 +2102,7 @@ function Invoke-ArcGISConfiguration
                                     throw "No credentials provided for Cloud Storage for $($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType)"
                                 }else{
                                     if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ne "AWSS3DynamoDB"){
+                                        # TODO - get from env variable
                                         $PortalCloudStorageCredentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.UserName, (ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force))
                                     }
                                 }
@@ -1811,9 +2112,12 @@ function Invoke-ArcGISConfiguration
                             $PortalArgs["AzureFileShareName"]  = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ieq "AzureFiles"){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AzureFileShareName }else{ $null }
                             $PortalArgs["CloudNamespace"] = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudNamespace
                             $PortalArgs["CloudStorageCredentials"] = $PortalCloudStorageCredentials
-                            $PortalArgs["AWSRegion"] = if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ieq "AWSS3DynamoDB"){ $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AWSRegion }else{ $null }
+                            if($ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.CloudStorageType -ieq "AWSS3DynamoDB"){
+                                $PortalArgs["AWSRegion"] = $ConfigurationParamsHashtable.ConfigData.Portal.PortalContentCloudStorageAccount.AWSRegion
+                                $PortalArgs["ContentStoreAWSAuthenticationType"] = if($null -ne $PortalCloudStorageCredentials){ "AccessKey" }else{ "IAMRole" }
+                            }
                         }
-
+                        
                         $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISPortal" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $PortalArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
                     }
 
@@ -1852,7 +2156,7 @@ function Invoke-ArcGISConfiguration
                         }
 
                         $EnterprisePatchVersion = if($EnterpriseVersionArray.Count -eq 3){ $EnterpriseVersionArray[2] }else { 0 }
-                        if(($EnterpriseVersionArray[0] -eq 11) -or (($EnterpriseVersionArray[0] -eq 10) -and ($EnterpriseVersionArray[1] -gt 8 -or ($EnterpriseVersionArray[1] -eq 8 -and $EnterprisePatchVersion -eq 1)))){
+                        if(($EnterpriseVersionArray[0] -gt 10) -or (($EnterpriseVersionArray[0] -eq 10) -and ($EnterpriseVersionArray[1] -gt 8 -or ($EnterpriseVersionArray[1] -eq 8 -and $EnterprisePatchVersion -eq 1)))){
                             if($ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings){
                                 $PortalSettingsArgs["EnableEmailSettings"] = $True
                                 $PortalSettingsArgs["EmailSettingsSMTPServerAddress"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.SMTPServerAddress
@@ -1868,6 +2172,13 @@ function Invoke-ArcGISConfiguration
                                 $PortalSettingsArgs["EmailSettingsEncryptionMethod"] = $ConfigurationParamsHashtable.ConfigData.Portal.EmailSettings.EncryptionMethod
                             }else{
                                 $PortalSettingsArgs["EnableEmailSettings"] = $False
+                            }
+
+                            $ForwardProxyMap  = $ConfigurationParamsHashtable.ConfigData.Portal.ForwardProxy
+                            if($null -ne $ForwardProxyMap -and $ForwardProxyMap.Count -gt 0){
+                                # only call these if we actually got proxy settings
+                                Add-ForwardProxySettings -ForwardProxyMap $ForwardProxyMap -MapArgs ($PortalSettingsArgs)
+
                             }
                         }
 
@@ -2020,7 +2331,7 @@ function Invoke-ArcGISConfiguration
                             throw "Object Store doesn't support two machine configuration."
                         }
 
-                        if(($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2) -and `
+                        if(($EnterpriseVersionArray[0] -gt 11 -or ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)) -and `
                             $ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
                             $ConfigurationParamsHashtable.ConfigData.DataStore.Backups.ObjectStore.Count -gt 0){                            
                             
@@ -2204,7 +2515,7 @@ function Invoke-ArcGISConfiguration
             $cfHashtable = Convert-PSObjectToHashtable $cfJSON
             $UpgradeVersion = $cfHashtable.ConfigData.Version
             $VersionArray = $cfHashtable.ConfigData.Version.Split(".")
-            if(-not(($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or $VersionArray[0] -eq 11)){
+            if(-not(($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or $VersionArray[0] -gt 10)){
                 throw "[ERROR] DSC Module only supports upgrades to ArcGIS Enterprise 10.8 and above. Configuration File Name - $cf"
             }
 
@@ -2218,15 +2529,27 @@ function Invoke-ArcGISConfiguration
                 throw "[ERROR] ArcGIS Enterprise doesn't support upgrading from 10.7.1 and below to 11.4 and above."
             }
 
+            if(($OldVersionArray[0] -eq 10) -and ($VersionArray[0] -eq 12)){
+                throw "[ERROR] ArcGIS Enterprise doesn't support upgrading from 10.x and below to 12.0 and above."
+            }
+
             if(($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'PortalWebAdaptor' -or $_.Role -icontains 'ServerWebAdaptor'} | Measure-Object).Count -gt 0){
                 throw "[ERROR] Starting from version 4.3.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
             }
 
-            if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 3){
+            if($VersionArray[0] -gt 11 -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 3)){
                 if($cfHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $cfHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
                     throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update the server role in the configuration file and try again."
                 }
             }
+
+            if($VersionArray[0] -gt 11){
+                $TileCacheDataStoreCheck = (($cfHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore' -and $_.DataStoreTypes -icontains "TileCache"} | Measure-Object).Count -gt 0)
+                if($TileCacheDataStoreCheck){
+                    throw "[ERROR] Starting at ArcGIS Enterprise 11.5, the Tile Cache Data Store is retired. Please update your configuration file."
+                }
+            }
+
 
             # Validate Java Web Server Type for both configurations
             if ($cfHashtable.ConfigData.WebAdaptor -and $cfHashtable.ConfigData.WebAdaptor.IsJavaWebAdaptor) {
@@ -2505,7 +2828,7 @@ function Invoke-DataStoreConfigureScript
                         } 
                     }
 
-                    if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2)){
+                    if($BackupObject.Type -ieq "s3" -and ($EnterpriseVersionArray[0] -gt 11 -and ($EnterpriseVersionArray[0] -eq 11 -and $EnterpriseVersionArray[1] -ge 2))){
                         if($BackupObject.CloudStorageAccount.AWSS3Region){
                             $Backup["AWSS3Region"] = $BackupObject.CloudStorageAccount.AWSS3Region
                         }else{
@@ -2722,7 +3045,7 @@ function Invoke-PortalUpgradeScript {
         SkipPatchInstalls = if($PortalConfig.ConfigData.SkipPatchInstalls){ $PortalConfig.ConfigData.SkipPatchInstalls }else{ $False }
         IsMultiMachinePortal = $IsMultiMachinePortal
     }
-    if((($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or ($PortalVersion -ieq "10.7.1")) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
+    if((($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -ge 8) -or ($PortalVersion -ieq "10.7.1")) -and $PortalConfig.ConfigData.Portal.Installer.WebStylesPath){
         $PortalUpgradeArgs.Add("WebStylesInstallerPath",$PortalConfig.ConfigData.Portal.Installer.WebStylesPath)
         if($PortalConfig.ConfigData.Portal.Installer.ContainsKey("WebStylesInstallerIsSelfExtracting")){
             $PortalUpgradeArgs.Add("WebStylesInstallerIsSelfExtracting", $PortalConfig.ConfigData.Portal.Installer.WebStylesInstallerIsSelfExtracting)
@@ -2735,27 +3058,12 @@ function Invoke-PortalUpgradeScript {
     }
 
     if($JobFlag[$JobFlag.Count - 1] -eq $True){
-        if($IsMultiMachinePortal){
-            $StandbyPortalPostUpgradeCD = @{ AllNodes = @( $StandbyNodeToAdd ); }
-            $StandbyPortalPostUpgradeArgs = @{
-                ConfigurationData = $StandbyPortalPostUpgradeCD
-                PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
-                SetOnlyHostNamePropertiesFile = $true
-                Version = $PortalConfig.ConfigData.Version 
-            }
-            $JobFlag = Invoke-DSCJob -ConfigurationName "PortalPostUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $StandbyPortalPostUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
-            if($JobFlag[$JobFlag.Count - 1] -ne $True){
-                throw "Portal Post Upgrade Step for Standby Portal Machine Failed"
-            }
-        }
-        
         if($JobFlag[$JobFlag.Count - 1] -eq $True){
             $PortalPostUpgradeCD = @{ AllNodes = @( $PrimaryNodeToAdd ); }
 
             $PortalPostUpgradeArgs = @{
                 ConfigurationData = $PortalPostUpgradeCD
                 PortalSiteAdministratorCredential = $PortalSiteAdministratorCredential 
-                SetOnlyHostNamePropertiesFile = $false
                 Version = $PortalConfig.ConfigData.Version
                 DebugMode = $DebugMode
             }
@@ -2817,8 +3125,8 @@ function Invoke-PortalUpgradeScript {
             $WebAdaptorUpgradeArgs["JavaWebServerWebAppDirectory"] = if($IsJavaWebAdaptor){ $PortalConfig.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null }
             $WebAdaptorUpgradeArgs["JavaWebServerType"] = $PortalConfig.ConfigData.WebAdaptor.JavaWebServerType
         }else{
-            $WebAdaptorUpgradeArgs["DotnetHostingBundlePath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $PortalConfig.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
-            $WebAdaptorUpgradeArgs["WebDeployPath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $PortalConfig.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
+            $WebAdaptorUpgradeArgs["DotnetHostingBundlePath"] = if($VersionArray[0] -gt 10){ $PortalConfig.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+            $WebAdaptorUpgradeArgs["WebDeployPath"] = if($VersionArray[0] -gt 10){ $PortalConfig.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
         }
 
         $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2947,7 +3255,7 @@ function Invoke-ServerUpgradeScript {
                 }
 
                 $NodeToAdd["ServerLicenseFilePath"] = $ServerLicenseFilePath
-                if($null -ne $NodeServerLicensePassword){
+                if($null -ne $ServerLicensePassword){
                     $NodeToAdd["ServerLicensePassword"] = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ("PlaceHolder", $ServerLicensePassword)
                 }
             }
@@ -3041,11 +3349,11 @@ function Invoke-ServerUpgradeScript {
                 InstallDir = $cf.ConfigData.Server.Installer.InstallDir
                 IsMultiMachineServerSite = $IsMultiMachineServerSite
                 EnableMSILogging = $EnableMSILogging
-                EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
+                EnableDotnetSupport = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){ $cf.ConfigData.Server.Installer.EnableDotnetSupport } else { $True } } else { $False }
                 Extensions = if($cf.ConfigData.Server.Extensions){ $cf.ConfigData.Server.Extensions }else{ $null }
                 DownloadPatches = if($cf.ConfigData.DownloadPatches){ $cf.ConfigData.DownloadPatches }else{ $False }
                 SkipPatchInstalls = if($cf.ConfigData.SkipPatchInstalls){ $cf.ConfigData.SkipPatchInstalls }else{ $False }
-                DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("DotnetDesktopRuntimePath")){ $cf.ConfigData.Server.Installer.DotnetDesktopRuntimePath } else { $null } } else { $null }
+                DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $Version){ if($cf.ConfigData.Server.Installer.ContainsKey("DotnetDesktopRuntimePath")){ $cf.ConfigData.Server.Installer.DotnetDesktopRuntimePath } else { $null } } else { $null }
                 DebugMode = $DebugMode
             }
 
@@ -3124,7 +3432,7 @@ function Invoke-ServerUpgradeScript {
         $WebAdaptorAdminAccessEnabledSupported = -not($cf.ConfigData.ServerRole -ieq "NotebookServer" -or $cf.ConfigData.ServerRole -ieq "MissionServer" -or $cf.ConfigData.ServerRole -ieq "VideoServer")
         $ServerContext = if($cf.ConfigData.ServerContext){ $cf.ConfigData.ServerContext }else{ $null }
 
-        if((@("11.5") -icontains $Version)){
+        if((@("11.5","12.0") -icontains $Version)){
             # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
             $WAAdminAccessEnabled = $true
             $WebAdaptorAdminAccessEnabledSupported = $true
@@ -3159,8 +3467,8 @@ function Invoke-ServerUpgradeScript {
             $WebAdaptorUpgradeArgs["JavaWebServerWebAppDirectory"] = if($IsJavaWebAdaptor){ $cf.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null }
             $WebAdaptorUpgradeArgs["JavaWebServerType"] = $cf.ConfigData.WebAdaptor.JavaWebServerType
         }else{
-            $WebAdaptorUpgradeArgs["DotnetHostingBundlePath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $cf.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
-            $WebAdaptorUpgradeArgs["WebDeployPath"] = if($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 0){ $cf.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
+            $WebAdaptorUpgradeArgs["DotnetHostingBundlePath"] = if($VersionArray[0] -gt 10){ $cf.ConfigData.WebAdaptor.Installer.DotnetHostingBundlePath }else{ $null }
+            $WebAdaptorUpgradeArgs["WebDeployPath"] = if($VersionArray[0] -gt 10){ $cf.ConfigData.WebAdaptor.Installer.WebDeployPath }else{ $null }
         }
 
         $JobFlag = Invoke-DSCJob -ConfigurationName "WebAdaptorUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $WebAdaptorUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -3666,15 +3974,22 @@ function Get-ServerEndpointDetails {
     } elseif (
         $ConfigData.WebAdaptor.AdminAccessEnabled -or
         $ServerRole -in @('NotebookServer', 'MissionServer', 'VideoServer') -or
-        (@("11.5") -icontains $ConfigData.Version)
-            ) { $true } else { $false }
-
+        (@("11.5","12.0") -icontains $ConfigData.Version)
+            ) {
+        $true
+    } else {
+        $false
+    }
+    
     $DefaultAdminPort = switch ($ServerRole) {
         'NotebookServer' { 11443 }
         'MissionServer'  { 20443 }
         'VideoServer'    { 21443 }
         default          { 6443 }
     }
+
+    $DefaultPort = if($null -ne $ServerExternalDNSHostName){ 443 }else{ $DefaultAdminPort}
+   
     $DefaultPort = if(-not [string]::IsNullOrEmpty($ServerExternalDNSHostName))
     { 443 }
     else
@@ -3811,10 +4126,94 @@ function Test-IsValidTomcatConfig {
                 throw "[ERROR] For ArcGIS Enterprise version 11.5, Apache Tomcat version must be either 9.x or 10.x."
             }
         }
+        elseif ($EnterpriseMajor -ge 12) {
+            if ($TomcatMajor -ne 10) {
+                throw "[ERROR] For ArcGIS Enterprise version 12.0 and later, only Apache Tomcat version 10.x is supported."
+            }
+        }
     }
 }
+
+function Get-ArcGISServiceName {
+    param(
+        [System.String]
+        $ComponentName
+    )
+
+    switch ($ComponentName) {
+        'Portal' { return 'Portal for ArcGIS' }
+        'Server' { return 'ArcGIS Server' }
+        'DataStore' { return 'ArcGIS Data Store' }
+        'MissionServer' { return 'ArcGIS Mission Server' }
+        'NotebookServer' { return 'ArcGIS Notebook Server' }
+        'VideoServer' { return 'ArcGIS Video Server' }
+        default { throw "Unknown component name: $ComponentName" }
+    }
+}
+
+function Add-ForwardProxySettings {
+    [CmdletBinding()]  
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]
+        $ForwardProxyMap,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $MapArgs
+    )
+
+    if (-not $ForwardProxyMap) { return }
+
+    # If they passed the block, require host+port pairs
+    $HasHttpHost = $ForwardProxyMap.ContainsKey('HttpProxyHost')  -and $ForwardProxyMap.HttpProxyHost
+    $HasHttpPort = $ForwardProxyMap.ContainsKey('HttpProxyPort')  -and $ForwardProxyMap.HttpProxyPort
+    if ($HasHttpHost -xor $HasHttpPort) {
+        throw "[ERROR] If you supply an HTTP proxy, you must provide *both* HttpProxyHost and HttpProxyPort."
+    }
+
+    $HasHttpsHost = $ForwardProxyMap.ContainsKey('HttpsProxyHost') -and $ForwardProxyMap.HttpsProxyHost
+    $HasHttpsPort = $ForwardProxyMap.ContainsKey('HttpsProxyPort') -and $ForwardProxyMap.HttpsProxyPort
+    if ($HasHttpsHost -xor $HasHttpsPort) {
+        throw "[ERROR] If you supply an HTTPS proxy, you must provide *both* HttpsProxyHost and HttpsProxyPort."
+    }
+
+    # Map each JSON property into its own DSC argument
+    if ($ForwardProxyMap.HttpProxyCredential) {
+        # get a SecureString via file, env var, or plaintext
+        $Secure = Get-PasswordFromObject -Object $ForwardProxyMap.HttpProxyCredential
+        $MapArgs['HttpProxyCredential'] = [PSCredential]::new(
+            $ForwardProxyMap.HttpProxyCredential.UserName,
+            $Secure
+        )
+    }
+    if ($ForwardProxyMap.HttpsProxyCredential) {
+        $SecureHttps = Get-PasswordFromObject -Object $ForwardProxyMap.HttpsProxyCredential
+        $MapArgs['HttpsProxyCredential'] = [PSCredential]::new(
+            $ForwardProxyMap.HttpsProxyCredential.UserName,
+            $SecureHttps
+        )
+    }
+    # Flatten and pass individual properties
+    if ($ForwardProxyMap.HttpProxyHost) {
+        $MapArgs['HttpProxyHost'] = $ForwardProxyMap.HttpProxyHost
+    }
+    if ($ForwardProxyMap.HttpProxyPort) {
+        $MapArgs['HttpProxyPort'] = [System.Uint32]$ForwardProxyMap.HttpProxyPort
+    }
+    if ($ForwardProxyMap.HttpsProxyHost) {
+        $MapArgs['HttpsProxyHost'] = $ForwardProxyMap.HttpsProxyHost
+    }
+    if ($ForwardProxyMap.HttpsProxyPort) {
+        $MapArgs['HttpsProxyPort'] = [System.Uint32]$ForwardProxyMap.HttpsProxyPort
+    }
+    if ($ForwardProxyMap.NonProxyHosts) {
+        $MapArgs['NonProxyHosts'] = $ForwardProxyMap.NonProxyHosts
+    }
+}
+
 
 Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `
                                 Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, `
                                 Get-ArcGISProductDetails, Wait-ForServiceToReachDesiredState, `
-                                New-NotebookWorkspaceSMBGlobalMapping
+                                New-NotebookWorkspaceSMBGlobalMapping, Get-ArcGISServiceName

@@ -38,7 +38,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
 
 
     Node $AllNodes.NodeName
@@ -111,7 +111,7 @@
         foreach($WA in $Node.WebAdaptorConfig){
             if($WA.Role -ieq "Server" -and $PrimaryServerMachine){
                 # AdminAccessEnabled flag is not honored from version 11.5 onwards. Defaulting it to True
-                $WAAdminAccessEnabled = if((@("11.5") -icontains $Version)) {$true} elseif(@("MissionServer", "NotebookServer", "VideoServer") -iContains  $ServerRole) {$true} else {$WA.AdminAccessEnabled}
+                $WAAdminAccessEnabled = if((@("11.5","12.0") -icontains $Version)) {$true} elseif(@("MissionServer", "NotebookServer", "VideoServer") -iContains  $ServerRole) {$true} else {$WA.AdminAccessEnabled}
                 ArcGIS_WebAdaptor "ConfigureServerWebAdaptor$($Node.NodeName)-$($WA.Context)"
                 {
                     Version             = $Version

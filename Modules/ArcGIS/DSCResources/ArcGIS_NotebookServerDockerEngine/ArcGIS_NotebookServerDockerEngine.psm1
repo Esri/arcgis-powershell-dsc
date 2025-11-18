@@ -93,7 +93,7 @@ function Set-TargetResource {
     if($InstallDocker){
         $DockerEnginerZipFileName = Get-FileNameFromUrl $DockerEngineBinariesArchiveUrl
         $DockerEnginerZipFilePath =  (Join-Path $env:TEMP $DockerEnginerZipFileName)
-        Invoke-WebRequest -OutFile $DockerEnginerZipFilePath -Uri $DockerEngineBinariesArchiveUrl -UseBasicParsing -ErrorAction Ignore
+        Invoke-WebRequest -Verbose:$False -OutFile $DockerEnginerZipFilePath -Uri $DockerEngineBinariesArchiveUrl -UseBasicParsing -ErrorAction Ignore
 
         Write-Verbose "Installing Docker Engine"
         Expand-Archive $DockerEnginerZipFilePath -DestinationPath $Env:ProgramFiles

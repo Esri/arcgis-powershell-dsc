@@ -23,10 +23,6 @@ function Get-TargetResource
 		[System.String]
         $LicenseFilePath = $null,
         
-        [parameter(Mandatory = $false)]
-		[System.Boolean]
-        $SetOnlyHostNamePropertiesFile,
-    
         [parameter(Mandatory = $true)]
         [System.String]
         $Version,
@@ -60,10 +56,6 @@ function Set-TargetResource
 		[System.String]
         $LicenseFilePath = $null,
         
-        [parameter(Mandatory = $false)]
-		[System.Boolean]
-        $SetOnlyHostNamePropertiesFile,
-    
         [parameter(Mandatory = $true)]
         [System.String]
         $Version,
@@ -82,268 +74,219 @@ function Set-TargetResource
     $Referer = "https://localhost"
 
     $VersionArray = $Version.Split(".")
-	
-	$ServiceName = 'Portal for ArcGIS'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-    $RestartRequired = $false
-    $hostname = Get-ConfiguredHostName -InstallDir $InstallDir
-    if($hostname -ieq $FQDN) {
-        Write-Verbose "Configured hostname '$hostname' matches expected value '$FQDN'"        
-    }else {
-        Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'. Setting it"
-        if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-            # Need to restart the service to pick up the hostname 
-			Write-Verbose "hostname.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
-            $RestartRequired = $true 
-        }
-    }
-
-    if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-        Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
-        if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
-             # Need to restart the service to pick up the EC2
-             $RestartRequired = $true
-         }  
-    }
-
-    $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
-
-    $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
-	$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
-	$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
-	if(($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
-        Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
-	}else {
-		Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' does not match expected value '$FQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-		if(Set-ConfiguredHostIdentifier -InstallDir $InstallDir -HostIdentifier $FQDN -HostIdentifierType $expectedHostIdentifierType) { 
-            # Need to restart the service to pick up the hostidentifier 
-            Write-Verbose "In Portal DataStore Hostidentifier.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
-            $RestartRequired = $true 
-        }
-    }
-    
-    if($RestartRequired) {    
-        Restart-ArcGISService -ServiceName $ServiceName -Verbose
-        Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -MaxWaitTimeInSeconds 600 -Verbose
-    }
-
-    if(-not($SetOnlyHostNamePropertiesFile)){
-        $result = $false
-        try{
-            $TestPortalResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
-            if($TestPortalResponse.status -ieq "error" -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
-                $result =$false
+    $result = $false
+    try{
+        $TestPortalResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+        if($TestPortalResponse.status -ieq "error" -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
+            $result =$false
+        }else{
+            if(($null -ne $TestPortalResponse.error) -and $TestPortalResponse.error.message -ieq 'Token Required.'){
+                Write-Verbose "Looks Like upgrade already Occured!"
+                $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+                if($PortalHealthCheck.status -ieq "success"){
+                    $result = $true
+                }
+            }elseif($TestPortalResponse.status -ieq 'error' -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
+                $result = $false
             }else{
-                if(($null -ne $TestPortalResponse.error) -and $TestPortalResponse.error.message -ieq 'Token Required.'){
-                    Write-Verbose "Looks Like upgrade already Occured!"
-                    $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
-                    if($PortalHealthCheck.status -ieq "success"){
-                        $result = $true
+                $jsresponse = ConvertTo-Json $TestPortalResponse -Compress -Depth 5
+                Write-Verbose "[WARNING]:- $jsresponse "
+            }
+        }
+    }catch{
+        $result = $false
+        Write-Verbose "[WARNING]:- $_"
+    }
+
+    if(-not($result)){
+        [string]$UpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/upgrade"
+
+        $WebParams = @{ 
+            isBackupRequired = $true
+            isRollbackRequired = $true
+            f = 'json'
+        }
+        if($VersionArray[0] -gt 10){
+            $WebParams["async"] = $true
+            if($VersionArray[1] -ge 2 -and $EnableUpgradeSiteDebug){
+                Write-Verbose "Enabling Debug for Upgrade Site"
+                $WebParams["enableDebug"] = $true
+            }
+        } 
+
+        $UpgradeResponse = $null
+        if($LicenseFilePath){ 
+            $UpgradeResponse = Invoke-UploadFile -url $UpgradeUrl -filePath $LicenseFilePath -fileContentType 'application/json' -fileParameterName 'file' `
+                                -Referer $Referer -formParams $WebParams -Verbose 
+            $UpgradeResponse = ConvertFrom-JSON $UpgradeResponse
+        } else {
+            $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 86400 -Verbose 
+        }
+        
+        if($VersionArray[0] -gt 10){
+            if($UpgradeResponse.status -ieq "in progress"){
+                Write-Verbose "Upgrade in Progress"
+                $PortalReady = $false
+                while(-not($PortalReady)){
+                    $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
+                    if($UpgradeResponse.status -ieq "in progress"){
+                        Write-Verbose "Response received:- Upgrade in progress"  
+                        Start-Sleep -Seconds 20
+                        $Attempts = $Attempts + 1
+                    }else{
+                        Write-Verbose "Response received:- $($UpgradeResponse.status)"
+                        break
                     }
-                }elseif($TestPortalResponse.status -ieq 'error' -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
-                    $result = $false
-                }else{
-                    $jsresponse = ConvertTo-Json $TestPortalResponse -Compress -Depth 5
-                    Write-Verbose "[WARNING]:- $jsresponse "
                 }
             }
-        }catch{
-            $result = $false
-            Write-Verbose "[WARNING]:- $_"
         }
 
-        if(-not($result)){
-            [string]$UpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/upgrade"
-
-            $WebParams = @{ 
-                isBackupRequired = $true
-                isRollbackRequired = $true
-                f = 'json'
+        if($UpgradeResponse.status -ieq 'success' -or $UpgradeResponse.status -ieq 'success with warnings') {
+            Write-Verbose "Upgrade Successful"
+            if($UpgradeResponse.status -ieq 'success with warnings'){
+                Write-Verbose "[WARNING]:- $(ConvertTo-Json $UpgradeResponse -Compress -Depth 5)"
             }
-            if($VersionArray[0] -ieq 11){
-                $WebParams["async"] = $true
-                if($VersionArray[1] -ge 2 -and $EnableUpgradeSiteDebug){
-                    Write-Verbose "Enabling Debug for Upgrade Site"
-                    $WebParams["enableDebug"] = $true
-                }
-            } 
-
-            $UpgradeResponse = $null
-            if($LicenseFilePath){ 
-                $UpgradeResponse = Invoke-UploadFile -url $UpgradeUrl -filePath $LicenseFilePath -fileContentType 'application/json' -fileParameterName 'file' `
-                                    -Referer $Referer -formParams $WebParams -Verbose 
-                $UpgradeResponse = ConvertFrom-JSON $UpgradeResponse
-            } else {
-                $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters $WebParams -Referer $Referer -TimeOutSec 86400 -Verbose 
-            }
-            
-            if($VersionArray[0] -ieq 11){
-                if($UpgradeResponse.status -ieq "in progress"){
-                    Write-Verbose "Upgrade in Progress"
-        			$PortalReady = $false
-                    while(-not($PortalReady)){
-                        $UpgradeResponse = Invoke-ArcGISWebRequest -Url $UpgradeUrl -HttpFormParameters @{f = 'json'} -Referer $Referer -Verbose -HttpMethod 'GET'
-                        if($UpgradeResponse.status -ieq "in progress"){
-                            Write-Verbose "Response received:- Upgrade in progress"  
-                            Start-Sleep -Seconds 20
-                            $Attempts = $Attempts + 1
-                        }else{
-                            Write-Verbose "Response received:- $($UpgradeResponse.status)"
-                            break
-                        }
-                    }
-                }
+            if($null -ne $UpgradeResponse.recheckAfterSeconds) 
+            {
+                Write-Verbose "Sleeping for $($UpgradeResponse.recheckAfterSeconds*2) seconds"
+                Start-Sleep -Seconds ($UpgradeResponse.recheckAfterSeconds*2)
             }
 
-            if($UpgradeResponse.status -ieq 'success' -or $UpgradeResponse.status -ieq 'success with warnings') {
-                Write-Verbose "Upgrade Successful"
-                if($UpgradeResponse.status -ieq 'success with warnings'){
-                    Write-Verbose "[WARNING]:- $(ConvertTo-Json $UpgradeResponse -Compress -Depth 5)"
-                }
-                if($null -ne $UpgradeResponse.recheckAfterSeconds) 
-                {
-                    Write-Verbose "Sleeping for $($UpgradeResponse.recheckAfterSeconds*2) seconds"
-                    Start-Sleep -Seconds ($UpgradeResponse.recheckAfterSeconds*2)
-                }
-
-                Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
-                $Attempts = 0
-                while(-not($PrimaryReady) -and ($Attempts -lt 10)) {
-                    $HealthCheckUrl = "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json"
-                    Write-Verbose "Making request to health check URL '$HealthCheckUrl'" 
-                    try {
-                        $Response = Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
-                        if ($Response.status){
-                            if($Response.status -ieq "success"){
-                                Write-Verbose "Health check succeeded"
-                                $PrimaryReady = $true
-                            }elseif ($Response.status -ieq "error") { 
-                                throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
-                            }else{
-                                throw "Unknow Error"
-                            }
-                        }elseif ($Response.error) { 
+            Wait-ForUrl "https://$($FQDN):7443/arcgis/portaladmin/" -HttpMethod 'GET' -Verbose
+            $Attempts = 0
+            while(-not($PrimaryReady) -and ($Attempts -lt 10)) {
+                $HealthCheckUrl = "https://$($FQDN):7443/arcgis/portaladmin/healthCheck/?f=json"
+                Write-Verbose "Making request to health check URL '$HealthCheckUrl'" 
+                try {
+                    $Response = Invoke-ArcGISWebRequest -Url $HealthCheckUrl -TimeoutSec 90 -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+                    if ($Response.status){
+                        if($Response.status -ieq "success"){
+                            Write-Verbose "Health check succeeded"
+                            $PrimaryReady = $true
+                        }elseif ($Response.status -ieq "error") { 
                             throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
-                            throw "ERROR: $($Response.error.messages)"
                         }else{
                             throw "Unknow Error"
                         }
-                    }catch {
-                        Write-Verbose "Health check did not suceed. Error:- $_"
-                        Start-Sleep -Seconds 30
-                        $Attempts = $Attempts + 1
-                    }        
-                }
-            }else{
-                throw  "[ERROR]:- $(ConvertTo-Json $UpgradeResponse -Compress -Depth 5)"
-            }
-        }
-
-        $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 20 -Verbose
-        if(-not($token.token)) {
-            throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
-        }
-        Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
-
-        [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
-        $postUpgradeGetResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpMethod "GET" -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -Verbose
-        if($postUpgradeGetResponse.status -ieq "error" -and $postUpgradeGetResponse.messages -icontains "The site is already configured at this time.") {
-            Write-Verbose "Post Upgrade Step Successful"
-        } else {
-            if($LicenseFilePath){
-                Write-Verbose 'Populating Licenses'
-                [string]$populateLicenseUrl = "https://$($FQDN):7443/arcgis/portaladmin/license/populateLicense"
-                $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
-                $populateLicenseResponse = Invoke-ArcGISWebRequest -Url $populateLicenseUrl -HttpMethod "POST" -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
-                if ($populateLicenseResponse.error -and $populateLicenseResponse.error.message) {
-                    Write-Verbose "Error from Populate Licenses:- $($populateLicenseResponse.error.message)"
-                    throw $populateLicenseResponse.error.message
-                }
-            }
-    
-            Write-Verbose "Waiting for portal to start."
-            try {
-                $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
-            } catch {
-                Write-Verbose $_
-            }
-    
-            Write-Verbose "Post Upgrade Step"
-            [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
-            $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
-            $ResponseJSON = (ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)
-            Write-Verbose "Response received from post upgrade step $ResponseJSON" 
-            if($postUpgradeResponse.status -ieq "success" -or $postUpgradeResponse.status -ieq "success with warnings"){
-                Write-Verbose "Post Upgrade Step Successful"
-                if($postUpgradeResponse.status -ieq 'success with warnings'){
-                    Write-Verbose "[WARNING]:- $(ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)"
-                }
-
-                Write-Verbose "Sleeping for $($postUpgradeResponse.recheckAfterSeconds*3) seconds"
-                Start-Sleep -Seconds ($postUpgradeResponse.recheckAfterSeconds*3)
-            }else{
-                throw  "[ERROR]:- $(ConvertTo-Json $ResponseJSON -Compress -Depth 5)"
-            }
-    
-            Write-Verbose "Waiting for portal to start."
-            try {
-                $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
-            } catch {
-                Write-Verbose $_
-            }
-        }
-        
-        if(($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -or $Version -ieq "10.8" -or $Version -ieq "10.8.0"){
-            Write-Verbose "Reindexing Portal"
-            Invoke-UpgradeReindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
-        }
-
-        if(Get-LivingAtlasStatus -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
-            Write-Verbose "Upgrading Living Atlas content"
-            if(Test-IfLivingAtlasUpgraded -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
-                Write-Verbose "Living Atlas content is already upgraded."
-            }else{
-                Write-Verbose "Upgrading Living Atlas content."
-                Invoke-UpgradeLivingAtlas -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
-            }
-        }
-
-        if(($VersionArray[0] -eq 11 -or $Version -ieq "10.9.1") -and $ImportExternalPublicCertAsRoot){
-            $sysProps = Invoke-ArcGISWebRequest -Url ("https://$($FQDN):7443/arcgis/portaladmin/system/properties/") -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $token.token } -Referer $Referer 
-            Write-Verbose "Portal System Properties WebContextUrl is set to '$($sysProps.WebContextURL)'"
-            
-            $webRequest = [Net.WebRequest]::Create("$($sysProps.WebContextURL)/portaladmin/healthCheck?f=json")
-            try { $webRequest.GetResponse() } catch {}
-            $cert = $webRequest.ServicePoint.Certificate
-            $bytes = $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
-            $ExternalCertAlias = "AppGW-ExternalDNSCerCert"
-            $CertOnDiskPath = Join-Path $env:TEMP "$($ExternalCertAlias).cer"
-            Set-Content -value $bytes -encoding byte -path $CertOnDiskPath
-
-            $Machines = Invoke-ArcGISWebRequest -Url ("https://$($FQDN):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
-            foreach($m in $Machines.machines){
-                $MachineName = $m.machineName
-                $CertsUrl = "https://$($FQDN):7443/arcgis/portaladmin/machines/$MachineName/sslCertificates"
-                $Certs = Invoke-ArcGISWebRequest -Url $CertsUrl -HttpFormParameters @{ f = 'json'; token = $token.token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
-                if($Certs.sslCertificates -icontains $ExternalCertAlias) {
-                    Write-Verbose "Public key of External Certificate used by App Gateway already imported as a root certificate."
-                } else {
-                    Write-Verbose "Importing Public key of External Certificate used by App Gateway as a root certificate."
-                    $ImportCertUrl = "https://$($FQDN):7443/arcgis/portaladmin/machines/$MachineName/sslCertificates/importRootOrIntermediate"
-                    $props = @{ f= 'json'; token = $token.token; alias = $ExternalCertAlias; norestart = $true  } 
-                    try{
-                        $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertOnDiskPath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
-                        if($res) {
-                            $response = $res | ConvertFrom-Json
-                            Confirm-ResponseStatus $response -Url $ImportCertUrl
-                        } else {
-                            Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
-                        }
-                    }catch{
-                        Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
+                    }elseif ($Response.error) { 
+                        throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
+                        throw "ERROR: $($Response.error.messages)"
+                    }else{
+                        throw "Unknow Error"
                     }
+                }catch {
+                    Write-Verbose "Health check did not suceed. Error:- $_"
+                    Start-Sleep -Seconds 30
+                    $Attempts = $Attempts + 1
+                }        
+            }
+        }else{
+            throw  "[ERROR]:- $(ConvertTo-Json $UpgradeResponse -Compress -Depth 5)"
+        }
+    }
+
+    $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 20 -Verbose
+    if(-not($token.token)) {
+        throw "Unable to retrieve Portal Token for '$($PortalAdministrator.UserName)'"
+    }
+    Write-Verbose "Connected to Portal successfully and retrieved token for '$($PortalAdministrator.UserName)'"
+
+    [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
+    $postUpgradeGetResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpMethod "GET" -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -Verbose
+    if($postUpgradeGetResponse.status -ieq "error" -and $postUpgradeGetResponse.messages -icontains "The site is already configured at this time.") {
+        Write-Verbose "Post Upgrade Step Successful"
+    } else {
+        if($LicenseFilePath){
+            Write-Verbose 'Populating Licenses'
+            [string]$populateLicenseUrl = "https://$($FQDN):7443/arcgis/portaladmin/license/populateLicense"
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName 'arcgis' -Credential $PortalAdministrator -Referer $Referer
+            $populateLicenseResponse = Invoke-ArcGISWebRequest -Url $populateLicenseUrl -HttpMethod "POST" -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
+            if ($populateLicenseResponse.error -and $populateLicenseResponse.error.message) {
+                Write-Verbose "Error from Populate Licenses:- $($populateLicenseResponse.error.message)"
+                throw $populateLicenseResponse.error.message
+            }
+        }
+
+        Write-Verbose "Waiting for portal to start."
+        try {
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
+        } catch {
+            Write-Verbose $_
+        }
+
+        Write-Verbose "Post Upgrade Step"
+        [string]$postUpgradeUrl = "https://$($FQDN):7443/arcgis/portaladmin/postUpgrade"
+        $postUpgradeResponse = Invoke-ArcGISWebRequest -Url $postUpgradeUrl -HttpFormParameters @{f = 'json'; token = $token.token} -Referer $Referer -TimeOutSec 3000 -Verbose
+        $ResponseJSON = (ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)
+        Write-Verbose "Response received from post upgrade step $ResponseJSON" 
+        if($postUpgradeResponse.status -ieq "success" -or $postUpgradeResponse.status -ieq "success with warnings"){
+            Write-Verbose "Post Upgrade Step Successful"
+            if($postUpgradeResponse.status -ieq 'success with warnings'){
+                Write-Verbose "[WARNING]:- $(ConvertTo-Json $postUpgradeResponse -Compress -Depth 5)"
+            }
+
+            Write-Verbose "Sleeping for $($postUpgradeResponse.recheckAfterSeconds*3) seconds"
+            Start-Sleep -Seconds ($postUpgradeResponse.recheckAfterSeconds*3)
+        }else{
+            throw  "[ERROR]:- $(ConvertTo-Json $ResponseJSON -Compress -Depth 5)"
+        }
+
+        Write-Verbose "Waiting for portal to start."
+        try {
+            $token = Get-PortalToken -PortalHostName $FQDN -SiteName "arcgis" -Credential $PortalAdministrator -Referer $Referer -MaxAttempts 40 -Verbose
+        } catch {
+            Write-Verbose $_
+        }
+    }
+    
+    if(($VersionArray[0] -eq 10 -and $VersionArray[1] -lt 8) -or $Version -ieq "10.8" -or $Version -ieq "10.8.0"){
+        Write-Verbose "Reindexing Portal"
+        Invoke-UpgradeReindex -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+    }
+
+    if(Get-LivingAtlasStatus -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
+        Write-Verbose "Upgrading Living Atlas content"
+        if(Test-IfLivingAtlasUpgraded -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token){
+            Write-Verbose "Living Atlas content is already upgraded."
+        }else{
+            Write-Verbose "Upgrading Living Atlas content."
+            Invoke-UpgradeLivingAtlas -PortalHttpsUrl "https://$($FQDN):7443" -PortalSiteName 'arcgis' -Referer $Referer -Token $token.token
+        }
+    }
+
+    if(($VersionArray[0] -gt 10 -or $Version -ieq "10.9.1") -and $ImportExternalPublicCertAsRoot){
+        $sysProps = Invoke-ArcGISWebRequest -Url ("https://$($FQDN):7443/arcgis/portaladmin/system/properties/") -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $token.token } -Referer $Referer 
+        Write-Verbose "Portal System Properties WebContextUrl is set to '$($sysProps.WebContextURL)'"
+        
+        $webRequest = [Net.WebRequest]::Create("$($sysProps.WebContextURL)/portaladmin/healthCheck?f=json")
+        try { $webRequest.GetResponse() } catch {}
+        $cert = $webRequest.ServicePoint.Certificate
+        $bytes = $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+        $ExternalCertAlias = "AppGW-ExternalDNSCerCert"
+        $CertOnDiskPath = Join-Path $env:TEMP "$($ExternalCertAlias).cer"
+        Set-Content -value $bytes -encoding byte -path $CertOnDiskPath
+
+        $Machines = Invoke-ArcGISWebRequest -Url ("https://$($FQDN):7443/arcgis/portaladmin/machines") -HttpFormParameters @{ f = 'json'; token = $token.token; } -Referer $Referer -HttpMethod 'GET'
+        foreach($m in $Machines.machines){
+            $MachineName = $m.machineName
+            $CertsUrl = "https://$($FQDN):7443/arcgis/portaladmin/machines/$MachineName/sslCertificates"
+            $Certs = Invoke-ArcGISWebRequest -Url $CertsUrl -HttpFormParameters @{ f = 'json'; token = $token.token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
+            if($Certs.sslCertificates -icontains $ExternalCertAlias) {
+                Write-Verbose "Public key of External Certificate used by App Gateway already imported as a root certificate."
+            } else {
+                Write-Verbose "Importing Public key of External Certificate used by App Gateway as a root certificate."
+                $ImportCertUrl = "https://$($FQDN):7443/arcgis/portaladmin/machines/$MachineName/sslCertificates/importRootOrIntermediate"
+                $props = @{ f= 'json'; token = $token.token; alias = $ExternalCertAlias; norestart = $true  } 
+                try{
+                    $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertOnDiskPath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
+                    if($res) {
+                        $response = $res | ConvertFrom-Json
+                        Confirm-ResponseStatus $response -Url $ImportCertUrl
+                    } else {
+                        Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
+                    }
+                }catch{
+                    Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
                 }
             }
         }
@@ -368,10 +311,6 @@ function Test-TargetResource
 		[System.String]
 		$LicenseFilePath = $null,
         
-        [parameter(Mandatory = $false)]
-		[System.Boolean]
-        $SetOnlyHostNamePropertiesFile,
-    
         [parameter(Mandatory = $true)]
         [System.String]
         $Version,
@@ -389,67 +328,29 @@ function Test-TargetResource
     $FQDN = Get-FQDN $PortalHostName
     $Referer = "https://localhost"
     $result = $false
-
-    $ServiceName = 'Portal for ArcGIS'
-    $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-    $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
-
-    $hostname = Get-ConfiguredHostName -InstallDir $InstallDir
-    if ($hostname -ieq $FQDN) {
-        Write-Verbose "Configured hostname '$hostname' matches expected value '$FQDN'"
-        $result = $true
-    }
-    else {
-        Write-Verbose "Configured hostname '$hostname' does not match expected value '$FQDN'"
-        $result = $false
-    }
-
-    if($result) {
-        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-            Write-Verbose "Amazon Elements present in NodeAgentExt.xml. Will be removed in Set Method"
-            $result = $false
-        }         
-    }
-
-    if ($result) {
-        $InstallDir = Join-Path $InstallDir 'framework\runtime\ds' 
-
-        $expectedHostIdentifierType = if($FQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
-		$hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $InstallDir
-		$hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $InstallDir
-		if (($hostidentifier -ieq $FQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {        
-            Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' matches expected value '$FQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
-        }
-        else {
-			Write-Verbose "In Portal DataStore Configured host identifier '$hostidentifier' does not match expected value '$FQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-			$result = $false
-        }
-    }
-
-    if ($result -and -not($SetOnlyHostNamePropertiesFile)) {
-        Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin" -MaxWaitTimeInSeconds 600 -SleepTimeInSeconds 15 -HttpMethod 'GET'
-        try{
-            $TestPortalResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
-            if($TestPortalResponse.status -ieq "error" -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
-                $result =$false
-            }else{
-                if(($null -ne $TestPortalResponse.error) -and $TestPortalResponse.error.message -ieq 'Token Required.'){
-                    Write-Verbose "Looks Like upgrade already Occured!"
-                    $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
-                    if($PortalHealthCheck.status -ieq "success"){
-                        $result = $true
-                    }
-                }elseif($TestPortalResponse.status -ieq 'error' -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
-                    $result = $false
-                }else{
-                    $jsresponse = ConvertTo-Json $TestPortalResponse -Compress -Depth 5
-                    Write-Verbose "[WARNING]:- $jsresponse "
+    
+    Wait-ForUrl -Url "https://$($FQDN):7443/arcgis/portaladmin" -MaxWaitTimeInSeconds 600 -SleepTimeInSeconds 15 -HttpMethod 'GET'
+    try{
+        $TestPortalResponse = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+        if($TestPortalResponse.status -ieq "error" -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
+            $result =$false
+        }else{
+            if(($null -ne $TestPortalResponse.error) -and $TestPortalResponse.error.message -ieq 'Token Required.'){
+                Write-Verbose "Looks Like upgrade already Occured!"
+                $PortalHealthCheck = Invoke-ArcGISWebRequest -Url "https://$($FQDN):7443/arcgis/portaladmin/healthCheck" -HttpFormParameters @{ f = 'json' } -Referer $Referer -Verbose -HttpMethod 'GET'
+                if($PortalHealthCheck.status -ieq "success"){
+                    $result = $true
                 }
+            }elseif($TestPortalResponse.status -ieq 'error' -and $TestPortalResponse.isUpgrade -ieq $true -and $TestPortalResponse.messages[0] -ieq "The portal site has not been upgraded. Please upgrade the site and try again."){
+                $result = $false
+            }else{
+                $jsresponse = ConvertTo-Json $TestPortalResponse -Compress -Depth 5
+                Write-Verbose "[WARNING]:- $jsresponse "
             }
-        }catch{
-            $result = $false
-            Write-Verbose "[WARNING]:- $_"
         }
+    }catch{
+        $result = $false
+        Write-Verbose "[WARNING]:- $_"
     }
 
     if($result){

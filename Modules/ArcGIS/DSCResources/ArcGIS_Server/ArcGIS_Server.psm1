@@ -5,40 +5,6 @@ Import-Module -Name (Join-Path -Path $modulePath `
         -ChildPath (Join-Path -Path 'ArcGIS.Common' `
             -ChildPath 'ArcGIS.Common.psm1'))
 
-<#
-    .SYNOPSIS
-        Makes a request to the installed Server to create a New Server Site or Join it to an existing Server Site
-    .PARAMETER ServerHostName
-        Optional Host Name or IP of the Machine on which the Server has been installed and is to be configured.
-    .PARAMETER Ensure
-        Ensure makes sure that a Server site is configured and joined to site if specified. Take the values Present or Absent. 
-        - "Present" ensures that a server site is created or the server is joined to an existing site.
-        - "Absent" ensures that existing server site is deleted (Not Implemented).
-    .PARAMETER ConfigurationStoreLocation
-        Key - Path to Configuration store - Can be a Physical Location or Network Share Address
-    .PARAMETER ServerDirectoriesRootLocation
-        Path to Server Root Directories - Can be a Physical Location or Network Share Address
-    .PARAMETER ServerDirectories
-        Default Server Directories Object.
-    .PARAMETER ServerLogsLocation
-        Location for the Server Logs
-    .PARAMETER LocalRepositoryPath
-        Default location for the local repository
-    .PARAMETER ConfigStoreCloudStorageConnectionString
-        Connection string to Azure Cloud Storage Account to configure a Site with config store using a Cloud Store
-    .PARAMETER ConfigStoreCloudStorageConnectionSecret
-        Connection string Secret to Azure Cloud Storage Account to configure a Site with config store using a Cloud Store
-    .PARAMETER SiteAdministrator
-        A MSFT_Credential Object - Primary Site Administrator
-    .PARAMETER Join
-        Boolean to indicate whether to Join or Create a new Site
-    .PARAMETER PeerServerHostName
-        Required Host Name of the Peer Machine in case the Site Needs to be joined to an existing Server Site with the said HostName.
-    .PARAMETER LogLevel
-        Defines the Logging Level of Server. Can have values - "OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG" 
-    .PARAMETER EnableUsageMetering
-        Boolean to indicate whether to enable the internal usage metering plugin
-#>
 function Get-TargetResource
 {
 	[CmdletBinding()]
@@ -49,57 +15,13 @@ function Get-TargetResource
         [System.String]
         $Version,
 
-        [parameter(Mandatory = $false)]    
-        [System.String]
-        $ServerHostName,
-
-		[ValidateSet("Present","Absent")]
-        [System.String]
-        $Ensure,    
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigurationStoreLocation,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionString,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
-        [parameter(Mandatory = $true)]
-        [System.String]
-        $ServerDirectoriesRootLocation,
-
-        [parameter(Mandatory = $false)]
-        [System.String]
-        $ServerDirectories= $null,
-
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $ServerLogsLocation = $null,
-
-        [parameter(Mandatory = $false)]
-		[System.String]
-        $LocalRepositoryPath = $null,
-
-        [parameter(Mandatory = $true)]
-        [System.Management.Automation.PSCredential]
-        $SiteAdministrator,
-
+        [parameter(Mandatory = $True)]    
         [System.Boolean]
         $Join,
 
-        [System.String]
-        $PeerServerHostName,
-
-        [System.String]
-        $LogLevel,
-
-        [System.Boolean]
-        $EnableUsageMetering
+        [parameter(Mandatory = $true)]
+		[System.Management.Automation.PSCredential]
+		$SiteAdministrator
 	)
 
 	$null
@@ -114,27 +36,28 @@ function Set-TargetResource
         [System.String]
         $Version,
 
+        [parameter(Mandatory = $True)]    
+        [System.Boolean]
+        $Join,
+
+        [parameter(Mandatory = $true)]
+		[System.Management.Automation.PSCredential]
+		$SiteAdministrator,
+        
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
 
+        [parameter(Mandatory = $False)]
 		[ValidateSet("Present","Absent")]
 		[System.String]
-		$Ensure,
+		$Ensure = 'Present',
 
         [parameter(Mandatory = $False)]
 		[System.String]
 		$ConfigurationStoreLocation,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionString,
-
-        [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
-        [parameter(Mandatory = $true)]
+        
+        [parameter(Mandatory = $false)]
 		[System.String]
         $ServerDirectoriesRootLocation,
 
@@ -150,21 +73,160 @@ function Set-TargetResource
 		[System.String]
         $LocalRepositoryPath = $null,
 
-        [parameter(Mandatory = $true)]
-		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
-
-        [System.Boolean]
-		$Join,
-
+        [parameter(Mandatory = $false)]
         [System.String]
         $PeerServerHostName,
         
+        [parameter(Mandatory = $false)]
+        [ValidateSet("OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG")]
         [System.String]
-		$LogLevel,
+        [AllowNull()]
+		$LogLevel = "WARNING",
 
+        [parameter(Mandatory = $false)]
         [System.Boolean]
-        $EnableUsageMetering
+        $EnableUsageMetering,
+
+        [parameter(Mandatory = $False)]    
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [parameter(Mandatory = $False)]    
+        [System.Boolean]
+        $IsCloudNativeServer = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNativeTags,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNativeLocalDirectory,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3BucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeDynamoDBRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeQueueServiceRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountContainerName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeCosmosDBAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountDatabaseId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountSubscriptionId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountResourceGroupName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("Direct","Gateway")]
+        $AzureCloudNativeCosmosDBAccountConnectionMode = "Gateway",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeServiceBusNamespaceCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
+        
 	)
     
     if($VerbosePreference -ine 'SilentlyContinue') 
@@ -176,7 +238,7 @@ function Set-TargetResource
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
 
-	$ServiceName = 'ArcGIS Server'
+	$ServiceName = Get-ArcGISServiceName -ComponentName 'Server'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir
     
@@ -188,32 +250,7 @@ function Set-TargetResource
     if($Ensure -ieq 'Present') {
        
         $Referer = 'http://localhost' 
-
-        $RestartRequired = $false
-        $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-        if($configuredHostName -ine $FQDN){
-            Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$($FQDN)'. Setting it"
-            if(Set-ConfiguredHostName -InstallDir $InstallDir -HostName $FQDN) { 
-				# Need to restart the service to pick up the hostname 
-                $RestartRequired = $true 
-            }
-        }
-        if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-            Write-Verbose "Removing EC2 Listener from NodeAgent xml file"
-            if(Remove-NodeAgentAmazonElements -InstallDir $InstallDir) {
-                 # Need to restart the service to pick up the EC2
-                 $RestartRequired = $true
-             }  
-        }
-
-        if($RestartRequired) {
-			Restart-ArcGISService -ServiceName $ServiceName -Verbose
-
-			Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
-            Wait-ForUrl "https://$($FQDN):6443/arcgis/admin" -HttpMethod 'GET' -Verbose
-            Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
-            Start-Sleep -Seconds 30
-        }
+        Wait-ForUrl -Url "https://$($FQDN):6443/arcgis/rest/info/healthCheck?f=json" -HttpMethod 'GET'
 
         $ServerUrl = "https://$($FQDN):6443"
         Write-Verbose "Checking for site on '$ServerUrl'"
@@ -244,14 +281,118 @@ function Set-TargetResource
 						if($Attempt -gt 1) {
 							Write-Verbose "Attempt # $Attempt"   
 						}            
-                        Invoke-CreateSite -ServerURL $ServerUrl -Credential $SiteAdministrator `
-                                    -ConfigurationStoreLocation $ConfigurationStoreLocation `
-                                    -ServerDirectoriesRootLocation $ServerDirectoriesRootLocation -ServerDirectories $ServerDirectories `
-                                    -ConfigStoreCloudStorageConnectionString $ConfigStoreCloudStorageConnectionString `
-                                    -ConfigStoreCloudStorageConnectionSecret $ConfigStoreCloudStorageConnectionSecret `
-                                    -LogLevel $LogLevel -ServerLogsLocation $ServerLogsLocation -LocalRepositoryPath $LocalRepositoryPath -Verbose 
+
+                        $ServerArgs = @{
+                            ServerURL = $ServerUrl
+                            Credential = $SiteAdministrator
+                            ConfigurationStoreLocation = $ConfigurationStoreLocation
+                            ServerDirectoriesRootLocation = $ServerDirectoriesRootLocation
+                            ServerDirectories = $ServerDirectories
+                            LocalRepositoryPath = $LocalRepositoryPath
+                            ServerLogsLocation = $ServerLogsLocation
+                            LogLevel = $LogLevel                            
+                        }
+						
+                        if($CloudProvider -ine "None"){
+                            $CloudServerArgs = @{
+                                CloudProvider = $CloudProvider
+                                CloudNamespace = $CloudNamespace
+                            }
+							
+                            if($IsCloudNativeServer){
+                                $CloudServerArgs["CloudNativeTags"] = $CloudNativeTags
+                                $CloudServerArgs["CloudNativeLocalDirectory"] = $CloudNativeLocalDirectory
+                            }
+
+                            if($CloudProvider -ieq "AWS"){
+                                $CloudServerArgs["AWSCloudAuthenticationType"] = $AWSCloudAuthenticationType
+                                $CloudServerArgs["AWSRegion"] = $AWSRegion
+
+                                if($AWSCloudAuthenticationType -ieq "AccessKey"){
+                                    $CloudServerArgs["AWSCloudAccessKeyCredential"] = $AWSCloudAccessKeyCredential
+                                }
+
+                                if($IsCloudNativeServer){
+                                    $CloudServerArgs["AWSCloudNativeS3BucketName"] = $AWSCloudNativeS3BucketName
+                                    $CloudServerArgs["AWSCloudNativeS3RegionEndpointURL"] = $AWSCloudNativeS3RegionEndpointURL
+                                    $CloudServerArgs["AWSCloudNativeS3RootDir"] = $AWSCloudNativeS3RootDir
+                                    $CloudServerArgs["AWSCloudNativeDynamoDBRegionEndpointURL"] = $AWSCloudNativeDynamoDBRegionEndpointURL
+                                    $CloudServerArgs["AWSCloudNativeQueueServiceRegionEndpointURL"] = $AWSCloudNativeQueueServiceRegionEndpointURL
+
+                                    $ServerArgs["CloudConfigJsonString"] = Get-CloudNativeConfigJson @CloudServerArgs
+                                }else{
+                                    $ConfigStoreCloudArgs = Get-CloudConfigStoreJson @CloudServerArgs
+
+                                    $ServerArgs["ConfigStoreCloudStorageConnectionString"] = $ConfigStoreCloudArgs["ConfigStoreCloudStorageConnectionString"]
+                                    $ServerArgs["ConfigStoreCloudStorageConnectionSecret"] = $ConfigStoreCloudArgs["ConfigStoreCloudStorageConnectionSecret"]
+                                }
+                            }
+                            elseif($CloudProvider -ieq "AZURE"){
+                                $CloudServerArgs["AzureCloudAuthenticationType"] = $AzureCloudAuthenticationType
+
+                                if($AzureCloudAuthenticationType -ieq "ServicePrincipal"){
+                                    $CloudServerArgs["AzureCloudServicePrincipalCredential"] = $AzureCloudServicePrincipalCredential
+                                    $CloudServerArgs["AzureCloudServicePrincipalTenantId"] = $AzureCloudServicePrincipalTenantId
+                                    $CloudServerArgs["AzureCloudServicePrincipalAuthorityHost"] = $AzureCloudServicePrincipalAuthorityHost
+                                }
+                                if($AzureCloudAuthenticationType -ieq "UserAssignedIdentity"){
+                                    $CloudServerArgs["AzureCloudUserAssignedIdentityClientId"] = $AzureCloudUserAssignedIdentityClientId
+                                }
+                                
+                                if($IsCloudNativeServer){
+                                    if($AzureCloudAuthenticationType -ieq "AccessKey"){
+                                        $CloudServerArgs["AzureCloudNativeStorageAccountCredential"] = $AzureCloudNativeStorageAccountCredential
+                                        $CloudServerArgs["AzureCloudNativeCosmosDBAccountCredential"] = $AzureCloudNativeCosmosDBAccountCredential
+                                        $CloudServerArgs["AzureCloudNativeServiceBusNamespaceCredential"] = $AzureCloudNativeServiceBusNamespaceCredential
+                                    }
+
+                                    if($AzureCloudAuthenticationType -ieq "SASToken"){
+                                        throw "SASToken is not supported for Native Cloud Storage"
+                                    }
+
+                                    $CloudServerArgs["AzureCloudNativeStorageAccountContainerName"] = $AzureCloudNativeStorageAccountContainerName
+                                    $CloudServerArgs["AzureCloudNativeStorageAccountRootDir"] = $AzureCloudNativeStorageAccountRootDir
+                                    $CloudServerArgs["AzureCloudNativeStorageAccountAccountEndpointUrl"] = $AzureCloudNativeStorageAccountAccountEndpointUrl
+                                    if($AzureCloudNativeStorageAccountRegionEndpointUrl){
+                                        $CloudServerArgs["AzureCloudNativeStorageAccountRegionEndpointUrl"] = $AzureCloudNativeStorageAccountRegionEndpointUrl
+                                    }
+                                    
+                                    $CloudServerArgs["AzureCloudNativeCosmosDBAccountEndpointUrl"] = $AzureCloudNativeCosmosDBAccountEndpointUrl
+                                    if($AzureCloudNativeCosmosDBRegionEndpointUrl){
+                                        $CloudServerArgs["AzureCloudNativeCosmosDBRegionEndpointUrl"] = $AzureCloudNativeCosmosDBRegionEndpointUrl
+                                    }
+
+                                    $CloudServerArgs["AzureCloudNativeCosmosDBAccountDatabaseId"] = $AzureCloudNativeCosmosDBAccountDatabaseId
+                                    if(-not([string]::IsNullOrEmpty($AzureCloudNativeCosmosDBAccountSubscriptionId))){
+                                        $CloudServerArgs["AzureCloudNativeCosmosDBAccountSubscriptionId"] = $AzureCloudNativeCosmosDBAccountSubscriptionId
+                                    }
+                                    if(-not([string]::IsNullOrEmpty($AzureCloudNativeCosmosDBAccountResourceGroupName))){
+                                        $CloudServerArgs["AzureCloudNativeCosmosDBAccountResourceGroupName"] = $AzureCloudNativeCosmosDBAccountResourceGroupName
+                                    }
+                                    $CloudServerArgs["AzureCloudNativeCosmosDBAccountConnectionMode"] = $AzureCloudNativeCosmosDBAccountConnectionMode
+
+                                    
+                                    $CloudServerArgs["AzureCloudNativeServiceBusNamespaceEndpointUrl"] = $AzureCloudNativeServiceBusNamespaceEndpointUrl
+                                    if($AzureCloudNativeServiceBusNamespaceRegionEndpointUrl){
+                                        $CloudServerArgs["AzureCloudNativeServiceBusNamespaceRegionEndpointUrl"] = $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
+                                    }
+
+                                    $ServerArgs["CloudConfigJsonString"] = Get-CloudNativeConfigJson @CloudServerArgs
+                                }
+								else{
+									$CloudServerArgs["AzureCloudStorageAccountCredential"] = $AzureCloudStorageAccountCredential
+                                    $ConfigStoreCloudArgs = Get-CloudConfigStoreJson @CloudServerArgs
+
+                                    $ServerArgs["ConfigStoreCloudStorageConnectionString"] = $ConfigStoreCloudArgs["ConfigStoreCloudStorageConnectionString"]
+                                    $ServerArgs["ConfigStoreCloudStorageConnectionSecret"] = $ConfigStoreCloudArgs["ConfigStoreCloudStorageConnectionSecret"]
+                                }
+                            }
+                        }
+						
+                        Invoke-CreateSite @ServerArgs -Verbose
+
                         $Done = $true
-                        Write-Verbose 'Created Site'
+                        Write-Verbose 'Site created.' 
                     }
                     catch {
                         Write-Verbose "[WARNING] Error while creating site on attempt $Attempt Error:- $_"
@@ -330,6 +471,410 @@ function Set-TargetResource
     }
 }
 
+function Get-CloudNativeConfigJson
+{
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory = $True)]    
+        [System.String]
+        [ValidateSet("Azure","AWS")]
+        $CloudProvider,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNativeTags,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNativeLocalDirectory,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3BucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeDynamoDBRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeQueueServiceRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountContainerName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeCosmosDBAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountDatabaseId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountSubscriptionId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountResourceGroupName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("Direct","Gateway")]
+        $AzureCloudNativeCosmosDBAccountConnectionMode = "Gateway",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeServiceBusNamespaceCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
+    )
+
+
+    # Cloud Native Server
+    $CloudConfigJson = @{
+        name = $CloudProvider.ToUpper()
+        namespace = $CloudNamespace
+    }
+
+    if(-not([string]::IsNullOrEmpty($CloudNativeTags))){
+        [System.Array]$tags = (ConvertFrom-Json $CloudNativeTags)
+        $CloudConfigJson['cloudServiceTags'] = $tags
+    }
+
+    if(-not([string]::IsNullOrEmpty($CloudNativeLocalDirectory))){
+        $CloudConfigJson["localDirectory"] = $CloudNativeLocalDirectory
+    }
+
+    if($CloudProvider -ieq "Azure"){
+        
+        if($AzureCloudAuthenticationType -ieq "ServicePrincipal"){
+            $CloudConfigJson["credential"] = @{
+                type = "SERVICE-PRINCIPAL"
+                authorityHost = $AzureCloudServicePrincipalAuthorityHost
+                secret = @{
+                    tenantId = $AzureCloudServicePrincipalTenantId
+                    clientId = $AzureCloudServicePrincipalCredential.UserName
+                    clientSecret = $AzureCloudServicePrincipalCredential.GetNetworkCredential().Password
+                }
+            }
+        }elseif($AzureCloudAuthenticationType -ieq "UserAssignedIdentity"){
+            $CloudConfigJson["credential"] = @{
+                type = "USER-ASSIGNED-IDENTITY"
+                secret = @{
+                    managedIdentityClientId = $AzureCloudUserAssignedIdentityClientId
+                }
+            }
+        }
+        
+        $StorageAccount = @{
+            "name" = "Azure Blob Store"
+            "type" = "objectStore"
+            "usage" = "DEFAULT"
+            "category" = "storage"
+            "connection" = @{
+                "containerName" = $AzureCloudNativeStorageAccountContainerName
+                "rootDir" = $AzureCloudNativeStorageAccountRootDir
+                "accountEndpointUrl" = $AzureCloudNativeStorageAccountAccountEndpointUrl
+            }
+        }
+        
+        if($CloudNativeServerAzureStorageAccountRegionEndpointUrl){
+            $StorageAccount.connection["regionEndpointUrl"] = $AzureCloudNativeStorageAccountRegionEndpointUrl
+        }
+
+        if($AzureCloudAuthenticationType -ieq "AccessKey"){
+            $StorageAccount.connection["credential"] = @{
+                type = "STORAGE-ACCOUNT-KEY"
+                secret = @{
+                    "storageAccountName"= $AzureCloudNativeStorageAccountCredential.UserName
+                    "storageAccountKey"= $AzureCloudNativeStorageAccountCredential.GetNetworkCredential().Password
+                }
+            }            
+        }
+
+        $CosmosDB = @{
+            "name" = "Azure Cosmos DB"
+            "type" = "tableStore"
+            "category" = "storage"
+            "connection" = @{
+                "accountEndpointUrl" = $AzureCloudNativeCosmosDBAccountEndpointUrl
+                "databaseId" = $AzureCloudNativeCosmosDBAccountDatabaseId
+                "cosmosDBConnectionMode" = $AzureCloudNativeCosmosDBAccountConnectionMode
+            }
+        }
+        if($CloudNativeServerAzureCosmosDBRegionEndpointUrl){
+            $CosmosDB.connection["regionEndpointUrl"] = $AzureCloudNativeCosmosDBRegionEndpointUrl
+        }
+
+        if($AzureCloudAuthenticationType -ieq "AccessKey"){
+            $CosmosDB.connection["credential"] = @{
+                type = "COSMOSDB-ACCOUNT-KEY"
+                secret = @{
+                    accountName = $AzureCloudNativeCosmosDBAccountCredential.UserName
+                    accountKey = $AzureCloudNativeCosmosDBAccountCredential.GetNetworkCredential().Password
+                }
+            }
+        }else{
+            if(-not([string]::IsNullOrEmpty($AzureCloudNativeCosmosDBAccountSubscriptionId)) -and -not([string]::IsNullOrEmpty($AzureCloudNativeCosmosDBAccountResourceGroupName))){
+                $CosmosDB.connection["subscriptionId"] = $AzureCloudNativeCosmosDBAccountSubscriptionId
+                $CosmosDB.connection["resourceGroupName"] = $AzureCloudNativeCosmosDBAccountResourceGroupName
+            }
+        }
+
+        $ServiceBus = @{
+            "name" = "Azure Service Bus"
+            "type" = "queueService"
+            "category" = "queue"
+            "connection" = @{
+                "serviceBusEndpointUrl" = $AzureCloudNativeServiceBusNamespaceEndpointUrl
+            }
+        }
+        if($CloudNativeServerAzureServiceBusNamespaceRegionEndpointUrl){
+            $ServiceBus.connection["regionEndpointUrl"] = $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
+        }
+
+        if($AzureCloudAuthenticationType -ieq "AccessKey"){
+            $ServiceBus.connection["credential"] = @{
+                type = "SERVICEBUS-ACCESS-KEY"
+                secret = @{
+                    "sharedAccessKeyName" = $AzureCloudNativeServiceBusNamespaceCredential.UserName
+                    "sharedAccessKey" = $AzureCloudNativeServiceBusNamespaceCredential.GetNetworkCredential().Password
+                }
+            }
+        }
+
+        $CloudConfigJson["cloudServices"] = @( $StorageAccount, $CosmosDB, $ServiceBus )
+    }
+
+    if($CloudProvider -ieq "AWS"){
+        $CloudConfigJson["region"] = $AWSRegion 
+
+        $AWSCredential = @{
+            type = if($AWSCloudAuthenticationType -ieq "IAMRole") { "IAM-ROLE" } else { "ACCESS-KEY" }
+        }
+        if($AWSCloudAuthenticationType -ieq "AccessKey"){
+            $AWSCredential["secret"] = @{
+                accessKey = $AWSCloudAccessKeyCredential.UserName
+                secretKey = $AWSCloudAccessKeyCredential.GetNetworkCredential().Password
+            }
+        }
+        $CloudConfigJson["credential"] = $AWSCredential
+        $CloudConfigJson["cloudServices"] = @(
+            @{
+                "name"= "AWS S3"
+                "type"=  "objectStore"
+                "usage"= "DEFAULT"
+                "connection" = @{
+                    "bucketName" = $AWSCloudNativeS3BucketName
+                    "regionEndpointUrl" = $AWSCloudNativeS3RegionEndpointURL
+                    "rootDir" = $AWSCloudNativeS3RootDir
+                }
+                "category" = "storage"
+            },
+            @{
+                "name" = "Amazon Dynamo DB"
+                "type" = "tableStore"
+                "connection" = @{
+                    "regionEndpointUrl" = $AWSCloudNativeDynamoDBRegionEndpointURL
+                }
+                "category" = "storage"
+            },
+            @{
+                "name" = "Amazon Queue Service"
+                "type" = "queueService"
+                "connection" = @{
+                    "regionEndpointUrl" = $AWSCloudNativeQueueServiceRegionEndpointURL
+                }
+                "category" = "queue"
+            }
+        )
+    }
+
+    return (ConvertTo-Json -Compress -InputObject @($CloudConfigJson) -Depth 10)
+}
+
+function Get-CloudConfigStoreJson
+{
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory = $True)]    
+        [System.String]
+        [ValidateSet("Azure","AWS")]
+        $CloudProvider,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential
+    )
+
+    $ConfigStoreCloudStorageConnectionString = ""
+    $ConfigStoreCloudStorageConnectionSecret = ""
+    if($CloudProvider -ieq "AWS"){
+        $ConfigStoreCloudStorageConnectionString="NAMESPACE=$($CloudNamespace);REGION=$($AWSRegion);"
+        if($AWSCloudAuthenticationType -ieq 'AccessKey'){
+            $ConfigStoreCloudStorageConnectionSecret="ACCESS_KEY_ID=$($AWSCloudAccessKeyCredential.UserName);SECRET_KEY=$($AWSCloudAccessKeyCredential.GetNetworkCredential().Password);"
+        }
+    }
+
+    if($CloudProvider -ieq "Azure"){
+        $AccountName = $AzureCloudStorageAccountCredential.UserName
+        $EndpointSuffix = ''
+        $Pos = $AzureCloudStorageAccountCredential.UserName.IndexOf('.blob.')
+        if($Pos -gt -1) {
+            $AccountName = $AzureCloudStorageAccountCredential.UserName.Substring(0, $Pos)
+            $EndpointSuffix = $AzureCloudStorageAccountCredential.UserName.Substring($Pos + 6) # Remove the hostname and .blob. suffix to get the storage endpoint suffix
+            $EndpointSuffix = ";EndpointSuffix=$($EndpointSuffix)"
+        }
+    
+        $ConfigStoreCloudStorageConnectionString = "NAMESPACE=$($CloudNamespace)$($EndpointSuffix);DefaultEndpointsProtocol=https;AccountName=$($AccountName)"
+        if($AzureCloudAuthenticationType -ieq 'ServicePrincipal'){
+            $ClientSecret = $AzureCloudServicePrincipalCredential.GetNetworkCredential().Password
+            $ConfigStoreCloudStorageConnectionString += ";CredentialType=ServicePrincipal;TenantId=$($AzureCloudServicePrincipalTenantId);ClientId=$($AzureCloudServicePrincipalCredential.Username)"
+            if(-not([string]::IsNullOrEmpty($AzureCloudServicePrincipalAuthorityHost))){
+                $ConfigStoreCloudStorageConnectionString += ";AuthorityHost=$($AzureCloudServicePrincipalAuthorityHost)" 
+            }
+            $ConfigStoreCloudStorageConnectionSecret = "ClientSecret=$($ClientSecret)"
+        }elseif($AzureCloudAuthenticationType -ieq 'UserAssignedIdentity'){
+            $ConfigStoreCloudStorageConnectionString += ";CredentialType=UserAssignedIdentity;ManagedIdentityClientId=$($AzureCloudUserAssignedIdentityClientId)"
+            $ConfigStoreCloudStorageConnectionSecret = ""
+        }elseif($AzureCloudAuthenticationType -ieq 'SASToken'){
+            $SASToken = $AzureCloudStorageAccountCredential.GetNetworkCredential().Password
+            $ConfigStoreCloudStorageConnectionString += ";CredentialType=SASToken"
+            $ConfigStoreCloudStorageConnectionSecret = "SASToken=$($SASToken)"
+            
+        }else{
+            $AccountKey = $AzureCloudStorageAccountCredential.GetNetworkCredential().Password
+            $ConfigStoreCloudStorageConnectionSecret = "AccountKey=$($AccountKey)"
+        }
+    }   
+
+    return @{
+        ConfigStoreCloudStorageConnectionString = $ConfigStoreCloudStorageConnectionString
+        ConfigStoreCloudStorageConnectionSecret = $ConfigStoreCloudStorageConnectionSecret
+    }
+}
+
 function Test-TargetResource
 {
 	[CmdletBinding()]
@@ -340,55 +885,196 @@ function Test-TargetResource
         [System.String]
         $Version,
 
+        [parameter(Mandatory = $True)]    
+        [System.Boolean]
+        $Join,
+
+        [parameter(Mandatory = $true)]
+		[System.Management.Automation.PSCredential]
+		$SiteAdministrator,
+        
         [parameter(Mandatory = $false)]    
         [System.String]
         $ServerHostName,
 
         [parameter(Mandatory = $False)]
-        [System.String]
-        $ConfigurationStoreLocation,
-        
-        [ValidateSet("Present","Absent")]
+		[ValidateSet("Present","Absent")]
 		[System.String]
-		$Ensure,
+		$Ensure = 'Present',
 
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory = $False)]
+		[System.String]
+		$ConfigurationStoreLocation,
+        
+        [parameter(Mandatory = $false)]
 		[System.String]
         $ServerDirectoriesRootLocation,
 
         [parameter(Mandatory = $false)]
         [System.String]
         $ServerDirectories,
-
+        
         [parameter(Mandatory = $false)]
 		[System.String]
         $ServerLogsLocation = $null,
-        
+
         [parameter(Mandatory = $false)]
 		[System.String]
         $LocalRepositoryPath = $null,
-        
-        [System.String]
-        $ConfigStoreCloudStorageConnectionString,
 
-        [System.String]
-        $ConfigStoreCloudStorageConnectionSecret,
-
-        [parameter(Mandatory = $true)]
-		[System.Management.Automation.PSCredential]
-		$SiteAdministrator,
-
-        [System.Boolean]
-		$Join,
-
+        [parameter(Mandatory = $false)]
         [System.String]
         $PeerServerHostName,
         
+        [parameter(Mandatory = $false)]
+        [ValidateSet("OFF","SEVERE","WARNING","INFO","FINE","VERBOSE","DEBUG")]
         [System.String]
-		$LogLevel,
+        [AllowNull()]
+		$LogLevel = "WARNING",
 
+        [parameter(Mandatory = $false)]
         [System.Boolean]
-        $EnableUsageMetering
+        $EnableUsageMetering,
+
+        [parameter(Mandatory = $False)]    
+        [System.String]
+        [ValidateSet("None","Azure","AWS")]
+        $CloudProvider = "None",
+
+        [parameter(Mandatory = $False)]    
+        [System.Boolean]
+        $IsCloudNativeServer = $False,
+
+        [parameter(Mandatory = $false)]
+        [System.String]
+        $CloudNamespace,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNativeTags,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $CloudNativeLocalDirectory,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","IAMRole", "None")]
+        $AWSCloudAuthenticationType = "None",
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSRegion,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AWSCloudAccessKeyCredential,
+        
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3BucketName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeS3RootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeDynamoDBRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AWSCloudNativeQueueServiceRegionEndpointURL,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("AccessKey","ServicePrincipal","UserAssignedIdentity", "SASToken", "None")]
+        $AzureCloudAuthenticationType = "None",
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudServicePrincipalCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalTenantId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudServicePrincipalAuthorityHost,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudUserAssignedIdentityClientId,
+        
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountContainerName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRootDir,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeStorageAccountRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeCosmosDBAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBRegionEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountDatabaseId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountSubscriptionId,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeCosmosDBAccountResourceGroupName,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        [ValidateSet("Direct","Gateway")]
+        $AzureCloudNativeCosmosDBAccountConnectionMode = "Gateway",
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $AzureCloudNativeServiceBusNamespaceCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceEndpointUrl,
+
+        [Parameter(Mandatory=$False)]
+        [System.String]
+        $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
     )
     
     [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
@@ -431,24 +1117,6 @@ function Test-TargetResource
         }
     }
     
-    if($result) {
-        $ServiceName = 'ArcGIS Server'
-        $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
-        $InstallDir =(Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir 
-        $configuredHostName = Get-ConfiguredHostName -InstallDir $InstallDir
-        if($configuredHostName -ine $FQDN){
-            Write-Verbose "Configured Host Name '$configuredHostName' is not equal to '$FQDN'"
-            $result = $false
-        }
-
-		if($result) {
-            if(Get-NodeAgentAmazonElementsPresent -InstallDir $InstallDir) {
-                Write-Verbose "Amazon Elements present in NodeAgentExt.xml. Will be removed in Set Method"
-                $result = $false
-            }         
-        }
-    }
-
     if($Ensure -ieq 'Present') {
 	       $result   
     }
@@ -505,6 +1173,9 @@ function Invoke-CreateSite
         [System.String]
         $LocalRepositoryPath,
 
+        [System.String]
+        $CloudConfigJsonString,
+
         [System.Int32]
         $TimeOut = 1000,
         
@@ -518,93 +1189,99 @@ function Invoke-CreateSite
     $createNewSiteUrl  = $ServerURL.TrimEnd("/") + "/arcgis/admin/createNewSite"
     $baseHostUrl       = $ServerURL.TrimEnd("/") + "/"
 
-    if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0){
-        if($ConfigStoreCloudStorageConnectionString.IndexOf('AccountName=') -gt -1){
-            Write-Verbose "Using Azure Cloud Storage for the config store"
-            $configStoreConnection = @{ 
-                type= "AZURE"; 
-                connectionString = $ConfigStoreCloudStorageConnectionString;
-            }
-
-            if($ConfigStoreCloudStorageConnectionSecret -and $ConfigStoreCloudStorageConnectionSecret.Length -gt 0){
-                $configStoreConnection.Add("connectionSecret",$ConfigStoreCloudStorageConnectionSecret)
-            }
-        }else{
-            Write-Verbose "Using AWS Cloud Storage for the config store"
-            $configStoreConnection = @{ 
-                type= "AMAZON"; 
-                connectionString = $ConfigStoreCloudStorageConnectionString;
-            }
-
-            if($ConfigStoreCloudStorageConnectionSecret -and $ConfigStoreCloudStorageConnectionSecret.Length -gt 0){
-                $configStoreConnection.Add("connectionSecret",$ConfigStoreCloudStorageConnectionSecret)
-            }
-        }
-        $Timeout = 2 * $Timeout # Double the timeout if using cloud storage for the config store        
-    }else{
-        Write-Verbose "Using File System Based Storage for the config store"
-        $configStoreConnection = @{ type= "FILESYSTEM"; connectionString = $ConfigurationStoreLocation }
-    }
-
-    if(-not([string]::IsNullOrEmpty($LocalRepositoryPath ))){  
-        $configStoreConnection["localRepositoryPath"] = $LocalRepositoryPath
-    }
-
-    $ServerDirectoriesObject = (ConvertFrom-Json $ServerDirectories)
-    $directories = @{directories = @()}
-
-    $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgissystem"}| Measure-Object).Count -gt 0){
-        ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgissystem"})
-    }else{
-        @{ name = "arcgissystem";
-            physicalPath = "$ServerDirectoriesRootLocation\arcgissystem";
-            directoryType = "SYSTEM";
-            cleanupMode = "NONE";
-            maxFileAge = 0
-        }
-    }
-
-    $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"}| Measure-Object).Count -gt 0){
-        ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"})
-    }else{
-        @{ name = "arcgisjobs";
-            physicalPath = "$ServerDirectoriesRootLocation\arcgisjobs";
-            directoryType = "JOBS";
-            cleanupMode = "TIME_ELAPSED_SINCE_LAST_MODIFIED";
-            maxFileAge = 360
-        }
-    }
-
-    $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisoutput"}| Measure-Object).Count -gt 0){
-        ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisoutput"})
-    }else{
-        @{ name = "arcgisoutput";
-            physicalPath = "$ServerDirectoriesRootLocation\arcgisoutput";
-            directoryType = "OUTPUT";
-            cleanupMode = "TIME_ELAPSED_SINCE_LAST_MODIFIED";
-            maxFileAge = 10
-        }
-    }
-
-    $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgiscache"}| Measure-Object).Count -gt 0){
-        ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgiscache"})
-    }else{
-        @{ name = "arcgiscache";
-            physicalPath = "$ServerDirectoriesRootLocation\arcgiscache";
-            directoryType = "CACHE";
-            cleanupMode = "NONE";
-            maxFileAge = 0
-        }
-    }
-
     $requestParams = @{ 
-                        f = "json"
-                        username = $Credential.UserName
-                        password = $Credential.GetNetworkCredential().Password
-                        configStoreConnection = ConvertTo-Json $configStoreConnection -Compress -Depth 4
-                        directories = ConvertTo-Json $directories -Compress
-                        runAsync = "false"
-                    }
+        f = "json"
+        username = $Credential.UserName
+        password = $Credential.GetNetworkCredential().Password
+        runAsync = "false"
+    }
+
+    if([string]::IsNullOrEmpty($CloudConfigJsonString)){
+        if($ConfigStoreCloudStorageConnectionString -and $ConfigStoreCloudStorageConnectionString.Length -gt 0){
+            if($ConfigStoreCloudStorageConnectionString.IndexOf('AccountName=') -gt -1){
+                Write-Verbose "Using Azure Cloud Storage for the config store"
+                $configStoreConnection = @{ 
+                    type= "AZURE"; 
+                    connectionString = $ConfigStoreCloudStorageConnectionString;
+                }
+
+                if($ConfigStoreCloudStorageConnectionSecret -and $ConfigStoreCloudStorageConnectionSecret.Length -gt 0){
+                    $configStoreConnection.Add("connectionSecret",$ConfigStoreCloudStorageConnectionSecret)
+                }
+            }else{
+                Write-Verbose "Using AWS Cloud Storage for the config store"
+                $configStoreConnection = @{ 
+                    type= "AMAZON"; 
+                    connectionString = $ConfigStoreCloudStorageConnectionString;
+                }
+
+                if($ConfigStoreCloudStorageConnectionSecret -and $ConfigStoreCloudStorageConnectionSecret.Length -gt 0){
+                    $configStoreConnection.Add("connectionSecret",$ConfigStoreCloudStorageConnectionSecret)
+                }
+            }
+            $Timeout = 2 * $Timeout # Double the timeout if using cloud storage for the config store        
+        }else{
+            Write-Verbose "Using File System Based Storage for the config store"
+            $configStoreConnection = @{ type= "FILESYSTEM"; connectionString = $ConfigurationStoreLocation }
+        }
+
+        if(-not([string]::IsNullOrEmpty($LocalRepositoryPath ))){  
+            $configStoreConnection["localRepositoryPath"] = $LocalRepositoryPath
+        }
+        $requestParams['configStoreConnection']  = ConvertTo-Json $configStoreConnection -Compress -Depth 4
+
+        $ServerDirectoriesObject = (ConvertFrom-Json $ServerDirectories)
+        $directories = @{directories = @()}
+
+        $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgissystem"}| Measure-Object).Count -gt 0){
+            ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgissystem"})
+        }else{
+            @{ name = "arcgissystem";
+                physicalPath = "$ServerDirectoriesRootLocation\arcgissystem";
+                directoryType = "SYSTEM";
+                cleanupMode = "NONE";
+                maxFileAge = 0
+            }
+        }
+
+        $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"}| Measure-Object).Count -gt 0){
+            ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisjobs"})
+        }else{
+            @{ name = "arcgisjobs";
+                physicalPath = "$ServerDirectoriesRootLocation\arcgisjobs";
+                directoryType = "JOBS";
+                cleanupMode = "TIME_ELAPSED_SINCE_LAST_MODIFIED";
+                maxFileAge = 360
+            }
+        }
+
+        $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisoutput"}| Measure-Object).Count -gt 0){
+            ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgisoutput"})
+        }else{
+            @{ name = "arcgisoutput";
+                physicalPath = "$ServerDirectoriesRootLocation\arcgisoutput";
+                directoryType = "OUTPUT";
+                cleanupMode = "TIME_ELAPSED_SINCE_LAST_MODIFIED";
+                maxFileAge = 10
+            }
+        }
+
+        $directories.directories += if(($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgiscache"}| Measure-Object).Count -gt 0){
+            ($ServerDirectoriesObject | Where-Object {$_.name -ieq "arcgiscache"})
+        }else{
+            @{ name = "arcgiscache";
+                physicalPath = "$ServerDirectoriesRootLocation\arcgiscache";
+                directoryType = "CACHE";
+                cleanupMode = "NONE";
+                maxFileAge = 0
+            }
+        }
+        
+        $requestParams['directories'] = ConvertTo-Json $directories -Compress
+    }else{
+        $requestParams['cloudConfigJson'] = $CloudConfigJsonString
+    }
+
     if(-not([string]::IsNullOrEmpty($ServerLogsLocation))){           
         $requestParams["logsSettings"] = (ConvertTo-Json -Compress -InputObject @{
             logLevel= $LogLevel;
@@ -613,7 +1290,7 @@ function Invoke-CreateSite
             maxLogFileAge= 90
         })
     }
-
+	
     # make sure Tomcat is up and running BEFORE sending a request
     Write-Verbose "Waiting for Server 'https://$($FQDN):6443/arcgis/admin' to initialize"
     Wait-ForUrl -Url $baseHostUrl -SleepTimeInSeconds 5 -HttpMethod 'GET'

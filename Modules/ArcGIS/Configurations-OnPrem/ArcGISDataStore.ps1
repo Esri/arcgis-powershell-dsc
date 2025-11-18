@@ -70,7 +70,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 4.5.0 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_DataStoreBackup
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_DataStoreBackup, ArcGIS_HostNameSettings
 
     $VersionArray = $Version.Split('.')
 
@@ -152,7 +152,7 @@
                 $Depends += '[ArcGIS_xFirewall]Queue_DataStore_FirewallRules'
             }
 
-            if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -ge 5)){
+            if(($VersionArray[0] -gt 11) -or $Version -ieq "11.5"){
                 ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
                 {
                     Name                  = "ArcGISMemoryCacheDataStore" 
@@ -180,7 +180,7 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = if(($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){ ("29079-29082") }else{ ("29080", "29081") }                
+                LocalPort             = if(($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){ ("29079-29082") }else{ ("29080", "29081") }                
                 Protocol              = "TCP" 
                 DependsOn             = $Depends
             }
@@ -195,14 +195,14 @@
                 Access                = "Allow" 
                 State                 = "Enabled" 
                 Profile               = ("Domain","Private","Public")
-                LocalPort             = if(($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){ ("29079-29082") }else{ ("29080", "29081") }
+                LocalPort             = if(($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7)){ ("29079-29082") }else{ ("29080", "29081") }
                 Direction             = "Outbound"                        
                 Protocol              = "TCP" 
                 DependsOn             = $Depends
             } 
             $Depends += @('[ArcGIS_xFirewall]TileCache_FirewallRules_OutBound')
 
-            if(($DataStoreMachineCount -gt 1) -and (($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))){
+            if(($DataStoreMachineCount -gt 1) -and (($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 7))){
                 ArcGIS_xFirewall MultiMachine_TileCache_DataStore_FirewallRules
                 {
                     Name                  = "ArcGISMultiMachineTileCacheDataStore" 
@@ -289,7 +289,7 @@
 
             if($DataStoreMachineCount -gt 2){
                 $ObjectStorePorts = @("9820", "9830", "9840", "9880", "29874", "29876", "29882","29875","29877","29883","29860-29863","29858","29859")
-                if(($VersionArray[0] -gt 11) -or ($VersionArray[0] -eq 11 -and $VersionArray[1] -gt 5)){
+                if(($VersionArray[0] -gt 11) -or ($Version -ieq "11.5")){
                     $ObjectStorePorts = @("29860-29863","29858","29859")
                 }
 
@@ -322,6 +322,14 @@
             SetStartupToAutomatic = $True
         }
         $Depends += '[ArcGIS_Service_Account]ArcGIS_DataStore_RunAs_Account'
+
+        ArcGIS_HostNameSettings DataStoreHostNameSettings{
+            ComponentName   = "DataStore"
+            Version         = $Version
+            HostName        = $Node.NodeName
+            DependsOn       = $DependsOn
+        }
+        $Depends += '[ArcGIS_HostNameSettings]DataStoreHostNameSettings'
 
         ArcGIS_DataStore "$($DataStoreType)-DataStore$($Node.NodeName)"
         {

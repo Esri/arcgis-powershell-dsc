@@ -143,26 +143,12 @@ function Set-TargetResource
         $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
         $Referer = "https://$($MachineFQDN):2443"
 
-        $ServiceName = 'ArcGIS Data Store'
+        $ServiceName = Get-ArcGISServiceName -ComponentName 'DataStore'
         $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
         $DataStoreInstallDirectory = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir.TrimEnd('\')  
 
         $RestartRequired = $false
-        $expectedHostIdentifierType = if($MachineFQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
-        $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $DataStoreInstallDirectory
-        $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $DataStoreInstallDirectory
-        Write-Verbose "Current value of property hostidentifier is '$hostidentifier' and hostidentifierType is '$hostidentifierType'"
-        if(($hostidentifier -ieq $MachineFQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {
-            Write-Verbose "Configured host identifier '$hostidentifier' matches expected value '$MachineFQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"        
-        } else {
-            Write-Verbose "Configured host identifier '$hostidentifier' does not match expected value '$MachineFQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-            if(Set-ConfiguredHostIdentifier -InstallDir $DataStoreInstallDirectory -HostIdentifier $MachineFQDN -HostIdentifierType $expectedHostIdentifierType) { 
-                # Need to restart the service to pick up the hostidentifier 
-                Write-Verbose "Hostidentifier.properties file was modified. Need to restart the '$ServiceName' service to pick up changes"
-                $RestartRequired = $true 
-            }
-        }
-
+        
         $FailoverPropertyModified = $False
         $ExpectedFailoverEnabledString = 'false'
         $PropertiesFilePath = Join-Path $DataStoreInstallDirectory 'framework\etc\datastore.properties'
@@ -258,7 +244,8 @@ function Set-TargetResource
                                     -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
                                     -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
                                     -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory `
-                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version
+                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version `
+                                    -DataStoreInstallDirectory $DataStoreInstallDirectory
         
         #Check if the TileCache mode is correct, only for 10.8.1 and above                                                            
         if($DatastoresToRegisterOrConfigure.Count -gt 0){
@@ -353,7 +340,7 @@ function Test-TargetResource
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
     $Referer = "https://$($MachineFQDN):2443"
     
-    $ServiceName = 'ArcGIS Data Store'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'DataStore'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $DataStoreInstallDirectory = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir.TrimEnd('\')
 
@@ -372,18 +359,6 @@ function Test-TargetResource
         }
     }
 
-    if($result) {
-        $expectedHostIdentifierType = if($MachineFQDN -as [ipaddress]){ 'ip' }else{ 'hostname' }
-        $hostidentifier = Get-ConfiguredHostIdentifier -InstallDir $DataStoreInstallDirectory
-        $hostidentifierType = Get-ConfiguredHostIdentifierType -InstallDir $DataStoreInstallDirectory
-        Write-Verbose "Current value of property hostidentifier is '$hostidentifier' and hostidentifierType is '$hostidentifierType'"
-        if(($hostidentifier -ieq $MachineFQDN) -and ($hostidentifierType -ieq $expectedHostIdentifierType)) {
-            Write-Verbose "Configured host identifier '$hostidentifier' matches expected value '$MachineFQDN' and host identifier type '$hostidentifierType' matches expected value '$expectedHostIdentifierType'"
-        }else {
-            Write-Verbose "Configured host identifier '$hostidentifier' does not match expected value '$MachineFQDN' or host identifier type '$hostidentifierType' does not match expected value '$expectedHostIdentifierType'. Setting it"
-            $result = $false
-        }
-    }
     
     $ServerFQDN = Get-FQDN $ServerHostName
     $ServerUrl = "https://$($ServerFQDN):6443"
@@ -397,7 +372,8 @@ function Test-TargetResource
                                     -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $SiteAdministrator `
                                     -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
                                     -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory `
-                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version
+                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version `
+                                    -DataStoreInstallDirectory $DataStoreInstallDirectory
 
         if($DatastoresToRegisterOrConfigure.Count -gt 0){
             $result = $false
@@ -431,8 +407,6 @@ function Test-TargetResource
         -not($result)
     }
 }
-
-
 
 function Invoke-RegisterOrConfigureDataStore
 {
@@ -522,12 +496,12 @@ function Invoke-RegisterOrConfigureDataStore
 		features = $featuresJson;
 	}
 
-	if($DataStoreTypes -icontains "TileCache" -and ($VersionArray[0] -eq 11 -or ($VersionArray[0] -eq 10 -and (($VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")))) -and $IsTileCacheDataStoreClustered){
+	if($DataStoreTypes -icontains "TileCache" -and ($VersionArray[0] -gt 10 -or ($VersionArray[0] -eq 10 -and (($VersionArray[1] -gt 8) -or ($Version -ieq "10.8.1")))) -and $IsTileCacheDataStoreClustered){
         $dsSettings.add("storeSetting.tileCache",@{deploymentMode="cluster"})
         $dsSettings.add("referer",$Referer)
     }
 
-    if($DataStoreTypes -icontains "ObjectStore" -and ($VersionArray[0] -eq 11) -and $IsObjectDataStoreClustered){
+    if($DataStoreTypes -icontains "ObjectStore" -and ($VersionArray[0] -gt 10) -and $IsObjectDataStoreClustered){
         $dsSettings.add("storeSetting.objectStore",@{deploymentMode="cluster"})
         $dsSettings.add("referer",$Referer)
     }
@@ -567,7 +541,8 @@ function Invoke-RegisterOrConfigureDataStore
                                             -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential `
                                             -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
                                             -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $DataStoreContentDirectory `
-                                            -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version
+                                            -IsGraphStoreClustered $IsGraphStoreClustered -DataStoreInstallDirectory $DataStoreInstallDirectory `
+                                            -Version $Version
 
                 $DatastoresToRegisterFlag = ($DatastoresToRegisterOrConfigure.Count -gt 0)
             }            
@@ -664,7 +639,10 @@ function Get-DataStoreTypesToRegisterOrConfigure
         $IsGraphStoreClustered,
 
         [System.String]
-        $DataStoreContentDirectory
+        $DataStoreContentDirectory,
+
+        [System.String]
+        $DataStoreInstallDirectory
     )
 
     $DataStoreInfo = Get-DataStoreInfo -DataStoreAdminEndpoint $DataStoreAdminEndpoint -ServerSiteAdminCredential $ServerSiteAdminCredential `
@@ -697,7 +675,7 @@ function Get-DataStoreTypesToRegisterOrConfigure
         }
         $serverTestResult = Test-DataStoreRegistered -ServerURL $ServerUrl -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN `
                                                     -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -IsObjectDataStoreClustered $IsObjectDataStoreClustered `
-                                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version -Verbose
+                                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version -DataStoreInstallDirectory $DataStoreInstallDirectory -Verbose
 
         if($dsTestResult -and $serverTestResult){
             Write-Verbose "The machine with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
@@ -709,6 +687,7 @@ function Get-DataStoreTypesToRegisterOrConfigure
 
     $DatastoresToRegister
 }
+
 function Test-DataStoreRegistered
 {
     [CmdletBinding()]
@@ -738,7 +717,10 @@ function Test-DataStoreRegistered
         $IsObjectDataStoreClustered,
 
         [System.Boolean]
-        $IsGraphStoreClustered 
+        $IsGraphStoreClustered,
+
+        [System.String]
+        $DataStoreInstallDirectory
     )
 
     $result = $false
@@ -773,8 +755,8 @@ function Test-DataStoreRegistered
 
         if($result -and ($Type -like "TileCache")){
             $VersionArray = $DB.info.storeRelease.Split(".")
-            if(($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($DB.info.storeRelease -ieq "10.8.1")){
-                $tcArchTerminology = if(($VersionArray[0] -eq 11) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){ "primaryStandby" }else{ "masterSlave" } 
+            if(($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8) -or ($DB.info.storeRelease -ieq "10.8.1")){
+                $tcArchTerminology = if(($VersionArray[0] -gt 10) -or ($VersionArray[0] -eq 10 -and $VersionArray[1] -gt 8)){ "primaryStandby" }else{ "masterSlave" } 
                 if($IsTileCacheDataStoreClustered){
                     if($DB.info.architecture -ieq $tcArchTerminology){
                         $result = $false

@@ -3,7 +3,7 @@ Configuration NotebookServerDockerBinariesInstall
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "11.5"
+        $Version = "12.0"
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]

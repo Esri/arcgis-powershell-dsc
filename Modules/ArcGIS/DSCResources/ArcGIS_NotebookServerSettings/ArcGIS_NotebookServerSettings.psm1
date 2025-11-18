@@ -84,7 +84,7 @@ function Set-TargetResource
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
     $Referer = 'http://localhost'
     $ServerUrl = "https://$($FQDN):11443"
-    $ServiceName = 'ArcGIS Notebook Server'
+    $ServiceName = Get-ArcGISServiceName -ComponentName 'NotebookServer'
     $RegKey = Get-EsriRegistryKeyForService -ServiceName $ServiceName
     $InstallDir = (Get-ItemProperty -Path $RegKey -ErrorAction Ignore).InstallDir  
     

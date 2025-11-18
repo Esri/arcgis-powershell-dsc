@@ -1,10 +1,13 @@
-Configuration RemoveObjectStoreConfiguration
+Configuration RemoveDataStoreConfiguration
 {
     param(
         [Parameter(Mandatory=$true)]
         [System.Management.Automation.PSCredential]
-        $SiteAdministratorCredential
+        $SiteAdministratorCredential,
 
+        [Parameter(Mandatory=$true)]
+        [System.String]
+        $DataStoreType
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
@@ -19,12 +22,12 @@ Configuration RemoveObjectStoreConfiguration
             ConfigurationMode = 'ApplyOnly'    
             RebootNodeIfNeeded = $false
         }
-
-        ArcGIS_DataStoreItemServer UnRegisterObjectStore
+        
+        ArcGIS_DataStoreItemServer "UnRegister$($DataStoreType)"
         {
-            Name = "OzoneObjectStore"
+            Name = if($DataStoreType -ieq "ObjectStore"){ "OzoneObjectStore" }else{ "TileCache" }
             SiteAdministrator = $SiteAdministratorCredential
-            DataStoreType = "ObjectStore"
+            DataStoreType = $DataStoreType
             Ensure = "Absent"
             ForceUpdate = $true
         }
