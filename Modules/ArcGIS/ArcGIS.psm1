@@ -998,7 +998,11 @@ function Invoke-ArcGISConfiguration
                             $ServerRole = "GeneralPurposeServer"
                         }
                         $NodeToAdd["ServerRole"] = $ServerRole
-
+                        # Add ServiceStartupType if provided in the node config
+                        if ($ConfigurationParamsHashtable.ConfigData.ServiceStartupType){
+                            $ServiceStartupType = $ConfigurationParamsHashtable.ConfigData.ServiceStartupType
+                            $NodeToAdd["ServiceStartupType"] = $ServiceStartupType
+                        }
                         #Will ignore additional roles if primary role of server is anything else than GeneralPurposeServer
                         if($ServerRole -ieq "GeneralPurposeServer" -and $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles){
                             $AdditionalServerRoles = @()
