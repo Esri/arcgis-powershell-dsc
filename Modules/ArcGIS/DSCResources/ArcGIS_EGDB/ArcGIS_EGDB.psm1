@@ -29,7 +29,7 @@ Import-Module -Name (Join-Path -Path $modulePath `
     .PARAMETER EnableGeodatabase
         Boolean parameter to Indicate Enabling of a Geo-Database.
     .PARAMETER DatabaseType
-        Type of Database Product used to install the GeoDatabase - "AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase"
+        Type of Database Product used to install the GeoDatabase - "AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AzureMISQLDatabase"
 #>
 
 function Get-TargetResource
@@ -93,7 +93,7 @@ function Set-TargetResource
 		$EnableGeodatabase,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("SQLServerDatabase","AzureSQLDatabase","AzureMISQLDatabase","AzurePostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase")]
+        [ValidateSet("SQLServerDatabase","AzureSQLDatabase","AzureMISQLDatabase","AzurePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase")]
 		[System.String]
 		$DatabaseType,
 
@@ -131,7 +131,7 @@ function Set-TargetResource
             $NumAttempts++
         }
 
-        $IsPostgres = ($DatabaseType -ieq 'AzurePostgreSQLDatabase' -or $DatabaseType -ieq 'AzureFlexiblePostgreSQLDatabase')
+        $IsPostgres = ($DatabaseType -ieq 'AzurePostgreSQLDatabase' -or $DatabaseType -ieq 'AzureFlexiblePostgreSQLDatabase' -or $DatabaseType -ieq 'AWSRDSPostgreSQLDatabase')
         
         $SdeUserName = "sde"
         $SdeUserPasswordSecureObject = if($SDEUser){ $SDEUser.Password }else{ $DatabaseUser.Password }
@@ -349,7 +349,7 @@ function Test-TargetResource
 		$EnableGeodatabase,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("SQLServerDatabase","AzureSQLDatabase","AzureMISQLDatabase","AzurePostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase")]
+        [ValidateSet("SQLServerDatabase","AzureSQLDatabase","AzureMISQLDatabase","AzurePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase")]
 		[System.String]
 		$DatabaseType,
 

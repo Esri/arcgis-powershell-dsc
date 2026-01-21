@@ -11,7 +11,7 @@
         $ServerPrimarySiteAdminCredential,
 
         [Parameter(Mandatory=$true)]
-        [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AzureMISQLDatabase")]
+        [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzurePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AzureMISQLDatabase")]
         [System.String]
         $DatabaseType,
 
