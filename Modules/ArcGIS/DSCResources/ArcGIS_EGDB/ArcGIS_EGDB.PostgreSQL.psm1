@@ -4,7 +4,7 @@ function Invoke-CreatePostgreSQLSDEIfNotExist
     param
 	(
         [System.String]
-        [ValidateSet("AzurePostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase")]
+        [ValidateSet("AzurePostgreSQLDatabase","AzureFlexiblePostgreSQLDatabase","AWSRDSPostgreSQLDatabase")]
         $DatabaseType,
 
         [System.String]
@@ -91,7 +91,7 @@ function Invoke-CreatePostgreSQLSDEIfNotExist
     ##
     ## Grant necessary privilages to Geodatabase Administrator 'sde'
     ##
-    Grant-PrivilegesForPostgresGeodatabaseAdministrator -ConnString $DbConnString -UserName $SdeUserName
+    Grant-PrivilegesForPostgresGeodatabaseAdministrator -ConnString $DbConnString -UserName $SdeUserName -DatabaseType $DatabaseType
 
     ##
     ## Ensure schema 'sde' exists in the database, # Needed Schema for ArcSDE
@@ -450,12 +450,16 @@ function Grant-PrivilegesForPostgresGeodatabaseAdministrator
 
         [System.String]
         $UserName,
+
+        [System.String]
+        $DatabaseType,
        
         [switch]
         $GrantViewDatabaseState
     )
     
-    $sql ="GRANT azure_pg_admin TO $UserName";
+    $privileges = if($DatabaseType -ieq "AWSRDSPostgreSQLDatabase"){"rds_superuser"}else{"azure_pg_admin"}
+    $sql ="GRANT $privileges TO $UserName";
     Invoke-ExecutePostgresQuery -ConnString $ConnString -sql $sql
 }
 

@@ -56,7 +56,7 @@
                 {
                     "DatabaseServerHostName": "[External DB Host Name]",
                     "DatabaseName": "[Name of the Database to target]",
-                    "DatabaseType": "Can be one of the following ['SQLServerDatabase','AzureSQLDatabase','AzurePostgreSQLDatabase','AzureMISQLDatabase']",
+                    "DatabaseType": "Can be one of the following ['SQLServerDatabase','AzureSQLDatabase','AzurePostgreSQLDatabase','AzureMISQLDatabase','AWSRDSPostgreSQLDatabase']",
                     "DatabaseAdminUser": {
                         "UserName": "[DatabaseAdminUser UserName]",
                         "Password": "[DatabaseAdminUser Password]"
