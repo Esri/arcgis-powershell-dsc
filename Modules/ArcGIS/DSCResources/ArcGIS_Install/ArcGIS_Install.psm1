@@ -232,7 +232,7 @@ function Set-TargetResource
             $EdgeWebView2Runtime32Installed = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 			$regPathPatterns = @(
                     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
-                    'HKLM:\SOFTWARE\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' # For 32-bit apps on 64-bit OS
+                    'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' # For 32-bit apps on 64-bit OS
 			)
 			$edgeWebView2RegEntry = Get-ItemProperty -Path $regPathPatterns -ErrorAction SilentlyContinue
             if(-not($edgeWebView2RegEntry)){
