@@ -1909,10 +1909,10 @@ function Invoke-ArcGISConfiguration
                                         #Add Default values
                                         if($AuthType -ieq "AccessKey"){
                                             # TODO - get from env variable
-                                            $ConnectionPassword = if( $AzureStorageObject.AccessKeyFilePath ){ Get-Content $DSItem.SDEUser.AccessKeyFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.AccessKey -AsPlainText -Force }
+                                            $ConnectionPassword = if( $AzureStorageObject.AccessKeyFilePath ){ Get-Content $AzureStorageObject.AccessKeyFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.AccessKey -AsPlainText -Force }
                                         }elseif($AuthType -ieq "SASToken"){
                                             # TODO - get from env variable
-                                            $ConnectionPassword = if( $AzureStorageObject.SASTokenFilePath ){ Get-Content $DSItem.SDEUser.SASTokenFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.SASToken -AsPlainText -Force }
+                                            $ConnectionPassword = if( $AzureStorageObject.SASTokenFilePath ){ Get-Content $AzureStorageObject.SASTokenFilePath | ConvertTo-SecureString }else{ ConvertTo-SecureString $AzureStorageObject.SASToken -AsPlainText -Force }
                                         }elseif($AuthType -ieq "ServicePrincipal"){
                                             $ConnectionStringObject["AzureStorage"]["ServicePrincipalTenantId"] = $AzureStorageObject.ServicePrincipal.TenantId
                                             if($AzureStorageObject.ServicePrincipal.AuthorityHost){
@@ -3926,7 +3926,7 @@ function Get-ArcGISProductDetails
                 if($DisplayName -imatch [regex]::escape($ProductName) -and $Publisher -ieq "Environmental Systems Research Institute, Inc."){
                     if(($ProductName -ieq "ArcGIS Notebook Server" -and -not($DisplayName -imatch "Samples Data")) `
                         -or ($ProductName -ieq "portal" -and -not($DisplayName -imatch "Web Styles")) `
-                        -or ($ProductName -ieq "ArcGIS Server" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Server") -and -not($DisplayName -imatch "Custom Data Feeds")) `
+                        -or ($ProductName -ieq "ArcGIS Server" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Server") -and -not($DisplayName -imatch "Custom Data Feeds") -and -not($DisplayName -imatch " - ")) `
                         -or ($ProductName -ieq "ArcGIS Pro" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Pro")) `
                         -or ($ProductName -ine "portal" -and $ProductName -ine "ArcGIS Notebook Server" -and $ProductName -ine "ArcGIS Server" -and $ProductName -ine "ArcGIS Pro")
                         ){

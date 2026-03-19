@@ -12,7 +12,7 @@ Configuration ArcGISServerMachineSettings{
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_ServerMachineSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.1 -Name ArcGIS_ServerMachineSettings
 
     Node $AllNodes.NodeName
     {

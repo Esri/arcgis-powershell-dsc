@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_RemoteFile
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.1 -Name ArcGIS_RemoteFile
     
     Node $AllNodes.NodeName {
 
@@ -245,7 +245,7 @@
                     }
 
                     $VersionArray = $ConfigurationData.ConfigData.Version.Split(".")
-                    if(($VersionArray[0] -gt 12) -and $ConfigurationData.ConfigData.DataStore.Installer.VolumePaths){
+                    if(($VersionArray[0] -gt 11) -and $ConfigurationData.ConfigData.DataStore.Installer.VolumePaths){
                         foreach($VolumePath in $ConfigurationData.ConfigData.DataStore.Installer.VolumePaths){
                             $VolumeName = Split-Path $VolumePath -leaf
                             ArcGIS_RemoteFile "DataStoreVolumeDownload$($VolumeName)"
