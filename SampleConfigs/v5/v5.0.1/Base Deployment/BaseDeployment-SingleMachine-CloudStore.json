@@ -4,7 +4,8 @@
             "NodeName": "[Machine Name]",
             "DataStoreTypes": [
                 "Relational",
-                "SpatioTemporal"
+                "SpatioTemporal",
+                "ObjectStore"
             ],
             "Role": [
                 "Server",
@@ -55,100 +56,83 @@
                 "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
                 "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
             },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
             "LocalRepositoryPath": "C:\\arcgisserver\\local",
             "ServerLogsLocation": "C:\\arcgisserver\\logs",
+            "ServerDirectories": [
+                {
+                    "name": "arcgiscache",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgiscache",
+                    "directoryType": "CACHE",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                },
+                {
+                    "name": "arcgisjobs",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisjobs",
+                    "directoryType": "JOBS",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 360
+                },
+                {
+                    "name": "arcgisoutput",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgisoutput",
+                    "directoryType": "OUTPUT",
+                    "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                    "maxFileAge": 10
+                },
+                {
+                    "name": "arcgissystem",
+                    "physicalPath": "C:\\arcgisserver\\directories\\arcgissystem",
+                    "directoryType": "SYSTEM",
+                    "cleanupMode": "NONE",
+                    "maxFileAge": 0
+                }
+            ],
             "RegisteredDirectories": [
                 {
                     "name": "BasemapsCacheDir",
                     "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
                     "directoryType": "CACHE"
+                },
+                {
+                    "name": "TestOutputDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testOutput",
+                    "directoryType": "OUTPUT"
+                },
+                {
+                    "name": "TestJobsDir",
+                    "physicalPath": "C:\\arcgisserver\\additionaldirs\\testJobs",
+                    "directoryType": "JOBS"
                 }
             ],
             "PrimarySiteAdmin": {
                 "UserName": "[PrimarySiteAdmin Username]",
                 "Password": "[PrimarySiteAdmin Password]"
             },
-            "CloudServices":{
-                "Provider": "[Required - 'AWS' or 'Azure']",
-                "Namespace": "[Required if using cloud services for Configuration Store and Service Directory - Unique identifiable string for your deployment to avoid conflicts.]",
-                "Tags":[
-                    {"key1": "value1"},
-                    {"key2": "value2"},
-                    {"key3": "value3"}
-                ],
-                "Azure":{
-                    "Credential":{
-                        "Type":"['ServicePrincipal','UserAssignedIdentity']",
-                        "UserAssignedManagedIdentityClientId":"[Required if CredentialType is 'UserAssignedIdentity']",
-                        "ServicePrincipal": {
-                            "TenantId": "[Azure Service Principal Tenant Id]",
-                            "ClientId": "[Azure Service Principal Client Id]",
-                            "ClientSecret": "[Azure Service Principal Client Secret]",
-                            "AuthorityHost": "[Optional - Default value is 'https://login.microsoftonline.com']"
-                        }
-                    },
-                    "StorageAccount":{
-                        "ContainerName":"[Required - Container Name]",
-                        "RootDir": "",
-                        "AccountEndpointURL":"[Required - Account Endpoint URL]",
-                        "RegionEndpointURL":"[Optional - Region Endpoint URL]",
-                        "Credential":{
-                            "Type":"['StorageAccountKey']",
-                            "StorageAccountKey":{
-                                "AccountName":"[Required - Storage Account Name]",
-                                "AccountKey":"[Required - Storage Account Key]"
-                            }
-                        }
-                    },
-                    "CosmosDBAccount":{
-                        "AccountEndpointURL":"[Required - Table Endpoint URL]",
-                        "RegionEndpointURL":"[Optional - Region Endpoint URL]",
-                        "SubscriptionId":"[Required - CosmosDB Account Subscription Id - Optional if using CosmosDBAccountKey]",
-                        "ResourceGroupName":"[Required - CosmosDB Account Resource Group Name - Optional if using CosmosDBAccountKey]",
-                        "DatabaseId":"[Required - CosmosDB Account Database Id]",
-                        "ConnectionMode":"[Optional - Default is 'Gateway' - Valid values: 'Direct','Gateway']",
-                        "Credential":{
-                            "Type":"['CosmosDBAccountKey']",
-                            "CosmosDBAccountKey":{
-                                "AccountName":"[Required - CosmosDB Account Name]",
-                                "AccountKey":"[Required - CosmosDB Account Key]"
-                            }
-                        }
-                    },
-                    "ServiceBusNamespace":{
-                        "ServiceBusEndpointUrl":"[Required - Service Bus Endpoint URL]",
-                        "RegionEndpointURL":"[Optional - Region Endpoint URL]",
-                        "Credential":{
-                            "Type":"['ServiceBusNamespaceAccessKey']",
-                            "ServiceBusNamespaceAccessKey":{
-                                "SharedAccessKeyName":"[Required - Key Name]",
-                                "SharedAccessKey":"[Required - Key Value]"
-                            }
-                        }
-                    }
-                },
-                "AWS":{
-                    "Region":"",
-                    "Credential":{
-                        "Type": "[IAMRole | AccessKey]",
-                        "AccessKey":{
-                            "AccessKeyId": "[Required - Access Key Id]",
-                            "SecretKey": "[Required - Secret Access Key]"
-                        }
-                    },
-                    "AmazonS3":{
-                        "BucketName":"",
-                        "RegionEndpointURL":"",
-                        "RootDir":""
-                    },
-                    "AmazonDynamoDB":{
-                        "RegionEndpointURL":""
-                    },
-                    "AmazonQueueService":{
-                        "RegionEndpointURL":""
-                    }
-                },
-                "localDirectory": "[Optional - C:\\arcgisserver\\local]"
+            "ConfigStoreCloudStorageAccount":{
+                "UserName": "[CloudStorageAccount Azure Storage Account Name/ AWS Access Id]",
+                "Password": "[CloudStorageAccount Azure Storage Account Access Key or SAS Token/ AWS Secret Key ]",
+                "CloudStorageType": "[Required - 'AzureBlob','AzureFiles','AWSS3DynamoDB']",
+                "AzureFileShareName": "[Required if CloudStorageType is 'AzureFiles']",
+                "CloudNamespace": "[Required if using cloud storage - Unique identifiable string for your deployment to avoid conflicts.The namespace used for the S3 bucket/Azure Blob Storage Container must be unique for this ArcGIS Server site. ArcGIS appends the text arcgis-config-store- to the name you provide]",
+                "AWSRegion": "[Required if CloudStorageType is 'AWSS3DynamoDB']",
+                "AzureBlobAuthenticationType": "[Required if CloudStorageType is 'AzureBlob' and Credential type is anything other than Access Key - 'AccessKey','ServicePrincipal','UserAssignedIdentity','SASToken']",
+                "AzureBlobUserAssignedIdentityClientId":"[Azure User Assigned Identity Client Id - Required if CloudStorageType is 'AzureBlob' and AzureBlobAuthenticationType is 'UserAssignedIdentity']",
+                "AzureBlobServicePrincipal": {
+                    "TenantId": "[Azure Service Principal Tenant Id]",
+                    "ClientId": "[Azure Service Principal Client Id]",
+                    "ClientSecret": "[Azure Service Principal Client Secret]",
+                    "AuthorityHost": "[Optional - Default value is 'login.microsoftonline.com', introduced at 11.3]"
+                }
+            },
+            "ServerDirectoriesCloudStorageAccount":{
+                "UserName": "[CloudStorageAccount Account Name/ Access Id]",
+                "Password": "[CloudStorageAccount SAS Token/Secret Key/Password ]",
+                "CloudStorageType": "AzureFiles",
+                "AzureFileShareName": "[Required if CloudStorageType is 'AzureFiles']",
+                "CloudNamespace": "[Required id using cloud storage - Unique identifiable string for your deployment to avoid conflicts]"
             }
         },
         "Portal": {
@@ -208,6 +192,35 @@
                 "PatchInstallOrder": [
                     "Array of patch names to install in the needed order"
                 ]
+            },
+            "Backups":{
+                "Relational":[{
+                    "Name": "[Required - Backup Name]",
+                    "Type": "[Required - fs / s3 /Azure]",
+                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
+                    "ForceBackupLocationUpdate": false,
+                    "IsDefault": false,
+                    "CloudStorageAccount":{
+                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
+                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "AWSS3Region":"[required at 11.2 when using s3]",
+                        "ForceUpdate": false
+                    }
+                }],
+                "SpatioTemporal":[{
+                    "Name": "[Required - Backup Name]",
+                    "Type": "[Required - fs / s3 /Azure]",
+                    "Location": "[ fs - fileshare location / s3 - Bucket Name / Azure -Container Name ]",
+                    "IsDefault": false,
+                    "CloudStorageAccount":{
+                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
+                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
+                        "AWSRegion":"[required at 11.2 when using s3]",
+                        "ForceUpdate": false
+                    }
+                }]
             }
         },
         "WebAdaptor": {

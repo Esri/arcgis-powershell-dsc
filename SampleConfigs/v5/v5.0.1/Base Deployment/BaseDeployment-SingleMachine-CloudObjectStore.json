@@ -3,8 +3,7 @@
         {
             "NodeName": "[Machine Name 1]",
             "DataStoreTypes": [
-                "Relational",
-                "ObjectStore"
+                "Relational"
             ],
             "Role": [
                 "Server",
@@ -109,7 +108,39 @@
             "PrimarySiteAdmin": {
                 "UserName": "[PrimarySiteAdmin Username]",
                 "Password": "[PrimarySiteAdmin Password]"
-            }
+            },
+            "DataStoreItems": [
+                {
+                    "Name": "Test-ObjectStore",
+                    "Type": "ObjectStore",
+                    "ForceUpdate": "true | false",
+                    "CloudStoreAccount":{
+                        "Type": "Azure | Amazon",
+                        "AzureStorage":{
+                            "AccountName": "",
+                            "AccountEndpoint": "",
+                            "DefaultEndpointsProtocol": "",
+                            "OverrideEndpoint": "",
+                            "ContainerName": "",
+                            "FolderPath": "",
+                            "AuthenticationType": "<AccessKey | UserAssignedIdentity>",
+                            "UserAssignedIdentityClientId": "",
+                            "AccessKey": "",
+                            "AccessKeyFilePath": ""
+                        },
+                        "AmazonS3":{
+                            "AuthenticationType": "<IAMRole | AccessKey>",
+                            "BucketName" : "",
+                            "FolderPath":"",
+                            "Region":"",
+                            "RegionEndpointUrl":"",
+                            "AccessKeyId": "",
+                            "SecretAccessKey":"",
+                            "SecretAccessKeyFilePath": "[]"
+                        }
+                    }
+                }
+            ]
         },
         "Portal": {
             "LicenseFilePath": "[License File Path - Portal ]",

@@ -20,6 +20,24 @@
                     "Role": "Server"
                 }
             ]
+        },
+        {
+            "NodeName": "[Machine Name 2]",
+            "DataStoreTypes": [
+                "GraphStore"
+            ],
+            "Role": [
+                "DataStore"
+            ]
+        },
+        {
+            "NodeName": "[Machine Name 3]",
+            "DataStoreTypes": [
+                "GraphStore"
+            ],
+            "Role": [
+                "DataStore"
+            ]
         }
     ],
     "ConfigData": {
@@ -180,11 +198,10 @@
                         "ForceUpdate": false
                     }
                 }],
-                "ObjectStore":[{
+                "GraphStore": [{
                     "Name": "[Required - Backup Name]",
                     "Type": "[Required - fs / s3 /Azure]",
-                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
-                    "ForceBackupLocationUpdate": false,
+                    "Location": "[ fs - fileshare location / s3 - Bucket Name / Azure -Container Name ]",
                     "IsDefault": false,
                     "CloudStorageAccount":{
                         "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",

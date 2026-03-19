@@ -3,39 +3,38 @@
         {
             "NodeName": "[Machine Name 1]",
             "Role": [
-                "Desktop"
+                "Pro"
             ]
         },
         {
             "NodeName": "[Machine Name 1]",
             "Role": [
-                "Desktop"
+                "Pro"
             ]
         },
         {
-            "NodeName": "[Machine Name 2]",
+            "NodeName": "[Machine Name 3]",
             "Role": [
                 "LicenseManager"
             ]
         }
     ],
     "ConfigData": {
-        "DesktopVersion": "[Version of ArcGIS Dektop ]",
+        "ProVersion": "[Version of ArcGIS Pro ]",
         "LicenseManagerVersion": "[Version of ArcGIS License Manager ]",
-        "Desktop": {
-            "SeatPreference": "Float",
-            "InstallFeatures": "[ALL | <feature1>,<feature2>,]",
-            "ModifyFlexdAcl": "[TRUE | FALSE (Default)]",
-            "BlockAddIns": "[0 (Default All Addins Allowed), 1 (Signed by CA), 2 (Esri Addins Only), 3 (Esri Addins Only from Admin Folder), 4 (No Addins Allowed)]",
-            "DesktopConfig": "[ true - if you supply ESRI_LICENSE_HOST, SOFTWARE_CLASS, and SEAT_PREFERENCE on the command line ]",
-            "EsriLicenseHost": "[ License Host - [Machine Name 3] or Can be an external License Manager Host]",
+        "Pro": {
+            "AuthorizationType": "CONCURRENT_USE",
+            "LockAuthSettings": "[ True(Default) | False ]",
+            "BlockAddIns": "[0 (Default All Addins Allowed), 1 (Signed by CA), 2 (Esri Addins Only), 3 (Esri Addins Only from Admin Folder), 4 (No Addins Allowed), 5 (Only Addins from Addmin Folder)]",
             "SoftwareClass": "[Viewer | Editor | Professional]",
-            "EnableEUEI": "[ True (Default enables participation of Esri User Experience Improvement Program) | False ]",
+            "PortalList": "[List of Portals for Pro]",
+            "EsriLicenseHost": "[ License Host - [Machine Name 3] ]",
+            "EnableEUEI": "[ True  (Default enables participation of Esri User Experience Improvement Program) | False]",
+            "CheckForUpdatesAtStartup": "[ True (Default enables automatic update notifications of ArcGIS Pro) | False ]",
             "Installer": {
-                "Path": "[Desktop Installer Path]",
+                "Path": "[Pro Installer Path]",
                 "IsSelfExtracting": "[ Optional - True (Default) | False ]",
-                "InstallDir": "[Desktop Install Dir - Ex. C:\\ArcGIS\\Desktop]",
-                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "InstallDir": "[Pro Install Dir - Ex. C:\\ArcGIS\\Pro]",
                 "PatchesDir": "",
                 "PatchInstallOrder": [
                     "Array of patch names to install in the needed order"

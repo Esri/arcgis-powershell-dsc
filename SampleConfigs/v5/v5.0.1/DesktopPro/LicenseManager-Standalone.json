@@ -1,0 +1,21 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[localhost -- Server where License Manager will be installed]",
+            "Role": [
+                "LicenseManager"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "LicenseManagerVersion": "[Version of License Manager -- 2019.2, 2020.0, etc.]",
+        "LicenseManager": {
+            "LicenseFilePath": "[License File Path (*.prvs) - License Manager ]",
+            "Installer": {
+                "Path": "[License Manager Installer Path]",
+                "IsSelfExtracting": "[ Optional - True (Default) | False ]",
+                "InstallDir": "[License Install Dir - Ex. C:\\ArcGIS\\LM]"
+            }
+        }
+    }
+}

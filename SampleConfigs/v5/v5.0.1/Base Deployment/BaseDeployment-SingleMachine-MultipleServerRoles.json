@@ -1,7 +1,7 @@
 {
     "AllNodes": [
         {
-            "NodeName": "[Machine Name 1]",
+            "NodeName": "[Machine Name]",
             "DataStoreTypes": [
                 "Relational",
                 "ObjectStore"
@@ -27,6 +27,13 @@
         "ServerContext": "server",
         "PortalContext": "portal",
         "ServerRole": "GeneralPurposeServer",
+        "AdditionalServerRoles":[
+            "Geoevent",
+            "RasterAnalytics",
+            "WorkflowManagerServer",
+            "GeoAnalytics",
+            "ImageHosting"
+        ],
         "Credentials": {
             "ServiceAccount": {
                 "UserName": "[ServiceAccount Username - Can be a Domain Account]",
@@ -111,6 +118,23 @@
                 "Password": "[PrimarySiteAdmin Password]"
             }
         },
+        "WorkflowManagerServer": {
+            "LicenseFilePath": "[License File Path - Workflow Manager Server ]",
+            "Installer": {
+                "Path": "[Workflow Manager Server Installer Path]"
+            }
+        },
+        "GeoEventServer": {
+            "LicenseFilePath": "[License File Path - GeoEvent Server ]",
+            "Installer": {
+                "Path": "[GeoEvent Server Installer Path]",
+                "PatchesDir": "[Path to Directory with Patches for GeoEvent Server]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            },
+            "EnableGeoeventSDK": "[ Optional - True | False(Default) - Enables GeoEvent SDK during installation.]"
+        },
         "Portal": {
             "LicenseFilePath": "[License File Path - Portal ]",
             "PortalLicenseUserTypeId": "[Portal License User Type Id- Required for 10.7 and above]",
@@ -164,36 +188,6 @@
                 "PatchInstallOrder": [
                     "Array of patch names to install in the needed order"
                 ]
-            },
-            "Backups":{
-                "Relational":[{
-                    "Name": "[Required - Backup Name]",
-                    "Type": "[Required - fs / s3 /Azure]",
-                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
-                    "ForceBackupLocationUpdate": false,
-                    "IsDefault": false,
-                    "CloudStorageAccount":{
-                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
-                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "AWSS3Region":"[required at 11.2 when using s3]",
-                        "ForceUpdate": false
-                    }
-                }],
-                "ObjectStore":[{
-                    "Name": "[Required - Backup Name]",
-                    "Type": "[Required - fs / s3 /Azure]",
-                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
-                    "ForceBackupLocationUpdate": false,
-                    "IsDefault": false,
-                    "CloudStorageAccount":{
-                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
-                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "AWSS3Region":"[required at 11.2 when using s3]",
-                        "ForceUpdate": false
-                    }
-                }]
             }
         },
         "WebAdaptor": {
