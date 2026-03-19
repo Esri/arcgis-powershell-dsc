@@ -107,7 +107,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.0 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account, ArcGIS_HostNameSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.0.1 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_MissionServerUpgrade, ArcGIS_VideoServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account, ArcGIS_HostNameSettings
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -221,7 +221,7 @@
                     Name = "Server$($Extension.Key)"
                     Version = $Version
                     Path = $Extension.Value.Installer.Path
-                    Extract = if($Extension.Value.Installer.IsSelfExtracting){ $Extension.Value.Installer.IsSelfExtracting }else{ $True }
+                    Extract = if($Extension.Value.Installer.ContainsKey("IsSelfExtracting")){ $Extension.Value.Installer.IsSelfExtracting }else{ $True }
                     Arguments = $Arguments
                     FeatureSet = $ServerExtensionFeatureSet
                     EnableMSILogging = $EnableMSILogging

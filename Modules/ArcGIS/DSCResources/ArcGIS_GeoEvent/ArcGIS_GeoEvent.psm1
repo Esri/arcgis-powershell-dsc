@@ -90,16 +90,6 @@ function Set-TargetResource
         Stop-Service -Name $ServiceName -ErrorAction Ignore    
         Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped'
         
-        Write-Verbose "Installing Windows Feature: IIS-WebSockets as a PreReq for GeoEvents Server"
-        if (Get-Command "Get-WindowsOptionalFeature" -errorAction SilentlyContinue)
-        {
-            if(-not((Get-WindowsOptionalFeature -FeatureName IIS-WebSockets -online).State -ieq "Enabled")){
-                Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebSockets -All
-            }
-        }else{
-            Write-Verbose "Unable to Install Window Feature - IIS-WebSockets"
-        }
-
 		$FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
 		$ServerUrl = "https://$($FQDN):6443"   
 		$Referer = $ServerUrl

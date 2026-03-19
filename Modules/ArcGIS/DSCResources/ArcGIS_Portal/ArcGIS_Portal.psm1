@@ -615,62 +615,66 @@ function Set-TargetResource {
                 throw "Portal Site is not healthy. Please check your portal site deployment."
             }
         } else {
-            if($SiteCreatedCheckResponse.status -ieq "error"){
-                if($SiteCreatedCheckResponse.messages -icontains "The portal site has not been initialized. Please create a new site and try again."){
-                    if($Join) {
-                        $PeerMachineFQDN = Get-FQDN $PeerMachineHostName
-                        Write-Verbose "Joining machine to portal site at peer $PeerMachineFQDN"   
-                        Join-PortalSite -PortalHostNameFQDN $FQDN -Credential $PortalAdministrator -PeerMachineHostName $PeerMachineFQDN
-                        Write-Verbose "Joined machine to portal site at peer $PeerMachineFQDN"   
-                    } else {
-                        Write-Verbose "Creating Portal Site" 
-                        $PortalArguments = @{
-                            Version = $Version
-                            PortalHostNameFQDN = $FQDN
-                            PortalSiteName = 'arcgis'
-                            Credential = $PortalAdministrator
-                            FullName = $AdminFullName
-                            Email = $AdminEmail
-                            Description = $AdminDescription
-                            AdminSecurityQuestionCredential = $AdminSecurityQuestionCredential
-                            LicenseFilePath = $LicenseFilePath
-                            UserLicenseTypeId = $UserLicenseTypeId
-                            EnableCreateSiteDebug = $EnableCreateSiteDebug
-                        }
+            if($SiteCreatedCheckResponse -and $SiteCreatedCheckResponse.status -ieq "error"){
+                if((Get-UICulture).DisplayName -imatch "English"){
+                    if(-not($SiteCreatedCheckResponse.messages -icontains "The portal site has not been initialized. Please create a new site and try again.")){
+                        throw "[Error]: Site create check response:- $($SiteCreatedCheckResponse | ConvertTo-Json -Depth 5)"
+                    }
+                }
+                
+                if($Join) {
+                    $PeerMachineFQDN = Get-FQDN $PeerMachineHostName
+                    Write-Verbose "Joining machine to portal site at peer $PeerMachineFQDN"   
+                    Join-PortalSite -PortalHostNameFQDN $FQDN -Credential $PortalAdministrator -PeerMachineHostName $PeerMachineFQDN
+                    Write-Verbose "Joined machine to portal site at peer $PeerMachineFQDN"   
+                } else {
+                    Write-Verbose "Creating Portal Site" 
+                    $PortalArguments = @{
+                        Version = $Version
+                        PortalHostNameFQDN = $FQDN
+                        PortalSiteName = 'arcgis'
+                        Credential = $PortalAdministrator
+                        FullName = $AdminFullName
+                        Email = $AdminEmail
+                        Description = $AdminDescription
+                        AdminSecurityQuestionCredential = $AdminSecurityQuestionCredential
+                        LicenseFilePath = $LicenseFilePath
+                        UserLicenseTypeId = $UserLicenseTypeId
+                        EnableCreateSiteDebug = $EnableCreateSiteDebug
+                    }
 
-                        if($CloudProvider -ieq "None"){
-                            $PortalArguments["ContentDirectoryLocation"] = $ContentDirectoryLocation
-                        }else{
-                            $PortalArguments["CloudProvider"] = $CloudProvider
-                            if($CloudProvider -ieq "Azure"){
-                                $PortalArguments["AzureAuthenticationType"] = $AzureAuthenticationType
-                                $PortalArguments["AzureContentBlobContainerName"] = $AzureContentBlobContainerName
-                                $PortalArguments["AzureStorageAccountCredential"] = $AzureStorageAccountCredential
+                    if($CloudProvider -ieq "None"){
+                        $PortalArguments["ContentDirectoryLocation"] = $ContentDirectoryLocation
+                    }else{
+                        $PortalArguments["CloudProvider"] = $CloudProvider
+                        if($CloudProvider -ieq "Azure"){
+                            $PortalArguments["AzureAuthenticationType"] = $AzureAuthenticationType
+                            $PortalArguments["AzureContentBlobContainerName"] = $AzureContentBlobContainerName
+                            $PortalArguments["AzureStorageAccountCredential"] = $AzureStorageAccountCredential
 
-                                if($AzureAuthenticationType -ieq "ServicePrincipal"){
-                                    $PortalArguments["AzureServicePrincipalCredential"] = $AzureServicePrincipalCredential
-                                    $PortalArguments["AzureServicePrincipalTenantId"] = $AzureServicePrincipalTenantId
-                                    $PortalArguments["AzureServicePrincipalAuthorityHost"] = $AzureServicePrincipalAuthorityHost
-                                }elseif($AzureAuthenticationType -ieq "UserAssignedIdentity"){
-                                    $PortalArguments["AzureUserAssignedIdentityClientId"] = $AzureUserAssignedIdentityClientId
-                                }
-                            }elseif($CloudProvider -ieq "AWS"){
-                                $PortalArguments["AWSAuthenticationType"] = $AWSAuthenticationType
-                                $PortalArguments["AWSS3ContentBucketName"] = $AWSS3ContentBucketName
-                                $PortalArguments["AWSRegion"] = $AWSRegion
-                                if($AWSAuthenticationType -ieq "AccessKey"){
-                                    $PortalArguments["AWSAccessKeyCredential"] = $AWSAccessKeyCredential
-                                }
+                            if($AzureAuthenticationType -ieq "ServicePrincipal"){
+                                $PortalArguments["AzureServicePrincipalCredential"] = $AzureServicePrincipalCredential
+                                $PortalArguments["AzureServicePrincipalTenantId"] = $AzureServicePrincipalTenantId
+                                $PortalArguments["AzureServicePrincipalAuthorityHost"] = $AzureServicePrincipalAuthorityHost
+                            }elseif($AzureAuthenticationType -ieq "UserAssignedIdentity"){
+                                $PortalArguments["AzureUserAssignedIdentityClientId"] = $AzureUserAssignedIdentityClientId
+                            }
+                        }elseif($CloudProvider -ieq "AWS"){
+                            $PortalArguments["AWSAuthenticationType"] = $AWSAuthenticationType
+                            $PortalArguments["AWSS3ContentBucketName"] = $AWSS3ContentBucketName
+                            $PortalArguments["AWSRegion"] = $AWSRegion
+                            if($AWSAuthenticationType -ieq "AccessKey"){
+                                $PortalArguments["AWSAccessKeyCredential"] = $AWSAccessKeyCredential
                             }
                         }
-
-                        Invoke-CreatePortalSite @PortalArguments -Verbose
-                        
-                        Write-Verbose 'Created Portal Site'
                     }
-                }else{
-                    throw "[Error] - Response:- $(ConvertTo-JSON $SiteCreatedCheckResponse -Compress)"
+
+                    Invoke-CreatePortalSite @PortalArguments -Verbose
+                    
+                    Write-Verbose 'Created Portal Site'
                 }
+            }else{
+                throw "[Error]: Response:- $($SiteCreatedCheckResponse | ConvertTo-Json -Depth 5)"
             }
         }
 

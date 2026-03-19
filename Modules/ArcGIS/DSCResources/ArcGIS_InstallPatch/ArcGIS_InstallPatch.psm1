@@ -121,17 +121,19 @@ function Set-TargetResource
 
             foreach($Patch in $PatchInstallOrder) {
                 $PatchFileName = Split-Path $Patch -leaf
-                $PatchLocation = (Join-Path $PatchesDir $PatchFileName)
-                Write-Verbose "Checking Patch File at $($PatchLocation)"
-                $QFEId = Get-QFEId -PatchLocation $PatchLocation # Extract the QFE-ID from the *.msp
-                if (Test-PatchInstalled -QFEId $QFEId) {
-                    Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId installed"
-                }else{
-                    Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId not installed"
-                    if(Install-Patch -mspPath $PatchLocation -Verbose){
-                        Write-Verbose "Installation was successful for patch file at $($PatchLocation) with QFE Id $QFEId"
+                if ($PatchFileName -like "*.msp") {
+                    $PatchLocation = (Join-Path $PatchesDir $PatchFileName)
+                    Write-Verbose "Checking Patch File at $($PatchLocation)"
+                    $QFEId = Get-QFEId -PatchLocation $PatchLocation # Extract the QFE-ID from the *.msp
+                    if (Test-PatchInstalled -QFEId $QFEId) {
+                        Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId installed"
                     }else{
-                        Write-Verbose "Installation failed for patch file at $($PatchLocation) with QFE Id $QFEId not installed"
+                        Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId not installed"
+                        if(Install-Patch -mspPath $PatchLocation -Verbose){
+                            Write-Verbose "Installation was successful for patch file at $($PatchLocation) with QFE Id $QFEId"
+                        }else{
+                            Write-Verbose "Installation failed for patch file at $($PatchLocation) with QFE Id $QFEId not installed"
+                        }
                     }
                 }
             }
@@ -271,15 +273,17 @@ function Test-TargetResource
 
             foreach($Patch in $PatchInstallOrder) {
                 $PatchFileName = Split-Path $Patch -leaf
-                $PatchLocation = (Join-Path $PatchesDir $PatchFileName)
-                Write-Verbose "Checking Patch File at $($PatchLocation)"
-                $QFEId = Get-QFEId -PatchLocation $PatchLocation # Extract the QFE-ID from the *.msp
-                if (Test-PatchInstalled -QFEId $QFEId) {
-                    Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId installed"
-                }else{
-                    Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId not installed"
-                    $result = $false
-                    break;
+                if ($PatchFileName -like "*.msp") {
+                    $PatchLocation = (Join-Path $PatchesDir $PatchFileName)
+                    Write-Verbose "Checking Patch File at $($PatchLocation)"
+                    $QFEId = Get-QFEId -PatchLocation $PatchLocation # Extract the QFE-ID from the *.msp
+                    if (Test-PatchInstalled -QFEId $QFEId) {
+                        Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId installed"
+                    }else{
+                        Write-Verbose "Patch File at $($PatchLocation) with QFE Id $QFEId not installed"
+                        $result = $false
+                        break;
+                    }
                 }
             }
         }
@@ -462,8 +466,7 @@ function Install-Patch
     )
 
     if(Test-Path $mspPath){
-        $arguments = "/p "+ '"' + $mspPath +'" /qb REINSTALLMODE="ecmus" REINSTALL="ALL"'
-        #$arguments = "/update "+ '"' + $mspPath +'"' + " /quiet"
+        $arguments = "/update "+ '"' + $mspPath +'"' + " /quiet"
         Write-Verbose $arguments
         try {
             $PatchInstallProc = Start-Process -FilePath msiexec.exe -ArgumentList $Arguments -Wait -Verbose -PassThru
@@ -492,9 +495,11 @@ function Get-QFEId
         [System.String]
         $PatchLocation
     )
+
     if(-not(Test-Path $PatchLocation)){
         throw "Patch File $PatchLocation is not accessible"
     }
+    
     try{
         $wi = New-Object -com WindowsInstaller.Installer
         $mspdb = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $Null, $wi, $($PatchLocation, 32))
