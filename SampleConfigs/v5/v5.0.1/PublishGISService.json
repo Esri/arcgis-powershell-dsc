@@ -1,0 +1,32 @@
+{
+    "ServerNode": "[Machine Name]",
+    "CertificateFile": "",
+    "Thumbprint": "",
+    "PortalHostName": "[Portal Host Name (FQDN)]",
+    "PortalPort": "[Port on which Portal is listening ex. - 443]",
+    "PortalContext": "[Context of the Portal ex. - portal]",
+    "ServerHostName": "[Server Host Name (FQDN) with which the publishing needs to happen]",
+    "ServerPort": "[Port on which Server is listening ex. - 443]",
+    "ServerContext": "[Context of the Server ex. - Server]",
+    "PublisherAccountCredential": {
+        "UserName": "[PublisherAccount Username]",
+        "Password": "[PublisherAccount Password]",
+        "PasswordFile": ""
+    },
+    "GISServices": [
+        {
+            "Name": "",
+            "Type": "",
+            "PathToItemInfoFile": "",
+            "PathToSourceFile": "",
+            "Folder": ""
+        },
+        {
+            "Name": "",
+            "Type": "",
+            "PathToItemInfoFile": "",
+            "PathToSourceFile": "",
+            "Folder": ""
+        }
+    ]
+}

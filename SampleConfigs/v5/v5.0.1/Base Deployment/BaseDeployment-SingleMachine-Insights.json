@@ -1,7 +1,7 @@
 {
     "AllNodes": [
         {
-            "NodeName": "[Machine Name 1]",
+            "NodeName": "[Machine Name]",
             "DataStoreTypes": [
                 "Relational",
                 "ObjectStore"
@@ -24,6 +24,7 @@
     ],
     "ConfigData": {
         "Version": "[Version of ArcGIS Deployment]",
+        "InsightsVersion": "[Version of ArcGIS Insights]",
         "ServerContext": "server",
         "PortalContext": "portal",
         "ServerRole": "GeneralPurposeServer",
@@ -164,36 +165,6 @@
                 "PatchInstallOrder": [
                     "Array of patch names to install in the needed order"
                 ]
-            },
-            "Backups":{
-                "Relational":[{
-                    "Name": "[Required - Backup Name]",
-                    "Type": "[Required - fs / s3 /Azure]",
-                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
-                    "ForceBackupLocationUpdate": false,
-                    "IsDefault": false,
-                    "CloudStorageAccount":{
-                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
-                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "AWSS3Region":"[required at 11.2 when using s3]",
-                        "ForceUpdate": false
-                    }
-                }],
-                "ObjectStore":[{
-                    "Name": "[Required - Backup Name]",
-                    "Type": "[Required - fs / s3 /Azure]",
-                    "Location": "[Required -  fs - fileshare location / s3 - Bucket Name / Azure - Container Name ]",
-                    "ForceBackupLocationUpdate": false,
-                    "IsDefault": false,
-                    "CloudStorageAccount":{
-                        "UserName": "[s3 - AWS Access Id / Azure - Cloud Storage Account Account Name/ ]",
-                        "Password": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "PasswordFile": "[s3 - AWS secret key / Azure - Cloud Storage Secret Key]",
-                        "AWSS3Region":"[required at 11.2 when using s3]",
-                        "ForceUpdate": false
-                    }
-                }]
             }
         },
         "WebAdaptor": {
@@ -206,6 +177,15 @@
                 ]
             },
             "WebSiteId": 1
+        },
+        "Insights": {
+            "Installer": {
+                "Path": "[Insights Installer Path]",
+                "PatchesDir": "[Path to Directory with Patches for Insights]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            }
         }
     }
 }
