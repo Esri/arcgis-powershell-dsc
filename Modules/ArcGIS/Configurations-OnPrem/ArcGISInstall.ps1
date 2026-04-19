@@ -98,7 +98,7 @@
                     $ServerFeatureSet = @()
                     $ServerInstallArguments = "/qn ACCEPTEULA=YES InstallDir=`"$($ConfigurationData.ConfigData.Server.Installer.InstallDir)`""
                     if($ServerTypeName -ieq "Server"){
-                        if(@("11.0","11.1","11.2","11.3","11.4") -iContains $ConfigurationData.ConfigData.Version){
+                        if(@("11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $ConfigurationData.ConfigData.Version){
                             $EnableDontet = $True
                             if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("EnableDotnetSupport")){
                                 $EnableDontet = $ConfigurationData.ConfigData.Server.Installer.EnableDotnetSupport
@@ -139,7 +139,7 @@
                         Version = $ConfigurationData.ConfigData.Version
                         Path = $ConfigurationData.ConfigData.Server.Installer.Path
                         Extract = if($ConfigurationData.ConfigData.Server.Installer.ContainsKey("IsSelfExtracting")){ $ConfigurationData.ConfigData.Server.Installer.IsSelfExtracting }else{ $True }
-                        DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4") -iContains $ConfigurationData.ConfigData.Version){ $ConfigurationData.ConfigData.Server.Installer.DotnetDesktopRuntimePath }else{ $null }
+                        DotnetDesktopRuntimePath = if(@("10.9.1","11.0","11.1","11.2","11.3","11.4","11.5","12.0") -iContains $ConfigurationData.ConfigData.Version){ $ConfigurationData.ConfigData.Server.Installer.DotnetDesktopRuntimePath }else{ $null }
                         Arguments = $ServerInstallArguments
                         FeatureSet = $ServerFeatureSet
                         ServiceCredential = $ServiceCredential
