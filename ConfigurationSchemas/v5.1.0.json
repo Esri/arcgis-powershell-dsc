@@ -1,0 +1,5948 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esri.github.io/arcgis-powershell-dsc/ConfigurationSchemas/v5.1.0.json",
+  "title": "ArcGIS PowerShell DSC Configuration v5.1.0",
+  "description": "JSON Schema 2020-12 schema for the main ArcGIS PowerShell DSC configuration documents consumed by Invoke-ArcGISConfiguration in module version 5.1.0. The schema is derived from the 5.1.0 module code paths and 5.1.0 sample deployment configurations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "AllNodes",
+    "ConfigData"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "#/$defs/TrimmedString",
+      "format": "uri-reference",
+      "description": "Optional schema reference included in user configuration documents for editor tooling and validation. Supports either an absolute schema URL or a relative path to the checked-in schema file.",
+      "examples": [
+        "https://esri.github.io/arcgis-powershell-dsc/ConfigurationSchemas/v5.1.0.json",
+        "../../../../ConfigurationSchemas/v5.1.0.json"
+      ]
+    },
+    "AllNodes": {
+      "type": "array",
+      "description": "Target machines that participate in the deployment. Each entry describes one node, its ArcGIS roles, optional SSL material, and optional per-node license overrides.",
+      "minItems": 1,
+      "examples": [
+        [
+          {
+            "NodeName": "gis01.contoso.com",
+            "Role": [
+              "Server",
+              "Portal",
+              "DataStore",
+              "WebAdaptor"
+            ],
+            "DataStoreTypes": [
+              "Relational",
+              "ObjectStore"
+            ],
+            "WebAdaptorConfig": [
+              {
+                "Role": "Portal"
+              },
+              {
+                "Role": "Server"
+              }
+            ]
+          }
+        ]
+      ],
+      "items": {
+        "$ref": "#/$defs/Node"
+      }
+    },
+    "ConfigData": {
+      "$ref": "#/$defs/ConfigData"
+    }
+  },
+  "examples": [
+    {
+      "$schema": "https://esri.github.io/arcgis-powershell-dsc/ConfigurationSchemas/v5.1.0.json",
+      "AllNodes": [
+        {
+          "NodeName": "gis01.contoso.com",
+          "Role": [
+            "Server",
+            "Portal",
+            "DataStore",
+            "WebAdaptor"
+          ],
+          "DataStoreTypes": [
+            "Relational",
+            "ObjectStore"
+          ],
+          "WebAdaptorConfig": [
+            {
+              "Role": "Portal"
+            },
+            {
+              "Role": "Server"
+            }
+          ]
+        }
+      ],
+      "ConfigData": {
+        "Version": "12.1",
+        "ServerContext": "server",
+        "PortalContext": "portal",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+          "ServiceAccount": {
+            "UserName": "CONTOSO\\arcgis-svc",
+            "PasswordFilePath": "C:\\Secrets\\arcgis-svc.txt",
+            "IsDomainAccount": true,
+            "IsMSAAccount": false
+          }
+        },
+        "Server": {
+          "LicenseFilePath": "C:\\Licenses\\server.ecp",
+          "Installer": {
+            "Path": "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe",
+            "InstallDir": "C:\\ArcGIS\\Server"
+          },
+          "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+          "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+          "PrimarySiteAdmin": {
+            "UserName": "siteadmin",
+            "PasswordEnvironmentVariableName": "ARCGIS_SERVER_PSA_PASSWORD"
+          }
+        },
+        "Portal": {
+          "LicenseFilePath": "C:\\Licenses\\portal.json",
+          "Installer": {
+            "Path": "C:\\Setups\\Portal_for_ArcGIS_Windows_121_180000.exe",
+            "InstallDir": "C:\\ArcGIS\\Portal",
+            "ContentDir": "C:\\arcgisportal"
+          },
+          "ContentDirectoryLocation": "C:\\arcgisportal\\content",
+          "PortalAdministrator": {
+            "UserName": "admin",
+            "Email": "admin@contoso.com",
+            "PasswordFilePath": "C:\\Secrets\\portal-admin.txt",
+            "SecurityQuestionIndex": 1,
+            "SecurityAnswer": "vanilla"
+          }
+        },
+        "DataStore": {
+          "Installer": {
+            "Path": "C:\\Setups\\ArcGIS_DataStore_Windows_121_180000.exe",
+            "InstallDir": "C:\\ArcGIS\\DataStore"
+          }
+        },
+        "WebAdaptor": {
+          "Installer": {
+            "Path": "C:\\Setups\\Web_Adaptor_for_Microsoft_IIS_121_180000.exe"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "TrimmedString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "String must not start or end with whitespace.",
+      "markdownDescription": "String must not start or end with whitespace.",
+      "examples": [
+        "value"
+      ]
+    },
+    "NonEmptyString": {
+      "$ref": "#/$defs/TrimmedString",
+      "description": "Non-empty string that must not start or end with whitespace.",
+      "examples": [
+        "value"
+      ]
+    },
+    "PathString": {
+      "$ref": "#/$defs/TrimmedString",
+      "description": "Filesystem path or UNC path consumed directly by the PowerShell module.",
+      "examples": [
+        "C:\\ArcGIS\\Server",
+        "\\\\fileserver\\arcgis\\content"
+      ]
+    },
+    "PortalLicenseFilePathString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S.*\\.[Jj][Ss][Oo][Nn]$",
+      "description": "Portal license file path. Portal licensing in module version 5.1.0 accepts only .json license files and does not support a license password.",
+      "examples": [
+        "C:\\Licenses\\portal.json"
+      ]
+    },
+    "ServerLicenseFilePathString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S.*\\.([Pp][Rr][Vv][Cc]|[Ee][Cc][Pp]|[Ee][Ss][Ll][Ff])$",
+      "description": "ArcGIS Server license file path. Server licensing in module version 5.1.0 accepts .prvc, .ecp, and .eslf license files.",
+      "examples": [
+        "C:\\Licenses\\server.ecp",
+        "C:\\Licenses\\server.prvc",
+        "C:\\Licenses\\server.eslf"
+      ]
+    },
+    "UrlString": {
+      "$ref": "#/$defs/TrimmedString",
+      "description": "URL string passed through to installers or ArcGIS configuration routines.",
+      "examples": [
+        "https://downloads.example.com/installer.exe",
+        "https://portal.contoso.com"
+      ]
+    },
+    "ContextString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "ArcGIS Web Adaptor or component context segment used in generated URLs.",
+      "examples": [
+        "server",
+        "portal",
+        "video"
+      ]
+    },
+    "PortalAdministratorUserName": {
+      "$ref": "#/$defs/TrimmedString",
+      "pattern": "^[A-Za-z0-9.]+$",
+      "description": "Portal administrator user name. Allowed characters are ASCII letters, digits, and a period (.).",
+      "examples": [
+        "admin",
+        "portal.admin01"
+      ]
+    },
+    "Thumbprint": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{40}$",
+      "description": "Certificate thumbprint used by DSC Local Configuration Manager for encrypted MOF handling.",
+      "examples": [
+        "0123456789ABCDEF0123456789ABCDEF01234567"
+      ]
+    },
+    "EnterpriseVersion": {
+      "$ref": "#/$defs/TrimmedString",
+      "enum": [
+        "10.9.1",
+        "11.0",
+        "11.1",
+        "11.2",
+        "11.3",
+        "11.4",
+        "11.5",
+        "12.0",
+        "12.1"
+      ],
+      "description": "ArcGIS Enterprise version consumed by deployment, install, and upgrade code paths.",
+      "examples": [
+        "12.1"
+      ]
+    },
+    "ProVersion": {
+      "$ref": "#/$defs/TrimmedString",
+      "enum": [
+        "3.2",
+        "3.3",
+        "3.4",
+        "3.5",
+        "3.6",
+        "3.7"
+      ],
+      "description": "ArcGIS Pro version accepted by the 5.1.0 module. The code rejects Pro versions below 3.2 and concurrent-use licensing above 3.6.",
+      "examples": [
+        "3.6"
+      ]
+    },
+    "LicenseManagerVersion": {
+      "$ref": "#/$defs/TrimmedString",
+      "enum": [
+        "2018.0",
+        "2018.1",
+        "2019.0",
+        "2019.1",
+        "2019.2",
+        "2020.0",
+        "2020.1",
+        "2021.0",
+        "2021.1",
+        "2022.0",
+        "2022.1",
+        "2023.0",
+        "2024.0",
+        "2024.1",
+        "2025.0",
+        "2025.0.1",
+        "2025.1",
+        "2025.1.1"
+      ],
+      "description": "ArcGIS License Manager version supported by module version 5.1.0.",
+      "examples": [
+        "2025.1"
+      ]
+    },
+    "RequirePasswordSource": {
+      "anyOf": [
+        {
+          "required": [
+            "Password"
+          ]
+        },
+        {
+          "required": [
+            "PasswordFilePath"
+          ]
+        },
+        {
+          "required": [
+            "PasswordEnvironmentVariableName"
+          ]
+        }
+      ],
+      "description": "Requires at least one password source: plaintext, file path, or environment variable name."
+    },
+    "RequireAccessKeySource": {
+      "anyOf": [
+        {
+          "required": [
+            "AccessKey"
+          ]
+        },
+        {
+          "required": [
+            "AccessKeyFilePath"
+          ]
+        }
+      ],
+      "description": "Requires an access key value or an access key file path."
+    },
+    "RequireSASTokenSource": {
+      "anyOf": [
+        {
+          "required": [
+            "SASToken"
+          ]
+        },
+        {
+          "required": [
+            "SASTokenFilePath"
+          ]
+        }
+      ],
+      "description": "Requires a SAS token value or a SAS token file path."
+    },
+    "RequireSecretAccessKeySource": {
+      "anyOf": [
+        {
+          "required": [
+            "SecretAccessKey"
+          ]
+        },
+        {
+          "required": [
+            "SecretAccessKeyFilePath"
+          ]
+        }
+      ],
+      "description": "Requires an AWS secret access key value or file path."
+    },
+    "PortNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "TCP or UDP port number.",
+      "examples": [
+        443,
+        6443
+      ]
+    },
+    "PortNumberOrString": {
+      "description": "Port value accepted by the module. Samples use strings in some federation blocks, while the resulting URLs are numeric ports.",
+      "examples": [
+        443,
+        "443"
+      ],
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PortNumber"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]{1,5}$",
+          "minLength": 1,
+          "maxLength": 5
+        }
+      ]
+    },
+    "LogLevel": {
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/TrimmedString"
+        }
+      ],
+      "enum": [
+        "OFF",
+        "SEVERE",
+        "WARNING",
+        "INFO",
+        "FINE",
+        "VERBOSE",
+        "DEBUG"
+      ],
+      "description": "ArcGIS component log level accepted by the DSC resources and configuration workflows.",
+      "examples": [
+        "WARNING",
+        "DEBUG"
+      ]
+    },
+    "Credential": {
+      "type": "object",
+      "$ref": "#/$defs/RequirePasswordSource",
+      "description": "User credential resolved by the module from plaintext, encrypted file, or environment variable input.",
+      "additionalProperties": false,
+      "required": [
+        "UserName"
+      ],
+      "properties": {
+        "UserName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "User name passed to New-Object PSCredential for the target operation.",
+          "examples": [
+            "CONTOSO\\arcgis-svc",
+            "admin"
+          ]
+        },
+        "Password": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Plaintext password. The module converts this to a secure string. File or environment sources are preferred for non-development use.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "PasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine-level environment variable that stores the password.",
+          "examples": [
+            "ARCGIS_SERVICE_PASSWORD"
+          ]
+        }
+      },
+      "examples": [
+        {
+          "UserName": "admin",
+          "PasswordFilePath": "C:\\Secrets\\admin.txt"
+        }
+      ]
+    },
+    "CredentialWithAccountType": {
+      "type": "object",
+      "description": "Credential object used for Windows service accounts and other identities that also carry domain-account metadata.",
+      "additionalProperties": false,
+      "required": [
+        "UserName"
+      ],
+      "properties": {
+        "UserName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Account name used as the service identity or operational credential.",
+          "examples": [
+            "CONTOSO\\arcgis-svc"
+          ]
+        },
+        "Password": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Plaintext password used when the account is not an MSA.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "PasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine environment variable containing the account password.",
+          "examples": [
+            "ARCGIS_SERVICE_PASSWORD"
+          ]
+        },
+        "IsDomainAccount": {
+          "type": "boolean",
+          "description": "Indicates that the service account is a domain account.",
+          "examples": [
+            true
+          ]
+        },
+        "IsMSAAccount": {
+          "type": "boolean",
+          "description": "Indicates that the service account is a managed service account. When true, password material is omitted.",
+          "examples": [
+            false
+          ]
+        },
+        "ForceUpdate": {
+          "type": "boolean",
+          "description": "Forces the module to update the configured service account password.",
+          "examples": [
+            false
+          ]
+        }
+      },
+      "examples": [
+        {
+          "UserName": "CONTOSO\\arcgis-svc",
+          "PasswordFilePath": "C:\\Secrets\\svc.txt",
+          "IsDomainAccount": true,
+          "IsMSAAccount": false,
+          "ForceUpdate": false
+        }
+      ]
+    },
+    "PortalAdministrator": {
+      "type": "object",
+      "$ref": "#/$defs/RequirePasswordSource",
+      "description": "Initial Portal for ArcGIS administrator created or used by the deployment.",
+      "additionalProperties": false,
+      "required": [
+        "UserName"
+      ],
+      "properties": {
+        "UserName": {
+          "$ref": "#/$defs/PortalAdministratorUserName"
+        },
+        "Email": {
+          "$ref": "#/$defs/TrimmedString",
+          "format": "email",
+          "description": "Email address assigned to the administrator account.",
+          "examples": [
+            "admin@contoso.com"
+          ]
+        },
+        "FullName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Display name assigned to the administrator account. When omitted, the module falls back to the administrator user name.",
+          "examples": [
+            "Portal Administrator"
+          ]
+        },
+        "Description": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Optional description assigned to the administrator account. When omitted, the module falls back to 'Portal Administrator'.",
+          "examples": [
+            "Primary Portal administrator account"
+          ]
+        },
+        "Password": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Administrator password in plaintext.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "PasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine-level environment variable that stores the administrator password.",
+          "examples": [
+            "ARCGIS_PORTAL_ADMIN_PASSWORD"
+          ]
+        },
+        "SecurityQuestionIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Security question index passed to Portal site creation.",
+          "examples": [
+            1
+          ]
+        },
+        "SecurityAnswer": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Answer for the selected security question.",
+          "examples": [
+            "vanilla"
+          ]
+        }
+      },
+      "examples": [
+        {
+          "UserName": "admin",
+          "Email": "admin@contoso.com",
+          "FullName": "Portal Administrator",
+          "Description": "Primary Portal administrator account",
+          "PasswordFilePath": "C:\\Secrets\\portal-admin.txt",
+          "SecurityQuestionIndex": 1,
+          "SecurityAnswer": "vanilla"
+        }
+      ]
+    },
+    "LicenseWithSecret": {
+      "type": "object",
+      "description": "License file plus optional password source. Used for Server, Portal, Pro, License Manager, GeoEvent, Workflow Manager Server, and Reality Server licensing.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Plaintext license password used when a product's license file is password-protected.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Machine-level environment variable containing a license password.",
+          "examples": [
+            "ARCGIS_LICENSE_PASSWORD"
+          ]
+        }
+      },
+      "examples": [
+        {
+          "LicenseFilePath": "C:\\Licenses\\server.ecp",
+          "LicensePasswordFilePath": "C:\\Secrets\\server-license.txt"
+        }
+      ]
+    },
+    "Installer": {
+      "type": "object",
+      "description": "Base installer metadata for an ArcGIS setup executable or extracted setup folder.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the provided installer path points to a self-extracting archive instead of an already extracted setup.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        }
+      },
+      "examples": [
+        {
+          "Path": "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe",
+          "IsSelfExtracting": true,
+          "InstallDir": "C:\\ArcGIS\\Server"
+        }
+      ]
+    },
+    "InstallerWithPatches": {
+      "type": "object",
+      "description": "Installer plus patch metadata used by ArcGIS_InstallPatch routines.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install. The module preserves the order provided here.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-S-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-S-PatchA.msp",
+              "ArcGIS-121-S-PatchB.msp"
+            ]
+          ]
+        }
+      },
+      "examples": [
+        {
+          "Path": "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe",
+          "InstallDir": "C:\\ArcGIS\\Server",
+          "PatchesDir": "C:\\Setups\\Patches\\Server"
+        }
+      ]
+    },
+    "InstallerWithVolumeAndPatches": {
+      "type": "object",
+      "description": "Installer metadata for multi-part self-extracting archives that may also have patches.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "VolumePaths": {
+          "type": "array",
+          "description": "Additional archive volumes used together with the main installer executable.",
+          "items": {
+            "$ref": "#/$defs/PathString"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe.001"
+            ]
+          ]
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-S-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-S-PatchA.msp"
+            ]
+          ]
+        }
+      },
+      "examples": [
+        {
+          "Path": "C:\\Setups\\Portal_for_ArcGIS_Windows_121_180000.exe",
+          "VolumePaths": [
+            "C:\\Setups\\Portal_for_ArcGIS_Windows_121_180000.exe.001"
+          ],
+          "InstallDir": "C:\\ArcGIS\\Portal"
+        }
+      ]
+    },
+    "NodeSslRootOrIntermediate": {
+      "type": "object",
+      "description": "Root or intermediate certificate to import alongside a node's leaf certificate.",
+      "additionalProperties": false,
+      "required": [
+        "Alias",
+        "Path"
+      ],
+      "properties": {
+        "Alias": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Alias used by ArcGIS certificate import routines.",
+          "examples": [
+            "contoso-root-ca"
+          ]
+        },
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        }
+      },
+      "examples": [
+        {
+          "Alias": "contoso-root-ca",
+          "Path": "C:\\Certs\\root.cer"
+        }
+      ]
+    },
+    "NodeSSLCertificate": {
+      "type": "object",
+      "description": "SSL certificate metadata for a node. The module filters these entries by target component when building DSC configuration data.",
+      "additionalProperties": false,
+      "required": [
+        "Path",
+        "Target"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "Password": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Plaintext certificate password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "PasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine environment variable containing the certificate password.",
+          "examples": [
+            "ARCGIS_CERT_PASSWORD"
+          ]
+        },
+        "CNameFQDN": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Certificate CN or SAN name that should be used as the component hostname.",
+          "examples": [
+            "portal.contoso.com"
+          ]
+        },
+        "Target": {
+          "type": "array",
+          "description": "Components on the node that should receive this certificate.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "enum": [
+              "Server",
+              "Portal",
+              "DataStore",
+              "WebAdaptor"
+            ],
+            "examples": [
+              "Portal"
+            ]
+          },
+          "examples": [
+            [
+              "WebAdaptor"
+            ]
+          ]
+        },
+        "SslRootOrIntermediate": {
+          "type": "array",
+          "description": "Optional root or intermediate CA certificates imported before the main certificate.",
+          "items": {
+            "$ref": "#/$defs/NodeSslRootOrIntermediate"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "Alias": "contoso-root-ca",
+                "Path": "C:\\Certs\\root.cer"
+              }
+            ]
+          ]
+        }
+      },
+      "examples": [
+        {
+          "Path": "C:\\Certs\\portal.pfx",
+          "PasswordFilePath": "C:\\Secrets\\portal-cert.txt",
+          "CNameFQDN": "portal.contoso.com",
+          "Target": [
+            "Portal",
+            "WebAdaptor"
+          ]
+        }
+      ]
+    },
+    "WebAdaptorNodeConfig": {
+      "type": "object",
+      "description": "Per-node Web Adaptor binding. The module reads Role and optional context, host name, site id, and admin-access override from this block.",
+      "additionalProperties": false,
+      "required": [
+        "Role"
+      ],
+      "properties": {
+        "Role": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "Portal",
+            "Server"
+          ],
+          "description": "ArcGIS component that this Web Adaptor instance fronts.",
+          "examples": [
+            "Portal"
+          ]
+        },
+        "Context": {
+          "$ref": "#/$defs/ContextString"
+        },
+        "HostName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional host name override for multi-context or multi-host Web Adaptor deployments.",
+          "examples": [
+            "gis.contoso.com"
+          ]
+        },
+        "AdminAccessEnabled": {
+          "type": "boolean",
+          "description": "Per-Web Adaptor override for administrative access. The module ignores this for Enterprise 11.5+ and for several specialized server roles.",
+          "examples": [
+            true
+          ]
+        },
+        "WebSiteId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "IIS site identifier hosting this Web Adaptor instance.",
+          "examples": [
+            1
+          ]
+        }
+      },
+      "examples": [
+        {
+          "Role": "Server",
+          "Context": "serveradmin",
+          "AdminAccessEnabled": true,
+          "WebSiteId": 1
+        }
+      ]
+    },
+    "Node": {
+      "type": "object",
+      "description": "One deployment node. The module expects a node name and role list, and optionally reads data store types, Web Adaptor bindings, SSL certificates, target-node encryption material, and per-node license overrides.",
+      "additionalProperties": false,
+      "required": [
+        "NodeName",
+        "Role"
+      ],
+      "properties": {
+        "NodeName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Machine name, host name, FQDN, or IP address of the target node.",
+          "examples": [
+            "gis01.contoso.com",
+            "10.0.0.10"
+          ]
+        },
+        "Role": {
+          "type": "array",
+          "description": "Deployment roles executed on the node, in the order listed.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "enum": [
+              "Server",
+              "Portal",
+              "DataStore",
+              "WebAdaptor",
+              "FileShare",
+              "RasterDataStoreItem",
+              "Pro",
+              "LicenseManager",
+              "SQLServerClient",
+              "WorkflowManagerServer",
+              "GeoEventServer",
+              "NotebookServer",
+              "MissionServer",
+              "VideoServer",
+              "CloudNative"
+            ],
+            "examples": [
+              "Server"
+            ]
+          },
+          "examples": [
+            [
+              "Server",
+              "WebAdaptor"
+            ]
+          ]
+        },
+        "DataStoreTypes": {
+          "type": "array",
+          "description": "ArcGIS Data Store types initialized on this node when the node has the DataStore role.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "enum": [
+              "Relational",
+              "SpatioTemporal",
+              "TileCache",
+              "GraphStore",
+              "ObjectStore"
+            ],
+            "examples": [
+              "Relational"
+            ]
+          },
+          "examples": [
+            [
+              "Relational",
+              "ObjectStore"
+            ]
+          ]
+        },
+        "WebAdaptorConfig": {
+          "type": "array",
+          "description": "Web Adaptor bindings hosted on this node.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/WebAdaptorNodeConfig"
+          },
+          "examples": [
+            [
+              {
+                "Role": "Portal"
+              },
+              {
+                "Role": "Server"
+              }
+            ]
+          ]
+        },
+        "TargetNodeEncryptionCertificateFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "TargetNodeEncryptionCertificateThumbprint": {
+          "$ref": "#/$defs/Thumbprint"
+        },
+        "SslCertificates": {
+          "type": "array",
+          "description": "Certificates installed on the node for ArcGIS components.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/NodeSSLCertificate"
+          },
+          "examples": [
+            [
+              {
+                "Path": "C:\\Certs\\webadaptor.pfx",
+                "PasswordFilePath": "C:\\Secrets\\webadaptor-cert.txt",
+                "CNameFQDN": "gis.contoso.com",
+                "Target": [
+                  "WebAdaptor"
+                ]
+              }
+            ]
+          ]
+        },
+        "PortalLicenseFilePath": {
+          "$ref": "#/$defs/PortalLicenseFilePathString"
+        },
+        "ServerLicenseFilePath": {
+          "$ref": "#/$defs/ServerLicenseFilePathString"
+        },
+        "ServerLicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Per-node Server license password override.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "ServerLicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ServerLicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable name for a per-node Server license password.",
+          "examples": [
+            "ARCGIS_SERVER_LICENSE_PASSWORD"
+          ]
+        },
+        "GeoeventServerLicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "GeoeventServerLicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Per-node GeoEvent Server license password override.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "GeoeventServerLicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "GeoeventServerLicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable name for a GeoEvent Server license password override.",
+          "examples": [
+            "ARCGIS_GEOEVENT_LICENSE_PASSWORD"
+          ]
+        },
+        "WorkflowManagerServerLicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "WorkflowManagerServerLicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Per-node Workflow Manager Server license password override.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "WorkflowManagerServerLicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "WorkflowManagerServerLicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable name for a Workflow Manager Server license password override.",
+          "examples": [
+            "ARCGIS_WM_LICENSE_PASSWORD"
+          ]
+        },
+        "RealityServerLicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "RealityServerLicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Per-node Reality Server license password override.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "RealityServerLicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "RealityServerLicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable name for a Reality Server license password override.",
+          "examples": [
+            "ARCGIS_REALITY_LICENSE_PASSWORD"
+          ]
+        },
+        "ProLicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ProLicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Per-node ArcGIS Pro license password override used for single-use licensing.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "ProLicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ProLicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable name for a per-node ArcGIS Pro license password.",
+          "examples": [
+            "ARCGIS_PRO_LICENSE_PASSWORD"
+          ]
+        }
+      },
+      "examples": [
+        {
+          "NodeName": "portal01.contoso.com",
+          "Role": [
+            "Portal",
+            "WebAdaptor"
+          ],
+          "WebAdaptorConfig": [
+            {
+              "Role": "Portal"
+            }
+          ],
+          "PortalLicenseFilePath": "C:\\Licenses\\portal.json",
+          "TargetNodeEncryptionCertificateFilePath": "C:\\Certs\\dsc-public.cer",
+          "TargetNodeEncryptionCertificateThumbprint": "0123456789ABCDEF0123456789ABCDEF01234567"
+        }
+      ]
+    },
+    "CloudStorageAccountRef": {
+      "type": "object",
+      "description": "Cloud storage reference used for ArcGIS Server configuration store, server directories, or Portal content storage.",
+      "additionalProperties": false,
+      "required": [
+        "CloudStorageType",
+        "CloudNamespace"
+      ],
+      "properties": {
+        "UserName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Storage account name, endpoint, or access key id depending on the selected cloud storage type.",
+          "examples": [
+            "mystorageaccount.blob.core.windows.net",
+            "AKIAIOSFODNN7EXAMPLE"
+          ]
+        },
+        "Password": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Cloud storage secret, SAS token, or AWS secret key.",
+          "examples": [
+            "sv=2024-01-01&sig=..."
+          ]
+        },
+        "PasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine-level environment variable that stores the cloud storage secret.",
+          "examples": [
+            "ARCGIS_STORAGE_SECRET"
+          ]
+        },
+        "CloudStorageType": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "AWSS3DynamoDB",
+            "AzureBlob",
+            "AzureFiles"
+          ],
+          "description": "Cloud storage backend used by the component.",
+          "examples": [
+            "AzureBlob"
+          ]
+        },
+        "AzureFileShareName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Azure Files share name used when CloudStorageType is AzureFiles.",
+          "examples": [
+            "arcgis"
+          ]
+        },
+        "CloudNamespace": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Unique namespace used to derive bucket, container, or folder names.",
+          "examples": [
+            "prod-eastus"
+          ]
+        },
+        "AWSRegion": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "AWS region required for AWSS3DynamoDB storage.",
+          "examples": [
+            "us-east-1"
+          ]
+        },
+        "AzureBlobAuthenticationType": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "AccessKey",
+            "ServicePrincipal",
+            "UserAssignedIdentity",
+            "SASToken"
+          ],
+          "description": "Azure Blob authentication mode.",
+          "examples": [
+            "AccessKey"
+          ]
+        },
+        "AzureBlobUserAssignedIdentityClientId": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Client id of the Azure user-assigned managed identity used for Azure Blob authentication.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "AzureBlobServicePrincipal": {
+          "$ref": "#/$defs/AzureBlobServicePrincipal"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "CloudStorageType": {
+                "const": "AWSS3DynamoDB"
+              }
+            },
+            "required": [
+              "CloudStorageType"
+            ]
+          },
+          "then": {
+            "required": [
+              "AWSRegion"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "AzureFileShareName"
+                  ]
+                },
+                {
+                  "required": [
+                    "AzureBlobAuthenticationType"
+                  ]
+                },
+                {
+                  "required": [
+                    "AzureBlobUserAssignedIdentityClientId"
+                  ]
+                },
+                {
+                  "required": [
+                    "AzureBlobServicePrincipal"
+                  ]
+                }
+              ]
+            },
+            "anyOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "UserName"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "Password"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "PasswordFilePath"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "PasswordEnvironmentVariableName"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "UserName"
+                ],
+                "$ref": "#/$defs/RequirePasswordSource"
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "CloudStorageType": {
+                "const": "AzureFiles"
+              }
+            },
+            "required": [
+              "CloudStorageType"
+            ]
+          },
+          "then": {
+            "required": [
+              "UserName",
+              "AzureFileShareName"
+            ],
+            "$ref": "#/$defs/RequirePasswordSource",
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "AWSRegion"
+                  ]
+                },
+                {
+                  "required": [
+                    "AzureBlobAuthenticationType"
+                  ]
+                },
+                {
+                  "required": [
+                    "AzureBlobUserAssignedIdentityClientId"
+                  ]
+                },
+                {
+                  "required": [
+                    "AzureBlobServicePrincipal"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "CloudStorageType": {
+                "const": "AzureBlob"
+              }
+            },
+            "required": [
+              "CloudStorageType"
+            ]
+          },
+          "then": {
+            "required": [
+              "UserName"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "AzureFileShareName"
+                  ]
+                },
+                {
+                  "required": [
+                    "AWSRegion"
+                  ]
+                }
+              ]
+            },
+            "allOf": [
+              {
+                "if": {
+                  "not": {
+                    "required": [
+                      "AzureBlobAuthenticationType"
+                    ]
+                  }
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "AzureBlobUserAssignedIdentityClientId"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "AzureBlobServicePrincipal"
+                        ]
+                      }
+                    ]
+                  },
+                  "$ref": "#/$defs/RequirePasswordSource"
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "AzureBlobAuthenticationType": {
+                      "const": "AccessKey"
+                    }
+                  },
+                  "required": [
+                    "AzureBlobAuthenticationType"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "AzureBlobUserAssignedIdentityClientId"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "AzureBlobServicePrincipal"
+                        ]
+                      }
+                    ]
+                  },
+                  "$ref": "#/$defs/RequirePasswordSource"
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "AzureBlobAuthenticationType": {
+                      "const": "SASToken"
+                    }
+                  },
+                  "required": [
+                    "AzureBlobAuthenticationType"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "AzureBlobUserAssignedIdentityClientId"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "AzureBlobServicePrincipal"
+                        ]
+                      }
+                    ]
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "Password"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "PasswordFilePath"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "PasswordEnvironmentVariableName"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "AzureBlobAuthenticationType": {
+                      "const": "ServicePrincipal"
+                    }
+                  },
+                  "required": [
+                    "AzureBlobAuthenticationType"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "AzureBlobUserAssignedIdentityClientId"
+                    ]
+                  },
+                  "required": [
+                    "AzureBlobServicePrincipal"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "AzureBlobAuthenticationType": {
+                      "const": "UserAssignedIdentity"
+                    }
+                  },
+                  "required": [
+                    "AzureBlobAuthenticationType"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "AzureBlobServicePrincipal"
+                    ]
+                  },
+                  "required": [
+                    "AzureBlobUserAssignedIdentityClientId"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "UserName": "mystorageaccount.blob.core.windows.net",
+          "PasswordEnvironmentVariableName": "ARCGIS_STORAGE_KEY",
+          "CloudStorageType": "AzureBlob",
+          "CloudNamespace": "prod-eastus",
+          "AzureBlobAuthenticationType": "AccessKey"
+        },
+        {
+          "UserName": "mystorageaccount.blob.core.windows.net",
+          "CloudStorageType": "AzureBlob",
+          "CloudNamespace": "prod-eastus",
+          "AzureBlobAuthenticationType": "ServicePrincipal",
+          "AzureBlobServicePrincipal": {
+            "TenantId": "11111111-2222-3333-4444-555555555555",
+            "ClientId": "66666666-7777-8888-9999-AAAAAAAAAAAA",
+            "ClientSecret": "changeit"
+          }
+        },
+        {
+          "UserName": "mystorageaccount.file.core.windows.net",
+          "PasswordFilePath": "C:\\Secrets\\storage-key.txt",
+          "CloudStorageType": "AzureFiles",
+          "AzureFileShareName": "arcgis",
+          "CloudNamespace": "prod-eastus"
+        }
+      ]
+    },
+    "ServerDirectoriesCloudStorageAccountRef": {
+      "description": "Cloud storage reference used for ArcGIS Server directories. The 5.1.0 server-directories path supports Azure Files only.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/CloudStorageAccountRef"
+        },
+        {
+          "properties": {
+            "CloudStorageType": {
+              "const": "AzureFiles"
+            }
+          },
+          "required": [
+            "CloudStorageType"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "UserName": "mystorageaccount.file.core.windows.net",
+          "PasswordFilePath": "C:\\Secrets\\storage-key.txt",
+          "CloudStorageType": "AzureFiles",
+          "AzureFileShareName": "arcgis",
+          "CloudNamespace": "prod-eastus"
+        }
+      ]
+    },
+    "PortalContentCloudStorageAccountRef": {
+      "description": "Cloud storage reference used specifically for Portal content storage.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/CloudStorageAccountRef"
+        }
+      ],
+      "examples": [
+        {
+          "CloudStorageType": "AWSS3DynamoDB",
+          "CloudNamespace": "arcgis-portal-content-prod",
+          "AWSRegion": "us-east-1"
+        },
+        {
+          "UserName": "AKIAIOSFODNN7EXAMPLE",
+          "PasswordFilePath": "C:\\Secrets\\aws-secret.txt",
+          "CloudStorageType": "AWSS3DynamoDB",
+          "CloudNamespace": "arcgis-portal-content-prod",
+          "AWSRegion": "us-east-1"
+        }
+      ]
+    },
+    "AzureBlobServicePrincipal": {
+      "type": "object",
+      "description": "Azure service principal used for blob-backed storage references.",
+      "additionalProperties": false,
+      "required": [
+        "TenantId",
+        "ClientId",
+        "ClientSecret"
+      ],
+      "properties": {
+        "TenantId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure AD tenant id.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "ClientId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Application id of the service principal.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "ClientSecret": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Client secret used for service principal authentication.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "ClientSecretFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "AuthorityHost": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional Azure authority host, for example Azure public cloud or a sovereign cloud endpoint.",
+          "examples": [
+            "https://login.microsoftonline.com"
+          ]
+        }
+      },
+      "examples": [
+        {
+          "TenantId": "11111111-2222-3333-4444-555555555555",
+          "ClientId": "66666666-7777-8888-9999-AAAAAAAAAAAA",
+          "ClientSecret": "changeit",
+          "AuthorityHost": "https://login.microsoftonline.com"
+        }
+      ]
+    },
+    "RegisteredDirectory": {
+      "type": "object",
+      "description": "Additional local directory registered with ArcGIS Server.",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "physicalPath",
+        "directoryType"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Registered directory name.",
+          "examples": [
+            "BasemapsCacheDir"
+          ]
+        },
+        "physicalPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "directoryType": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "CACHE",
+            "JOBS",
+            "OUTPUT"
+          ],
+          "description": "Registered directory type.",
+          "examples": [
+            "CACHE"
+          ]
+        }
+      },
+      "examples": [
+        {
+          "name": "BasemapsCacheDir",
+          "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
+          "directoryType": "CACHE"
+        }
+      ]
+    },
+    "ServerDirectory": {
+      "description": "Server directory entry. General-purpose ArcGIS Server uses physicalPath and directoryType, while Notebook, Mission, Video, and Data Pipelines sites use path and type.",
+      "examples": [
+        {
+          "name": "arcgisoutput",
+          "physicalPath": "C:\\arcgisserver\\directories\\arcgisoutput",
+          "directoryType": "OUTPUT",
+          "cleanupMode": "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+          "maxFileAge": 10
+        },
+        {
+          "name": "arcgisvideouploads",
+          "path": "C:\\arcgisvideoserver\\directories\\arcgisvideouploads",
+          "type": "UPLOADS"
+        }
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "physicalPath",
+            "directoryType"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "Server directory name.",
+              "examples": [
+                "arcgisjobs"
+              ]
+            },
+            "physicalPath": {
+              "$ref": "#/$defs/PathString"
+            },
+            "directoryType": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "CACHE",
+                "JOBS",
+                "OUTPUT",
+                "SYSTEM",
+                "UPLOADS"
+              ],
+              "description": "General-purpose ArcGIS Server directory type.",
+              "examples": [
+                "JOBS"
+              ]
+            },
+            "cleanupMode": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "NONE",
+                "TIME_ELAPSED_SINCE_LAST_MODIFIED",
+                "TIME_ELAPSED_SINCE_FIRST_MODIFIED",
+                "TIME_ELAPSED_SINCE_FIRST_ADDED"
+              ],
+              "description": "Server directory cleanup mode.",
+              "examples": [
+                "NONE"
+              ]
+            },
+            "maxFileAge": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Maximum file age in minutes used by cleanup modes that require an age threshold.",
+              "examples": [
+                360
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "path",
+            "type"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "Specialized server directory name.",
+              "examples": [
+                "arcgisworkspace"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/PathString"
+            },
+            "type": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "WORKSPACE",
+                "OUTPUT",
+                "SYSTEM",
+                "JOBS",
+                "UPLOADS",
+                "DATA"
+              ],
+              "description": "Directory type used by Notebook Server, Mission Server, Video Server, or Data Pipelines Server.",
+              "examples": [
+                "WORKSPACE"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "CloudStoreAzureServicePrincipal": {
+      "type": "object",
+      "description": "Azure service principal used when registering an ArcGIS Server cloud store item.",
+      "additionalProperties": false,
+      "required": [
+        "TenantId",
+        "ClientId",
+        "ClientSecret"
+      ],
+      "properties": {
+        "TenantId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure tenant id.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "ClientId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure application id.",
+          "examples": [
+            "66666666-7777-8888-9999-AAAAAAAAAAAA"
+          ]
+        },
+        "ClientSecret": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure client secret.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "ClientSecretFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "AuthorityHost": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional Azure authority host.",
+          "examples": [
+            "https://login.microsoftonline.com"
+          ]
+        }
+      }
+    },
+    "AzureCloudStoreAccount": {
+      "type": "object",
+      "description": "Azure-backed cloud store registration for ArcGIS Server data store items.",
+      "additionalProperties": false,
+      "properties": {
+        "AccountName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Azure storage account name.",
+          "examples": [
+            "mystorageaccount"
+          ]
+        },
+        "AccountEndpoint": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Azure storage account endpoint hostname.",
+          "examples": [
+            "mystorageaccount.blob.core.windows.net"
+          ]
+        },
+        "DefaultEndpointsProtocol": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Connection string protocol segment, typically https.",
+          "examples": [
+            "https"
+          ]
+        },
+        "OverrideEndpoint": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Optional override endpoint for private cloud or custom storage endpoints.",
+          "examples": [
+            "https://blob.custom.example"
+          ]
+        },
+        "ContainerName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Azure Blob container name.",
+          "examples": [
+            "arcgis"
+          ]
+        },
+        "FolderPath": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Optional folder prefix within the container.",
+          "examples": [
+            "imagery"
+          ]
+        },
+        "AuthenticationType": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "AccessKey",
+            "UserAssignedIdentity",
+            "SASToken",
+            "ServicePrincipal"
+          ],
+          "description": "Azure authentication mode used for the cloud store item.",
+          "examples": [
+            "AccessKey"
+          ]
+        },
+        "UserAssignedIdentityClientId": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Client id of the user-assigned identity.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "AccessKey": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Azure storage account access key.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "AccessKeyFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "SASToken": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "SAS token for Azure Blob access.",
+          "examples": [
+            "sv=2024-01-01&sig=..."
+          ]
+        },
+        "SASTokenFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ServicePrincipal": {
+          "$ref": "#/$defs/CloudStoreAzureServicePrincipal"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "AuthenticationType": {
+                "const": "AccessKey"
+              }
+            },
+            "required": [
+              "AuthenticationType"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/RequireAccessKeySource"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "AuthenticationType": {
+                "const": "SASToken"
+              }
+            },
+            "required": [
+              "AuthenticationType"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/RequireSASTokenSource"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "AuthenticationType": {
+                "const": "ServicePrincipal"
+              }
+            },
+            "required": [
+              "AuthenticationType"
+            ]
+          },
+          "then": {
+            "required": [
+              "ServicePrincipal"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "AuthenticationType": {
+                "const": "UserAssignedIdentity"
+              }
+            },
+            "required": [
+              "AuthenticationType"
+            ]
+          },
+          "then": {
+            "required": [
+              "UserAssignedIdentityClientId"
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "AccountName": "mystorageaccount",
+          "AccountEndpoint": "mystorageaccount.blob.core.windows.net",
+          "ContainerName": "arcgis",
+          "FolderPath": "imagery",
+          "AuthenticationType": "AccessKey",
+          "AccessKeyFilePath": "C:\\Secrets\\storage-key.txt"
+        }
+      ]
+    },
+    "AmazonS3CloudStoreAccount": {
+      "type": "object",
+      "description": "Amazon S3-backed cloud store registration for ArcGIS Server data store items.",
+      "additionalProperties": false,
+      "properties": {
+        "AuthenticationType": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "IAMRole",
+            "AccessKey"
+          ],
+          "description": "Amazon S3 authentication mode.",
+          "examples": [
+            "IAMRole"
+          ]
+        },
+        "BucketName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "S3 bucket name.",
+          "examples": [
+            "arcgis-object-store"
+          ]
+        },
+        "FolderPath": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Optional folder prefix inside the bucket.",
+          "examples": [
+            "imagery"
+          ]
+        },
+        "Region": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "AWS region name.",
+          "examples": [
+            "us-east-1"
+          ]
+        },
+        "RegionEndpointUrl": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Optional region endpoint URL.",
+          "examples": [
+            "https://s3.us-east-1.amazonaws.com"
+          ]
+        },
+        "AccessKeyId": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "AWS access key id used when AuthenticationType is AccessKey.",
+          "examples": [
+            "AKIAIOSFODNN7EXAMPLE"
+          ]
+        },
+        "SecretAccessKey": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "AWS secret access key used when AuthenticationType is AccessKey.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "SecretAccessKeyFilePath": {
+          "$ref": "#/$defs/PathString"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "AuthenticationType": {
+                "const": "AccessKey"
+              }
+            },
+            "required": [
+              "AuthenticationType"
+            ]
+          },
+          "then": {
+            "required": [
+              "AccessKeyId"
+            ],
+            "$ref": "#/$defs/RequireSecretAccessKeySource"
+          }
+        }
+      ],
+      "examples": [
+        {
+          "AuthenticationType": "AccessKey",
+          "BucketName": "arcgis-object-store",
+          "Region": "us-east-1",
+          "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
+          "SecretAccessKeyFilePath": "C:\\Secrets\\aws-secret.txt"
+        }
+      ]
+    },
+    "CloudStoreAccount": {
+      "type": "object",
+      "description": "Cloud store account details used by ArcGIS Server data store items.",
+      "additionalProperties": false,
+      "required": [
+        "Type"
+      ],
+      "properties": {
+        "Type": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "Azure",
+            "Amazon"
+          ],
+          "description": "Cloud provider for the data store item.",
+          "examples": [
+            "Azure"
+          ]
+        },
+        "AzureStorage": {
+          "$ref": "#/$defs/AzureCloudStoreAccount"
+        },
+        "AmazonS3": {
+          "$ref": "#/$defs/AmazonS3CloudStoreAccount"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "Type": {
+                "const": "Azure"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "AzureStorage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "Type": {
+                "const": "Amazon"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "AmazonS3"
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "Type": "Azure",
+          "AzureStorage": {
+            "AccountName": "mystorageaccount",
+            "ContainerName": "arcgis",
+            "AuthenticationType": "AccessKey",
+            "AccessKeyFilePath": "C:\\Secrets\\storage-key.txt"
+          }
+        }
+      ]
+    },
+    "ServerDataStoreItem": {
+      "type": "object",
+      "description": "ArcGIS Server registered data store item. The module either passes a direct DataStorePath or builds a cloud-store connection string from CloudStoreAccount.",
+      "additionalProperties": false,
+      "required": [
+        "Name",
+        "Type"
+      ],
+      "properties": {
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Item name registered with ArcGIS Server.",
+          "examples": [
+            "Test-ObjectStore"
+          ]
+        },
+        "Type": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "Folder",
+            "RasterStore",
+            "BigDataFileShare",
+            "CloudStore",
+            "ObjectStore",
+            "TileCache"
+          ],
+          "description": "ArcGIS Server data store item type.",
+          "examples": [
+            "ObjectStore"
+          ]
+        },
+        "DataStorePath": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Filesystem path, UNC path, or ArcGIS server-side resource path used when the item is not defined through CloudStoreAccount.",
+          "examples": [
+            "C:\\data\\shared",
+            "\\\\fileserver\\arcgis\\bigdata"
+          ]
+        },
+        "ForceUpdate": {
+          "type": "boolean",
+          "description": "Forces the module to update the registered data store item.",
+          "examples": [
+            false
+          ]
+        },
+        "CloudStoreAccount": {
+          "$ref": "#/$defs/CloudStoreAccount"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "DataStorePath"
+          ]
+        },
+        {
+          "required": [
+            "CloudStoreAccount"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "Name": "Test-ObjectStore",
+          "Type": "ObjectStore",
+          "ForceUpdate": false,
+          "CloudStoreAccount": {
+            "Type": "Azure",
+            "AzureStorage": {
+              "AccountName": "mystorageaccount",
+              "AccountEndpoint": "mystorageaccount.blob.core.windows.net",
+              "ContainerName": "arcgis-object-store",
+              "AuthenticationType": "AccessKey",
+              "AccessKeyFilePath": "C:\\Secrets\\storage-key.txt"
+            }
+          }
+        }
+      ]
+    },
+    "Database": {
+      "type": "object",
+      "description": "Enterprise geodatabase registration consumed by ArcGISRegisterSQLEGDB and related code paths.",
+      "additionalProperties": false,
+      "required": [
+        "DatabaseServerHostName",
+        "DatabaseName",
+        "DatabaseType"
+      ],
+      "properties": {
+        "DatabaseServerHostName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Database server host name or endpoint.",
+          "examples": [
+            "sql01.contoso.com"
+          ]
+        },
+        "DatabaseName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Target database name.",
+          "examples": [
+            "ArcGISGDB"
+          ]
+        },
+        "DatabaseType": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "SQLServerDatabase",
+            "AzureSQLDatabase",
+            "AzureMISQLDatabase",
+            "AzureFlexiblePostgreSQLDatabase",
+            "AWSRDSPostgreSQLDatabase",
+            "AWSAuroraPostgreSQLDatabase"
+          ],
+          "description": "Database platform used for geodatabase registration.",
+          "examples": [
+            "SQLServerDatabase"
+          ]
+        },
+        "IsManaged": {
+          "type": "boolean",
+          "description": "Whether the geodatabase is ArcGIS-managed.",
+          "examples": [
+            true
+          ]
+        },
+        "EnableGeodatabase": {
+          "type": "boolean",
+          "description": "Whether the module should enable the geodatabase during registration.",
+          "examples": [
+            true
+          ]
+        },
+        "DatabaseAdminUser": {
+          "$ref": "#/$defs/Credential"
+        },
+        "SDEUser": {
+          "$ref": "#/$defs/Credential"
+        },
+        "DatabaseUser": {
+          "$ref": "#/$defs/Credential"
+        }
+      },
+      "examples": [
+        {
+          "DatabaseServerHostName": "sql01.contoso.com",
+          "DatabaseName": "ArcGISGDB",
+          "DatabaseType": "SQLServerDatabase",
+          "IsManaged": true,
+          "EnableGeodatabase": true,
+          "DatabaseAdminUser": {
+            "UserName": "dbadmin",
+            "PasswordFilePath": "C:\\Secrets\\dbadmin.txt"
+          },
+          "SDEUser": {
+            "UserName": "sde",
+            "PasswordFilePath": "C:\\Secrets\\sde.txt"
+          }
+        }
+      ]
+    },
+    "InstallerOnlyExtension": {
+      "type": "object",
+      "description": "Extension that only needs an installer definition.",
+      "additionalProperties": false,
+      "required": [
+        "Installer"
+      ],
+      "properties": {
+        "Installer": {
+          "$ref": "#/$defs/Installer"
+        }
+      },
+      "examples": [
+        {
+          "Installer": {
+            "Path": "C:\\Setups\\ArcGISDataReviewer.exe"
+          }
+        }
+      ]
+    },
+    "FeatureExtension": {
+      "type": "object",
+      "description": "Extension that supports optional feature selection during install.",
+      "additionalProperties": false,
+      "required": [
+        "Installer"
+      ],
+      "properties": {
+        "Installer": {
+          "$ref": "#/$defs/Installer"
+        },
+        "Features": {
+          "type": "array",
+          "description": "Optional feature list passed to the installer. The module accepts a literal ALL entry or a list of feature names.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ALL"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ALL"
+            ]
+          ]
+        }
+      },
+      "examples": [
+        {
+          "Installer": {
+            "Path": "C:\\Setups\\WorkflowManagerClassic.exe"
+          },
+          "Features": [
+            "ALL"
+          ]
+        }
+      ]
+    },
+    "ServerExtensions": {
+      "type": "object",
+      "description": "Server extension installers enumerated by ArcGISInstall.ps1.",
+      "additionalProperties": false,
+      "properties": {
+        "DataInteroperability": {
+          "$ref": "#/$defs/InstallerOnlyExtension"
+        },
+        "DataReviewer": {
+          "$ref": "#/$defs/InstallerOnlyExtension"
+        },
+        "WorkflowManagerClassic": {
+          "$ref": "#/$defs/FeatureExtension"
+        },
+        "LocationReferencing": {
+          "$ref": "#/$defs/FeatureExtension"
+        },
+        "MappingChartingSolution": {
+          "$ref": "#/$defs/FeatureExtension"
+        },
+        "DeepLearningLibraries": {
+          "$ref": "#/$defs/InstallerOnlyExtension"
+        }
+      },
+      "examples": [
+        {
+          "DataInteroperability": {
+            "Installer": {
+              "Path": "C:\\Setups\\DataInteroperability.exe"
+            }
+          }
+        }
+      ]
+    },
+    "ProExtensions": {
+      "type": "object",
+      "description": "ArcGIS Pro extensions enumerated by ArcGISInstall.ps1.",
+      "additionalProperties": false,
+      "properties": {
+        "DataInteroperability": {
+          "$ref": "#/$defs/InstallerOnlyExtension"
+        },
+        "WorkflowManagerClassic": {
+          "$ref": "#/$defs/FeatureExtension"
+        },
+        "DeepLearningLibraries": {
+          "$ref": "#/$defs/InstallerOnlyExtension"
+        }
+      },
+      "examples": [
+        {
+          "DataInteroperability": {
+            "Installer": {
+              "Path": "C:\\Setups\\ArcGISProDataInteroperability.exe"
+            }
+          }
+        }
+      ]
+    },
+    "CloudServicesTag": {
+      "type": "object",
+      "description": "Open-ended key/value tag entry passed to cloud-native deployment logic.",
+      "additionalProperties": {
+        "type": "string",
+        "allOf": [
+          {
+            "$ref": "#/$defs/TrimmedString"
+          }
+        ]
+      },
+      "minProperties": 1,
+      "examples": [
+        {
+          "environment": "prod"
+        }
+      ]
+    },
+    "AzureServicePrincipalCredential": {
+      "type": "object",
+      "description": "Azure service principal credential block used by cloud-native server deployments.",
+      "additionalProperties": false,
+      "required": [
+        "TenantId",
+        "ClientId",
+        "ClientSecret"
+      ],
+      "properties": {
+        "TenantId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure tenant id.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "ClientId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure application id.",
+          "examples": [
+            "66666666-7777-8888-9999-AAAAAAAAAAAA"
+          ]
+        },
+        "ClientSecret": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure application secret.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "AuthorityHost": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional Azure authority host.",
+          "examples": [
+            "https://login.microsoftonline.com"
+          ]
+        }
+      }
+    },
+    "AzureCredential": {
+      "type": "object",
+      "description": "Azure credential block used for ArcGIS Server cloud-native deployments.",
+      "additionalProperties": false,
+      "required": [
+        "Type"
+      ],
+      "properties": {
+        "Type": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "ServicePrincipal",
+            "UserAssignedIdentity"
+          ],
+          "description": "Azure authentication mode.",
+          "examples": [
+            "ServicePrincipal"
+          ]
+        },
+        "UserAssignedManagedIdentityClientId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Client id for user-assigned managed identity authentication.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "ServicePrincipal": {
+          "$ref": "#/$defs/AzureServicePrincipalCredential"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "Type": {
+                "const": "ServicePrincipal"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ServicePrincipal"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "Type": {
+                "const": "UserAssignedIdentity"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "UserAssignedManagedIdentityClientId"
+            ]
+          }
+        }
+      ],
+      "examples": [
+        {
+          "Type": "ServicePrincipal",
+          "ServicePrincipal": {
+            "TenantId": "11111111-2222-3333-4444-555555555555",
+            "ClientId": "66666666-7777-8888-9999-AAAAAAAAAAAA",
+            "ClientSecret": "changeit"
+          }
+        }
+      ]
+    },
+    "AzureStorageAccountKey": {
+      "type": "object",
+      "description": "Azure storage account key reference used in cloud-native deployments.",
+      "additionalProperties": false,
+      "required": [
+        "AccountName",
+        "AccountKey"
+      ],
+      "properties": {
+        "AccountName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure storage account name.",
+          "examples": [
+            "mystorageaccount"
+          ]
+        },
+        "AccountKey": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure storage account key.",
+          "examples": [
+            "changeit"
+          ]
+        }
+      }
+    },
+    "AzureStorageAccount": {
+      "type": "object",
+      "description": "Azure Storage backing store for ArcGIS Server cloud-native configuration data.",
+      "additionalProperties": false,
+      "properties": {
+        "ContainerName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure Blob container name.",
+          "examples": [
+            "arcgis"
+          ]
+        },
+        "RootDir": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional root folder within the container.",
+          "examples": [
+            "server"
+          ]
+        },
+        "AccountEndpointURL": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure Storage account endpoint URL.",
+          "examples": [
+            "https://mystorageaccount.blob.core.windows.net"
+          ]
+        },
+        "RegionEndpointURL": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional regional endpoint URL.",
+          "examples": [
+            "https://eastus.blob.core.windows.net"
+          ]
+        },
+        "Credential": {
+          "type": "object",
+          "description": "Azure Storage credential wrapper.",
+          "additionalProperties": false,
+          "properties": {
+            "Type": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "StorageAccountKey"
+              ],
+              "description": "Credential type for Azure Storage.",
+              "examples": [
+                "StorageAccountKey"
+              ]
+            },
+            "StorageAccountKey": {
+              "$ref": "#/$defs/AzureStorageAccountKey"
+            }
+          },
+          "required": [
+            "Type",
+            "StorageAccountKey"
+          ],
+          "examples": [
+            {
+              "Type": "StorageAccountKey",
+              "StorageAccountKey": {
+                "AccountName": "mystorageaccount",
+                "AccountKey": "changeit"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "AzureCosmosDbAccountKey": {
+      "type": "object",
+      "description": "Azure Cosmos DB account key reference used in cloud-native deployments.",
+      "additionalProperties": false,
+      "required": [
+        "AccountName",
+        "AccountKey"
+      ],
+      "properties": {
+        "AccountName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Cosmos DB account name.",
+          "examples": [
+            "mycosmos"
+          ]
+        },
+        "AccountKey": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Cosmos DB account key.",
+          "examples": [
+            "changeit"
+          ]
+        }
+      }
+    },
+    "AzureCosmosDBAccount": {
+      "type": "object",
+      "description": "Azure Cosmos DB settings used by ArcGIS Server cloud-native deployments.",
+      "additionalProperties": false,
+      "properties": {
+        "AccountEndpointURL": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Cosmos DB endpoint URL.",
+          "examples": [
+            "https://mycosmos.documents.azure.com:443/"
+          ]
+        },
+        "RegionEndpointURL": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional regional endpoint URL.",
+          "examples": [
+            "https://mycosmos-eastus.documents.azure.com:443/"
+          ]
+        },
+        "SubscriptionId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure subscription id containing the Cosmos DB account.",
+          "examples": [
+            "11111111-2222-3333-4444-555555555555"
+          ]
+        },
+        "ResourceGroupName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Azure resource group containing the Cosmos DB account.",
+          "examples": [
+            "rg-arcgis"
+          ]
+        },
+        "DatabaseId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Cosmos DB database id.",
+          "examples": [
+            "arcgis"
+          ]
+        },
+        "ConnectionMode": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "Direct",
+            "Gateway"
+          ],
+          "description": "Cosmos DB connection mode.",
+          "examples": [
+            "Gateway"
+          ]
+        },
+        "Credential": {
+          "type": "object",
+          "description": "Cosmos DB credential wrapper.",
+          "additionalProperties": false,
+          "properties": {
+            "Type": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "CosmosDBAccountKey"
+              ],
+              "description": "Credential type for Cosmos DB.",
+              "examples": [
+                "CosmosDBAccountKey"
+              ]
+            },
+            "CosmosDBAccountKey": {
+              "$ref": "#/$defs/AzureCosmosDbAccountKey"
+            }
+          },
+          "required": [
+            "Type",
+            "CosmosDBAccountKey"
+          ],
+          "examples": [
+            {
+              "Type": "CosmosDBAccountKey",
+              "CosmosDBAccountKey": {
+                "AccountName": "mycosmos",
+                "AccountKey": "changeit"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "AzureServiceBusNamespaceAccessKey": {
+      "type": "object",
+      "description": "Service Bus shared access key reference used by cloud-native deployments.",
+      "additionalProperties": false,
+      "required": [
+        "SharedAccessKeyName",
+        "SharedAccessKey"
+      ],
+      "properties": {
+        "SharedAccessKeyName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Shared access policy name.",
+          "examples": [
+            "RootManageSharedAccessKey"
+          ]
+        },
+        "SharedAccessKey": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Shared access key value.",
+          "examples": [
+            "changeit"
+          ]
+        }
+      }
+    },
+    "AzureServiceBusNamespace": {
+      "type": "object",
+      "description": "Azure Service Bus namespace settings used by ArcGIS Server cloud-native deployments.",
+      "additionalProperties": false,
+      "properties": {
+        "ServiceBusEndpointUrl": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Service Bus endpoint URL.",
+          "examples": [
+            "https://mynamespace.servicebus.windows.net/"
+          ]
+        },
+        "RegionEndpointURL": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional regional endpoint URL.",
+          "examples": [
+            "https://eastus.servicebus.windows.net/"
+          ]
+        },
+        "Credential": {
+          "type": "object",
+          "description": "Service Bus credential wrapper.",
+          "additionalProperties": false,
+          "properties": {
+            "Type": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "ServiceBusNamespaceAccessKey"
+              ],
+              "description": "Credential type for Service Bus.",
+              "examples": [
+                "ServiceBusNamespaceAccessKey"
+              ]
+            },
+            "ServiceBusNamespaceAccessKey": {
+              "$ref": "#/$defs/AzureServiceBusNamespaceAccessKey"
+            }
+          },
+          "required": [
+            "Type",
+            "ServiceBusNamespaceAccessKey"
+          ],
+          "examples": [
+            {
+              "Type": "ServiceBusNamespaceAccessKey",
+              "ServiceBusNamespaceAccessKey": {
+                "SharedAccessKeyName": "RootManageSharedAccessKey",
+                "SharedAccessKey": "changeit"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "AWSAccessKeyCredential": {
+      "type": "object",
+      "description": "AWS access key credential used by ArcGIS Server cloud-native deployments.",
+      "additionalProperties": false,
+      "required": [
+        "AccessKeyId",
+        "SecretKey"
+      ],
+      "properties": {
+        "AccessKeyId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "AWS access key id.",
+          "examples": [
+            "AKIAIOSFODNN7EXAMPLE"
+          ]
+        },
+        "SecretKey": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "AWS secret key.",
+          "examples": [
+            "changeit"
+          ]
+        }
+      }
+    },
+    "AWSCloudServices": {
+      "type": "object",
+      "description": "AWS cloud-native service backing for ArcGIS Server.",
+      "additionalProperties": false,
+      "required": [
+        "Region",
+        "Credential",
+        "AmazonS3",
+        "AmazonDynamoDB",
+        "AmazonQueueService"
+      ],
+      "properties": {
+        "Region": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "AWS region used by the deployment.",
+          "examples": [
+            "us-east-1"
+          ]
+        },
+        "Credential": {
+          "type": "object",
+          "description": "AWS credential wrapper.",
+          "additionalProperties": false,
+          "properties": {
+            "Type": {
+              "type": "string",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "enum": [
+                "IAMRole",
+                "AccessKey"
+              ],
+              "description": "AWS authentication mode.",
+              "examples": [
+                "AccessKey"
+              ]
+            },
+            "AccessKey": {
+              "$ref": "#/$defs/AWSAccessKeyCredential"
+            }
+          },
+          "required": [
+            "Type"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "Type": {
+                    "const": "AccessKey"
+                  }
+                },
+                "required": [
+                  "Type"
+                ]
+              },
+              "then": {
+                "required": [
+                  "AccessKey"
+                ]
+              }
+            }
+          ],
+          "examples": [
+            {
+              "Type": "AccessKey",
+              "AccessKey": {
+                "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
+                "SecretKey": "changeit"
+              }
+            }
+          ]
+        },
+        "AmazonS3": {
+          "type": "object",
+          "description": "AWS S3 settings for cloud-native ArcGIS Server content.",
+          "additionalProperties": false,
+          "properties": {
+            "BucketName": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "S3 bucket name.",
+              "examples": [
+                "arcgis-config-store"
+              ]
+            },
+            "RegionEndpointURL": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "Optional S3 region endpoint URL.",
+              "examples": [
+                "https://s3.us-east-1.amazonaws.com"
+              ]
+            },
+            "RootDir": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "Optional root prefix in the bucket.",
+              "examples": [
+                "server"
+              ]
+            }
+          }
+        },
+        "AmazonDynamoDB": {
+          "type": "object",
+          "description": "AWS DynamoDB settings for ArcGIS Server cloud-native deployments.",
+          "additionalProperties": false,
+          "properties": {
+            "RegionEndpointURL": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "Optional DynamoDB region endpoint URL.",
+              "examples": [
+                "https://dynamodb.us-east-1.amazonaws.com"
+              ]
+            }
+          }
+        },
+        "AmazonQueueService": {
+          "type": "object",
+          "description": "AWS queue service settings for cloud-native ArcGIS Server deployments.",
+          "additionalProperties": false,
+          "properties": {
+            "RegionEndpointURL": {
+              "type": "string",
+              "minLength": 1,
+              "allOf": [
+                {
+                  "$ref": "#/$defs/TrimmedString"
+                }
+              ],
+              "description": "Optional SQS region endpoint URL.",
+              "examples": [
+                "https://sqs.us-east-1.amazonaws.com"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "AzureCloudServices": {
+      "type": "object",
+      "description": "Azure cloud-native service backing for ArcGIS Server.",
+      "additionalProperties": false,
+      "required": [
+        "StorageAccount",
+        "CosmosDBAccount",
+        "ServiceBusNamespace"
+      ],
+      "properties": {
+        "Credential": {
+          "$ref": "#/$defs/AzureCredential"
+        },
+        "StorageAccount": {
+          "$ref": "#/$defs/AzureStorageAccount"
+        },
+        "CosmosDBAccount": {
+          "$ref": "#/$defs/AzureCosmosDBAccount"
+        },
+        "ServiceBusNamespace": {
+          "$ref": "#/$defs/AzureServiceBusNamespace"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "Credential"
+            ],
+            "properties": {
+              "Credential": {
+                "type": "object",
+                "required": [
+                  "Type"
+                ],
+                "properties": {
+                  "Type": {
+                    "enum": [
+                      "ServicePrincipal",
+                      "UserAssignedIdentity"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "StorageAccount": {
+                "required": [
+                  "Credential"
+                ]
+              },
+              "CosmosDBAccount": {
+                "required": [
+                  "Credential"
+                ]
+              },
+              "ServiceBusNamespace": {
+                "required": [
+                  "Credential"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "examples": [
+        {
+          "Credential": {
+            "Type": "ServicePrincipal",
+            "ServicePrincipal": {
+              "TenantId": "11111111-2222-3333-4444-555555555555",
+              "ClientId": "66666666-7777-8888-9999-AAAAAAAAAAAA",
+              "ClientSecret": "changeit"
+            }
+          },
+          "StorageAccount": {
+            "ContainerName": "arcgis",
+            "AccountEndpointURL": "https://mystorageaccount.blob.core.windows.net"
+          },
+          "CosmosDBAccount": {
+            "AccountEndpointURL": "https://mycosmos.documents.azure.com:443/",
+            "DatabaseId": "arcgis"
+          },
+          "ServiceBusNamespace": {
+            "ServiceBusEndpointUrl": "https://mynamespace.servicebus.windows.net/"
+          }
+        }
+      ]
+    },
+    "CloudServices": {
+      "type": "object",
+      "description": "ArcGIS Server cloud-native deployment settings.",
+      "additionalProperties": false,
+      "required": [
+        "Provider",
+        "Namespace"
+      ],
+      "properties": {
+        "Provider": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "AWS",
+            "Azure"
+          ],
+          "description": "Cloud provider for the cloud-native deployment.",
+          "examples": [
+            "Azure"
+          ]
+        },
+        "Namespace": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Unique namespace used to derive cloud-native resource names.",
+          "examples": [
+            "prod-eastus"
+          ]
+        },
+        "Tags": {
+          "type": "array",
+          "description": "Optional tags forwarded into cloud-native provisioning logic.",
+          "items": {
+            "$ref": "#/$defs/CloudServicesTag"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "environment": "prod"
+              }
+            ]
+          ]
+        },
+        "Azure": {
+          "$ref": "#/$defs/AzureCloudServices"
+        },
+        "AWS": {
+          "$ref": "#/$defs/AWSCloudServices"
+        },
+        "LocalDirectory": {
+          "$ref": "#/$defs/PathString"
+        },
+        "localDirectory": {
+          "$ref": "#/$defs/PathString"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "Provider": {
+                "const": "Azure"
+              }
+            },
+            "required": [
+              "Provider"
+            ]
+          },
+          "then": {
+            "required": [
+              "Azure"
+            ],
+            "not": {
+              "required": [
+                "AWS"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "Provider": {
+                "const": "AWS"
+              }
+            },
+            "required": [
+              "Provider"
+            ]
+          },
+          "then": {
+            "required": [
+              "AWS"
+            ],
+            "not": {
+              "required": [
+                "Azure"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "LiveStreamPorts": {
+      "type": "object",
+      "description": "Video Server livestream port settings forwarded to ArcGIS Server admin APIs and firewall rules.",
+      "additionalProperties": false,
+      "required": [
+        "RTMPPort",
+        "RTSPTCPPort",
+        "RTSPUDPPortRangeMin",
+        "RTSPUDPPortRangeMax"
+      ],
+      "properties": {
+        "RTMPPort": {
+          "$ref": "#/$defs/PortNumber"
+        },
+        "RTSPTCPPort": {
+          "$ref": "#/$defs/PortNumber"
+        },
+        "RTSPUDPPortRangeMin": {
+          "$ref": "#/$defs/PortNumber"
+        },
+        "RTSPUDPPortRangeMax": {
+          "$ref": "#/$defs/PortNumber"
+        }
+      },
+      "examples": [
+        {
+          "RTMPPort": 1935,
+          "RTSPTCPPort": 554,
+          "RTSPUDPPortRangeMin": 50100,
+          "RTSPUDPPortRangeMax": 50200
+        }
+      ]
+    },
+    "ServerInstaller": {
+      "type": "object",
+      "description": "ArcGIS Server installer metadata. The same installer block is also used for specialized server roles.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "VolumePaths": {
+          "type": "array",
+          "description": "Additional archive volumes for the installer.",
+          "items": {
+            "$ref": "#/$defs/PathString"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe.001"
+            ]
+          ]
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "InstallDirPython": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DotnetDesktopRuntimePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DotnetDesktopRuntimeDownloadUrl": {
+          "$ref": "#/$defs/UrlString"
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-S-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-S-PatchA.msp"
+            ]
+          ]
+        },
+        "EnableArcMapRuntime": {
+          "type": "boolean",
+          "description": "Enables ArcMap runtime installation when supported by the target version.",
+          "examples": [
+            false
+          ]
+        },
+        "EnableDotnetSupport": {
+          "type": "boolean",
+          "description": "Enables .NET extension support.",
+          "examples": [
+            false
+          ]
+        }
+      },
+      "examples": [
+        {
+          "Path": "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe",
+          "InstallDir": "C:\\ArcGIS\\Server",
+          "InstallDirPython": "C:\\Python27",
+          "EnableDotnetSupport": false
+        }
+      ]
+    },
+    "ServerConfig": {
+      "type": "object",
+      "description": "ArcGIS Server configuration block. Depending on ServerRole, the same block is also used for Notebook Server, Mission Server, Video Server, Data Pipelines Server, Workflow Manager Server, and Reality Server sites.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/ServerLicenseFilePathString"
+        },
+        "LicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Server license password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable that stores the Server license password.",
+          "examples": [
+            "ARCGIS_SERVER_LICENSE_PASSWORD"
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/ServerInstaller"
+        },
+        "ConfigStoreLocation": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ServerDirectoriesRootLocation": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ServerLogsLocation": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LogLevel": {
+          "$ref": "#/$defs/LogLevel"
+        },
+        "LocalRepositoryPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ServerDirectories": {
+          "type": "array",
+          "description": "Server directories created during site configuration.",
+          "items": {
+            "$ref": "#/$defs/ServerDirectory"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "name": "arcgissystem",
+                "physicalPath": "C:\\arcgisserver\\directories\\arcgissystem",
+                "directoryType": "SYSTEM"
+              }
+            ]
+          ]
+        },
+        "RegisteredDirectories": {
+          "type": "array",
+          "description": "Additional directories registered with ArcGIS Server.",
+          "items": {
+            "$ref": "#/$defs/RegisteredDirectory"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "name": "BasemapsCacheDir",
+                "physicalPath": "C:\\arcgisserver\\additionaldirs\\cache",
+                "directoryType": "CACHE"
+              }
+            ]
+          ]
+        },
+        "PrimarySiteAdmin": {
+          "$ref": "#/$defs/Credential"
+        },
+        "EnableHTTPSOnly": {
+          "type": "boolean",
+          "description": "Enables HTTPS-only mode for ArcGIS Server.",
+          "examples": [
+            true
+          ]
+        },
+        "EnableHSTS": {
+          "type": "boolean",
+          "description": "Enables HTTP Strict Transport Security. The code path expects HTTPS-only mode when this is true.",
+          "examples": [
+            false
+          ]
+        },
+        "SharedKey": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "maxLength": 16,
+          "description": "Shared key used for Server and Web Adaptor communication. The module documentation notes that only the first 16 characters are used.",
+          "examples": [
+            "0123456789ABCDEF"
+          ]
+        },
+        "DisableServiceDirectory": {
+          "type": "boolean",
+          "description": "Disables the ArcGIS Server HTML services directory.",
+          "examples": [
+            false
+          ]
+        },
+        "Extensions": {
+          "$ref": "#/$defs/ServerExtensions"
+        },
+        "CloudServices": {
+          "$ref": "#/$defs/CloudServices"
+        },
+        "ConfigStoreCloudStorageAccount": {
+          "$ref": "#/$defs/CloudStorageAccountRef"
+        },
+        "ServerDirectoriesCloudStorageAccount": {
+          "$ref": "#/$defs/ServerDirectoriesCloudStorageAccountRef"
+        },
+        "DataStoreItems": {
+          "type": "array",
+          "description": "Data store items registered with ArcGIS Server.",
+          "items": {
+            "$ref": "#/$defs/ServerDataStoreItem"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "Name": "Test-ObjectStore",
+                "Type": "ObjectStore",
+                "CloudStoreAccount": {
+                  "Type": "Azure",
+                  "AzureStorage": {
+                    "AccountName": "mystorageaccount",
+                    "ContainerName": "arcgis",
+                    "AuthenticationType": "AccessKey",
+                    "AccessKeyFilePath": "C:\\Secrets\\storage-key.txt"
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "Databases": {
+          "type": "array",
+          "description": "Enterprise geodatabases to register with the site.",
+          "items": {
+            "$ref": "#/$defs/Database"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "DatabaseServerHostName": "sql01.contoso.com",
+                "DatabaseName": "ArcGISGDB",
+                "DatabaseType": "SQLServerDatabase"
+              }
+            ]
+          ]
+        },
+        "ExternalLoadBalancer": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "External load balancer host name used for service URLs and federation.",
+          "examples": [
+            "gis.contoso.com"
+          ]
+        },
+        "InternalLoadBalancer": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Internal load balancer host name used for administrative endpoints.",
+          "examples": [
+            "gis-ilb.contoso.local"
+          ]
+        },
+        "InternalLoadBalancerPort": {
+          "$ref": "#/$defs/PortNumber"
+        },
+        "ContainerImagePaths": {
+          "type": "array",
+          "description": "Notebook Server container images loaded during post-install steps.",
+          "items": {
+            "$ref": "#/$defs/PathString"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "C:\\Setups\\arcgis-notebook-runtime.tar.gz"
+            ]
+          ]
+        },
+        "LiveStreamGatewayHostName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Video Server livestream gateway host name.",
+          "examples": [
+            "livestream.contoso.com"
+          ]
+        },
+        "LiveStreamPorts": {
+          "$ref": "#/$defs/LiveStreamPorts"
+        }
+      },
+      "required": [
+        "Installer"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "CloudServices"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "ServerDirectoriesRootLocation"
+                  ]
+                },
+                {
+                  "required": [
+                    "ConfigStoreLocation"
+                  ]
+                },
+                {
+                  "required": [
+                    "ServerDirectories"
+                  ]
+                },
+                {
+                  "required": [
+                    "LocalRepositoryPath"
+                  ]
+                },
+                {
+                  "required": [
+                    "ConfigStoreCloudStorageAccount"
+                  ]
+                },
+                {
+                  "required": [
+                    "ServerDirectoriesCloudStorageAccount"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "examples": [
+        {
+          "LicenseFilePath": "C:\\Licenses\\server.ecp",
+          "Installer": {
+            "Path": "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe",
+            "InstallDir": "C:\\ArcGIS\\Server"
+          },
+          "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+          "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+          "PrimarySiteAdmin": {
+            "UserName": "siteadmin",
+            "PasswordFilePath": "C:\\Secrets\\psa.txt"
+          }
+        }
+      ]
+    },
+    "PortalInstaller": {
+      "type": "object",
+      "description": "Portal for ArcGIS installer metadata.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "VolumePaths": {
+          "type": "array",
+          "description": "Additional archive volumes for the Portal installer.",
+          "items": {
+            "$ref": "#/$defs/PathString"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "C:\\Setups\\Portal_for_ArcGIS_Windows_121_180000.exe.001"
+            ]
+          ]
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the Portal installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "WebStylesPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "WebStylesInstallerIsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the Web Styles installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ContentDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-PatchA.msp"
+            ]
+          ]
+        }
+      }
+    },
+    "EmailSettings": {
+      "type": "object",
+      "description": "Portal SMTP settings used by ArcGIS_PortalSettings.",
+      "additionalProperties": false,
+      "required": [
+        "SMTPServerAddress",
+        "From"
+      ],
+      "properties": {
+        "SMTPServerAddress": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "SMTP host or endpoint.",
+          "examples": [
+            "smtp.contoso.com"
+          ]
+        },
+        "From": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "format": "email",
+          "description": "Sender email address.",
+          "examples": [
+            "arcgis@contoso.com"
+          ]
+        },
+        "Label": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Display label used for outgoing email.",
+          "examples": [
+            "Contoso GIS"
+          ]
+        },
+        "AuthenticationRequired": {
+          "type": "boolean",
+          "description": "Indicates whether SMTP authentication is required.",
+          "examples": [
+            true
+          ]
+        },
+        "SMTPPort": {
+          "$ref": "#/$defs/PortNumber"
+        },
+        "UserName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "SMTP user name when authentication is required.",
+          "examples": [
+            "arcgis@contoso.com"
+          ]
+        },
+        "Password": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "SMTP password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "PasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Environment variable containing the SMTP password.",
+          "examples": [
+            "ARCGIS_SMTP_PASSWORD"
+          ]
+        },
+        "EncryptionMethod": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "NONE",
+            "SSL",
+            "TLS"
+          ],
+          "description": "SMTP encryption mode.",
+          "examples": [
+            "TLS"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "AuthenticationRequired"
+            ],
+            "properties": {
+              "AuthenticationRequired": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "UserName"
+            ],
+            "$ref": "#/$defs/RequirePasswordSource"
+          }
+        }
+      ]
+    },
+    "WebGISDR": {
+      "type": "object",
+      "description": "Portal WebGISDR import/export settings consumed when Invoke-ArcGISConfiguration runs in WebGISDRImport or WebGISDRExport mode.",
+      "additionalProperties": false,
+      "required": [
+        "PropertiesFilePath"
+      ],
+      "properties": {
+        "PropertiesFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "TimeoutInMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout used while running WebGISDR.",
+          "examples": [
+            3600
+          ]
+        },
+        "RunAsAccount": {
+          "$ref": "#/$defs/CredentialWithAccountType"
+        }
+      },
+      "examples": [
+        {
+          "PropertiesFilePath": "C:\\ArcGIS\\Portal\\tools\\webgisdr\\webgisdr.properties",
+          "TimeoutInMinutes": 3600,
+          "RunAsAccount": {
+            "UserName": "CONTOSO\\webgisdr",
+            "PasswordFilePath": "C:\\Secrets\\webgisdr.txt",
+            "IsMSAAccount": false
+          }
+        }
+      ]
+    },
+    "PortalConfig": {
+      "type": "object",
+      "description": "Portal for ArcGIS configuration block.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PortalLicenseFilePathString"
+        },
+        "PortalLicenseUserTypeId": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "User type id assigned to the primary site administrator when the site is created. The module forwards this string without schema-level enumeration.",
+          "examples": [
+            "creatorUT"
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/PortalInstaller"
+        },
+        "ContentDirectoryLocation": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LogLevel": {
+          "$ref": "#/$defs/LogLevel"
+        },
+        "DisableServiceDirectory": {
+          "type": "boolean",
+          "description": "Disables the Portal services directory.",
+          "examples": [
+            false
+          ]
+        },
+        "DisableAnonymousAccess": {
+          "type": "boolean",
+          "description": "Disables anonymous access to Portal.",
+          "examples": [
+            false
+          ]
+        },
+        "EnableHSTS": {
+          "type": "boolean",
+          "description": "Enables HSTS for Portal.",
+          "examples": [
+            false
+          ]
+        },
+        "EnableAutomaticAccountCreation": {
+          "type": "boolean",
+          "description": "Enables automatic account creation when integrated Windows authentication is configured.",
+          "examples": [
+            true
+          ]
+        },
+        "DefaultRoleForUser": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Default Portal role assigned to newly created users. Built-in examples include org_admin, org_publisher, org_user, and custom role ids.",
+          "examples": [
+            "org_user",
+            "account_publisher"
+          ]
+        },
+        "DefaultUserLicenseTypeIdForUser": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "fieldWorkerUT",
+            "GISProfessionalStdUT",
+            "GISProfessionalBasicUT",
+            "GISProfessionalAdvUT",
+            "creatorUT",
+            "editorUT",
+            "viewerUT"
+          ],
+          "description": "Default Portal user license type assigned to newly created users.",
+          "examples": [
+            "viewerUT"
+          ]
+        },
+        "ExternalLoadBalancer": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "External load balancer host name used for Portal web context and federation URLs.",
+          "examples": [
+            "portal.contoso.com"
+          ]
+        },
+        "InternalLoadBalancer": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Internal load balancer host name used for administrative access.",
+          "examples": [
+            "portal-ilb.contoso.local"
+          ]
+        },
+        "InternalLoadBalancerPort": {
+          "$ref": "#/$defs/PortNumber"
+        },
+        "PortalAdministrator": {
+          "$ref": "#/$defs/PortalAdministrator"
+        },
+        "EmailSettings": {
+          "$ref": "#/$defs/EmailSettings"
+        },
+        "PortalContentCloudStorageAccount": {
+          "$ref": "#/$defs/PortalContentCloudStorageAccountRef"
+        },
+        "WebGISDR": {
+          "$ref": "#/$defs/WebGISDR"
+        }
+      },
+      "required": [
+        "Installer"
+      ],
+      "examples": [
+        {
+          "LicenseFilePath": "C:\\Licenses\\portal.json",
+          "PortalLicenseUserTypeId": "creatorUT",
+          "Installer": {
+            "Path": "C:\\Setups\\Portal_for_ArcGIS_Windows_121_180000.exe",
+            "InstallDir": "C:\\ArcGIS\\Portal",
+            "ContentDir": "C:\\arcgisportal"
+          },
+          "ContentDirectoryLocation": "C:\\arcgisportal\\content",
+          "PortalAdministrator": {
+            "UserName": "admin",
+            "Email": "admin@contoso.com",
+            "PasswordFilePath": "C:\\Secrets\\portal-admin.txt",
+            "SecurityQuestionIndex": 1,
+            "SecurityAnswer": "vanilla"
+          }
+        }
+      ]
+    },
+    "DataStoreBackupCloudStorageAccount": {
+      "type": "object",
+      "description": "Cloud storage credential block used by ArcGIS Data Store backups.",
+      "additionalProperties": false,
+      "properties": {
+        "UserName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Cloud storage account name or access id.",
+          "examples": [
+            "AKIAIOSFODNN7EXAMPLE",
+            "mystorageaccount"
+          ]
+        },
+        "Password": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Cloud storage secret.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "PasswordFile": {
+          "$ref": "#/$defs/PathString"
+        },
+        "AWSS3Region": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "AWS region value used by some relational or object-store backup examples.",
+          "examples": [
+            "us-east-1"
+          ]
+        },
+        "AWSRegion": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "AWS region value used by spatiotemporal backup examples.",
+          "examples": [
+            "us-east-1"
+          ]
+        },
+        "ForceUpdate": {
+          "type": "boolean",
+          "description": "Forces the module to update the stored backup cloud credentials.",
+          "examples": [
+            false
+          ]
+        }
+      }
+    },
+    "DataStoreBackup": {
+      "type": "object",
+      "description": "Backup target definition for ArcGIS Data Store.",
+      "additionalProperties": false,
+      "required": [
+        "Name",
+        "Type",
+        "Location"
+      ],
+      "properties": {
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Backup location name.",
+          "examples": [
+            "primary-relational-backup"
+          ]
+        },
+        "Type": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "fs",
+            "s3",
+            "Azure"
+          ],
+          "description": "Backup store type.",
+          "examples": [
+            "fs"
+          ]
+        },
+        "Location": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Backup location path, bucket name, or container name depending on Type.",
+          "examples": [
+            "\\\\fileserver\\backups\\relational",
+            "arcgis-backups"
+          ]
+        },
+        "ForceBackupLocationUpdate": {
+          "type": "boolean",
+          "description": "Forces the module to update the existing backup location registration.",
+          "examples": [
+            false
+          ]
+        },
+        "IsDefault": {
+          "type": "boolean",
+          "description": "Marks the backup location as the default location for its data store type.",
+          "examples": [
+            true
+          ]
+        },
+        "CloudStorageAccount": {
+          "$ref": "#/$defs/DataStoreBackupCloudStorageAccount"
+        }
+      },
+      "examples": [
+        {
+          "Name": "primary-relational-backup",
+          "Type": "fs",
+          "Location": "\\\\fileserver\\backups\\relational",
+          "IsDefault": true
+        }
+      ]
+    },
+    "DataStoreBackups": {
+      "type": "object",
+      "description": "Per-store-type backup targets for ArcGIS Data Store.",
+      "additionalProperties": false,
+      "properties": {
+        "Relational": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataStoreBackup"
+          },
+          "minItems": 1,
+          "description": "Backup locations for the relational data store.",
+          "examples": [
+            [
+              {
+                "Name": "primary-relational-backup",
+                "Type": "fs",
+                "Location": "\\\\fileserver\\backups\\relational"
+              }
+            ]
+          ]
+        },
+        "SpatioTemporal": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataStoreBackup"
+          },
+          "minItems": 1,
+          "description": "Backup locations for the spatiotemporal data store.",
+          "examples": [
+            [
+              {
+                "Name": "bigdata-backup",
+                "Type": "s3",
+                "Location": "arcgis-bigdata-backups"
+              }
+            ]
+          ]
+        },
+        "TileCache": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataStoreBackup"
+          },
+          "minItems": 1,
+          "description": "Backup locations for the tile cache data store.",
+          "examples": [
+            [
+              {
+                "Name": "tilecache-backup",
+                "Type": "fs",
+                "Location": "\\\\fileserver\\backups\\tilecache"
+              }
+            ]
+          ]
+        },
+        "GraphStore": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataStoreBackup"
+          },
+          "minItems": 1,
+          "description": "Backup locations for the graph store.",
+          "examples": [
+            [
+              {
+                "Name": "graph-backup",
+                "Type": "Azure",
+                "Location": "graphbackups"
+              }
+            ]
+          ]
+        },
+        "ObjectStore": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataStoreBackup"
+          },
+          "minItems": 1,
+          "description": "Backup locations for the object store.",
+          "examples": [
+            [
+              {
+                "Name": "objectstore-backup",
+                "Type": "Azure",
+                "Location": "objectstorebackups"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "DataStoreInstaller": {
+      "type": "object",
+      "description": "ArcGIS Data Store installer metadata.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "VolumePaths": {
+          "type": "array",
+          "description": "Additional archive volumes for the installer.",
+          "items": {
+            "$ref": "#/$defs/PathString"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "C:\\Setups\\ArcGIS_DataStore_Windows_121_180000.exe.001"
+            ]
+          ]
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "InstallAllFeatures": {
+          "type": "boolean",
+          "description": "Installs all Data Store features instead of role-specific features.",
+          "examples": [
+            false
+          ]
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-DS-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-DS-PatchA.msp"
+            ]
+          ]
+        }
+      }
+    },
+    "DataStoreConfig": {
+      "type": "object",
+      "description": "ArcGIS Data Store configuration block.",
+      "additionalProperties": false,
+      "properties": {
+        "ContentDirectoryLocation": {
+          "$ref": "#/$defs/PathString"
+        },
+        "EnableFailoverOnPrimaryStop": {
+          "type": "boolean",
+          "description": "Controls the failover workflow used during upgrades and configuration for relational data stores.",
+          "examples": [
+            false
+          ]
+        },
+        "EnablePointInTimeRecovery": {
+          "type": "boolean",
+          "description": "Enables point-in-time recovery for relational data stores.",
+          "examples": [
+            false
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/DataStoreInstaller"
+        },
+        "Backups": {
+          "$ref": "#/$defs/DataStoreBackups"
+        }
+      },
+      "required": [
+        "Installer"
+      ]
+    },
+    "GeoEventServerConfig": {
+      "type": "object",
+      "description": "GeoEvent Server add-on configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePassword": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "GeoEvent license password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Environment variable containing the GeoEvent license password.",
+          "examples": [
+            "ARCGIS_GEOEVENT_LICENSE_PASSWORD"
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/InstallerWithPatches"
+        },
+        "EnableGeoeventSDK": {
+          "type": "boolean",
+          "description": "Installs the GeoEvent SDK feature set.",
+          "examples": [
+            false
+          ]
+        },
+        "UserBackupConfigFiles": {
+          "type": "boolean",
+          "description": "Required acknowledgement flag for GeoEvent upgrades on 11.x when user-managed configuration backup is needed.",
+          "examples": [
+            true
+          ]
+        }
+      }
+    },
+    "WorkflowManagerServerConfig": {
+      "type": "object",
+      "description": "Workflow Manager Server add-on configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePassword": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Workflow Manager Server license password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Environment variable containing the Workflow Manager Server license password.",
+          "examples": [
+            "ARCGIS_WM_LICENSE_PASSWORD"
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/Installer"
+        }
+      }
+    },
+    "RealityServerConfig": {
+      "type": "object",
+      "description": "Reality Server add-on configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePassword": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Reality Server license password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Environment variable containing the Reality Server license password.",
+          "examples": [
+            "ARCGIS_REALITY_LICENSE_PASSWORD"
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/InstallerWithPatches"
+        }
+      }
+    },
+    "GeoEnrichmentInstaller": {
+      "type": "object",
+      "description": "GeoEnrichment Server installer metadata.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DotnetDesktopRuntimePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "EnableSemanticSearch": {
+          "type": "boolean",
+          "description": "Installs the GeoEnrichment semantic-search feature set.",
+          "examples": [
+            false
+          ]
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-GE-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-GE-PatchA.msp"
+            ]
+          ]
+        }
+      }
+    },
+    "GeoEnrichmentServerConfig": {
+      "type": "object",
+      "description": "GeoEnrichment Server configuration applied after the core server site is configured.",
+      "additionalProperties": false,
+      "required": [
+        "Installer"
+      ],
+      "properties": {
+        "Installer": {
+          "$ref": "#/$defs/GeoEnrichmentInstaller"
+        },
+        "DataStoreDataDirectory": {
+          "$ref": "#/$defs/PathString"
+        },
+        "RegisterGeoEnrichmentAsPortalUtilityService": {
+          "type": "boolean",
+          "description": "Registers GeoEnrichment as a Portal utility service after installation.",
+          "examples": [
+            true
+          ]
+        },
+        "ForceRepair": {
+          "type": "boolean",
+          "description": "Runs GeoEnrichment in repair mode instead of create mode.",
+          "examples": [
+            false
+          ]
+        }
+      }
+    },
+    "SQLServerClientPackage": {
+      "type": "object",
+      "description": "SQL Server client package installed on nodes with the SQLServerClient role.",
+      "additionalProperties": false,
+      "required": [
+        "Name",
+        "InstallerPath",
+        "ProductId",
+        "Arguments"
+      ],
+      "properties": {
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Display name of the client package.",
+          "examples": [
+            "Microsoft ODBC Driver 17 for SQL Server"
+          ]
+        },
+        "InstallerPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ProductId": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Windows installer product id.",
+          "examples": [
+            "72AFAF21-33FB-45A5-9468-A9EC07427F82"
+          ]
+        },
+        "Arguments": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Silent install arguments passed to the package installer.",
+          "examples": [
+            " /quiet /qn IACCEPTMSODBCSQLLICENSETERMS=YES ADDLOCAL=ALL"
+          ]
+        }
+      }
+    },
+    "JavaTomcatConfig": {
+      "type": "object",
+      "description": "Apache Tomcat configuration used when deploying the Java Web Adaptor. The module requires Version, Path, InstallDir, ServiceName, and SSLProtocol, and validates Tomcat major version against the ArcGIS Enterprise version.",
+      "additionalProperties": false,
+      "required": [
+        "Version",
+        "Path",
+        "InstallDir",
+        "ServiceName",
+        "SSLProtocol"
+      ],
+      "properties": {
+        "OldVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+){1,3}$",
+          "description": "Previous Tomcat version used during upgrade scenarios.",
+          "examples": [
+            "9.0.82"
+          ]
+        },
+        "OldServiceName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Previous Windows service name used during Tomcat upgrade scenarios.",
+          "examples": [
+            "Tomcat9"
+          ]
+        },
+        "Version": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+){1,3}$",
+          "description": "Tomcat version string. The code only accepts Tomcat 9.x for Enterprise versions before 11.5, Tomcat 9.x or 10.x for 11.5, and Tomcat 10.x for 12.0 and later.",
+          "examples": [
+            "10.1.26"
+          ]
+        },
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DownloadUrl": {
+          "$ref": "#/$defs/UrlString"
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ServiceName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Windows service name for Tomcat.",
+          "examples": [
+            "Tomcat10"
+          ]
+        },
+        "SSLProtocol": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Comma-separated SSL/TLS protocol list written into Tomcat connector configuration.",
+          "examples": [
+            "TLSv1.3,TLSv1.2"
+          ]
+        }
+      }
+    },
+    "WebAdaptorInstaller": {
+      "type": "object",
+      "description": "Web Adaptor installer metadata for IIS and Java deployments.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DotnetHostingBundlePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DotnetHostingBundleDownloadUrl": {
+          "$ref": "#/$defs/UrlString"
+        },
+        "WebDeployPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "WebDeployDownloadUrl": {
+          "$ref": "#/$defs/UrlString"
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the Web Adaptor installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGIS-121-WA-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGIS-121-WA-PatchA.msp"
+            ]
+          ]
+        },
+        "ApacheTomcat": {
+          "$ref": "#/$defs/JavaTomcatConfig"
+        }
+      }
+    },
+    "WebAdaptorConfig": {
+      "type": "object",
+      "description": "Global Web Adaptor configuration block.",
+      "additionalProperties": false,
+      "properties": {
+        "AdminAccessEnabled": {
+          "type": "boolean",
+          "description": "Enables administrative access through the Web Adaptor. The module removes or ignores this value for Enterprise 11.5+ and some specialized server roles.",
+          "examples": [
+            true
+          ]
+        },
+        "OverrideHTTPSBinding": {
+          "type": "boolean",
+          "description": "Controls whether the DSC resource manages the IIS HTTPS binding for the Web Adaptor site.",
+          "examples": [
+            true
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/WebAdaptorInstaller"
+        },
+        "WebSiteId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Default IIS site id used for Web Adaptor deployment.",
+          "examples": [
+            1
+          ]
+        },
+        "IsJavaWebAdaptor": {
+          "type": "boolean",
+          "description": "Switches the deployment to the Java Web Adaptor path.",
+          "examples": [
+            false
+          ]
+        },
+        "JavaWebServerWebAppDirectory": {
+          "$ref": "#/$defs/PathString"
+        },
+        "JavaWebServerType": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "ApacheTomcat9",
+            "ApacheTomcat10",
+            "GlassFish",
+            "JBoss",
+            "WebSphere",
+            "WebLogic"
+          ],
+          "description": "Java application server hosting the Web Adaptor.",
+          "examples": [
+            "ApacheTomcat10"
+          ]
+        }
+      },
+      "required": [
+        "Installer"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "IsJavaWebAdaptor"
+            ],
+            "properties": {
+              "IsJavaWebAdaptor": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "JavaWebServerType",
+              "JavaWebServerWebAppDirectory"
+            ]
+          }
+        }
+      ]
+    },
+    "FederationConfig": {
+      "type": "object",
+      "description": "Portal federation settings used when the deployment federates a server site with Portal.",
+      "additionalProperties": false,
+      "required": [
+        "PortalHostName",
+        "PortalPort",
+        "PortalContext",
+        "PortalAdministrator"
+      ],
+      "properties": {
+        "PortalHostName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Portal host name or FQDN used during federation.",
+          "examples": [
+            "portal.contoso.com"
+          ]
+        },
+        "PortalPort": {
+          "$ref": "#/$defs/PortNumberOrString"
+        },
+        "PortalContext": {
+          "$ref": "#/$defs/ContextString"
+        },
+        "PortalAdministrator": {
+          "$ref": "#/$defs/Credential"
+        },
+        "ServerHostName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional federated server services host name override used for the public server URL.",
+          "examples": [
+            "gis.contoso.com"
+          ]
+        },
+        "ServerUrlPort": {
+          "$ref": "#/$defs/PortNumberOrString",
+          "description": "Optional federated server services port override used for the public server URL."
+        },
+        "ServerContext": {
+          "$ref": "#/$defs/ContextString",
+          "description": "Optional federated server services context override used for the public server URL."
+        },
+        "ServerAdminHostName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Optional federated server admin host name override used for the administrative server URL.",
+          "examples": [
+            "gis-admin.contoso.local"
+          ]
+        },
+        "ServerAdminUrlPort": {
+          "$ref": "#/$defs/PortNumberOrString",
+          "description": "Optional federated server admin port override used for the administrative server URL."
+        },
+        "ServerAdminContext": {
+          "$ref": "#/$defs/ContextString",
+          "description": "Optional federated server admin context override used for the administrative server URL."
+        },
+        "RestrictedPublishing": {
+          "type": "boolean",
+          "description": "Enables restricted publishing during federation.",
+          "examples": [
+            false
+          ]
+        }
+      },
+      "examples": [
+        {
+          "PortalHostName": "portal.contoso.com",
+          "PortalPort": 443,
+          "PortalContext": "portal",
+          "PortalAdministrator": {
+            "UserName": "admin",
+            "PasswordFilePath": "C:\\Secrets\\portal-admin.txt"
+          },
+          "ServerHostName": "gis.contoso.com",
+          "ServerUrlPort": 443,
+          "ServerContext": "server",
+          "ServerAdminHostName": "gis-admin.contoso.local",
+          "ServerAdminUrlPort": 6443,
+          "ServerAdminContext": "server",
+          "RestrictedPublishing": false
+        }
+      ]
+    },
+    "RasterStoreItemConfig": {
+      "type": "object",
+      "description": "Raster store helper block used by ArcGISRasterDataStoreItem workflows.",
+      "additionalProperties": false,
+      "properties": {
+        "FileShareName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Name of the file share created for raster data store content when the module manages the share.",
+          "examples": [
+            "arcgisraster"
+          ]
+        },
+        "FileShareLocalPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "ExternalFileSharePath": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "Existing external UNC share path used instead of a module-managed share.",
+          "examples": [
+            "\\\\fileserver\\rasterstore"
+          ]
+        }
+      }
+    },
+    "DataStoreItemsConfig": {
+      "type": "object",
+      "description": "Supplemental data store item configuration block currently used by RasterStore helper workflows.",
+      "additionalProperties": false,
+      "properties": {
+        "RasterStore": {
+          "$ref": "#/$defs/RasterStoreItemConfig"
+        }
+      }
+    },
+    "ProInstaller": {
+      "type": "object",
+      "description": "ArcGIS Pro installer metadata.",
+      "additionalProperties": false,
+      "required": [
+        "Path"
+      ],
+      "properties": {
+        "Path": {
+          "$ref": "#/$defs/PathString"
+        },
+        "DotnetDesktopRuntimeDownloadUrl": {
+          "$ref": "#/$defs/UrlString"
+        },
+        "DotnetDesktopRuntimePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "EdgeWebView2RuntimeDownloadUrl": {
+          "$ref": "#/$defs/UrlString"
+        },
+        "EdgeWebView2RuntimePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "IsSelfExtracting": {
+          "type": "boolean",
+          "description": "Indicates whether the Pro installer is self-extracting.",
+          "examples": [
+            true
+          ]
+        },
+        "InstallDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchesDir": {
+          "$ref": "#/$defs/PathString"
+        },
+        "PatchInstallOrder": {
+          "type": "array",
+          "description": "Ordered patch filenames to install.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "examples": [
+              "ArcGISPro-36-PatchA.msp"
+            ]
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              "ArcGISPro-36-PatchA.msp"
+            ]
+          ]
+        }
+      }
+    },
+    "ProConfig": {
+      "type": "object",
+      "description": "ArcGIS Pro configuration block.",
+      "additionalProperties": false,
+      "required": [
+        "AuthorizationType",
+        "Installer"
+      ],
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePassword": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "ArcGIS Pro single-use license password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Environment variable containing the ArcGIS Pro single-use license password.",
+          "examples": [
+            "ARCGIS_PRO_LICENSE_PASSWORD"
+          ]
+        },
+        "AuthorizationType": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "NAMED_USER",
+            "CONCURRENT_USE",
+            "SINGLE_USE"
+          ],
+          "description": "ArcGIS Pro licensing mode. The module rejects concurrent-use licensing for Pro versions above 3.6.",
+          "examples": [
+            "NAMED_USER"
+          ]
+        },
+        "PortalList": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Portal list string passed into the ArcGIS Pro installer. The default used by the module is https://arcgis.com when omitted.",
+          "examples": [
+            "https://arcgis.com"
+          ]
+        },
+        "EsriLicenseHost": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "License Manager host used for concurrent-use licensing.",
+          "examples": [
+            "licensesvr.contoso.com"
+          ]
+        },
+        "LockAuthSettings": {
+          "type": "boolean",
+          "description": "Locks ArcGIS Pro authorization settings. The module allows changes when omitted or false.",
+          "examples": [
+            true
+          ]
+        },
+        "BlockAddIns": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Add-in policy passed to the Pro installer. Valid values are 0 through 5.",
+          "examples": [
+            0
+          ]
+        },
+        "SoftwareClass": {
+          "$ref": "#/$defs/TrimmedString",
+          "enum": [
+            "Viewer",
+            "Editor",
+            "Professional"
+          ],
+          "description": "ArcGIS Pro software class. The install script accepts these values case-insensitively.",
+          "examples": [
+            "Professional"
+          ]
+        },
+        "EnableEUEI": {
+          "type": "boolean",
+          "description": "Enables Esri User Experience Improvement participation. The installer disables it when omitted or false.",
+          "examples": [
+            true
+          ]
+        },
+        "CheckForUpdatesAtStartup": {
+          "type": "boolean",
+          "description": "Enables ArcGIS Pro update checks at startup. The installer disables it when omitted or false.",
+          "examples": [
+            true
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/ProInstaller"
+        },
+        "Extensions": {
+          "$ref": "#/$defs/ProExtensions"
+        }
+      }
+    },
+    "LicenseManagerConfig": {
+      "type": "object",
+      "description": "ArcGIS License Manager configuration block.",
+      "additionalProperties": false,
+      "properties": {
+        "LicenseFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePassword": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "License Manager license password.",
+          "examples": [
+            "changeit"
+          ]
+        },
+        "LicensePasswordFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "LicensePasswordEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Environment variable containing the License Manager license password.",
+          "examples": [
+            "ARCGIS_LM_LICENSE_PASSWORD"
+          ]
+        },
+        "Installer": {
+          "$ref": "#/$defs/Installer"
+        }
+      },
+      "required": [
+        "Installer"
+      ]
+    },
+    "Credentials": {
+      "type": "object",
+      "description": "Shared credentials used across deployment operations.",
+      "additionalProperties": false,
+      "properties": {
+        "ServiceAccount": {
+          "$ref": "#/$defs/CredentialWithAccountType"
+        },
+        "AGOCredential": {
+          "$ref": "#/$defs/Credential"
+        },
+        "ADServiceUser": {
+          "$ref": "#/$defs/Credential"
+        }
+      }
+    },
+    "ConfigData": {
+      "type": "object",
+      "description": "Root deployment configuration data consumed by Invoke-ArcGISConfiguration.",
+      "additionalProperties": false,
+      "properties": {
+        "Version": {
+          "$ref": "#/$defs/EnterpriseVersion"
+        },
+        "ProVersion": {
+          "$ref": "#/$defs/ProVersion"
+        },
+        "LicenseManagerVersion": {
+          "$ref": "#/$defs/LicenseManagerVersion"
+        },
+        "OldVersion": {
+          "$ref": "#/$defs/EnterpriseVersion"
+        },
+        "DownloadSetups": {
+          "type": "boolean",
+          "description": "Downloads product installers from ArcGIS Online or configured sources before installation.",
+          "examples": [
+            true
+          ]
+        },
+        "DownloadSetupsToSharedPath": {
+          "type": "boolean",
+          "description": "Downloads installers to a shared path that target nodes can access.",
+          "examples": [
+            false
+          ]
+        },
+        "DownloadPatches": {
+          "type": "boolean",
+          "description": "Downloads patches when patch metadata is supplied.",
+          "examples": [
+            true
+          ]
+        },
+        "SkipPatchInstalls": {
+          "type": "boolean",
+          "description": "Skips patch installation even when installer patch metadata is present.",
+          "examples": [
+            false
+          ]
+        },
+        "ForceLicenseUpdate": {
+          "type": "boolean",
+          "description": "Forces license updates during the licensing phase.",
+          "examples": [
+            false
+          ]
+        },
+        "FileShareLocalPath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "FileShareName": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "description": "File share name used by helper workflows such as RasterStore provisioning.",
+          "examples": [
+            "arcgisraster"
+          ]
+        },
+        "ServerContext": {
+          "$ref": "#/$defs/ContextString"
+        },
+        "PortalContext": {
+          "$ref": "#/$defs/ContextString"
+        },
+        "ServerRole": {
+          "type": "string",
+          "allOf": [
+            {
+              "$ref": "#/$defs/TrimmedString"
+            }
+          ],
+          "enum": [
+            "GeneralPurposeServer",
+            "GeoEvent",
+            "ImageHosting",
+            "RasterAnalytics",
+            "NotebookServer",
+            "MissionServer",
+            "KnowledgeServer",
+            "WorkflowManagerServer",
+            "VideoServer",
+            "DataPipelinesServer",
+            "RealityServer"
+          ],
+          "description": "Primary specialized server role for the ArcGIS Server site.",
+          "examples": [
+            "GeneralPurposeServer",
+            "VideoServer"
+          ]
+        },
+        "AdditionalServerRoles": {
+          "type": "array",
+          "description": "Additional capabilities layered onto a general-purpose server site.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "allOf": [
+              {
+                "$ref": "#/$defs/TrimmedString"
+              }
+            ],
+            "enum": [
+              "GeoEvent",
+              "ImageHosting",
+              "RasterAnalytics",
+              "WorkflowManagerServer",
+              "GeoEnrichmentServer"
+            ],
+            "examples": [
+              "GeoEnrichmentServer"
+            ]
+          },
+          "examples": [
+            [
+              "GeoEnrichmentServer"
+            ]
+          ]
+        },
+        "Credentials": {
+          "$ref": "#/$defs/Credentials"
+        },
+        "Server": {
+          "$ref": "#/$defs/ServerConfig"
+        },
+        "GeoEventServer": {
+          "$ref": "#/$defs/GeoEventServerConfig"
+        },
+        "WorkflowManagerServer": {
+          "$ref": "#/$defs/WorkflowManagerServerConfig"
+        },
+        "RealityServer": {
+          "$ref": "#/$defs/RealityServerConfig"
+        },
+        "GeoEnrichmentServer": {
+          "$ref": "#/$defs/GeoEnrichmentServerConfig"
+        },
+        "SQLServerClient": {
+          "type": "array",
+          "description": "SQL Server client packages installed on nodes with the SQLServerClient role.",
+          "items": {
+            "$ref": "#/$defs/SQLServerClientPackage"
+          },
+          "minItems": 1,
+          "examples": [
+            [
+              {
+                "Name": "Microsoft ODBC Driver 17 for SQL Server",
+                "InstallerPath": "C:\\Setups\\msodbcsql_17.4.1.1_x64.msi",
+                "ProductId": "72AFAF21-33FB-45A5-9468-A9EC07427F82",
+                "Arguments": " /quiet /qn IACCEPTMSODBCSQLLICENSETERMS=YES ADDLOCAL=ALL"
+              }
+            ]
+          ]
+        },
+        "Portal": {
+          "$ref": "#/$defs/PortalConfig"
+        },
+        "DataStore": {
+          "$ref": "#/$defs/DataStoreConfig"
+        },
+        "WebAdaptor": {
+          "$ref": "#/$defs/WebAdaptorConfig"
+        },
+        "Federation": {
+          "$ref": "#/$defs/FederationConfig"
+        },
+        "DataStoreItems": {
+          "$ref": "#/$defs/DataStoreItemsConfig"
+        },
+        "Pro": {
+          "$ref": "#/$defs/ProConfig"
+        },
+        "LicenseManager": {
+          "$ref": "#/$defs/LicenseManagerConfig"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "Version"
+          ]
+        },
+        {
+          "required": [
+            "ProVersion"
+          ]
+        },
+        {
+          "required": [
+            "LicenseManagerVersion"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "Version": "12.1",
+          "ServerContext": "server",
+          "PortalContext": "portal",
+          "ServerRole": "GeneralPurposeServer"
+        },
+        {
+          "ProVersion": "3.6",
+          "Pro": {
+            "AuthorizationType": "NAMED_USER",
+            "Installer": {
+              "Path": "C:\\Setups\\ArcGISPro_36_000000.exe"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
