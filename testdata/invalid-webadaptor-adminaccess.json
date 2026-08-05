@@ -1,0 +1,16 @@
+{
+  "$schema": "../ConfigurationSchemas/v5.1.1.json",
+  "AllNodes": [
+    {
+      "NodeName": "wa01.contoso.com",
+      "Role": ["ServerWebAdaptor"]
+    }
+  ],
+  "ConfigData": {
+    "Version": "11.5",
+    "ServerRole": "GeneralPurposeServer",
+    "WebAdaptor": {
+      "AdminAccessEnabled": false
+    }
+  }
+}

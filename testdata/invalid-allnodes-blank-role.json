@@ -1,0 +1,17 @@
+{
+  "$schema": "../ConfigurationSchemas/v5.1.1.json",
+  "AllNodes": [
+    {
+      "NodeName": "blankrole.contoso.com",
+      "Role": [""]
+    },
+    {
+      "NodeName": "",
+      "Role": []
+    }
+  ],
+  "ConfigData": {
+    "Version": "11.5",
+    "ServerRole": "GeneralPurposeServer"
+  }
+}

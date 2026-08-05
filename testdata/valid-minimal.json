@@ -1,0 +1,13 @@
+{
+  "$schema": "../ConfigurationSchemas/v5.1.1.json",
+  "AllNodes": [
+    {
+      "NodeName": "server01.contoso.com",
+      "Role": ["Server"]
+    }
+  ],
+  "ConfigData": {
+    "Version": "11.5",
+    "ServerRole": "GeneralPurposeServer"
+  }
+}
