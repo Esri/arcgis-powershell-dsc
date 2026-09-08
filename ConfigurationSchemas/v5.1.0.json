@@ -566,6 +566,16 @@
           "examples": [
             "vanilla"
           ]
+        },
+        "SecurityAnswerFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "SecurityAnswerEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine-level environment variable that stores the administrator security answer.",
+          "examples": [
+            "ARCGIS_PORTAL_ADMIN_SECURITY_ANSWER"
+          ]
         }
       },
       "examples": [
@@ -656,60 +666,8 @@
       ]
     },
     "InstallerWithPatches": {
-      "type": "object",
-      "description": "Installer plus patch metadata used by ArcGIS_InstallPatch routines.",
-      "additionalProperties": false,
-      "required": [
-        "Path"
-      ],
-      "properties": {
-        "Path": {
-          "$ref": "#/$defs/PathString"
-        },
-        "IsSelfExtracting": {
-          "type": "boolean",
-          "description": "Indicates whether the installer is self-extracting.",
-          "examples": [
-            true
-          ]
-        },
-        "InstallDir": {
-          "$ref": "#/$defs/PathString"
-        },
-        "PatchesDir": {
-          "$ref": "#/$defs/PathString"
-        },
-        "PatchInstallOrder": {
-          "type": "array",
-          "description": "Ordered patch filenames to install. The module preserves the order provided here.",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "allOf": [
-              {
-                "$ref": "#/$defs/TrimmedString"
-              }
-            ],
-            "examples": [
-              "ArcGIS-121-S-PatchA.msp"
-            ]
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "ArcGIS-121-S-PatchA.msp",
-              "ArcGIS-121-S-PatchB.msp"
-            ]
-          ]
-        }
-      },
-      "examples": [
-        {
-          "Path": "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe",
-          "InstallDir": "C:\\ArcGIS\\Server",
-          "PatchesDir": "C:\\Setups\\Patches\\Server"
-        }
-      ]
+      "$ref": "#/$defs/InstallerWithVolumeAndPatches",
+      "description": "Backward-compatible alias for installer metadata with optional volume and patch inputs."
     },
     "InstallerWithVolumeAndPatches": {
       "type": "object",
@@ -3762,30 +3720,16 @@
       ],
       "properties": {
         "Path": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/Path"
         },
         "VolumePaths": {
-          "type": "array",
-          "description": "Additional archive volumes for the installer.",
-          "items": {
-            "$ref": "#/$defs/PathString"
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "C:\\Setups\\ArcGIS_Server_Windows_121_180000.exe.001"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/VolumePaths"
         },
         "IsSelfExtracting": {
-          "type": "boolean",
-          "description": "Indicates whether the installer is self-extracting.",
-          "examples": [
-            true
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/IsSelfExtracting"
         },
         "InstallDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/InstallDir"
         },
         "InstallDirPython": {
           "$ref": "#/$defs/PathString"
@@ -3797,29 +3741,10 @@
           "$ref": "#/$defs/UrlString"
         },
         "PatchesDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchesDir"
         },
         "PatchInstallOrder": {
-          "type": "array",
-          "description": "Ordered patch filenames to install.",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "allOf": [
-              {
-                "$ref": "#/$defs/TrimmedString"
-              }
-            ],
-            "examples": [
-              "ArcGIS-121-S-PatchA.msp"
-            ]
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "ArcGIS-121-S-PatchA.msp"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchInstallOrder"
         },
         "EnableArcMapRuntime": {
           "type": "boolean",
@@ -4158,27 +4083,13 @@
       ],
       "properties": {
         "Path": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/Path"
         },
         "VolumePaths": {
-          "type": "array",
-          "description": "Additional archive volumes for the Portal installer.",
-          "items": {
-            "$ref": "#/$defs/PathString"
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "C:\\Setups\\Portal_for_ArcGIS_Windows_121_180000.exe.001"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/VolumePaths"
         },
         "IsSelfExtracting": {
-          "type": "boolean",
-          "description": "Indicates whether the Portal installer is self-extracting.",
-          "examples": [
-            true
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/IsSelfExtracting"
         },
         "WebStylesPath": {
           "$ref": "#/$defs/PathString"
@@ -4191,35 +4102,16 @@
           ]
         },
         "InstallDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/InstallDir"
         },
         "ContentDir": {
           "$ref": "#/$defs/PathString"
         },
         "PatchesDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchesDir"
         },
         "PatchInstallOrder": {
-          "type": "array",
-          "description": "Ordered patch filenames to install.",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "allOf": [
-              {
-                "$ref": "#/$defs/TrimmedString"
-              }
-            ],
-            "examples": [
-              "ArcGIS-121-PatchA.msp"
-            ]
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "ArcGIS-121-PatchA.msp"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchInstallOrder"
         }
       }
     },
@@ -4783,30 +4675,16 @@
       ],
       "properties": {
         "Path": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/Path"
         },
         "VolumePaths": {
-          "type": "array",
-          "description": "Additional archive volumes for the installer.",
-          "items": {
-            "$ref": "#/$defs/PathString"
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "C:\\Setups\\ArcGIS_DataStore_Windows_121_180000.exe.001"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/VolumePaths"
         },
         "IsSelfExtracting": {
-          "type": "boolean",
-          "description": "Indicates whether the installer is self-extracting.",
-          "examples": [
-            true
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/IsSelfExtracting"
         },
         "InstallDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/InstallDir"
         },
         "InstallAllFeatures": {
           "type": "boolean",
@@ -4816,29 +4694,10 @@
           ]
         },
         "PatchesDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchesDir"
         },
         "PatchInstallOrder": {
-          "type": "array",
-          "description": "Ordered patch filenames to install.",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "allOf": [
-              {
-                "$ref": "#/$defs/TrimmedString"
-              }
-            ],
-            "examples": [
-              "ArcGIS-121-DS-PatchA.msp"
-            ]
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "ArcGIS-121-DS-PatchA.msp"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchInstallOrder"
         }
       }
     },
@@ -4913,7 +4772,7 @@
           ]
         },
         "Installer": {
-          "$ref": "#/$defs/InstallerWithPatches"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches"
         },
         "EnableGeoeventSDK": {
           "type": "boolean",
@@ -4987,7 +4846,7 @@
           ]
         },
         "Installer": {
-          "$ref": "#/$defs/InstallerWithPatches"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches"
         }
       }
     },
@@ -5000,20 +4859,22 @@
       ],
       "properties": {
         "Path": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/Path"
+        },
+        "VolumePaths": {
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/VolumePaths"
         },
         "IsSelfExtracting": {
-          "type": "boolean",
-          "description": "Indicates whether the installer is self-extracting.",
-          "examples": [
-            true
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/IsSelfExtracting"
         },
         "InstallDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/InstallDir"
         },
         "DotnetDesktopRuntimePath": {
           "$ref": "#/$defs/PathString"
+        },
+        "DotnetDesktopRuntimeDownloadUrl": {
+          "$ref": "#/$defs/UrlString"
         },
         "EnableSemanticSearch": {
           "type": "boolean",
@@ -5023,29 +4884,10 @@
           ]
         },
         "PatchesDir": {
-          "$ref": "#/$defs/PathString"
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchesDir"
         },
         "PatchInstallOrder": {
-          "type": "array",
-          "description": "Ordered patch filenames to install.",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "allOf": [
-              {
-                "$ref": "#/$defs/TrimmedString"
-              }
-            ],
-            "examples": [
-              "ArcGIS-121-GE-PatchA.msp"
-            ]
-          },
-          "minItems": 1,
-          "examples": [
-            [
-              "ArcGIS-121-GE-PatchA.msp"
-            ]
-          ]
+          "$ref": "#/$defs/InstallerWithVolumeAndPatches/properties/PatchInstallOrder"
         }
       }
     },
