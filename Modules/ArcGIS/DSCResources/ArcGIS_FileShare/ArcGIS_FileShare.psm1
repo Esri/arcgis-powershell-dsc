@@ -121,7 +121,10 @@ function Set-TargetResource
 		}
 				
 		$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
-		if(-not(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
+		if(-not(Test-FileShareAccess -FileShareName $FileShareName -UserName $UserName)){
+			Grant-SmbShareAccess -Name $FileShareName -AccountName $UserName -AccessRight Full -Force
+		}
+		if(-not(($FileShareLocalPath | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
 			$acl = Get-Acl $FileShareLocalPath
 			$permission = "$($UserName)","FullControl","ContainerInherit,ObjectInherit","None","Allow"
 			$accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
@@ -193,10 +196,10 @@ function Test-TargetResource
 	
 	$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
 	if($fs){
-		if(($fs | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl"){
+		if((Test-FileShareAccess -FileShareName $FileShareName -UserName $UserName) -and (($FileShareLocalPath | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
 			$result = $True
 		}else{
-            Write-Verbose "Correct Permissions are not granted."
+			Write-Verbose "Correct SMB share and NTFS permissions are not granted."
 		}
 	}else{
 		Write-Verbose "FileShare Not Found"
@@ -228,6 +231,31 @@ function Test-TargetResource
     elseif($Ensure -ieq 'Absent') {        
     	(-not($result))
     }
+}
+
+Function Test-FileShareAccess
+{
+	[CmdletBinding()]
+	[OutputType([System.Boolean])]
+	param
+	(
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$FileShareName,
+
+		[parameter(Mandatory = $true)]
+		[System.String]
+		$UserName
+	)
+
+	$shareAccess = Get-SmbShareAccess -Name $FileShareName -ErrorAction SilentlyContinue |
+		Where-Object {
+			$_.AccountName -ieq $UserName -and
+			$_.AccessControlType -eq 'Allow' -and
+			$_.AccessRight -eq 'Full'
+		}
+
+	return ($null -ne $shareAccess)
 }
 
 Function New-FileShareFolder

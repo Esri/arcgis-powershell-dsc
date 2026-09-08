@@ -566,6 +566,16 @@
           "examples": [
             "vanilla"
           ]
+        },
+        "SecurityAnswerFilePath": {
+          "$ref": "#/$defs/PathString"
+        },
+        "SecurityAnswerEnvironmentVariableName": {
+          "$ref": "#/$defs/TrimmedString",
+          "description": "Machine-level environment variable that stores the administrator security answer.",
+          "examples": [
+            "ARCGIS_PORTAL_ADMIN_SECURITY_ANSWER"
+          ]
         }
       },
       "examples": [

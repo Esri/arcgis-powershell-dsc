@@ -207,13 +207,13 @@ function Get-LicenseVersion{
     )
 
     [string]$RealVersion = @()
-    if(-not($Version)){
+    if(-not($Version) -or [string]::IsNullOrWhiteSpace($Version)){
         try{
             $ErrorActionPreference = "Stop"; #Make all errors terminating
-            $ComponentName = Get-ArcGISProductName -Name $Component -Version $Version
+            $ComponentName = Get-ArcGISProductName -Name $Component
             if($Component -ieq "Server"){
                 if(@("NotebookServer","MissionServer","VideoServer","DataPipelinesServer","GeoEnrichmentServer") -icontains $ServerRole){
-                    $ComponentName = Get-ArcGISProductName -Name $ServerRole -Version $Version
+                    $ComponentName = Get-ArcGISProductName -Name $ServerRole
                 }
             }
 
@@ -429,7 +429,7 @@ function Test-LicenseForRole{
         # All of the search texts should exist in the keygen
         $TextFound = $False
         foreach($KeyCodeLine in $KeyCodesFileContents){
-            if($null -ne ($searchtexts | Where-Object { $KeyCodeLine -imatch $_ })){
+            if($null -ne ($searchtexts | Where-Object { $KeyCodeLine -ilike "$($_),*" })){
                 Write-Verbose "License search keywords found."
                 $TextFound = $True
                 break

@@ -121,7 +121,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.1 -Name ArcGIS_xFirewall, ArcGIS_Portal, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_Portal_TLS, ArcGIS_HostNameSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_xFirewall, ArcGIS_Portal, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_Portal_TLS, ArcGIS_HostNameSettings
 
     if($CloudStorageType -ieq 'AzureFiles')
     {

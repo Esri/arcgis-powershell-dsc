@@ -15,19 +15,19 @@ Use the published schema URL:
 
 ```json
 {
-  "$schema": "https://esri.github.io/arcgis-powershell-dsc/ConfigurationSchemas/v5.1.1.json",
+  "$schema": "https://esri.github.io/arcgis-powershell-dsc/ConfigurationSchemas/v5.1.2.json",
   "AllNodes": [],
   "ConfigData": {}
 }
 ```
 
-If you are working locally in this repository and want to reference the checked-in file instead, you can also use a relative path from your config file to `ConfigurationSchemas/v5.1.1.json`.
+If you are working locally in this repository and want to reference the checked-in file instead, you can also use a relative path from your config file to `ConfigurationSchemas/v5.1.2.json`.
 
-Example for a file under `SampleConfigs/v5/v5.1.1/...`:
+Example for a file under `SampleConfigs/v5/v5.1.2/...`:
 
 ```json
 {
-  "$schema": "../../../ConfigurationSchemas/v5.1.1.json",
+  "$schema": "../../../ConfigurationSchemas/v5.1.2.json",
   "AllNodes": [],
   "ConfigData": {}
 }
@@ -61,6 +61,6 @@ Invoke-ArcGISConfiguration \
 ## Notes
 
 - The schema improves authoring experience, but it does not replace module runtime validation.
-- Some options are version-specific. The schema encodes supported values for v5.1.1, including Enterprise versions through `12.1`.
+- Some options are version-specific. The schema encodes supported values for v5.1.2, including Enterprise versions through `12.1`.
 - If your editor says a property is not allowed, verify both the property name and the location where it is defined.
-- For richer examples, use the v5.1.1 sample configs under `SampleConfigs/v5/v5.1.1/`.
+- For richer examples, use the v5.1.2 sample configs under `SampleConfigs/v5/v5.1.2/`.

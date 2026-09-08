@@ -158,7 +158,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.1 -Name ArcGIS_NonGISServer, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent, ArcGIS_HostNameSettings, ArcGIS_NotebookPostInstall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_NonGISServer, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent, ArcGIS_HostNameSettings, ArcGIS_NotebookPostInstall
     
     if($UsesAzureFilesForConfigStore){
         $ConfigStorePos = $ConfigStoreAzureFilesCredentials.UserName.IndexOf('.blob.')
@@ -394,11 +394,21 @@
             $ExtractSamples = ((@("10.9.1","11.0","11.1","11.2","11.3") -icontains $Version) -and $ExtractNotebookServerSamplesData -and -not($ServiceCredentialIsMSA))
 
             if($HasContainerImages -or $ExtractSamples){
-                ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                    SiteName            = 'arcgis' 
-                    ContainerImagePaths = if($HasContainerImages){$NotebookServerContainerImagePaths}else{$null}
-                    ExtractSamples      = $ExtractSamples
-                    DependsOn           = $DependsOn
+                if($ServiceCredentialIsMSA){
+                    ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
+                        SiteName            = 'arcgis' 
+                        ContainerImagePaths = if($HasContainerImages){$NotebookServerContainerImagePaths}else{$null}
+                        ExtractSamples      = $ExtractSamples
+                        DependsOn           = $DependsOn
+                    }
+                }else{
+                    ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
+                        SiteName            = 'arcgis' 
+                        ContainerImagePaths = if($HasContainerImages){$NotebookServerContainerImagePaths}else{$null}
+                        ExtractSamples      = $ExtractSamples
+                        DependsOn           = $DependsOn
+                        PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
+                    }
                 }
             }
         }

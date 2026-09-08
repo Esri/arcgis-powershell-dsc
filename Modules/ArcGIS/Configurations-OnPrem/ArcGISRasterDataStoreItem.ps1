@@ -29,10 +29,14 @@
         $FileShareName,
 
         [System.String]
-        $FileShareLocalPath
+        $FileShareLocalPath,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $ForceUpdate
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.1 -Name ArcGIS_FileShare, ArcGIS_DataStoreItemServer
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_FileShare, ArcGIS_DataStoreItemServer
 
     Node $AllNodes.NodeName
     {
@@ -69,7 +73,7 @@
             DataStoreType = "RasterStore"
             ConnectionString = (ConvertTo-Json $ConnectionStringObject -Compress -Depth 10)
             ConnectionSecret = $null
-            ForceUpdate = $True
+            ForceUpdate = $ForceUpdate
             Ensure = "Present"
             DependsOn = $Depends
         }

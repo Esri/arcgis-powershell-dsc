@@ -4,45 +4,13 @@
             "NodeName": "[Machine Name]",
             "Role": [
                 "Server",
-                "WebAdaptor"
-            ],
-            "WebAdaptorConfig":[
-                {
-                    "Role": "Server",
-                    "Context":"[Node Server Context]",
-                    "AdminAccessEnabled": true
-                }
-            ]
-        },
-        {
-            "NodeName": "[Machine Name]",
-            "Role": [
-                "WebAdaptor"
-            ],
-            "WebAdaptorConfig":[
-                {
-                    "Role": "Server",
-                    "Context":"[Node Server Context]",
-                    "AdminAccessEnabled": false
-                }
-            ]
-        },
-        {
-            "NodeName": "[Machine Name]",
-            "Role": [
-                "WebAdaptor"
-            ],
-            "WebAdaptorConfig":[
-                {
-                    "Role": "Server"
-                }
+                "RasterDataStoreItem"
             ]
         }
     ],
     "ConfigData": {
         "Version": "[Version of ArcGIS Deployment]",
-        "ServerRole": "GeneralPurposeServer",
-        "ServerContext": "[Global Server Context]",
+        "ServerRole": "RasterAnalytics",
         "Credentials": {
             "ServiceAccount": {
                 "Password": "[ServiceAccount Password]",
@@ -70,10 +38,11 @@
                 "Password": "[PrimarySiteAdmin Password]"
             }
         },
-        "WebAdaptor": {
-            "AdminAccessEnabled": true,
-            "Installer": {
-                "Path": "[WebAdaptor Installer Path]"
+        "DataStoreItems": {
+            "RasterStore": {
+                "FileShareLocalPath": "[File Share Local Path]",
+                "FileShareName": "[File Share Name]",
+                "ForceUpdate": "[Optional - True | False (Default) - If set to True, it will force the update of the existing Raster Data Store configuration.]"
             }
         },
         "Federation": {

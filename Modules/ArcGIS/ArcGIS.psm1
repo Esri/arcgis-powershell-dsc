@@ -2290,6 +2290,7 @@ function Invoke-ArcGISConfiguration
                         FileShareName = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){$null}else{$ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.FileShareName}
                         FileShareLocalPath = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){$null}else{$ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.FileShareLocalPath}
                         ExternalFileSharePath = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath){ $ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ExternalFileSharePath }else{ $null }
+                        ForceUpdate = if($ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ForceUpdate){ $ConfigurationParamsHashtable.ConfigData.DataStoreItems.RasterStore.ForceUpdate }else{ $False }
                     }
 
                     $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISRasterDataStoreItem" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ArcGISRasterDataStoreItemArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2394,7 +2395,7 @@ function Invoke-ArcGISConfiguration
                     }
                 
                     $GeoenrichmentServerCheck = $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoEnrichmentServer"    
-                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $GeoenrichmentServerCheck){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $GeoenrichmentServerCheck -and ($null -ne $RemoteSiteAdministrator)){
                         if(($ServerCD.AllNodes | Where-Object { $_.Role -icontains 'Server' } | Measure-Object).Count -gt 1){
                             throw "GeoEnrichment server only supports single machine server deployment"
                         }

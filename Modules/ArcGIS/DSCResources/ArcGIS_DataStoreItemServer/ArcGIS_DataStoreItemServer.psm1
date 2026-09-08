@@ -410,7 +410,7 @@ function Get-DataStoreItemConnectionObject {
 
 			$item.info.connectionString["region"] = $ConnStringObj.AmazonS3.Region
 
-			if ($ConnStringObj.OverrideEndpoint) {
+			if ($ConnStringObj.AmazonS3.RegionEndpointUrl) {
 				$item.info.connectionString["regionEndpointUrl"] = $ConnStringObj.AmazonS3.RegionEndpointUrl
 			}
 
