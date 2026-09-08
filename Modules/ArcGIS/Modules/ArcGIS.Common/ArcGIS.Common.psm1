@@ -186,48 +186,63 @@ function Invoke-UploadFile
     $footer = "--{0}--" -f $boundary
     $webRequest.ContentType = "multipart/form-data; boundary={0}" -f $boundary
 
-    [System.IO.Stream]$reqStream = $webRequest.GetRequestStream()   
-
     $enc = [System.Text.Encoding]::GetEncoding("UTF-8")
     $headerPlusNewLine = $header + [System.Environment]::NewLine
     [byte[]]$headerBytes = $enc.GetBytes($headerPlusNewLine)
 
-    
-    #### Use StreamWriter to write form parameters ####
-    [System.IO.StreamWriter]$streamWriter = New-Object 'System.IO.StreamWriter' -ArgumentList $reqStream
-    foreach($formParam in $formParams.GetEnumerator()) {
-        [void]$streamWriter.WriteLine($header)
-        [void]$streamWriter.WriteLine(("Content-Disposition: form-data; name=""{0}""" -f $formParam.Name))
+    [System.IO.Stream]$reqStream = $null
+    [System.IO.StreamWriter]$streamWriter = $null
+    try {
+        $reqStream = $webRequest.GetRequestStream()
+
+        #### Use StreamWriter to write form parameters ####
+        $streamWriter = New-Object 'System.IO.StreamWriter' -ArgumentList $reqStream
+        foreach($formParam in $formParams.GetEnumerator()) {
+            [void]$streamWriter.WriteLine($header)
+            [void]$streamWriter.WriteLine(("Content-Disposition: form-data; name=""{0}""" -f $formParam.Name))
+            [void]$streamWriter.WriteLine("")
+            [void]$streamWriter.WriteLine($formParam.Value)
+        }
+        $streamWriter.Flush()
+
+        [void]$reqStream.Write($headerBytes,0, $headerBytes.Length)
+
+        #### File Header ####
+        $fileHeader = "Content-Disposition: form-data; name=""{0}""; filename=""{1}""" -f $fileParameterName, $fileName
+        $fileHeader = $fileHeader + [System.Environment]::NewLine
+        [byte[]]$fileHeaderBytes = $enc.GetBytes($fileHeader)
+        [void]$reqStream.Write($fileHeaderBytes,0, $fileHeaderBytes.Length)
+
+        #### File Content Type ####
+        [string]$fileContentTypeStr = "Content-Type: {0}" -f $fileContentType
+        $fileContentTypeStr = $fileContentTypeStr + [System.Environment]::NewLine + [System.Environment]::NewLine
+        [byte[]]$fileContentTypeBytes = $enc.GetBytes($fileContentTypeStr)
+        [void]$reqStream.Write($fileContentTypeBytes,0, $fileContentTypeBytes.Length)
+
+        #### File #####
+        [System.IO.FileStream]$fileStream = $null
+        try {
+            $fileStream = New-Object 'System.IO.FileStream' -ArgumentList @($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+            $fileStream.CopyTo($reqStream)
+        }
+        finally {
+            if($null -ne $fileStream) {
+                $fileStream.Dispose()
+            }
+        }
+
         [void]$streamWriter.WriteLine("")
-        [void]$streamWriter.WriteLine($formParam.Value)
+        [void]$streamWriter.WriteLine($footer)
+        $streamWriter.Flush()
     }
-    $streamWriter.Flush()     
-
-    [void]$reqStream.Write($headerBytes,0, $headerBytes.Length)
-
-    [System.IO.FileInfo]$fileInfo = New-Object "System.IO.FileInfo" -ArgumentList $filePath   
-
-    #### File Header ####
-    $fileHeader = "Content-Disposition: form-data; name=""{0}""; filename=""{1}""" -f $fileParameterName, $fileName
-    $fileHeader = $fileHeader + [System.Environment]::NewLine    
-    [byte[]]$fileHeaderBytes = $enc.GetBytes($fileHeader)
-    [void]$reqStream.Write($fileHeaderBytes,0, $fileHeaderBytes.Length)
-    
-    #### File Content Type ####
-    [string]$fileContentTypeStr = "Content-Type: {0}" -f $fileContentType
-    $fileContentTypeStr = $fileContentTypeStr + [System.Environment]::NewLine + [System.Environment]::NewLine
-    [byte[]]$fileContentTypeBytes = $enc.GetBytes($fileContentTypeStr)
-    [void]$reqStream.Write($fileContentTypeBytes,0, $fileContentTypeBytes.Length)    
-    
-    #### File #####
-    [System.IO.FileStream]$fileStream = New-Object 'System.IO.FileStream' -ArgumentList @($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
-    $fileStream.CopyTo($reqStream)
-    $fileStream.Flush()
-    $fileStream.Close()
-
-    [void]$streamWriter.WriteLine("")        
-    [void]$streamWriter.WriteLine($footer)
-    $streamWriter.Flush()
+    finally {
+        if($null -ne $streamWriter) {
+            $streamWriter.Dispose()
+        }
+        elseif($null -ne $reqStream) {
+            $reqStream.Dispose()
+        }
+    }
     
     $resp = $null
     $rs = $null
@@ -769,10 +784,22 @@ function Get-ArcGISProductName
 		[System.String]
 		$Name,
 
-		[parameter(Mandatory = $true)]
+		[parameter(Mandatory = $false)]
 		[System.String]
 		$Version
     )
+
+    $VersionedProductNames = @(
+        'Web Styles',
+        'WebStyles',
+        'ServerDataInteroperability',
+        'ServerDataReviewer',
+        'ServerWorkflowManagerClassic',
+        'ServerMappingChartingSolution'
+    )
+    if($VersionedProductNames -icontains $Name -and [string]::IsNullOrWhiteSpace($Version)){
+        throw "A Version is required to resolve the product name '$Name'."
+    }
 
     $ProductName = $Name
     if($Name -ieq 'Portal' -or $Name -ieq 'Portal for ArcGIS'){

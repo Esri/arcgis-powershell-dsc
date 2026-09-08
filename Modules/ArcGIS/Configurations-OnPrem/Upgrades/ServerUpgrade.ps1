@@ -107,7 +107,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.1 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_ServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account, ArcGIS_HostNameSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_Install, ArcGIS_License, ArcGIS_ServerUpgrade, ArcGIS_NotebookPostInstall, ArcGIS_ServerUpgrade, ArcGIS_xFirewall, ArcGIS_InstallPatch, ArcGIS_Service_Account, ArcGIS_HostNameSettings
     
     Node $AllNodes.NodeName {
         if($Node.Thumbprint){
@@ -329,21 +329,23 @@
         $Depends += "[ArcGIS_ServerUpgrade]$($ServerRole)ConfigureUpgrade"
     
         if($Node.ServerRole -ieq "NotebookServer"){
-            if(($ContainerImagePaths.Count -gt 0) -and $NotebookServerSamplesDataPath){
-                $Depends += "[ArcGIS_ServerUpgrade]$($Node.ServerRole)ConfigureUpgrade"
+            $HasContainerImages = ($ContainerImagePaths.Count -gt 0)
+            $ExtractSamples = ((@("10.9.1","11.0","11.1","11.2","11.3") -icontains $Version) -and $NotebookServerSamplesDataPath -and -not($IsServiceAccountMSA))
 
+            if($HasContainerImages -or $ExtractSamples){
+                $Depends += "[ArcGIS_ServerUpgrade]$($Node.ServerRole)ConfigureUpgrade"
                 if($IsServiceAccountMSA){
                     ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                        SiteName            = "arcgis"
-                        ContainerImagePaths = $ContainerImagePaths
-                        ExtractSamples      = $false
+                        SiteName            = 'arcgis' 
+                        ContainerImagePaths = if($HasContainerImages){$ContainerImagePaths}else{$null}
+                        ExtractSamples      = $ExtractSamples
                         DependsOn           = $Depends
                     }
                 }else{
                     ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
                         SiteName            = 'arcgis' 
-                        ContainerImagePaths = $ContainerImagePaths
-                        ExtractSamples      = ($NotebookServerSamplesDataPath)
+                        ContainerImagePaths = if($HasContainerImages){$ContainerImagePaths}else{$null}
+                        ExtractSamples      = $ExtractSamples
                         DependsOn           = $Depends
                         PsDscRunAsCredential  = $ServiceAccount # Copy as arcgis account which has access to this share
                     }
@@ -353,8 +355,6 @@
 
         #Upgrade Workflow Manager Server
         if($Node.ServerRole -ieq "WorkflowManagerServer" -or ($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles -icontains "WorkflowManagerServer")){
-           
-
             ArcGIS_Install WorkflowManagerServerUpgrade
             {
                 Name = "WorkflowManagerServer"

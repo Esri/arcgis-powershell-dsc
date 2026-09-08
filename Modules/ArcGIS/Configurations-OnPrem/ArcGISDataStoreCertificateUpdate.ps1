@@ -8,7 +8,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.1 -Name ArcGIS_DataStore_TLS
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_DataStore_TLS
 
     Node $AllNodes.NodeName 
     {

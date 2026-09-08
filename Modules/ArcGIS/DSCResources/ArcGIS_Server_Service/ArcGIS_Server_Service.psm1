@@ -40,7 +40,7 @@ function Test-TargetResource
 		[parameter(Mandatory = $true)]
 		[System.String]
         [ValidateNotNullorEmpty()]
-		$ServerHostName = 'localhost',
+		$ServerHostName,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -119,7 +119,7 @@ function Test-TargetResource
    
     $token = ""
 	if($PortalHostName -and $PortalPort -and $PortalContext){
-        $PortalBaseURL = "https://$(PortalHostName):$($PortalPort)/$($PortalContext)"
+        $PortalBaseURL = "https://$($PortalHostName):$($PortalPort)/$($PortalContext)"
 		$token = Get-PortalToken -URL $PortalBaseURL -Credential $PublisherAccount -Referer $Referer
 	}else{
 		$token = Get-ServerToken -URL $ServerBaseUrl -Credential $PublisherAccount -Referer $Referer
@@ -127,7 +127,7 @@ function Test-TargetResource
     
     Write-Verbose "Check for existence of ServiceName:- $ServiceName ServiceType:- $ServiceType Folder:- $Folder"
     $ServiceNameToCompare = if($Folder) { "$Folder/$ServiceName" } else { $ServiceName }
-    $CatalogEndpoint = "$($ServerEndPoint)/$ServerContext/rest/services/$($Folder)"   
+    $CatalogEndpoint = "$($ServerBaseUrl)/rest/services/$($Folder)"   
     $resp = Invoke-ArcGISWebRequest -Url $CatalogEndpoint -HttpFormParameters @{ f='json'; token = $token.token} -Referer $Referer    
     $ServiceExists = ($resp.services | Where-Object { $_.name -eq $ServiceNameToCompare -and $_.type -eq $ServiceType } | Measure-Object).Count -gt 0
     if($ServiceExists) {
@@ -193,7 +193,7 @@ function Set-TargetResource
 		[parameter(Mandatory = $true)]
         [ValidateNotNullorEmpty()]
 		[System.String]
-		$ServerHostName = 'localhost',
+		$ServerHostName,
 
         [parameter(Mandatory = $false)]
 		[System.String]
@@ -270,7 +270,7 @@ function Set-TargetResource
 	
 	$token = ""
 	if($PortalHostName -and $PortalPort -and $PortalContext){
-        $PortalBaseURL = "https://$(PortalHostName):$($PortalPort)/$($PortalContext)"
+        $PortalBaseURL = "https://$($PortalHostName):$($PortalPort)/$($PortalContext)"
 		$token = Get-PortalToken -URL $PortalBaseURL -Credential $PublisherAccount -Referer $Referer
 	}else{
         $token = Get-ServerToken -URL $ServerBaseURL -Credential $PublisherAccount -Referer $Referer

@@ -343,12 +343,19 @@ function Invoke-DataStoreItemOperation
 
     if($OperationName -ieq "unregisterItem"){
         $FormParameters["itemPath"] = $DataStoreItemPath
-        $FormParameters["force"] = "$Force"
+        if($Force){
+            $FormParameters["force"] = "true"
+        }
     }else{
         $FormParameters["item"]  = (ConvertTo-Json -InputObject $ConnectionObject -Depth 5 -Compress)
     }
 
-    $Url =  Get-ServerAdminUrlForPath -URL $URL -Path "/data/$($OperationName)"
+    $OperationPath = if($OperationName -ieq 'edit') {
+        "/data/items$($ConnectionObject.path)/edit"
+    }else {
+        "/data/$($OperationName)"
+    }
+    $Url = Get-ServerAdminUrlForPath -URL $URL -Path $OperationPath
     $response = Invoke-ArcGISWebRequest -Url $Url -HttpFormParameters $FormParameters -Referer $Referer -TimeOutSec 90
     if ($response.status -ieq 'success') 
     {
@@ -1430,16 +1437,17 @@ function Get-ConfigStoreConnectionJson
     if($CloudProvider -ine "None"){
         if($CloudProvider -ieq "AWS"){
             Write-Verbose "Using AWS S3 Cloud Storage and Dynamo DB for the config store"
-            $configStoreConnection = @{ 
-                configPersistenceType = "AMAZON";
+            $configStoreConnection = @{
                 connectionString = "NAMESPACE=$($CloudNamespace);REGION=$($AWSRegion);";
             }
 
             if(Test-IfGISServer -ServerType $ServerType ){
+                $configStoreConnection['type'] = "AMAZON";
                 if($AuthenticationType -ieq 'AccessKey'){
                     $configStoreConnection["connectionSecret"] ="ACCESS_KEY_ID=$($AccessKeyCredential.UserName);SECRET_KEY=$($AccessKeyCredential.GetNetworkCredential().Password);"
                 }
             }else{
+                $configStoreConnection['configPersistenceType'] = "AMAZON";
                 $configStoreConnection["className"]= "com.esri.arcgis.carbon.persistence.impl.amazon.AmazonConfigPersistence"
                 if($AuthenticationType -ieq "AccessKey"){
                     if($AccessKeyCredential){
@@ -2509,7 +2517,7 @@ function Invoke-GISServerUpgrade
     $Response = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters $UpgradeParameters -Referer $Referer -Verbose
     try{
         if($Response){
-            if($Response.upgradeStatus -ieq 'IN_PROGRESS' -or ($Response.status -ieq "error" -and $Response.code -ieq 403 -and ($Response.messages -imatch "Upgrade in progress."))) {
+            if($Response.upgradeStatus -ieq 'IN_PROGRESS' -or $Response.upgradeStatus -ieq 'In Progress' -or ($Response.status -ieq "error" -and $Response.code -ieq 403 -and ($Response.messages -imatch "Upgrade in progress."))) {
                 Write-Verbose "Upgrade in Progress"
                 $ServerReady = $false
                 $Attempts = 0
@@ -2521,13 +2529,13 @@ function Invoke-GISServerUpgrade
                     $ResponseStatus = Invoke-ArcGISWebRequest -Url $ServerUpgradeUrl -HttpFormParameters $UpgradeParameters -Referer $Referer -Verbose -HttpMethod 'GET'
                     
                     Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $ResponseStatus)"
-                    if(($ResponseStatus.upgradeStatus -ine 'IN_PROGRESS') -and ([version]$Version -gt "11.3")){
-                        foreach($Stage in $Stages){
+                    if(($ResponseStatus.upgradeStatus -ine 'IN_PROGRESS' -or $ResponseStatus.upgradeStatus -ieq 'In Progress') -and ([version]$Version -gt "11.3")){
+                        foreach($Stage in $ResponseStatus.stages){
                             Write-Verbose "$($Stage.name) : $($Stage.state)"
                         }
                     }
 
-                    if($ResponseStatus.upgradeStatus -ieq 'Success' -or $ResponseStatus.upgradeStatus -ieq 'Success with warnings'  -or (($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error'))){
+                    if($ResponseStatus.upgradeStatus -ieq 'Success' -or $ResponseStatus.upgradeStatus -ieq 'Success with warnings' -or (($ResponseStatus.upgradeStatus -ne 'IN_PROGRESS') -and ($ResponseStatus.upgradeStatus -ne 'In Progress') -and ($ResponseStatus.code -ieq '404') -and ($ResponseStatus.status -ieq 'error'))){
                         if(Test-GISServerUpgradeStatus -URL $URL -Referer $Referer -Version $Version -Verbose){
                             $ServerReady = $True
                             break

@@ -328,7 +328,7 @@ function Set-TargetResource
             if(Test-ProductInstall -Name $Name -ProductId $ProductId -Version $Version -WebAdaptorContext $WebAdaptorContext){
                 if($Name -ieq "DataStore"){
                     if([version]$Version -ge "11.0"){
-                        $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
+                        $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -Version $Version -DSInstalled $True
                         if($AddLocalFeatureSet.Count -gt 0){
                             $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                             $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
@@ -345,7 +345,7 @@ function Set-TargetResource
             }else{
                 if($Name -ieq "DataStore"){
                     if([version]$Version -ge "11.0"){
-                        $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $False
+                        $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -Version $Version -DSInstalled $False
                         $AddFeatureSetString = [System.String]::Join(",", $AddLocalFeatureSet)
                         $Arguments += " ADDLOCAL=$($AddFeatureSetString)"
                     }
@@ -381,12 +381,22 @@ function Set-TargetResource
         }
         
         if($IsWebAdaptorIIS){
-            Write-Verbose "Giving Permissions to Folders for IIS_IUSRS"
-            foreach($p in (Get-ChildItem "$($env:SystemDrive)\Windows\Microsoft.NET\Framework*\v*\Temporary ASP.NET Files").FullName){
-                icacls $p /grant 'IIS_IUSRS:(OI)(CI)F' /T
+            $PermissionIdentity = if($Version -ieq "00" -or [version]$Version -ge "11.2"){
+                "IIS AppPool\ArcGISWebAdaptorAppPool$($WebAdaptorContext)"
+            }else{
+                "IIS_IUSRS"
             }
-            icacls "$($env:SystemDrive)\Windows\TEMP\" /grant 'IIS_IUSRS:(OI)(CI)F' /T
 
+            Write-Verbose "Giving Permissions to folders for $PermissionIdentity"
+            # The Web Adaptor's requirement is that its IIS identity can write new temp files going forward
+            # it doesn't need modify rights on files that already exist and belong to another process
+            foreach($p in (Get-ChildItem "$($env:SystemDrive)\Windows\Microsoft.NET\Framework*\v*\Temporary ASP.NET Files").FullName){
+                Write-Verbose "Giving Modify Rights to $PermissionIdentity on $p"
+                icacls $p /grant "$($PermissionIdentity):(OI)(CI)F"
+            }   
+
+            icacls "$($env:SystemDrive)\Windows\TEMP\" /grant "$($PermissionIdentity):(OI)(CI)M"
+            
             Import-Module WebAdministration | Out-Null
             Write-Verbose "Increasing Web Request Timeout to 1 hour"
             $WebSiteId = 1
@@ -553,7 +563,7 @@ function Test-TargetResource
     if($result -and $FeatureSet.Count -gt 0){
         if($Name -ieq "DataStore"){
             if([version]$Version -ge "11.0"){
-                $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -DSInstalled $True
+                $AddLocalFeatureSet, $RemoveFeatureSet = Test-DataStoreFeautureSet -FeatureSet $FeatureSet -Version $Version -DSInstalled $True
                 $result = ($AddLocalFeatureSet.Count -eq 0 -and $RemoveFeatureSet.Count -eq 0)
             }
         }elseif($Name -ieq "Server"){
@@ -645,7 +655,11 @@ function Test-DataStoreFeautureSet {
 
         [parameter(Mandatory = $false)]
 		[System.Boolean]
-		$DSInstalled = $False
+		$DSInstalled = $False,
+
+        [parameter(Mandatory = $true)]
+		[System.String]
+		$Version
     )
 
     $DSFeatureNameMapping = @{
@@ -653,7 +667,10 @@ function Test-DataStoreFeautureSet {
         GraphStore = "graph"
         ObjectStore = "object"
         Spatiotemporal = "spatiotemporal"
-        TileCache = "tilecache"
+    }
+
+    if([version]$Version -le "11.5"){
+        $DSFeatureNameMapping["TileCache"] = "tilecache"
     }
 
     $AddLocalFeatureSet = @()
