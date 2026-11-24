@@ -75,13 +75,13 @@ function Set-TargetResource
         $CertificatePassword
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
 
     $DataStoreInstallDirectory = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'DataStore').InstallDir
+    $DataStoreBaseUrl = "https://$($MachineFQDN):2443/arcgis"
 
-    Test-ArcGISComponentHealth -BaseURL "https://$($MachineFQDN):2443/arcgis" -ComponentName "DataStore" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -Verbose
+    Test-ArcGISComponentHealth -BaseURL $DataStoreBaseUrl -ComponentName "DataStore" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
 
 
     if($CertificateType -ieq 'WebServer'){
@@ -99,6 +99,15 @@ function Set-TargetResource
                                                     -CertificateFileLocation $CertificateFileLocation `
                                                     -CertificatePassword $CertificatePassword -CName $CName -Verbose
             }
+            # The command-line tool can exit before the restarted HTTPS listener is ready. Waiting
+            # for the supplied thumbprint verifies the client-visible certificate rather than merely
+            # assuming that a zero process exit code means activation has completed.
+            $suppliedCertificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+            $suppliedCertificate.Import($CertificateFileLocation, $CertificatePassword.GetNetworkCredential().Password, 32)
+            Wait-ForArcGISEndpointCertificate -Url "$DataStoreBaseUrl/datastoreadmin/configure?f=json" `
+                                                -ExpectedThumbprint $suppliedCertificate.Thumbprint -Verbose
+            Test-ArcGISComponentHealth -BaseURL $DataStoreBaseUrl -ComponentName "DataStore" `
+                                        -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
             Write-Verbose "Certificate update successful."
         }else{
             Write-Verbose "Thumbprint of certificate configured with datastore matches the certificate provided"
@@ -118,6 +127,10 @@ function Set-TargetResource
             Invoke-DataStoreReplaceSSLCertificateTool -DataStoreInstallDirectory $DataStoreInstallDirectory `
                                                     -CertificateFileLocation $CertificateFileLocation -CertificateType $CertType `
                                                     -CertificatePassword $CertificatePassword -CName $CName -Verbose
+            # Relational, graph, object, and tile-cache certificates are not exposed by the web
+            # listener, so process success plus component recovery is the available postcondition.
+            Test-ArcGISComponentHealth -BaseURL $DataStoreBaseUrl -ComponentName "DataStore" `
+                                        -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
         }else{
              throw "Updating Certificate of type $CertificateType is not supported for ArcGIS Data Store version $Version"
         }
@@ -156,10 +169,9 @@ function Test-TargetResource
         $CertificatePassword
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
-    Test-ArcGISComponentHealth -BaseURL "https://$($MachineFQDN):2443/arcgis" -ComponentName "DataStore" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -Verbose
+    Test-ArcGISComponentHealth -BaseURL "https://$($MachineFQDN):2443/arcgis" -ComponentName "DataStore" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
 
     if($CertificateType -ieq 'WebServer'){
         $result = $true
@@ -204,9 +216,25 @@ function Test-DataStoreCertificate
     $Cert.Import($CertificateFileLocation, $CertificatePassword.GetNetworkCredential().Password, 32)
 
     $webRequest = [Net.WebRequest]::Create("https://$($MachineFQDN):2443/arcgis/datastoreadmin/configure?f=json")
-    try { $_d = $webRequest.GetResponse() } catch {}
-    
-    return $webRequest.ServicePoint.Certificate.GetCertHashString() -ieq $Cert.Thumbprint
+    $response = $null
+    try {
+        # Read the certificate from the TLS connection itself. The configure response body is not
+        # needed to determine whether Data Store is serving the expected certificate.
+        $response = $webRequest.GetResponse()
+        $endpointCertificate = $webRequest.ServicePoint.Certificate
+        return $null -ne $endpointCertificate -and $endpointCertificate.GetCertHashString() -ieq $Cert.Thumbprint
+    }
+    catch {
+        # An unavailable endpoint is treated as noncompliant so DSC can run the bounded recovery
+        # path instead of failing this state check with an unrelated transport exception.
+        Write-Verbose "Unable to retrieve the Data Store endpoint certificate. Error: $_"
+        return $false
+    }
+    finally {
+        if($null -ne $response){
+            $response.Dispose()
+        }
+    }
 }
 
 function Invoke-DataStoreUpdateSSLCertificateTool

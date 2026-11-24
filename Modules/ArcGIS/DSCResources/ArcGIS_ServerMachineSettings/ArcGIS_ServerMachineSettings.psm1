@@ -43,7 +43,6 @@ function Set-TargetResource
 		$SiteAdministrator
     )
     
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$ServerFQDN = Get-FQDN $ServerHostName
 	Write-Verbose "Fully Qualified Domain Name :- $ServerFQDN"
    	$ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ServerFQDN
@@ -65,7 +64,7 @@ function Set-TargetResource
                             -Referer        $Referer `
                             -MachineName    $ServerFQDN `
                             -SocMaxHeapSize $SocMaximumHeapSize -Verbose
-        
+
         # Restart the ArcGIS Server service
         # after updating the machine properties before checking the health of the server
         Restart-ArcGISService -ComponentName "Server" -Verbose
@@ -93,7 +92,6 @@ function Test-TargetResource
 		$SiteAdministrator
     )
 
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$ServerFQDN = Get-FQDN $ServerHostName
     Write-Verbose "Fully Qualified Domain Name :- $ServerFQDN"
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ServerFQDN

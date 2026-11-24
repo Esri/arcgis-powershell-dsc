@@ -73,7 +73,6 @@ function Set-TargetResource
         $EnableUpgradeSiteDebug = $False
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = Get-FQDN $PortalHostName
     $PortalBaseURL = Get-ArcGISComponentBaseUrl -FQDN $FQDN -ComponentName "Portal"
     $Referer = "https://localhost"
@@ -123,9 +122,20 @@ function Set-TargetResource
             Write-Verbose "Portal System Properties WebContextUrl is set to '$($sysProps.WebContextURL)'"
             
             $webRequest = [Net.WebRequest]::Create("$($sysProps.WebContextURL)/portaladmin/healthCheck?f=json")
-            try { $webRequest.GetResponse() } catch {}
-            $cert = $webRequest.ServicePoint.Certificate
-            $bytes = $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+            $response = $null
+            try {
+                try { $response = $webRequest.GetResponse() } catch {}
+                $cert = $webRequest.ServicePoint.Certificate
+                if($null -eq $cert){
+                    throw "Unable to retrieve the App Gateway certificate from '$($sysProps.WebContextURL)'."
+                }
+                $bytes = $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+            }
+            finally {
+                if($null -ne $response){
+                    $response.Dispose()
+                }
+            }
             $ExternalCertAlias = "AppGW-ExternalDNSCerCert"
             $CertOnDiskPath = Join-Path $env:TEMP "$($ExternalCertAlias).cer"
             Set-Content -value $bytes -encoding byte -path $CertOnDiskPath
@@ -134,11 +144,27 @@ function Set-TargetResource
             foreach($m in $Machines){
                 $MachineName = $m.machineName
                 $Certs = Get-SSLCertificatesForPortal -URL $PortalBaseURL -Token $token.token -Referer $Referer -MachineName $MachineName
-                if($Certs.sslCertificates -icontains $ExternalCertAlias) {
+                $CertificateAliases = ConvertTo-PortalCertificateAliases -Certificates $Certs.sslCertificates
+                if($CertificateAliases -icontains $ExternalCertAlias) {
                     Write-Verbose "Public key of External Certificate used by App Gateway already imported as a root certificate."
                 } else {
                     Write-Verbose "Importing Public key of External Certificate used by App Gateway as a root certificate."
-                    Import-RootOrIntermediateCertificate -URL $PortalBaseURL -CertAlias $ExternalCertAlias -CertificateFilePath $CertOnDiskPath -MachineName $MachineName -Token $token.token -Referer $Referer -Verbose
+                    $importError = $null
+                    try {
+                        Import-RootOrIntermediateCertificate -URL $PortalBaseURL -CertAlias $ExternalCertAlias `
+                            -CertificateFilePath $CertOnDiskPath -MachineName $MachineName -Token $token.token `
+                            -Referer $Referer -ThrowOnResponseError $true -Verbose
+                    }
+                    catch {
+                        # The upload may have committed even when its HTTP response was lost.
+                        $importError = $_
+                    }
+
+                    $tokenValue = Wait-ForPortalRootOrIntermediateCertificateState -URL $PortalBaseURL `
+                                    -Token $token.token -Credential $PortalAdministrator -Referer $Referer `
+                                    -MachineName $MachineName -CertificateAlias $ExternalCertAlias `
+                                    -ExpectedThumbprint $cert.GetCertHashString() -OperationError $importError -Verbose
+                    $token = @{ token = $tokenValue }
                 }
             }
         }catch{
@@ -178,7 +204,6 @@ function Test-TargetResource
         $EnableUpgradeSiteDebug = $False
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = Get-FQDN $PortalHostName
     $PortalBaseURL = Get-ArcGISComponentBaseUrl -FQDN $FQDN -ComponentName "Portal"
     $Referer = "https://localhost"

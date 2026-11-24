@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1",
+        $Version = "12.2",
 
         [Parameter(Mandatory=$True)]
         [System.String]
@@ -50,7 +50,12 @@
 
         [Parameter(Mandatory=$false)]
         [System.Boolean]
-        $IsMultiMachineServerSite
+        $IsMultiMachineServerSite,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateRange(0, 65535)]
+        [System.Int32]
+        $VideoServerSrtPort = 9710
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
@@ -122,9 +127,13 @@
         if($ServerRole -ieq "MissionServer"){
             $InstallerFileName = "MissionServer.exe"
         }
+
+        if($ServerRole -ieq "VideoServer"){
+            $InstallerFileName = "VideoServer.exe"
+        }
 		$InstallerPathOnMachine = "$($UpgradeSetupsStagingPath)\$InstallerFileName"
         $InstallerVolumePathOnMachine = ""
-        if($ServerRole -ine "NotebookServer" -and $ServerRole -ine "MissionServer"){
+        if((@("Server", "VideoServer") -icontains $ServerRole -and [version]$Version -ge "12.2") -or (-not(@("NotebookServer", "MissionServer", "VideoServer") -icontains $ServerRole))){
             $InstallerVolumePathOnMachine = "$($InstallerPathOnMachine).001"
         }
 
@@ -166,7 +175,7 @@
         }
       
         ArcGIS_Install ServerUpgrade{
-            Name = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" } 
+            Name = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }elseif($ServerRole -ieq "VideoServer"){ "VideoServer" }else{ "Server" } 
             Version = $Version
             Path = $InstallerPathOnMachine
             Arguments = "/qn ACCEPTEULA=YES";
@@ -192,7 +201,8 @@
                 }
 			}
 			TestScript = { -not(Test-Path $using:InstallerPathOnMachine) -and -not(Test-Path $using:InstallerVolumePathOnMachine) }
-			GetScript = { @{} }          
+			GetScript = { @{} }
+            DependsOn = '[ArcGIS_Install]ServerUpgrade'
 		}
         $Depends += '[Script]RemoveServerInstaller'
 
@@ -230,7 +240,7 @@
             $Depends += '[ArcGIS_RemoteFile]ServerLicenseFileDownload'
         }
 
-		ArcGIS_License ServerLicense
+        ArcGIS_License ServerLicense
         {
             LicenseFilePath = (Join-Path $(Get-Location).Path $ServerLicenseFileName)
             Ensure          = 'Present'
@@ -244,7 +254,7 @@
         $Depends += '[ArcGIS_License]ServerLicense'
 
         ArcGIS_HostNameSettings ServerHostNameSettings{
-            ComponentName   = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" } 
+            ComponentName   = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }elseif($ServerRole -ieq "VideoServer"){ "VideoServer" }else{ "Server" } 
             Version         = $Version
             HostName        = $env:ComputerName
             DependsOn       = $Depends
@@ -253,7 +263,7 @@
         
         ArcGIS_ServerUpgrade "$($ServerRole)ConfigureUpgrade"{
             Version = $Version
-            ServerType = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }else{ "Server" }
+            ServerType = if($ServerRole -ieq "NotebookServer"){ "NotebookServer" }elseif($ServerRole -ieq "MissionServer"){ "MissionServer" }elseif($ServerRole -ieq "VideoServer"){ "VideoServer" }else{ "Server" }
             ServerHostName = $env:ComputerName
             EnableUpgradeSiteDebug = $DebugMode
             DependsOn = $Depends
@@ -310,8 +320,10 @@
 
                 ArcGIS_NotebookPostInstall NotebookPostInstall {
                     SiteName            = $NotebookWebAdaptorContext
+                    Version             = $Version
                     ContainerImagePaths = @($NotebookContainerPathOnMachine) # Add the path to the container images
                     ExtractSamples      = $false
+                    SiteAdministrator   = $SiteAdministratorCredential
                     DependsOn           = @("[ArcGIS_ServerUpgrade]$($ServerRole)ConfigureUpgrade")
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
                 }
@@ -337,8 +349,9 @@
                 SetScript   = { 
                     @('ArcGISGeoEvent', 'ArcGISGeoEventGateway') | ForEach-Object{
                         $ServiceName = $_
-                        Write-Verbose "Stopping the service '$ServiceName'"    
-                        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+                        Write-Verbose "Stopping the service '$ServiceName'"
+                        Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
+                        Write-Verbose "Service '$ServiceName' stopped successfully." 
                     }
                 }
                 GetScript   = { return @{} }                  
@@ -446,6 +459,22 @@
                     Direction             = "Inbound"
                 }
                 $DependsOnWfm += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
+            }
+        }
+
+        if($ServerRole -ieq "VideoServer" -and [version]$OldVersion -le "12.1" -and [version]$Version -ge [version]"12.2"){
+            ArcGIS_xFirewall "VideoServer_SRTFirewallRule"
+            {
+                Name                  = "ArcGISVideoServerSRT"
+                DisplayName           = "ArcGIS for Video Server SRT"
+                DisplayGroup          = "ArcGIS for Video Server"
+                Ensure                = 'Present'
+                Access                = "Allow"
+                State                 = "Enabled"
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = $VideoServerSrtPort
+                Protocol              = "UDP"
+                DependsOn             = $Depends
             }
         }
     }

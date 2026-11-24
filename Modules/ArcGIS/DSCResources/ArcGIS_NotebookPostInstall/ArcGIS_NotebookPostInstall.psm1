@@ -14,17 +14,21 @@ function Get-TargetResource {
 		[System.String]
         $SiteName,
 
+        [parameter(Mandatory = $true)]
+		[System.String]
+        $Version,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator,
+
         [parameter(Mandatory = $False)]    
         [System.Array]
         $ContainerImagePaths,
 
         [parameter(Mandatory = $False)]    
         [System.Boolean]
-        $ExtractSamples = $False,
-
-        [parameter(Mandatory = $False)]    
-        [System.Boolean]
-        $ForceRestart
+        $ExtractSamples = $False
     )
     
     return @{}
@@ -38,31 +42,37 @@ function Set-TargetResource {
 		[System.String]
         $SiteName,
 
+        [parameter(Mandatory = $true)]
+		[System.String]
+        $Version,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator,
+
         [parameter(Mandatory = $False)]    
         [System.Array]
         $ContainerImagePaths,
 
         [parameter(Mandatory = $False)]    
         [System.Boolean]
-        $ExtractSamples = $False,
-
-        [parameter(Mandatory = $False)]    
-        [System.Boolean]
-        $ForceRestart
+        $ExtractSamples = $False
     )
 
-    if($ForceRestart){
-        Restart-ArcGISService -ComponentName "NotebookServer" -RestartDelay 60
-    }
-    
     if($ContainerImagePaths.Length -gt 0){
         foreach ($ImagePath in $ContainerImagePaths) {
             try{
                 Write-Verbose "Loading container image at path $ImagePath"
-                Invoke-PostInstallUtility -Arguments "-l $ImagePath" -Verbose
+                $PSArgs = @{
+                    Arguments = "-l $ImagePath"
+                    Version = $Version
+                    SiteAdministrator = $SiteAdministrator
+                }
+
+                Invoke-PostInstallUtility @PSArgs -Verbose
                 Write-Verbose "Container image at path $ImagePath loaded."
             }catch{
-                Write-Verbose "[WARNING] Error Loading Container Image at path - $ImagePath - $_"
+                throw "[ERROR] Error Loading Container Image at path - $ImagePath - $_"
             }
         }
     }
@@ -70,10 +80,11 @@ function Set-TargetResource {
     {
         Write-Verbose "No Container Images to Load."
     }
+
     if($ExtractSamples){
         try{
             Write-Verbose "Extracting Notebook Server Samples Data"
-            Invoke-PostInstallUtility -Arguments "-x" -Verbose
+            Invoke-PostInstallUtility -Arguments "-x" -Version $Version -Verbose
             Write-Verbose "Notebook Server Samples Data extracted."
         }catch{
             throw "[ERROR] Error extracting Notebook Server Samples Data - $_"
@@ -91,24 +102,28 @@ function Test-TargetResource
 		[System.String]
         $SiteName,
         
+        [parameter(Mandatory = $true)]
+		[System.String]
+        $Version,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator,
+
         [parameter(Mandatory = $False)]    
         [System.Array]
         $ContainerImagePaths,
 
         [parameter(Mandatory = $False)]    
         [System.Boolean]
-        $ExtractSamples = $False,
-
-        [parameter(Mandatory = $False)]    
-        [System.Boolean]
-        $ForceRestart
+        $ExtractSamples = $False
     )
 
     $Result = $True
     try{
         if($ContainerImagePaths.Length -gt 0){
             try{
-                Invoke-PostInstallUtility -Arguments "-d" -Verbose
+                Invoke-PostInstallUtility -Arguments "-d" -Version $Version -Verbose
             }catch{
                 throw "[ERROR] Error with Docker Configuration - $_"
             }
@@ -118,9 +133,6 @@ function Test-TargetResource
         if($ExtractSamples){
             $Result = $False
             Write-Verbose "Trying to extract Notebook Server Samples Data if not already extracted."
-        }
-        if($Result -and $ForceRestart){
-            $Result = $False
         }
     }catch{
         throw $_
@@ -135,7 +147,14 @@ function Invoke-PostInstallUtility
 	param
     (
         [System.String]
-        $Arguments
+        $Arguments,
+
+        [System.String]
+        $Version,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $SiteAdministrator
     )
 
     $InstallDir = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'NotebookServer').InstallDir
@@ -144,7 +163,12 @@ function Invoke-PostInstallUtility
         throw "Post Install Utility Tool not found."
     }    
     try{
-        $op = Invoke-StartProcess -ExecPath $PostInstallUtilityToolPath -Arguments $Arguments -EnvVariables @{ "AGSNOTEBOOK" = $null } -Verbose
+        $UtilityArguments = "$Arguments"
+        if([version]$Version -ge "12.2" -and $null -ne $SiteAdministrator){
+            Write-Verbose "Adding Site Administrator Credentials to Post Install Utility Arguments."
+            $UtilityArguments = "$Arguments -u `"$($SiteAdministrator.UserName)`" -p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
+        }
+        $op = Invoke-StartProcess -ExecPath $PostInstallUtilityToolPath -Arguments $UtilityArguments -EnvVariables @{ "AGSNOTEBOOK" = $null } -Verbose
         if($op -icontains 'error' -or $op -icontains 'failed') { throw "$op"}
     }catch{
         throw "Post install utility run failed. Error - $_"

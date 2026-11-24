@@ -3,7 +3,7 @@ Configuration NotebookServerDockerBinariesInstall
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1"
+        $Version = "12.2"
 
         ,[Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
@@ -21,6 +21,10 @@ Configuration NotebookServerDockerBinariesInstall
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
         $ServiceCredentialIsDomainAccount
+
+        ,[Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+		$SiteAdministratorCredential
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -76,12 +80,30 @@ Configuration NotebookServerDockerBinariesInstall
                 $containerPath = Get-ChildItem -Path $NBAdditionFilesPath -Filter "*arcgis-notebook-python-windows-$($Version)*" -Recurse | Select-Object -ExpandProperty FullName
             }
             if(-not([string]::IsNullOrEmpty($containerPath))){
+                $postInstallDependsOn = @("[ArcGIS_PendingReboot]PendingRebootAfterDockerInstall")
+                if($IsSingleTier){
+                    Script RestartNotebookServer
+                    {
+                        GetScript = {
+                            @{ Result = (Get-Service -Name 'ArcGIS Notebook Server' -ErrorAction Stop).Status.ToString() }
+                        }
+                        TestScript = { $false }
+                        SetScript = {
+                            Import-Module ArcGIS -ErrorAction Stop
+                            Restart-ArcGISService -ComponentName 'NotebookServer' -RestartDelay 60 -Verbose
+                        }
+                        DependsOn = @("[ArcGIS_PendingReboot]PendingRebootAfterDockerInstall")
+                    }
+                    $postInstallDependsOn = @("[Script]RestartNotebookServer")
+                }
+
                 ArcGIS_NotebookPostInstall NotebookPostInstall {
                     SiteName            = $Context
+                    Version             = $Version
                     ContainerImagePaths = @($containerPath) # Add the path to the container images
                     ExtractSamples      = $false
-                    DependsOn           = @("[ArcGIS_PendingReboot]PendingRebootAfterDockerInstall")
-                    ForceRestart        = $IsSingleTier
+                    DependsOn           = $postInstallDependsOn
+                    SiteAdministrator   = $SiteAdministratorCredential
                     PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
                 }
             }

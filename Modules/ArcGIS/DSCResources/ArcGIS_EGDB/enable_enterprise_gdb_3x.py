@@ -105,9 +105,10 @@ try:
 		arcpy.EnableEnterpriseGeodatabase_management(input_database=Connection_File_Name_full_path, authorization_file=license)
 		for i in range(arcpy.GetMessageCount()):
 			arcpy.AddReturnMessage(i)		
-	except:
+	except Exception:
 		for i in range(arcpy.GetMessageCount()):
 			arcpy.AddReturnMessage(i)
+		raise
 			
 	if os.path.exists(Connection_File_Name_full_path):
 		 os.remove(Connection_File_Name_full_path)
@@ -119,3 +120,4 @@ except SystemExit as e:
 		print("\n")
 		parser.print_help() 
 		parser.exit(2)
+	raise

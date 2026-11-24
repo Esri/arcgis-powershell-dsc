@@ -58,7 +58,6 @@ function Set-TargetResource
 		$RegisterGeoEnrichmentAsPortalUtilityService
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $ManageGeoEnrichmentEnvTool = Get-ManageGeoEnrichmentEnvTool
     # get the info
@@ -103,7 +102,6 @@ function Test-TargetResource
 		$RegisterGeoEnrichmentAsPortalUtilityService
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
    
     $result = $False
 

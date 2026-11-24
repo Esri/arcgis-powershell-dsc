@@ -32,14 +32,6 @@
         $PrimaryServerMachine,
 
         [Parameter(Mandatory=$False)]
-        [System.String]
-        $ServerRole,
-
-        [Parameter(Mandatory=$False)]
-        [System.Array]
-        $AdditionalServerRoles,
-
-        [Parameter(Mandatory=$False)]
         [System.Boolean]
         $OpenFirewallPorts = $False,
 
@@ -68,10 +60,6 @@
         [System.String]
         $LocalRepositoryPath = $null,
         
-        [Parameter(Mandatory=$False)]
-        [System.Object]
-        $RegisteredDirectories,
-
         [Parameter(Mandatory=$False)]
         [System.String]
         [ValidateSet("Azure","AWS", "None")]
@@ -246,31 +234,15 @@
 
         [Parameter(Mandatory=$False)]
         [System.Boolean]
-        $EnableHTTPSOnly = $False,
-
-        [Parameter(Mandatory=$False)]
-        [System.Boolean]
-        $EnableHSTS = $False,
-
-        [Parameter(Mandatory=$False)]
-        [System.Boolean]
         $UsesSSL = $False,
 
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $WebSocketContextUrl,
-
-        [Parameter(Mandatory=$false)]
-        [System.Int32]
-        $SocMaximumHeapSize = 0,
-        
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_xFirewall, ArcGIS_Server, ArcGIS_Service_Account, ArcGIS_GeoEvent, ArcGIS_WaitForComponent, ArcGIS_Server_TLS, ArcGIS_Server_RegisterDirectories,ArcGIS_HostNameSettings, ArcGIS_ServerMachineSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_xFirewall, ArcGIS_Server, ArcGIS_Service_Account, ArcGIS_WaitForComponent, ArcGIS_HostNameSettings
 
     if($UsesAzureFilesForConfigStore){
         $ConfigStorePos = $ConfigStoreAzureFilesCredentials.UserName.IndexOf('.blob.')
@@ -491,177 +463,6 @@
             AzureCloudNativeServiceBusNamespaceCredential = $AzureCloudNativeServiceBusNamespaceCredential
             AzureCloudNativeServiceBusNamespaceEndpointUrl  = $AzureCloudNativeServiceBusNamespaceEndpointUrl
             AzureCloudNativeServiceBusNamespaceRegionEndpointUrl = $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
-        }
-        $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
-
-        if($SocMaximumHeapSize -gt 0){
-            ArcGIS_ServerMachineSettings ServerSettings
-            {
-                ServerHostName   = $Node.NodeName
-                SiteAdministrator= $ServerPrimarySiteAdminCredential
-                SocMaximumHeapSize = $SocMaximumHeapSize
-            }
-            $Depends += "[ArcGIS_Server]Server$($Node.NodeName)"
-        }
-        
-        $ImportCertChainValue = $true  # default to true
-        $ForceImportCertificate = $false
-        if ([version]$Version -ge [version]"11.3") {
-            if ($Node.SSLCertificate -and $Node.SSLCertificate.ImportCertificateChain -ne $null) {
-                $ImportCertChainValue = $Node.SSLCertificate.ImportCertificateChain
-            }
-            if ($Node.SSLCertificate -and $Node.SSLCertificate.ForceImport -ne $null) {
-                $ForceImportCertificate = $Node.SSLCertificate.ForceImport
-            }
-        }
-
-        ArcGIS_Server_TLS "Server_TLS_$($Node.NodeName)"
-        {
-            ServerHostName = $Node.NodeName
-            SiteAdministrator = $ServerPrimarySiteAdminCredential
-            WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
-            CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
-            CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
-            SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
-            EnableHTTPSOnly = $EnableHTTPSOnly
-            EnableHSTS = $EnableHSTS
-            ServerType = "Server"
-            Version    = $Version
-            ImportCertificateChain = $ImportCertChainValue
-            ForceImportCertificate = $ForceImportCertificate
-            DependsOn = $Depends
-        }
-        $Depends += "[ArcGIS_Server_TLS]Server_TLS_$($Node.NodeName)"
-        
-        if ($RegisteredDirectories -and ($Node.NodeName -ieq $PrimaryServerMachine)) {
-            ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"
-            { 
-                ServerHostName = $Node.NodeName
-                Ensure = 'Present'
-                SiteAdministrator = $ServerPrimarySiteAdminCredential
-                DirectoriesJSON = $RegisteredDirectories
-                DependsOn = $Depends
-            }
-            $Depends += "[ArcGIS_Server_RegisterDirectories]Server$($Node.NodeName)RegisterDirectories"
-        }
-
-        if($ServerRole -ieq "GeoEvent" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) 
-        { 
-            #This condition is an issue
-            ArcGIS_Service_Account GeoEvent_RunAs_Account
-            {
-                Name = 'ArcGISGeoEvent'
-                RunAsAccount = $ServiceCredential
-                ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
-                Ensure =  "Present"
-                DependsOn = $Depends
-                DataDir = "$env:ProgramData\Esri\GeoEvent"
-                IsDomainAccount = $ServiceCredentialIsDomainAccount
-                IsMSAAccount = $ServiceCredentialIsMSA
-                SetStartupToAutomatic = $True
-            }
-            $Depends += "[ArcGIS_Service_Account]GeoEvent_RunAs_Account"
-
-            ArcGIS_xFirewall GeoEvent_FirewallRules
-            {
-                Name                  = "ArcGISGeoEventFirewallRules" 
-                DisplayName           = "ArcGIS GeoEvent" 
-                DisplayGroup          = "ArcGIS GeoEvent Extension" 
-                Ensure                = "Present"
-                Access                = "Allow" 
-                State                 = "Enabled" 
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("6143","6180","5565","5575")
-                Protocol              = "TCP" 
-                DependsOn             = $Depends
-            }
-            $Depends += "[ArcGIS_xFirewall]GeoEvent_FirewallRules"
-            
-            if($null -eq $WebSocketContextUrl -or $WebSocketContextUrl -eq ""){
-                $WebSocketContextUrl = "wss://$(Get-FQDN $Node.NodeName):6143/arcgis"
-            }
-
-            ArcGIS_GeoEvent ArcGIS_GeoEvent
-            {
-                ServerHostName            = $Node.NodeName
-                Name	                  = 'ArcGIS GeoEvent'
-                Ensure	                  = "Present"
-                SiteAdministrator         = $ServerPrimarySiteAdminCredential
-                WebSocketContextUrl       = $WebSocketContextUrl
-                Version					  = $Version
-                DependsOn                 = $Depends
-            }
-        }
-
-        if($ServerRole -ieq "WorkflowManagerServer" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "WorkflowManagerServer")) 
-        {
-            #This condition is an issue
-            ArcGIS_Service_Account WorkflowManager_RunAs_Account
-            {
-                Name = 'WorkflowManager'
-                RunAsAccount = $ServiceCredential
-                ForceRunAsAccountUpdate = $ForceServiceCredentialUpdate
-                Ensure =  "Present"
-                DependsOn = $Depends
-                DataDir = "$env:ProgramData\Esri\workflowmanager"
-                IsDomainAccount = $ServiceCredentialIsDomainAccount
-                IsMSAAccount = $ServiceCredentialIsMSA
-                SetStartupToAutomatic = $True
-            }
-            $Depends += "[ArcGIS_Service_Account]WorkflowManager_RunAs_Account"
-
-            ArcGIS_xFirewall WorkflowManagerServer_FirewallRules
-            {
-                Name                  = "ArcGISWorkflowManagerServerFirewallRules" 
-                DisplayName           = "ArcGIS Workflow Manager Server" 
-                DisplayGroup          = "ArcGIS Workflow Manager Server Extension" 
-                Ensure                = "Present"
-                Access                = "Allow" 
-                State                 = "Enabled" 
-                Profile               = ("Domain","Private","Public")
-                LocalPort             = ("13443")
-                Protocol              = "TCP" 
-                DependsOn             = $Depends
-            }
-            $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules"
-
-            if($IsMultiMachineServer){
-                $WfmPorts = @("9830", "9820", "9840", "9880")
-                if([version]($Version) -ge "11.3"){
-                    $WfmPorts = @("13820", "13830", "13840", "9880")
-                }
-                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_OutBound
-                {
-                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterOutbound" 
-                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Outbound" 
-                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension" 
-                    Ensure                =  "Present"
-                    Access                = "Allow" 
-                    State                 = "Enabled" 
-                    Profile               = ("Domain","Private","Public")
-                    RemotePort            = $WfmPorts
-                    Protocol              = "TCP" 
-                    Direction             = "Outbound"    
-                    DependsOn             = $Depends
-                }
-                $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_OutBound"
-
-                ArcGIS_xFirewall WorkflowManagerServer_FirewallRules_MultiMachine_InBound
-                {
-                    Name                  = "ArcGISWorkflowManagerServerFirewallRulesClusterInbound"
-                    DisplayName           = "ArcGIS WorkflowManagerServer Extension Cluster Inbound"
-                    DisplayGroup          = "ArcGIS WorkflowManagerServer Extension"
-                    Ensure                = 'Present'
-                    Access                = "Allow"
-                    State                 = "Enabled"
-                    Profile               = ("Domain","Private","Public")
-                    LocalPort             = $WfmPorts
-                    Protocol              = "TCP"
-                    Direction             = "Inbound"
-                    DependsOn             = $Depends
-                }
-                $Depends += "[ArcGIS_xFirewall]WorkflowManagerServer_FirewallRules_MultiMachine_InBound"
-            }
         }
     }
 }

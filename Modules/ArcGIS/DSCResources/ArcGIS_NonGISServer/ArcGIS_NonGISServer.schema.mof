@@ -4,7 +4,7 @@ class ArcGIS_NonGISServer : OMI_BaseResource
 {
 	[Key] String Version;
 	[Key, Description("Is Joining Existing site")] Boolean Join;
-	[Key, ValueMap{"NotebookServer","MissionServer","VideoServer","DataPipelinesServer"}, Values{"NotebookServer","MissionServer","VideoServer","DataPipelinesServer"}] String ServerType;
+	[Key, ValueMap{"NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer"}, Values{"NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer"}] String ServerType;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 	[Write] String ServerHostName;
 	[Write, ValueMap{"Present","Absent"}, Values{"Present","Absent"}] String Ensure;
@@ -26,4 +26,5 @@ class ArcGIS_NonGISServer : OMI_BaseResource
 	[Write] String AzureCloudServicePrincipalTenantId;
 	[Write] String AzureCloudServicePrincipalAuthorityHost;
 	[Write] String AzureCloudUserAssignedIdentityClientId;
+	[Write, EmbeddedInstance("MSFT_Credential")] String PortalSiteAdministrator;
 };

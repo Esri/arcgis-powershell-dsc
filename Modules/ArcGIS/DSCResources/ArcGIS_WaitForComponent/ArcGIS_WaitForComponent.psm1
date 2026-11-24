@@ -44,12 +44,12 @@ function Get-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal","DataPipelinesServer","VelocityServer")]
 		[System.String]
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","Portal","WebAdaptor","DataStore","PortalUpgrade")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","Portal","WebAdaptor","DataStore","PortalUpgrade","VelocityServer")]
 		[System.String]
         $InvokingComponent,
                
@@ -71,12 +71,12 @@ function Set-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal","DataPipelinesServer","VelocityServer")]
 		[System.String]
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade","DataPipelinesServer","VelocityServer")]
 		[System.String]
         $InvokingComponent,
         
@@ -105,56 +105,28 @@ function Set-TargetResource
         $RetryCount  = 10
     )   
     
-    $Referer = 'https://localhost'
     $NumCount = 0
 	$Done     = $false
-    $ComponentHostNameFQDN = Get-FQDN $ComponentHostName
+	$ReadinessParameters = @{
+        Component = $Component
+        InvokingComponent = $InvokingComponent
+        ComponentHostName = $ComponentHostName
+        ComponentContext = $ComponentContext
+        Ensure = $Ensure
+        Credential = $Credential
+    }
 	while ((-not $Done) -and ($NumCount++ -le $RetryCount)) 
 	{
         Write-Verbose "Attempt $NumCount - $Component"
         try {
-            if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer" -or $Component -ieq "VideoServer" -or $Component -ieq "DataPipelinesServer"){
-                Write-Verbose "Checking for $Component site"
-                $ServerBaseURL = Get-ArcGISComponentBaseUrl -ComponentName $Component -FQDN $ComponentHostNameFQDN
-                $token = Get-ServerToken -URL $ServerBaseURL -Credential $Credential -Referer $Referer
-                Write-Verbose "Checking for $Component site on '$ComponentHostName'"
-                $Done = ($null -ne $token.token)
-                if($Done){
-                    Start-Sleep -Seconds 120
-                }
-            }elseif($Component -ieq "Portal"){
-                Write-Verbose "Checking for Portal site on '$ComponentHostName'"
-                $PortalBaseURL = Get-ArcGISComponentBaseUrl -ComponentName "Portal" -FQDN $ComponentHostNameFQDN
-                $token = Get-PortalToken -URL $PortalBaseURL -Credential $Credential -Referer $Referer 
-                $Done = ($null -ne $token.token)
-            }elseif($Component -ieq "DataStore" -or $Component -ieq "SpatioTemporal" -or $Component -ieq "TileCache" -or $Component -ieq "GraphStore"  -or $Component -ieq "ObjectStore"){
-                $ServerBaseURL = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ComponentHostNameFQDN
-                $token = Get-ServerToken -URL $ServerBaseURL -Credential $Credential -Referer $Referer
-                Write-Verbose "Checking if all datastore types passed as Params are registered"
-                $AdditionalParams = $Component
-                if($Component -ieq "DataStore"){
-                    $AdditionalParams = 'Relational'
-                }
-                $Done = Test-DataStoreRegistered -ServerBaseURL $ServerBaseURL -Token $token.token -Referer $Referer -Type $AdditionalParams
-            }elseif($Component -ieq "PortalWA"){
-                $PortalBaseURL = Get-ArcGISComponentBaseUrl -ComponentName "Portal" -FQDN $ComponentHostNameFQDN -Port 443 -Context $ComponentContext
-                $token = Get-PortalToken -URL $PortalBaseURL -Credential $Credential -Referer $Referer 
-                $Done = ($null -ne $token.token)
-            }elseif($Component -ieq "ServerWA"){
-                $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ComponentHostNameFQDN -Port 443 -Context $ComponentContext
-                $token = Get-ServerToken -URL $ServerBaseUrl -Credential $Credential -Referer $Referer                  
-                $Done = ($null -ne $token.token)   
-            }elseif($Component -ieq "UnregisterPortal"){
-                $Referer = 'https://localhost'
-                $PortalBaseURL = Get-ArcGISComponentBaseUrl -ComponentName "Portal" -FQDN $ComponentHostNameFQDN
-                $token = Get-PortalToken -URL $PortalBaseURL -Credential $Credential -Referer $Referer 
-                $StandbyMachine = Get-FQDN $env:COMPUTERNAME
-                $IsMachineInSite = Test-MachineInPortalSite -URL $URL -Token $token.token  -Referer $Referer -MachineFQDN $StandbyMachine
-                if($IsMachineInSite){
-                    $Done = $False
-                }
+            $Done = Test-TargetResource @ReadinessParameters
+            if($Done -and $Component -iin @("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")){
+                $Done = $false
+                Start-Sleep -Seconds 120
+                $Done = Test-TargetResource @ReadinessParameters
             }
         }catch {
+            $Done = $false
             Write-Verbose "[WARNING]  The Resource is not available yet"
             Write-Verbose "[WARNING] Check returned error:- $_"
         }
@@ -166,6 +138,10 @@ function Set-TargetResource
             Write-Verbose "$Component on '$ComponentHostName' is ready"
         }
 	}
+
+    if(-not($Done)){
+        throw "Timed out waiting for $Component on '$ComponentHostName' to become ready."
+    }
 }
 
 
@@ -177,12 +153,12 @@ function Test-TargetResource
 	param
 	(
 		[parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","ServerWA","PortalWA","DataStore","SpatioTemporal","TileCache","GraphStore","ObjectStore","UnregisterPortal","DataPipelinesServer","VelocityServer")]
 		[System.String]
         $Component,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","Portal","WebAdaptor","DataStore","PortalUpgrade","DataPipelinesServer","VelocityServer")]
 		[System.String]
         $InvokingComponent,
                 
@@ -213,15 +189,17 @@ function Test-TargetResource
     
     $Referer = 'https://localhost'
     $result = $false
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $ComponentHostNameFQDN = Get-FQDN $ComponentHostName
     try {
-        if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer" -or $Component -ieq "VideoServer"){
+        if($Component -ieq "Server" -or $Component -ieq "NotebookServer" -or $Component -ieq "MissionServer" -or $Component -ieq "VideoServer" -or $Component -ieq "DataPipelinesServer" -or $Component -ieq "VelocityServer"){
             Write-Verbose "Checking for $Component site"
             $ServerBaseURL = Get-ArcGISComponentBaseUrl -ComponentName $Component -FQDN $ComponentHostNameFQDN
             $token = Get-ServerToken -URL $ServerBaseURL -Credential $Credential -Referer $Referer
             $result = ($null -ne $token.token)
             if($result){
+                $result = $false
+                $null = Test-ArcGISComponentHealth -BaseURL $ServerBaseURL -ComponentName $Component -ThrowErrors $true -Verbose
+                $result = $true
                 Write-Verbose "$Component Site Exists. Was able to retrieve token for PSA"
             }else{
                 Write-Verbose "Unable to detect if $Component Site Exists. Was NOT able to retrieve token for PSA"
@@ -282,6 +260,7 @@ function Test-TargetResource
             $result = -not($IsMachineInSite)
         }
     }catch {
+        $result = $false
         Write-Verbose "[WARNING] The Resource is not available yet!"
         #Write-Verbose "[WARNING]:- $($_)"
     }

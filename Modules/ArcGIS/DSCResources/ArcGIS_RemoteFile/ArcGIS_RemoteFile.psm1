@@ -164,7 +164,6 @@ function Test-TargetResource
 		[System.String]
 		$Ensure
 	)
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$result = $false
 	if($Destination -and (Test-Path $Destination))
     {

@@ -1,0 +1,67 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "Role": [
+                "Server"
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerRole": "VelocityServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[License File Path - Velocity Server ]",
+            "Installer": {
+                "Path": "[Velocity Server Installer Path]",
+                "InstallDir": "[Velocity Server Install Dir - Ex. C:\\ArcGIS\\Velocity]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisvelocity\\directories",
+            "ConfigStoreLocation": "C:\\arcgisvelocity\\config-store",
+            "ServerDirectories": [
+                {
+                    "name": "arcgisworkspace",
+                    "path": "C:\\arcgisvelocity\\directories\\arcgisworkspace",
+                    "type": "WORKSPACE"
+                },
+                {
+                    "name": "arcgisoutput",
+                    "path": "C:\\arcgisvelocity\\directories\\arcgisoutput",
+                    "type": "OUTPUT"
+                },
+                {
+                    "name": "arcgissystem",
+                    "path": "C:\\arcgisvelocity\\directories\\arcgissystem",
+                    "type": "SYSTEM"
+                },
+                {
+                    "name": "arcgisjobs",
+                    "path": "C:\\arcgisvelocity\\directories\\arcgisjobs",
+                    "type": "JOBS"
+                }
+            ],
+            "ServerLogsLocation": "C:\\arcgisvelocity\\logs",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            }
+        },
+        "Federation": {
+            "PortalHostName": "[Portal Host Name (FQDN) with which this site needs to be federated]",
+            "PortalPort": "[Port on which Portal is listening ex. - 443]",
+            "PortalContext": "[Context of the Portal ex. - portal]",
+            "PortalAdministrator": {
+                "UserName": "admin",
+                "Password": "changeit"
+            }
+        }
+    }
+}

@@ -1,0 +1,24 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Portal machine FQDN]",
+            "Role": ["Portal"]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[ArcGIS Enterprise version]",
+        "Portal": {
+            "Installer": {
+                "InstallDir": "[Existing Portal installation directory]"
+            },
+            "WebGISDR": {
+                "PropertiesFilePath": "[WebGISDR properties file path]",
+                "TimeoutInMinutes": 3600,
+                "RunAsAccount": {
+                    "UserName": "[WebGISDR run-as account username]",
+                    "PasswordEnvironmentVariableName": "ARCGIS_WEBGISDR_PASSWORD"
+                }
+            }
+        }
+    }
+}

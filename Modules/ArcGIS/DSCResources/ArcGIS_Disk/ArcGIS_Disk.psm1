@@ -70,13 +70,13 @@ function Set-DiskMaxSizeAllocated
     $Partition = Get-Partition -DriveLetter $DriveLetter -ErrorAction Ignore
     if($Partition){
         $CurrentSizeInBytes = $Partition.Size
-        $MaxSize = ((Get-PartitionSupportedSize -DriveLetter $DriveLetter).sizeMax * 1)
+        $MaxSize = Get-PartitionMaxSize -Partition $Partition
         Write-Verbose "Drive Letter:- '$DriveLetter', Max Size in bytes:- '$MaxSize'"
-        if($CurrentSizeInBytes -lt $MaxSize){
+        if(($MaxSize - $CurrentSizeInBytes) -ge 1MB){
             Write-Verbose "Max Size '$MaxSize' of Disk '$DriveLetter' is more than current size '$CurrentSizeInBytes'. Resizing partition to new size '$MaxSize'"
-            Resize-Partition -DriveLetter $DriveLetter -Size $MaxSize -ErrorAction SilentlyContinue # TODO:- capture error in error variable and log it at a minimum
+            Resize-Partition -DriveLetter $DriveLetter -Size $MaxSize -ErrorAction Stop
         }else {
-            Write-Verbose "Max Size '$MaxSize' of Disk '$DriveLetter' is equal to current size '$CurrentSizeInBytes'."
+            Write-Verbose "Disk '$DriveLetter' has less than 1 MiB available for growth (current size '$CurrentSizeInBytes', maximum size '$MaxSize'). Skipping resize."
         }
     }else{
         Write-Verbose "Drive Letter:- '$DriveLetter' is not allocated. Allocating disk '$DriveLetter'."
@@ -122,18 +122,44 @@ function Test-DiskMaxSizeAllocated
     $Partition = Get-Partition -DriveLetter $DriveLetter -ErrorAction Ignore
     if($Partition){
         $CurrentSizeInBytes = $Partition.Size
-        $MaxSize = ((Get-PartitionSupportedSize -DriveLetter $DriveLetter).sizeMax * 1)
+        $MaxSize = Get-PartitionMaxSize -Partition $Partition
         Write-Verbose "Drive Letter:- '$DriveLetter', Max Size in bytes:- '$MaxSize'"
-        if($CurrentSizeInBytes -lt $MaxSize){
+        if(($MaxSize - $CurrentSizeInBytes) -ge 1MB){
             Write-Verbose "Max Size '$MaxSize' of Disk '$DriveLetter' is more than current size '$CurrentSizeInBytes'."
         }else {
-            Write-Verbose "Max Size '$MaxSize' of Disk '$DriveLetter' is equal to current size '$CurrentSizeInBytes'."
+            Write-Verbose "Disk '$DriveLetter' has less than 1 MiB available for growth (current size '$CurrentSizeInBytes', maximum size '$MaxSize'). No resize required."
             $result = $True
         }
     }else{
         Write-Verbose "Drive Letter:- '$DriveLetter' is not allocated."
     }
     return $result
+}
+
+
+function Get-PartitionMaxSize
+{
+    param
+    (
+        [parameter(Mandatory = $true)]
+        [System.Object] $Partition
+    )
+
+    try
+    {
+        $SupportedSize = Get-PartitionSupportedSize -DiskNumber $Partition.DiskNumber -PartitionNumber $Partition.PartitionNumber -ErrorAction Stop
+    }
+    catch
+    {
+        throw "Unable to determine the maximum size of drive '$($Partition.DriveLetter)' (disk $($Partition.DiskNumber), partition $($Partition.PartitionNumber)). Get-PartitionSupportedSize failed: $($_.Exception.Message)"
+    }
+
+    if ($null -eq $SupportedSize.SizeMax -or $SupportedSize.SizeMax -le 0 -or $SupportedSize.SizeMax -lt $Partition.Size)
+    {
+        throw "Invalid maximum size returned for drive '$($Partition.DriveLetter)' (disk $($Partition.DiskNumber), partition $($Partition.PartitionNumber)): '$($SupportedSize.SizeMax)'. Current size: '$($Partition.Size)'."
+    }
+
+    return $SupportedSize.SizeMax
 }
 
 

@@ -20,7 +20,7 @@ function Get-TargetResource
         $ServerHostName,
 
         [parameter(Mandatory = $true)]    
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")]
         [System.String]
         $ServerType
     )
@@ -42,7 +42,7 @@ function Set-TargetResource
         $SiteAdministrator,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")]
         [System.String]
         $ServerType, 
 
@@ -105,7 +105,6 @@ function Set-TargetResource
         $VideoServerLiveStreamPorts
 	)
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     if($VerbosePreference -ine 'SilentlyContinue') 
     {        
@@ -292,29 +291,7 @@ function Set-TargetResource
 
         Write-Verbose "Admin system settings updated."
 
-        $MaxWaitTimeInSeconds = 120
-        $SleepTimeInSeconds = 10
-        Write-Verbose "Waiting for up to $($MaxWaitTimeInSeconds) seconds for server to restart"
-        $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName $ServerType -FQDN $FQDN
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        $Done = $False;
-        while((-not($Done)) -and ($stopwatch.Elapsed.TotalSeconds -lt $MaxWaitTimeInSeconds)) {
-            try{
-                # if available sleep and try again.
-                Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName $ServerType -MaxWaitTimeInSeconds 10 -Verbose -ThrowErrors $true
-                Write-Verbose "Server is still available. Trying again in $($SleepTimeInSeconds) seconds"
-                Start-Sleep -Seconds $SleepTimeInSeconds
-            }catch{
-                # if error and most likely server has become unavailable then exit loop
-                Write-Verbose "Server is likely restarting as result of update of system properties:- $($_)"
-                $Done = $true
-            }
-        }
-        $stopwatch.Stop()
-        
-        Write-Verbose "Waiting up to 6 minutes for Server endpoint '$($ServerBaseUrl)' to come back up"
-        Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName $ServerType -MaxWaitTimeInSeconds 360 -Verbose
-        Write-Verbose "Finished waiting for server endpoint '$($ServerBaseUrl)' to come back up"
+        Wait-ForArcGISComponentRestart -BaseURL $ServerBaseUrl -ComponentName $ServerType -Verbose
     }
     
     if($ServerType -ieq "Server"){
@@ -338,7 +315,7 @@ function Test-TargetResource
         $SiteAdministrator,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")]
         [System.String]
         $ServerType, 
 
@@ -401,7 +378,6 @@ function Test-TargetResource
         $VideoServerLiveStreamPorts
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Server Type:- $ServerType , Fully Qualified Domain Name :- $FQDN"
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName $ServerType -FQDN $FQDN
@@ -456,7 +432,7 @@ function Test-TargetResource
     if($result -and ($ServerType -ieq "Server") -and $SharedKey) {
 		Write-Verbose "Get Token and Shared Key setting"
 		$CurrentSharedKey = Get-SecurityTokenSharedKey -URL $ServerBaseUrl -Token $token.token -Referer $Referer
-		if($CurrentSharedKey -ine $SharedKey){
+        if($CurrentSharedKey.properties.sharedKey -ine $SharedKey){
 			Write-Verbose "Shared Key is not set as expected"
 			$result = $false
 		}else{

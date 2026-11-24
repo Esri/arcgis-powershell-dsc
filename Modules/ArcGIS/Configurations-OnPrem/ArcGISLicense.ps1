@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_License
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_License
 
     Node $AllNodes.NodeName 
     {
@@ -26,7 +26,7 @@
                     if(-not(@("GeoEvent", "WorkflowManagerServer", "RealityServer") -icontains $Node.ServerRole) -and $Node.ServerLicenseFilePath){
                         $AdditionalServerRoles = $null
                         if($Node.ServerRole -ieq "GeneralPurposeServer" -and $Node.AdditionalServerRoles){
-                            $AdditionalServerRoles = ($Node.AdditionalServerRoles | Where-Object {-not(@('GeoEvent','NotebookServer','MissionServer','VideoServer','DataPipelinesServer','RealityServer') -icontains $_) })
+                            $AdditionalServerRoles = ($Node.AdditionalServerRoles | Where-Object {-not(@('GeoEvent','NotebookServer','MissionServer','VideoServer','DataPipelinesServer','RealityServer','VelocityServer') -icontains $_) })
                             if($AdditionalServerRoles.Count -eq 0){
                                 $AdditionalServerRoles = $null
                             } 

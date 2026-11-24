@@ -2,7 +2,7 @@
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1",
+        $Version = "12.2",
 
         [System.Management.Automation.PSCredential]
         $ServiceCredential,
@@ -18,14 +18,6 @@
 
         [System.Boolean]
         $HasRelationalDataStore = $false,
-
-        [Parameter(Mandatory=$false)]
-        [System.String]
-        $UpgradeFailurePatchName,
-
-        [Parameter(Mandatory=$True)]
-        [System.Management.Automation.PSCredential]
-        $DeploymentArtifactCredentials,
         
 		[Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -38,8 +30,6 @@
     Import-DscResource -Name ArcGIS_xFirewall
     Import-DscResource -Name ArcGIS_AzureSetupsManager
     Import-DscResource -Name ArcGIS_WindowsService
-    Import-DscResource -Name ArcGIS_InstallPatch
-    Import-DscResource -Name ArcGIS_RemoteFile
     
     $UpgradeSetupsStagingPath = "C:\ArcGIS\Deployment\Downloads\$($Version)"
     Node localhost {
@@ -114,32 +104,6 @@
 			GetScript = { @{} }          
 		}    
         $Depends += '[Script]RemoveDataStoreInstaller'
-
-        if($HasRelationalDataStore -and $UpgradeFailurePatchName -and $DeploymentArtifactCredentials){
-
-            $UpgradePatchStagingPath = "C:\ArcGIS\Deployment\Downloads\$($Version)\patches"
-
-            # Download the patch
-            ArcGIS_RemoteFile "UpgradePatchDownload"
-            {
-                Source = $UpgradeFailurePatchName
-                Destination = (Join-Path $UpgradePatchStagingPath $UpgradeFailurePatchName)
-                FileSourceType = "AzureSASUri"
-                Credential = $DeploymentArtifactCredentials
-                Ensure = 'Present'
-            }
-            $Depends += '[ArcGIS_RemoteFile]UpgradePatchDownload'
-        
-            ArcGIS_InstallPatch DatastoreInstallPatch
-            {
-                Name = "DataStore"
-                Version = $Version
-                DownloadPatches = $false
-                PatchesDir = $UpgradePatchStagingPath
-                Ensure = "Present"
-                DependsOn = $Depends
-            }
-        }
 
         ArcGIS_WindowsService ArcGIS_DataStore_Service_Start
         {

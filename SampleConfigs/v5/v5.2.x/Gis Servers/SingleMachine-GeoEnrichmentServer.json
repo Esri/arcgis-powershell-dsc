@@ -4,13 +4,22 @@
             "NodeName": "[Machine Name]",
             "Role": [
                 "Server",
-                "RasterDataStoreItem"
+                "WebAdaptor"
+            ],
+            "WebAdaptorConfig":[
+                {
+                    "Role": "Server"
+                }
             ]
         }
     ],
     "ConfigData": {
         "Version": "[Version of ArcGIS Deployment]",
-        "ServerRole": "RasterAnalytics",
+        "ServerRole": "GeneralPurposeServer",
+		"AdditionalServerRoles":[
+			"GeoEnrichmentServer"
+		],
+        "ServerContext": "geoenrichment",
         "Credentials": {
             "ServiceAccount": {
                 "Password": "[ServiceAccount Password]",
@@ -26,10 +35,7 @@
                 "VolumePaths": [
                     "[Server Installer Path].001"
                 ],
-                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
-                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
-                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
-                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]"
             },
             "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
             "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
@@ -38,11 +44,24 @@
                 "Password": "[PrimarySiteAdmin Password]"
             }
         },
-        "DataStoreItems": {
-            "RasterStore": {
-                "FileShareLocalPath": "[File Share Local Path]",
-                "FileShareName": "[File Share Name]",
-                "ForceUpdate": "[Optional - True | False (Default) - If set to True, it will force the update of the existing Raster Data Store configuration.]"
+        "GeoEnrichmentServer": {
+            "Installer": {
+                "Path": "[Installer Path]",
+                "VolumePaths": [
+                    "[Installer Path].001"
+                ],
+                "InstallDir": "[Install Dir - Ex. C:\\ArcGIS\\GeoEnrichment]",
+                "DotnetDesktopRuntimePath": "[Dotnet Desktop Runtime Installer Path]",
+                "EnableSemanticSearch": "true | false"
+            },
+            "DataStoreDataDirectory":"[optional]",
+            "RegisterGeoEnrichmentAsPortalUtilityService":"[optional - true by default]",
+            "ForceRepair":"[optional - false by default]"
+        },
+        "WebAdaptor": {
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "[WebAdaptor Installer Path]"
             }
         },
         "Federation": {

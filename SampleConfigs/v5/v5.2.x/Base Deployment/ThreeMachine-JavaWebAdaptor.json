@@ -1,0 +1,110 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Data Store machine FQDN]",
+            "Role": ["DataStore"],
+            "DataStoreTypes": ["Relational", "ObjectStore"]
+        },
+        {
+            "NodeName": "[Portal machine FQDN]",
+            "Role": ["Portal", "WebAdaptor"],
+            "WebAdaptorConfig": [
+                { "Role": "Portal" }
+            ],
+            "SslCertificates": [
+                {
+                    "Path": "[Portal Web Adaptor certificate PFX path]",
+                    "PasswordEnvironmentVariableName": "ARCGIS_PORTAL_WA_CERT_PASSWORD",
+                    "CNameFQDN": "[Portal Web Adaptor certificate DNS name]",
+                    "Target": ["WebAdaptor"]
+                }
+            ]
+        },
+        {
+            "NodeName": "[Server machine FQDN]",
+            "Role": ["Server", "WebAdaptor"],
+            "WebAdaptorConfig": [
+                { "Role": "Server" }
+            ],
+            "SslCertificates": [
+                {
+                    "Path": "[Server Web Adaptor certificate PFX path]",
+                    "PasswordEnvironmentVariableName": "ARCGIS_SERVER_WA_CERT_PASSWORD",
+                    "CNameFQDN": "[Server Web Adaptor certificate DNS name]",
+                    "Target": ["WebAdaptor"]
+                }
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[ArcGIS Enterprise version]",
+        "ServerContext": "server",
+        "PortalContext": "portal",
+        "ServerRole": "GeneralPurposeServer",
+        "Credentials": {
+            "ServiceAccount": {
+                "UserName": "[Service account username]",
+                "PasswordEnvironmentVariableName": "ARCGIS_SERVICE_ACCOUNT_PASSWORD",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[Server license file path]",
+            "Installer": {
+                "Path": "[Server installer path]",
+                "VolumePaths": ["[Server installer volume path]"],
+                "InstallDir": "[Server installation directory]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[Server primary site administrator]",
+                "PasswordEnvironmentVariableName": "ARCGIS_SERVER_ADMIN_PASSWORD"
+            }
+        },
+        "Portal": {
+            "LicenseFilePath": "[Portal license file path]",
+            "PortalLicenseUserTypeId": "[Portal administrator user type ID]",
+            "Installer": {
+                "Path": "[Portal installer path]",
+                "VolumePaths": ["[Portal installer volume path]"],
+                "InstallDir": "[Portal installation directory]",
+                "ContentDir": "[Portal content installation directory]"
+            },
+            "ContentDirectoryLocation": "C:\\arcgisportal\\content",
+            "PortalAdministrator": {
+                "UserName": "[Portal administrator username]",
+                "Email": "[Portal administrator email]",
+                "PasswordEnvironmentVariableName": "ARCGIS_PORTAL_ADMIN_PASSWORD",
+                "SecurityQuestionIndex": 1,
+                "SecurityAnswerEnvironmentVariableName": "ARCGIS_PORTAL_SECURITY_ANSWER"
+            }
+        },
+        "DataStore": {
+            "ContentDirectoryLocation": "[Data Store content directory]",
+            "Installer": {
+                "Path": "[Data Store installer path]",
+                "VolumePaths": ["[Data Store installer volume path]"],
+                "InstallDir": "[Data Store installation directory]"
+            }
+        },
+        "WebAdaptor": {
+            "IsJavaWebAdaptor": true,
+            "JavaWebServerType": "ApacheTomcat10",
+            "JavaWebServerWebAppDirectory": "[Tomcat webapps directory on both Web Adaptor machines]",
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "[Java Web Adaptor installer path]",
+                "InstallDir": "[Java Web Adaptor installation directory]",
+                "ApacheTomcat": {
+                    "Version": "[Tomcat 10 version]",
+                    "Path": "[Tomcat Windows installer archive path]",
+                    "InstallDir": "[Tomcat installation directory]",
+                    "ServiceName": "[Tomcat service name]",
+                    "SSLProtocol": "TLSv1.3,TLSv1.2"
+                }
+            }
+        }
+    }
+}

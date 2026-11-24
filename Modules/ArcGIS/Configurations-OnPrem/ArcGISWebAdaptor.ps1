@@ -33,12 +33,12 @@
         $JavaWebServerType,
 
         [Parameter(Mandatory=$False)]
-        [System.String]
+        [System.Boolean]
         $OverrideHTTPSBinding = $True
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_xFirewall, ArcGIS_IIS_TLS, ArcGIS_WebAdaptor
 
 
     Node $AllNodes.NodeName

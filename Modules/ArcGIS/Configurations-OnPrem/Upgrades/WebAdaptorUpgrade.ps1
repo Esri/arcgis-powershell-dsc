@@ -67,7 +67,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_WebAdaptor, ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_WebAdaptor, ArcGIS_Tomcat
 
 
     Node $AllNodes.NodeName {

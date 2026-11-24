@@ -56,7 +56,6 @@ function Test-TargetResource
         $Version
     )
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
 	$result = $false
 	$result = Test-Install -Name "Portal" -Version $Version
@@ -94,7 +93,6 @@ function Set-TargetResource
 	)
 
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $Referer = 'https://localhost'
     $PortalBaseURL = $PortalEndPoint.TrimEnd("/") + "/arcgis"

@@ -240,7 +240,6 @@ function Set-TargetResource
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
     $ServerBaseURL = Get-ArcGISComponentBaseURL -ComponentName "Server" -FQDN $FQDN
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	Write-Verbose "Waiting for Server '$($ServerBaseURL)'"
     Test-ArcGISComponentHealth -BaseURL $ServerBaseURL -ComponentName "Server" -Verbose
 
@@ -248,7 +247,7 @@ function Set-TargetResource
         $Referer = 'https://localhost' 
         Write-Verbose "Checking for site on '$ServerBaseURL'"
         $siteExists = $false
-        $siteExists = Test-ServerSiteCreated -URL $ServerBaseURL -Referer $Referer -Verbose
+        $siteExists = Test-ServerSiteCreated -URL $ServerBaseURL -Type "Server" -Referer $Referer -Verbose
         if($siteExists){
             Write-Verbose "ArcGIS Server exists: $($siteExists)"
             try {
@@ -565,7 +564,6 @@ function Test-TargetResource
         $AzureCloudNativeServiceBusNamespaceRegionEndpointUrl
     )
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'https://localhost'
@@ -573,7 +571,10 @@ function Test-TargetResource
     
     $result = $false
     Write-Verbose "Checking for site on '$ServerBaseURL'"
-    $result = Test-ServerSiteCreated -URL $ServerBaseURL -Referer $Referer -Verbose
+    $result = Test-ServerSiteCreated -URL $ServerBaseURL -Type "Server" -Referer $Referer -Verbose
+    if($Ensure -ieq 'Absent') {
+        return -not($result)
+    }
     if($result){
         Write-Verbose "Server site exists."
         try {
@@ -609,12 +610,7 @@ function Test-TargetResource
         }
     }
     
-    if($Ensure -ieq 'Present') {
-	       $result   
-    }
-    elseif($Ensure -ieq 'Absent') {        
-        (-not($result))
-    }
+    $result
 }
 
 Export-ModuleMember -Function *-TargetResource

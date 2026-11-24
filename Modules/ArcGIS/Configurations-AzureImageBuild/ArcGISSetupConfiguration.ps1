@@ -34,7 +34,7 @@
         Registry CloudPlatform
         {
           Ensure      = "Present"
-          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License12.1"
+          Key         = "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\ESRI\License12.2"
           ValueName   = "CLOUD_PLATFORM"
           ValueData   = "AZURE"
         }

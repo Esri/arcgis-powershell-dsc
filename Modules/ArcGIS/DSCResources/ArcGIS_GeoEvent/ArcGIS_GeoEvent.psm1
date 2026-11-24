@@ -80,12 +80,11 @@ function Set-TargetResource
 		$Ensure
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $ServiceName = 'ArcGISGeoEvent'
     $GatewayServiceName = 'ArcGISGeoEventGateway'
     if($Ensure -ieq 'Present') {
         Write-Verbose "Stopping the service '$ServiceName'"    
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+        Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
         
 		$FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
 		$ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $FQDN
@@ -108,7 +107,7 @@ function Set-TargetResource
         }
        
         Write-Verbose "Starting the service '$ServiceName'"    
-		Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running' -Verbose
+		Start-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
         Write-Verbose "Starting Sleep - 60 Seconds"
         Start-Sleep -Seconds 60
         Write-Verbose "Ended Sleep - 60 Seconds"
@@ -148,7 +147,6 @@ function Test-TargetResource
 		$Ensure
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
 	$ServiceName = 'ArcGISGeoEvent'
     $result = $true    

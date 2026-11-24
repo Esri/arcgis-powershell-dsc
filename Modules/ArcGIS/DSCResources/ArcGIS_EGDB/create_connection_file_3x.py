@@ -83,3 +83,4 @@ except SystemExit as e:
 		print("\n")
 		parser.print_help() 
 		parser.exit(2)
+	raise

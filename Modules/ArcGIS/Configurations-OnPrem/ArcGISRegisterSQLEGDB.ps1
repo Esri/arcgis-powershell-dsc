@@ -11,7 +11,7 @@
         $ServerPrimarySiteAdminCredential,
 
         [Parameter(Mandatory=$true)]
-        [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzureMISQLDatabase","AWSRDSPostgreSQLDatabase","AWSAuroraPostgreSQLDatabase")]
+        [ValidateSet("AzureSQLDatabase","SQLServerDatabase","AzureMISQLDatabase","AzureFlexiblePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AWSAuroraPostgreSQLDatabase")]
         [System.String]
         $DatabaseType,
 
@@ -45,7 +45,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_EGDB
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_EGDB
     
     Node $AllNodes.NodeName
     {

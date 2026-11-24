@@ -101,7 +101,6 @@ function Set-TargetResource {
 		$ForceUpdate = $false
 	)
 	
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$FQDN = if ($ServerHostName) { Get-FQDN $ServerHostName }else { Get-FQDN $env:COMPUTERNAME }
 	$ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -Port $ServerHostPort -FQDN $FQDN -Context $ServerSiteName
 	Write-Verbose "ServerBaseURL:- $ServerBaseUrl"
@@ -182,7 +181,6 @@ function Test-TargetResource {
 		$ForceUpdate = $false
 	)
 
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 	$result = $false
 	$FQDN = if ($ServerHostName) { Get-FQDN $ServerHostName }else { Get-FQDN $env:COMPUTERNAME }
 	$ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -Port $ServerHostPort -FQDN $FQDN -Context $ServerSiteName

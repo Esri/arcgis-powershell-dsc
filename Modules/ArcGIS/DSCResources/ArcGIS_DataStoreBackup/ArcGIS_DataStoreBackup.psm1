@@ -103,7 +103,6 @@ function Set-TargetResource
         $ForceCloudCredentialsUpdate = $False
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
     $DataStoreInstallDirectory = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'DataStore').InstallDir
     
@@ -255,7 +254,6 @@ function Test-TargetResource
     )
     
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $true
 
     $DataStoreInstallDirectory = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'DataStore').InstallDir

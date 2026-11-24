@@ -14,7 +14,7 @@
         $ServiceCredentialIsMSA = $false
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_Install,ArcGIS_FileShare, ArcGIS_Tomcat
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_Install,ArcGIS_FileShare, ArcGIS_Tomcat
     
     Node $AllNodes.NodeName
     {   
@@ -32,7 +32,7 @@
             {
                 'Server' {
                     
-                    $ServerTypeName = if(@("MissionServer", "NotebookServer", "VideoServer", "DataPipelinesServer") -iContains $ConfigurationData.ConfigData.ServerRole){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+                    $ServerTypeName = if(@("MissionServer", "NotebookServer", "VideoServer", "DataPipelinesServer","VelocityServer") -iContains $ConfigurationData.ConfigData.ServerRole){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
                     
                     if($ServerTypeName -ieq "Server"){
                         if($ConfigurationData.ConfigData.WorkflowManagerServer) 
@@ -75,10 +75,12 @@
                         if($ConfigurationData.ConfigData.Server.Extensions){
                             foreach ($Extension in $ConfigurationData.ConfigData.Server.Extensions.GetEnumerator())
                             {
+                                $ExtensionVersion = if($Extension.Value.ContainsKey("Version")){ $Extension.Value.Version }else{ $ConfigurationData.ConfigData.Version }
+
                                 ArcGIS_Install "Server$($Extension.Key)UninstallExtension"
                                 {
                                     Name = "Server$($Extension.Key)"
-                                    Version = $ConfigurationData.ConfigData.Version
+                                    Version = $ExtensionVersion
                                     Ensure = "Absent"
                                 }
                             }

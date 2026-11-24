@@ -1,0 +1,108 @@
+{
+    "AllNodes": [
+        {
+            "NodeName": "[Machine Name]",
+            "Role": [
+                "Server",
+                "WebAdaptor",
+                "RasterDataStoreItem"
+            ],
+            "WebAdaptorConfig":[
+                {
+                    "Role": "Server"
+                }
+            ]
+        }
+    ],
+    "ConfigData": {
+        "Version": "[Version of ArcGIS Deployment]",
+        "ServerRole": "RealityServer",
+        "ServerContext": "reality",
+        "Credentials": {
+            "ServiceAccount": {
+                "Password": "[ServiceAccount Password]",
+                "UserName": "[ServiceAccount Username - Can be a Domain Account]",
+                "IsDomainAccount": false,
+                "IsMSAAccount": false
+            }
+        },
+        "Server": {
+            "LicenseFilePath": "[Reality License File Path - Server ]",
+            "Installer": {
+                "Path": "[Server Installer Path]",
+                "VolumePaths": [
+                    "[Server Installer Path].001"
+                ],
+                "InstallDir": "[Server Install Dir - Ex. C:\\ArcGIS\\Server]",
+                "InstallDirPython": "[Python Install Dir - Ex. C:\\Python27] ",
+                "EnableArcMapRuntime": "[ Optional - True (Default) | False - Enables ArcMapRuntime. Available starting 10.9.1]",
+                "EnableDotnetSupport": "[ Optional - True | False (Default)  - Enables .Net Extension Support. Available starting 10.9.1]"
+            },
+            "ServerDirectoriesRootLocation": "C:\\arcgisserver\\directories",
+            "ConfigStoreLocation": "C:\\arcgisserver\\config-store",
+            "PrimarySiteAdmin": {
+                "UserName": "[PrimarySiteAdmin Username]",
+                "Password": "[PrimarySiteAdmin Password]"
+            },
+            "Extensions":{
+                "DeepLearningLibraries":{
+                    "Installer": {
+                        "Path": "[Server Deep Learning Libraries Installer Path]"
+                    }
+                },
+                "CoordinateSystemsData":{
+                    "Installer": {
+                        "Path": "[Coordinate Systems Data Installer Path]"
+                    }
+                },
+                "RasterData":{
+                    "Version": "[Raster Data Version]",
+                    "Installer": {
+                        "Path": "[Raster Data Installer Path]"
+                    }
+                },
+                "DJI":{
+                    "Installer": {
+                        "Path": "[Server DJI Installer Path]"
+                    }
+                }
+            }
+        },
+        "RealityServer": {
+            "LicenseFilePath": "[Reality License File Path ]",
+            "Installer": {
+                "Path": "[Reality Server Installer Path]"
+            }
+        },
+        "DataStoreItems": {
+            "RasterStore": {
+                "FileShareLocalPath": "[File Share Local Path]",
+                "FileShareName": "[File Share Name]"
+            }
+        },
+        "WebAdaptor": {
+            "AdminAccessEnabled": true,
+            "Installer": {
+                "Path": "[WebAdaptor Installer Path]",
+                "DotnetHostingBundlePath": "[Dotnet Hosting Bundle Installer Path]",
+                "DotnetHostingBundleDownloadUrl": "[Dotnet Hosting Bundle Installer Download Url]",
+                "WebDeployPath": "[Web Deploy Installer Path]",
+                "WebDeployDownloadUrl": "[Web Deploy Installer Download Url]",
+                "IsSelfExtracting": "[ Optional - True (Default) | False ]",
+                "PatchesDir": "[Path to Directory with Patches for Web Adaptor]",
+                "PatchInstallOrder": [
+                    "Array of patch names to install in the needed order"
+                ]
+            }
+        },
+        "Federation": {
+            "PortalHostName": "[Portal Host Name (FQDN) with which this site needs to be federated]",
+            "PortalPort": "[Port on which Portal is listening ex. - 443]",
+            "PortalContext": "[Context of the Portal ex. - portal]",
+            "PortalAdministrator": {
+                "UserName": "admin",
+                "Password": "changeit"
+            }
+        }
+    }
+}

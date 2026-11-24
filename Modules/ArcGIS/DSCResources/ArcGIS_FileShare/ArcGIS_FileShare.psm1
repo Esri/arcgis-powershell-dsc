@@ -141,11 +141,10 @@ function Set-TargetResource
 		}
     }
     elseif($Ensure -eq 'Absent') {
-		if ($share = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"){ 
-			try{
-				Remove-CimInstance -CimInstance $share
-			} catch [Exception] {
-				Write-Verbose $_ | out-string
+		if ($share = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'" -ErrorAction Stop){
+			Remove-CimInstance -CimInstance $share -ErrorAction Stop
+			if(Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'" -ErrorAction Stop){
+				throw "Share '$FileShareName' still exists after removal."
 			}
 		}
     }
@@ -194,7 +193,10 @@ function Test-TargetResource
 		$UserName = "$($env:ComputerName)\$($Credential.UserName)"
 	}
 	
-	$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'"
+	$fs = Get-CimInstance -Class Win32_Share -Filter "Name='$FileShareName'" -ErrorAction Stop
+	if($Ensure -ieq 'Absent') {
+		return -not([bool]$fs)
+	}
 	if($fs){
 		if((Test-FileShareAccess -FileShareName $FileShareName -UserName $UserName) -and (($FileShareLocalPath | Get-Acl | Select-Object -ExpandProperty Access | Where-Object identityreference -eq $UserName).FileSystemRights -imatch "FullControl")){
 			$result = $True
@@ -225,12 +227,7 @@ function Test-TargetResource
 		}
 	}
 	
-    if($Ensure -ieq 'Present') {
-	    $result
-    }
-    elseif($Ensure -ieq 'Absent') {        
-    	(-not($result))
-    }
+	$result
 }
 
 Function Test-FileShareAccess

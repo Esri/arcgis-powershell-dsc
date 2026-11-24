@@ -45,7 +45,6 @@ function Set-TargetResource
         $HostName
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }
 
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
@@ -99,7 +98,14 @@ function Set-TargetResource
     }
 
     if($RestartRequired) {
-        Restart-ArcGISService -ComponentName $ComponentName -Verbose
+        if($ComponentName -ieq "VelocityServer"){
+            $VelocityServerServices = Get-VelocityServerServiceNames
+            foreach($ServiceName in $VelocityServerServices){
+                Restart-ArcGISService -ServiceName $ServiceName -Verbose
+            }
+        }else{
+            Restart-ArcGISService -ComponentName $ComponentName -Verbose
+        }
         
         $BaseURL = Get-ArcGISComponentBaseUrl -ComponentName $ComponentName -FQDN $FQDN
         Write-Verbose "Waiting for $ComponentName to initialize. $($BaseURL)"
@@ -127,7 +133,6 @@ function Test-TargetResource
         $HostName
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($HostName){ Get-FQDN $HostName }else{ Get-FQDN $env:COMPUTERNAME }
     $result = $true
 

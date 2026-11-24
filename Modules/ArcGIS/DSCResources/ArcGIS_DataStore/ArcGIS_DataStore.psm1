@@ -91,7 +91,48 @@ function Get-TargetResource
 
         [parameter(Mandatory = $False)]
         [ValidateSet("Enabled","Disabled")]
-        $PITRState = "Disabled"
+        $PITRState = "Disabled",
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('AzureFlexiblePostgreSQLDatabase','AWSRDSPostgreSQLDatabase','AWSAuroraPostgreSQLDatabase', 'None')]
+        [System.String]
+        $CloudRelationalStoreType = 'None',
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabasePort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseReadonlyURI,   
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyURI,
+        
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalRegion,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalDatabaseAdminUser,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalSDEUser
 	)
     
 	@{}
@@ -143,10 +184,50 @@ function Set-TargetResource
 
         [parameter(Mandatory = $False)]
         [ValidateSet("Enabled","Disabled")]
-        $PITRState = "Disabled"
+        $PITRState = "Disabled",
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('AzureFlexiblePostgreSQLDatabase','AWSRDSPostgreSQLDatabase','AWSAuroraPostgreSQLDatabase', 'None')]
+        [System.String]
+        $CloudRelationalStoreType = 'None',
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabasePort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseReadonlyURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyURI,
+        
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalRegion,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalDatabaseAdminUser,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalSDEUser
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     if($Ensure -ieq 'Present') {
         $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
         $Referer = "https://$($MachineFQDN):2443"
@@ -175,7 +256,7 @@ function Set-TargetResource
         if($RestartRequired){
             Write-Verbose "Stopping the DataStore service before applying property change"
             $ServiceName = $ServiceName = Get-ArcGISServiceName -ComponentName "DataStore"
-            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+            Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
             Write-Verbose 'Stopped the service'
             
             if($FailoverPropertyModified -and ($DataStoreTypes -icontains "Relational")){
@@ -185,7 +266,7 @@ function Set-TargetResource
             }
             
             Write-Verbose "Starting DataStore service to pick up property change"
-            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running' -Verbose
+            Start-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
             Write-Verbose "Restarted DataStore service"
 
             Test-ArcGISComponentHealth -BaseURL "https://$($MachineFQDN):2443/arcgis" -ComponentName "DataStore" -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -Verbose
@@ -243,23 +324,55 @@ function Set-TargetResource
         }
 
         $DataStoreBaseURL = 'https://localhost:2443/arcgis'
-        $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure -ServerBaseURL $ServerBaseUrl -Token $token.token -Referer $Referer `
-                                    -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
-                                    -DataStoreBaseURL $DataStoreBaseURL -ServerSiteAdminCredential $SiteAdministrator `
-                                    -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
-                                    -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory `
-                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version `
-                                    -DataStoreInstallDirectory $DataStoreInstallDirectory
+        $DSToRegisterOrConfigure = @{
+            ServerBaseURL = $ServerBaseUrl
+            Token = $token.token
+            Referer = $Referer
+            DataStoreTypes = $DataStoreTypes
+            MachineFQDN = $MachineFQDN
+            DataStoreBaseURL = $DataStoreBaseURL
+            DataStoreContentDirectory = $ContentDirectory
+            ServerSiteAdminCredential = $SiteAdministrator
+            IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
+            IsObjectDataStoreClustered = $IsObjectDataStoreClustered
+            IsGraphStoreClustered = $IsGraphStoreClustered
+            Version = $Version
+            DataStoreInstallDirectory = $DataStoreInstallDirectory
+            UseCloudRelationalStore = $UseCloudRelationalStore
+        }
+        
+        $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure @DSToRegisterOrConfigure
         
         if($DatastoresToRegisterOrConfigure.Count -gt 0){
             $DatastoresToRegisterOrConfigureString = ($DatastoresToRegisterOrConfigure -join ',')
             Write-Verbose "Registering or configuring datastores $DatastoresToRegisterOrConfigureString"
-            Invoke-RegisterOrConfigureDataStore -DataStoreBaseURL $DataStoreBaseURL -ServerSiteAdminCredential $SiteAdministrator `
-                                -ServerBaseUrl $ServerBaseUrl -DataStoreContentDirectory $ContentDirectory `
-                                -Token $token.token -Referer $Referer -MachineFQDN $MachineFQDN -DataStoreTypes $DataStoreTypes `
-                                -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -DataStoreInstallDirectory $DataStoreInstallDirectory `
-                                -IsObjectDataStoreClustered $IsObjectDataStoreClustered -IsGraphStoreClustered $IsGraphStoreClustered `
-                                -Version $Version
+            $RegisterDatastoreArgs = @{
+                Version = $Version
+                DataStoreBaseURL = $DataStoreBaseURL
+                ServerSiteAdminCredential = $SiteAdministrator
+                ServerBaseUrl = $ServerBaseUrl
+                DataStoreContentDirectory = $ContentDirectory
+                Token = $token.token
+                Referer = $Referer
+                MachineFQDN = $MachineFQDN
+                DataStoreTypes = $DataStoreTypes
+                IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
+                IsObjectDataStoreClustered = $IsObjectDataStoreClustered
+                IsGraphStoreClustered = $IsGraphStoreClustered
+                DataStoreInstallDirectory = $DataStoreInstallDirectory
+                UseCloudRelationalStore = $UseCloudRelationalStore
+                CloudRelationalStoreType = $CloudRelationalStoreType
+                CloudRelationalDatabasePort = $CloudRelationalDatabasePort
+                CloudRelationalDatabaseURI = $CloudRelationalDatabaseURI
+                CloudRelationalDatabaseReadonlyURI = $CloudRelationalDatabaseReadonlyURI
+                CloudRelationalProxyPort = $CloudRelationalProxyPort
+                CloudRelationalProxyURI = $CloudRelationalProxyURI
+                CloudRelationalRegion = $CloudRelationalRegion
+                CloudRelationalDatabaseAdminUser = $CloudRelationalDatabaseAdminUser
+                CloudRelationalSDEUser = $CloudRelationalSDEUser
+            }
+
+            Invoke-RegisterOrConfigureDataStore @RegisterDatastoreArgs
         }
 
         if($DataStoreTypes -icontains "SpatioTemporal"){
@@ -333,11 +446,51 @@ function Test-TargetResource
         
         [parameter(Mandatory = $False)]
         [ValidateSet("Enabled","Disabled")]
-        $PITRState = "Disabled"
+        $PITRState = "Disabled",
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('AzureFlexiblePostgreSQLDatabase','AWSRDSPostgreSQLDatabase','AWSAuroraPostgreSQLDatabase','None')]
+        [System.String]
+        $CloudRelationalStoreType = 'None',
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabasePort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseReadonlyURI,   
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyURI,
+        
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalRegion,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalDatabaseAdminUser,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalSDEUser
     )
     
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $true
     
     $MachineFQDN = if($DatastoreMachineHostName){ Get-FQDN $DatastoreMachineHostName }else{ Get-FQDN $env:COMPUTERNAME }
@@ -367,13 +520,25 @@ function Test-TargetResource
         $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ServerFQDN
         Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName "Server" -MaxWaitTimeInSeconds 90 -SleepTimeInSeconds 5 -Verbose
         $token = Get-ServerToken -URL $ServerBaseUrl -Credential $SiteAdministrator -Referer $Referer 
-        $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure -ServerBaseURL $ServerBaseUrl -Token $token.token -Referer $Referer `
-                                    -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
-                                    -DataStoreBaseURL $DataStoreBaseURL -ServerSiteAdminCredential $SiteAdministrator `
-                                    -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
-                                    -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $ContentDirectory `
-                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version `
-                                    -DataStoreInstallDirectory $DataStoreInstallDirectory
+
+        $RegisterOrConfigureDataStoreArgs = @{
+            ServerBaseURL = $ServerBaseUrl
+            Token = $token.token
+            Referer = $Referer
+            DataStoreTypes = $DataStoreTypes
+            MachineFQDN = $MachineFQDN
+            DataStoreBaseURL = $DataStoreBaseURL
+            DataStoreContentDirectory = $ContentDirectory
+            ServerSiteAdminCredential = $SiteAdministrator
+            IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
+            IsObjectDataStoreClustered = $IsObjectDataStoreClustered
+            IsGraphStoreClustered = $IsGraphStoreClustered
+            Version = $Version
+            DataStoreInstallDirectory = $DataStoreInstallDirectory
+            UseCloudRelationalStore = $UseCloudRelationalStore
+        }
+
+        $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure @RegisterOrConfigureDataStoreArgs
 
         if($DatastoresToRegisterOrConfigure.Count -gt 0){
             $result = $false
@@ -388,7 +553,7 @@ function Test-TargetResource
                 }
             }
         }
-    }
+    } 
 
     if($result) {
         if(($DataStoreTypes -icontains "Relational")) {
@@ -452,42 +617,161 @@ function Invoke-RegisterOrConfigureDataStore
         $IsGraphStoreClustered,
 
         [System.String]
-        $DataStoreInstallDirectory
+        $DataStoreInstallDirectory,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('AzureFlexiblePostgreSQLDatabase','AWSRDSPostgreSQLDatabase','AWSAuroraPostgreSQLDatabase', 'None')]
+        [System.String]
+        $CloudRelationalStoreType = 'None',
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabasePort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseReadonlyURI,    
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyURI,
+        
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalRegion,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalDatabaseAdminUser,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalSDEUser
     )
 
     Write-Verbose "Version of DataStore is $Version"
-    if(!$DataStoreContentDirectory) { throw "Must Specify DataStoreContentDirectory" }
+    if(-not($DataStoreContentDirectory)) { 
+        throw "Must specify 'DataStoreContentDirectory'" 
+    }
 
     $featuresJson = @{}
-    if($DataStoreTypes) {
-        foreach($dstype in $DataStoreTypes) {
-            if($dstype -ieq 'Relational') {
-		        $featuresJson.add("feature.egdb",$true)
-                Write-Verbose "Adding Relational as a data store type"
-            }
-            elseif($dstype -ieq 'TileCache') {
-		        $featuresJson.add("feature.nosqldb",$true)
-                Write-Verbose "Adding Tile Cache as a data store type"
-            }
-            elseif($dstype -ieq 'SpatioTemporal') {
-		        $featuresJson.add("feature.bigdata",$true)
-                Write-Verbose "Adding SpatioTemporal as a data store type"
-            }
-            elseif($dstype -ieq 'GraphStore') {
-		        $featuresJson.add("feature.graphstore",$true)
-                Write-Verbose "Adding GraphStore as a data store type"
-            }
-            elseif($dstype -ieq 'ObjectStore') {
-		        $featuresJson.add("feature.ozobjectstore",$true)
-                Write-Verbose "Adding ObjectStore as a data store type"
-            }
-        }
+    
+    if($DataStoreTypes -icontains 'Relational') {
+        $featuresJson.add("feature.egdb",$true)
+        Write-Verbose "Adding Relational as a data store type"
+    }
+    if($DataStoreTypes -icontains 'TileCache') {
+        $featuresJson.add("feature.nosqldb",$true)
+        Write-Verbose "Adding Tile Cache as a data store type"
+    }
+    if($DataStoreTypes -icontains 'SpatioTemporal') {
+        $featuresJson.add("feature.bigdata",$true)
+        Write-Verbose "Adding SpatioTemporal as a data store type"
+    }
+    if($DataStoreTypes -icontains 'GraphStore') {
+        $featuresJson.add("feature.graphstore",$true)
+        Write-Verbose "Adding GraphStore as a data store type"
+    }
+    if($DataStoreTypes -icontains 'ObjectStore') {
+        $featuresJson.add("feature.ozobjectstore",$true)
+        Write-Verbose "Adding ObjectStore as a data store type"
     }
 
 	$dsSettings = @{
 		directory = $DataStoreContentDirectory.Replace('\\', '\').Replace('\\', '\'); 
 		features = $featuresJson;
 	}
+
+    if($DataStoreTypes -icontains "Relational" -and $UseCloudRelationalStore){
+        $providerName = $null
+        $serviceName = $null
+
+        switch ($CloudRelationalStoreType) {
+            'AzureFlexiblePostgreSQLDatabase' {
+                $providerName = 'AZURE'
+                $serviceName = 'Azure PostgreSQL'
+            }
+            'AWSRDSPostgreSQLDatabase' {
+                $providerName = 'AWS'
+                $serviceName = 'AWS RDS for PostgreSQL'
+            }
+            'AWSAuroraPostgreSQLDatabase' {
+                $providerName = 'AWS'
+                $serviceName = 'AWS Aurora for PostgreSQL'
+            }
+            default {
+                throw "Unsupported cloud relational store type '$CloudRelationalStoreType'."
+            }
+        }
+
+        $connection = @{
+            region = $CloudRelationalRegion
+            dbUri = $CloudRelationalDatabaseURI
+            dbPort = $CloudRelationalDatabasePort
+            credential = @{
+                type = 'databaseUser'
+                databaseUsers = @{
+                    adminUser = @{
+                        authType = 'PASSWORD'
+                        name = $CloudRelationalDatabaseAdminUser.UserName
+                        password = $CloudRelationalDatabaseAdminUser.GetNetworkCredential().Password
+                    }
+                }
+            }
+        }
+
+        if ($CloudRelationalProxyURI -and $CloudRelationalProxyPort) {
+            $connection['proxyUri'] = $CloudRelationalProxyURI
+            $connection['proxyPort'] = $CloudRelationalProxyPort
+        }
+
+        if ($CloudRelationalSDEUser) {
+            $connection['credential']['databaseUsers']['sdeUser'] = @{
+                authType = 'PASSWORD'
+                name = $CloudRelationalSDEUser.UserName
+                password = $CloudRelationalSDEUser.GetNetworkCredential().Password
+            }
+        }
+
+        if ($CloudRelationalStoreType -eq 'AWSAuroraPostgreSQLDatabase' -and `
+            -not [string]::IsNullOrWhiteSpace($CloudRelationalDatabaseReadonlyURI)) {
+            $connection['dbReadonlyUri'] = $CloudRelationalDatabaseReadonlyURI
+        }
+
+        $CloudRelationalStoreObject = @{
+            name = $providerName
+            cloudServices = @(
+                @{
+                    name = $serviceName
+                    category = 'databases'
+                    type = 'relationalStore'
+                    instanceProvided = $true
+                    usage = "DEFAULT"
+                    connection = $connection
+                }
+            )
+        }
+
+        $CloudRelationalStoreJson = (ConvertTo-Json -Compress -InputObject $CloudRelationalStoreObject -Depth 10)
+        $dsSettings.add("storeSetting.relational", @{
+            cloudDbProvider = $CloudRelationalStoreJson
+        })
+
+        #$dsSettings.add("referer",$Referer)
+    }
+
 
 	if($DataStoreTypes -icontains "TileCache" -and $IsTileCacheDataStoreClustered){
         $dsSettings.add("storeSetting.tileCache",@{deploymentMode="cluster"})
@@ -528,16 +812,28 @@ function Invoke-RegisterOrConfigureDataStore
             $DatastoresToRegisterFlag = $true
             if($NumAttempts -gt 1) {
                 Write-Verbose "Checking if datastore is registered"
-                $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure -ServerBaseURL $ServerBaseURL -Token $Token `
-                                            -Referer $Referer -DataStoreTypes $DataStoreTypes -MachineFQDN $MachineFQDN `
-                                            -DataStoreBaseURL $DataStoreBaseURL -ServerSiteAdminCredential $ServerSiteAdminCredential `
-                                            -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered `
-                                            -IsObjectDataStoreClustered $IsObjectDataStoreClustered -DataStoreContentDirectory $DataStoreContentDirectory `
-                                            -IsGraphStoreClustered $IsGraphStoreClustered -DataStoreInstallDirectory $DataStoreInstallDirectory `
-                                            -Version $Version
+                $DSTypesToArgs = @{
+                    ServerBaseURL = $ServerBaseURL
+                    Token = $Token
+                    Referer = $Referer
+                    DataStoreTypes = $DataStoreTypes
+                    MachineFQDN = $MachineFQDN
+                    DataStoreBaseURL = $DataStoreBaseURL
+                    ServerSiteAdminCredential = $ServerSiteAdminCredential
+                    IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
+                    IsObjectDataStoreClustered = $IsObjectDataStoreClustered
+                    IsGraphStoreClustered = $IsGraphStoreClustered
+                    DataStoreContentDirectory = $DataStoreContentDirectory
+                    Version = $Version
+                    DataStoreInstallDirectory = $DataStoreInstallDirectory
+                    UseCloudRelationalStore = $UseCloudRelationalStore
+                }
+
+                $DatastoresToRegisterOrConfigure = Get-DataStoreTypesToRegisterOrConfigure @DSTypesToArgs
 
                 $DatastoresToRegisterFlag = ($DatastoresToRegisterOrConfigure.Count -gt 0)
-            }            
+            }
+
             if($DatastoresToRegisterFlag) {
                 Write-Verbose "Register DataStore on Machine $MachineFQDN"    
                 $StartTime = get-date
@@ -593,9 +889,6 @@ function Get-DataStoreTypesToRegisterOrConfigure
         [System.String]
         $Referer, 
 
-        [System.String]
-        $Type, 
-        
         [System.Array]
         $DataStoreTypes, 
         
@@ -615,7 +908,11 @@ function Get-DataStoreTypesToRegisterOrConfigure
         $DataStoreContentDirectory,
 
         [System.String]
-        $DataStoreInstallDirectory
+        $DataStoreInstallDirectory,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False
     )
 
     $DataStoreInfo = Get-DataStoreInfo -URL $DataStoreBaseURL -ServerSiteAdminCredential $ServerSiteAdminCredential `
@@ -646,9 +943,22 @@ function Get-DataStoreTypesToRegisterOrConfigure
                 $dsTestResult = ($DataStoreInfo.objectStore.registered -and -not($DataStoreInfo.objectStore.isCloudObjectStore))
             }
         }
-        $serverTestResult = Test-DataStoreRegistered -ServerBaseURL $ServerBaseURL -Token $Token -Referer $Referer -Type "$dstype" -MachineFQDN $MachineFQDN `
-                                                    -IsTileCacheDataStoreClustered $IsTileCacheDataStoreClustered -IsObjectDataStoreClustered $IsObjectDataStoreClustered `
-                                                    -IsGraphStoreClustered $IsGraphStoreClustered -Version $Version -DataStoreInstallDirectory $DataStoreInstallDirectory -Verbose
+
+        $ServerArgs = @{
+            ServerBaseURL = $ServerBaseURL
+            Token = $Token
+            Referer = $Referer
+            Type = "$dstype"
+            MachineFQDN = $MachineFQDN
+            IsTileCacheDataStoreClustered = $IsTileCacheDataStoreClustered
+            IsObjectDataStoreClustered = $IsObjectDataStoreClustered
+            IsGraphStoreClustered = $IsGraphStoreClustered
+            Version = $Version
+            DataStoreInstallDirectory = $DataStoreInstallDirectory
+            UseCloudRelationalStore = $UseCloudRelationalStore
+        }
+        
+        $serverTestResult = Test-DataStoreRegistered @ServerArgs -Verbose
 
         if($dsTestResult -and $serverTestResult){
             Write-Verbose "The machine with FQDN '$MachineFQDN' already participates in a '$dstype' data store"
@@ -693,7 +1003,11 @@ function Test-DataStoreRegistered
         $IsGraphStoreClustered,
 
         [System.String]
-        $DataStoreInstallDirectory
+        $DataStoreInstallDirectory,
+
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False
     )
 
     $result = $false
@@ -704,6 +1018,14 @@ function Test-DataStoreRegistered
         $DB = ($items | Select-Object -First 1)
         $Machines = Get-DataStoreMachines -URL $ServerBaseURL -Token $Token -Referer $Referer -DataStorePath $DB.path -Verbose
         $result = ($Machines | Where-Object { $_.name -ieq $MachineFQDN } | Measure-Object).Count -gt 0
+
+        if($result -and ($Type -like "Relational") -and $UseCloudRelationalStore){
+            if($null -eq $DB.info.cloudDbConfig){
+                throw "[ERROR] Relational Store cannot be converted to Cloud Relational Store."
+            }else{
+                Write-Verbose "Relational Store is already configured to use Cloud Relational Store."
+            }
+        }
 
         if($result -and ($Type -like "TileCache")){
             $tcArchTerminology = "primaryStandby"

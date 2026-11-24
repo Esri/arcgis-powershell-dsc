@@ -142,10 +142,13 @@ function Set-TargetResource
         
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $AzureCloudStorageAccountCredential
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $PortalSiteAdministrator
 	)
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     if($VerbosePreference -ine 'SilentlyContinue') 
     {        
@@ -165,7 +168,7 @@ function Set-TargetResource
         
         Write-Verbose "Checking for $ServerType site on '$ServerBaseUrl'"
         $siteExists = $false
-        $siteExists = Test-ServerSiteCreated -URL $ServerBaseURL -Referer $Referer -Verbose
+        $siteExists = Test-ServerSiteCreated -URL $ServerBaseURL -Type $ServerType -Referer $Referer -Verbose
         if($siteExists){
             Write-Verbose "$ServerType site exists: $($siteExists)"
             try {
@@ -183,9 +186,17 @@ function Set-TargetResource
         if(-not($siteExists)) {
             if($Join){
                 Write-Verbose 'Joining Site'
-                Invoke-JoinSite -URL $ServerBaseUrl -Credential $SiteAdministrator `
-                                -Referer $Referer -ServerType $ServerType `
-                                -PrimaryServerHostName $PeerServerHostName -Verbose
+                $ServerJoinArgs = @{
+                    ServerType = $ServerType
+                    Version = $Version
+                    URL = $ServerBaseUrl
+                    Credential = $SiteAdministrator
+                    PrimaryServerHostName = $PeerServerHostName
+                    Referer = $Referer
+                    PortalSiteAdministrator = $PortalSiteAdministrator
+                }
+
+                Invoke-JoinSite @ServerJoinArgs -Verbose
                 Write-Verbose 'Joined Site'
             }else{
 
@@ -215,8 +226,14 @@ function Set-TargetResource
                 
                 Invoke-CreateSite @ServerArgs -Verbose
             }
-            Write-Verbose "Waiting for Server '$($ServerBaseUrl)'"
-            Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName "Server" -Verbose
+            
+            if($ServerType -ieq 'VelocityServer'){
+                Write-Verbose "Waiting for Velocity Server restart. URL: '$($ServerBaseUrl)'"
+                Wait-ForArcGISComponentRestart -BaseURL $ServerBaseUrl -ComponentName $ServerType -Verbose
+            }else{
+                Write-Verbose "Waiting for Server '$($ServerBaseUrl)'"
+                Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName $ServerType -Verbose
+            }
         }else{
             Write-Verbose "Site Already Exists."
         }
@@ -358,10 +375,13 @@ function Test-TargetResource
         
         [Parameter(Mandatory=$False)]
         [System.Management.Automation.PSCredential]
-        $AzureCloudStorageAccountCredential
+        $AzureCloudStorageAccountCredential,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $PortalSiteAdministrator
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $Referer = 'https://localhost'
@@ -369,7 +389,7 @@ function Test-TargetResource
     $result = $false
     Write-Verbose "Checking for site on '$ServerBaseUrl'"
 
-    $result = Test-ServerSiteCreated -URL $ServerBaseURL -Referer $Referer -Verbose
+    $result = Test-ServerSiteCreated -URL $ServerBaseURL -Type $ServerType -Referer $Referer -Verbose
     if($result){
         Write-Verbose "Server site exists."
         try {

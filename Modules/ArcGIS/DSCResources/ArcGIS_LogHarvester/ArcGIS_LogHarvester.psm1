@@ -108,7 +108,7 @@ function Set-TargetResource
             if(Test-Path $Log4jXMLJarPath){
                 $ServiceName = Get-ArcGISServiceName -ComponentName "Server"
                 Write-Verbose 'Stopping the service' 
-                Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+                Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
                 Write-Verbose 'Stopped the service'
                 Start-Sleep -Seconds 5
             }
