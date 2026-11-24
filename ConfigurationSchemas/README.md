@@ -61,6 +61,6 @@ Invoke-ArcGISConfiguration `
 ## Notes
 
 - The schema improves authoring experience, but it does not replace module runtime validation.
-- Some options are version-specific. The schema encodes supported values for v5.2.0, including Enterprise versions through `12.1`.
+- Some options are version-specific. The schema encodes supported values for v5.2.0, including Enterprise versions through `12.2`.
 - If your editor says a property is not allowed, verify both the property name and the location where it is defined.
 - For richer examples, use the [v5.2.x sample configs](../SampleConfigs/v5/v5.2.x/README.md).
