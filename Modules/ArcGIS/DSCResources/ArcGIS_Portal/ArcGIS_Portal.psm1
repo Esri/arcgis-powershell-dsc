@@ -143,7 +143,6 @@ function Set-TargetResource {
         Write-Verbose ("PortalAdmin UserName:- " + $PortalAdministrator.UserName) 
     }
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($PortalHostName){ Get-FQDN $PortalHostName }else{ Get-FQDN $env:COMPUTERNAME }     
     $PortalBaseURL = Get-ArcGISComponentBaseUrl -FQDN $FQDN -ComponentName "Portal"
 
@@ -393,7 +392,6 @@ function Test-TargetResource {
 	)
 
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($PortalHostName){ Get-FQDN $PortalHostName }else{ Get-FQDN $env:COMPUTERNAME }
     $result = $false
 

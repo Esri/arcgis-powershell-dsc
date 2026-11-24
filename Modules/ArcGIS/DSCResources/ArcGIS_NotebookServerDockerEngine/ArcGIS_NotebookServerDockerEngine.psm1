@@ -68,7 +68,7 @@ function Set-TargetResource {
         Write-Verbose "Docker Service is already running."
         if($ForceUpdate){
             Write-Verbose "Force Update is set to true. Stopping Docker Service"
-            Wait-ForServiceToReachDesiredState -ServiceName "docker" -DesiredState 'Stopped' -Verbose
+            Stop-ServiceAndWait -ServiceName "docker" -TimeoutSeconds 300 -PollSeconds 2 -Verbose
             Write-Verbose "Docker Service Stopped"
 
             # Unregister docker service
@@ -100,7 +100,7 @@ function Set-TargetResource {
         # Register docker service
         &$($DockerDaemonExePath) --register-service 
         # Start docker service
-        Wait-ForServiceToReachDesiredState -ServiceName "docker" -DesiredState 'Running' -Verbose
+        Start-ServiceAndWait -ServiceName "docker" -TimeoutSeconds 300 -PollSeconds 2 -Verbose
         #Test docker engine
         &$($DockerExePath) info
         Write-Verbose "Docker Engine Installed"

@@ -42,7 +42,7 @@
     )
     
     Import-DscResource -ModuleName PSDesiredStateConfiguration 
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_Install, ArcGIS_InstallPatch, ArcGIS_xFirewall
     
     Node $AllNodes.NodeName {
 
@@ -158,6 +158,9 @@
             $ObjectStoreServerPorts = @("29878", "29879")
             if([version]$Version -ge "11.5"){
                 $ObjectStoreServerPorts = @("29879", "19879")
+            }
+            if([version]$Version -ge "12.2"){
+                $ObjectStoreServerPorts = @("29879")
             }
 
             ArcGIS_xFirewall ObjectDataStore_FirewallRules

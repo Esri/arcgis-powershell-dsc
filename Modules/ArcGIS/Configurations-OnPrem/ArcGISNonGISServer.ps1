@@ -137,28 +137,24 @@
         $ServerDirectoriesAzureFilesCloudNamespace,
 
         [Parameter(Mandatory=$False)]
-        [System.Array]
-        $NotebookServerContainerImagePaths,
-
-        [Parameter(Mandatory=$False)]
-        [System.Boolean]
-        $ExtractNotebookServerSamplesData = $False,
-
-        [Parameter(Mandatory=$False)]
         [System.Boolean]
         $UsesSSL = $False,
 
         [Parameter(Mandatory=$False)]
         [System.String]
         $VideoServerLiveStreamPorts,
-        
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $PortalSiteAdministratorCredential,
+
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_NonGISServer, ArcGIS_Server_TLS, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent, ArcGIS_HostNameSettings, ArcGIS_NotebookPostInstall
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_NonGISServer, ArcGIS_Service_Account, ArcGIS_xFirewall, ArcGIS_WaitForComponent, ArcGIS_HostNameSettings
     
     if($UsesAzureFilesForConfigStore){
         $ConfigStorePos = $ConfigStoreAzureFilesCredentials.UserName.IndexOf('.blob.')
@@ -188,6 +184,7 @@
         $DependsOn = @()
 
         $FirewallPorts = @()
+        $SRTFirewallPort = $null
         $FirewallDisplayGroupAndName = ""
         if($ServerType -ieq "NotebookServer"){
             $FirewallPorts = ("11443")
@@ -204,7 +201,11 @@
             if(-not([string]::IsNullOrEmpty($VideoServerLiveStreamPorts))){
                 $PortsObject = ConvertFrom-Json $VideoServerLiveStreamPorts
                 $FirewallPorts += ($PortsObject.RTMPPort, $PortsObject.RTSPTCPPort,"$($PortsObject.RTSPUDPPortRangeMin)-$($PortsObject.RTSPUDPPortRangeMax)")
+                $SRTFirewallPort = $PortsObject.SRTPort
             }
+        }elseif($ServerType -ieq "VelocityServer"){
+            $FirewallPorts = ("7143")
+            $FirewallDisplayGroupAndName = "ArcGIS for Velocity Server"
         }
 
         ArcGIS_xFirewall "$($ServerType)_FirewallRules"
@@ -221,6 +222,23 @@
             DependsOn       	   = $DependsOn
         }
         $DependsOn += "[ArcGIS_xFirewall]$($ServerType)_FirewallRules"
+
+        if($null -ne $SRTFirewallPort){
+            ArcGIS_xFirewall "$($ServerType)_SRTFirewallRule"
+            {
+                Name                  = "ArcGIS$($ServerType)SRT"
+                DisplayName           = "$FirewallDisplayGroupAndName SRT"
+                DisplayGroup          = $FirewallDisplayGroupAndName
+                Ensure                = 'Present'
+                Access                = "Allow"
+                State                 = "Enabled"
+                Profile               = ("Domain","Private","Public")
+                LocalPort             = $SRTFirewallPort
+                Protocol              = "UDP"
+                DependsOn             = $DependsOn
+            }
+            $DependsOn += "[ArcGIS_xFirewall]$($ServerType)_SRTFirewallRule"
+        }
 
         $DataDirs = @()
         # Only add config store location if not using Azure Files for config store or is not using a cloud provider for config store
@@ -371,46 +389,7 @@
             AzureCloudServicePrincipalTenantId      = $AzureCloudServicePrincipalTenantId
             AzureCloudServicePrincipalAuthorityHost = $AzureCloudServicePrincipalAuthorityHost
             AzureCloudUserAssignedIdentityClientId  = $AzureCloudUserAssignedIdentityClientId
-        }
-        $DependsOn += "[ArcGIS_NonGISServer]$($ServerType)$($Node.NodeName)"
-
-        if($Node.SSLCertificate -or $Node.SslRootOrIntermediate){
-            ArcGIS_Server_TLS "$($ServerType)_TLS_$($Node.NodeName)"
-            {
-                ServerHostName = $Node.NodeName
-                SiteAdministrator = $ServerPrimarySiteAdminCredential                         
-                WebServerCertificateAlias =  if($Node.SSLCertificate){$Node.SSLCertificate.CName}else{$null}
-                CertificateFileLocation = if($Node.SSLCertificate){$Node.SSLCertificate.Path}else{$null}
-                CertificatePassword = if($Node.SSLCertificate){$Node.SSLCertificate.Password}else{$null}
-                SslRootOrIntermediate = if($Node.SslRootOrIntermediate){$Node.SslRootOrIntermediate}else{$null}
-                ServerType = $ServerType
-                DependsOn = $DependsOn
-            }
-            $DependsOn += "[ArcGIS_Server_TLS]$($ServerType)_TLS_$($Node.NodeName)"
-        }
-
-        if($ServerType -ieq "NotebookServer"){
-            $HasContainerImages = ($NotebookServerContainerImagePaths.Count -gt 0)
-            $ExtractSamples = ((@("10.9.1","11.0","11.1","11.2","11.3") -icontains $Version) -and $ExtractNotebookServerSamplesData -and -not($ServiceCredentialIsMSA))
-
-            if($HasContainerImages -or $ExtractSamples){
-                if($ServiceCredentialIsMSA){
-                    ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                        SiteName            = 'arcgis' 
-                        ContainerImagePaths = if($HasContainerImages){$NotebookServerContainerImagePaths}else{$null}
-                        ExtractSamples      = $ExtractSamples
-                        DependsOn           = $DependsOn
-                    }
-                }else{
-                    ArcGIS_NotebookPostInstall "NotebookPostInstall$($Node.NodeName)" {
-                        SiteName            = 'arcgis' 
-                        ContainerImagePaths = if($HasContainerImages){$NotebookServerContainerImagePaths}else{$null}
-                        ExtractSamples      = $ExtractSamples
-                        DependsOn           = $DependsOn
-                        PsDscRunAsCredential  = $ServiceCredential # Copy as arcgis account which has access to this share
-                    }
-                }
-            }
+            PortalSiteAdministrator                 = if($PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder"){ $PortalSiteAdministratorCredential }else{ $null }
         }
     }
 }

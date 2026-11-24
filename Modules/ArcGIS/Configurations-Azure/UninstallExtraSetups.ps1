@@ -2,7 +2,7 @@ Configuration UninstallExtraSetups {
     param(
         [Parameter(Mandatory = $false)]
         [System.String]
-        $Version = "12.1",
+        $Version = "12.2",
 
         [Parameter(Mandatory = $false)]
         [System.String]
@@ -55,7 +55,7 @@ Configuration UninstallExtraSetups {
             $FoldersToDelete += @("C:\\ArcGIS\\Server\\GeoEvent")
         }
         
-        if(-not($MachineRolesArray -iContains "Server") -or (@("NotebookServer", "MissionServer", "VideoServer","DataPipelinesServer") -iContains $ServerRole)){
+        if(-not($MachineRolesArray -iContains "Server") -or (@("NotebookServer", "MissionServer", "VideoServer","DataPipelinesServer","VelocityServer") -iContains $ServerRole)){
             ArcGIS_Install ServerUninstall {
                 Name = "Server"
                 Version = $Version
@@ -84,6 +84,7 @@ Configuration UninstallExtraSetups {
 
             $FoldersToDelete += @("C:\\ArcGIS\\Video","C:\\arcgisvideoserver")
         }
+        
 
         if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "DataPipelinesServer"){
             ArcGIS_Install DataPipelinesServerUninstall {
@@ -106,6 +107,17 @@ Configuration UninstallExtraSetups {
         }else{
             $FoldersToDelete += @("C:\\ArcGIS\\Deployment\\Downloads\\NotebookServer")
         }
+
+        if(-not($MachineRolesArray -iContains "Server") -or $ServerRole -ine "VelocityServer"){
+            ArcGIS_Install VelocityServerUninstall {
+                Name = "VelocityServer"
+                Version = $Version
+                Ensure = "Absent"
+            }
+
+            $FoldersToDelete += @("C:\\ArcGIS\\Velocity","C:\\arcgisvelocity")
+        }
+        
             
         if(-not($MachineRolesArray -iContains "Portal")){
             ArcGIS_Install WebStylesUninstall
@@ -138,7 +150,8 @@ Configuration UninstallExtraSetups {
         ArcGIS_AzureSetupsManager CleanupDownloadsFolder{
             Version = $Version
             OperationType = 'CleanupDownloadsFolder'
-            ComponentNames = if($MachineRolesArray -iContains "Server" -and $ServerRole -ieq "NotebookServer"){ "NotebookServer" }else{ "All" }
+            ComponentNames = if($MachineRolesArray -iContains "Server" -and $ServerRole -ieq "NotebookServer"){ "Server" }else{ "All" }
+            ServerRole = $ServerRole
             AdditionalFilesOrFolderToDelete = $FoldersToDelete
         }
     }

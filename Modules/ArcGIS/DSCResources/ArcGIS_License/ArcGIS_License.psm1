@@ -70,7 +70,7 @@ function Set-TargetResource
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer","VideoServer","RealityServer","DataPipelinesServer","GeoEnrichmentServer")]
+        [ValidateSet("ImageServer","GeoEvent","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer","VideoServer","RealityServer","DataPipelinesServer","VelocityServer","GeoEnrichmentServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -135,7 +135,7 @@ function Test-TargetResource
 		[System.String]
 		$Component,
 
-		[ValidateSet("ImageServer","GeoEvent","GeoAnalytics","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer","VideoServer","RealityServer","DataPipelinesServer","GeoEnrichmentServer")]
+        [ValidateSet("ImageServer","GeoEvent","GeneralPurposeServer","HostingServer","NotebookServer","MissionServer","WorkflowManagerServer","KnowledgeServer","VideoServer","RealityServer","DataPipelinesServer","VelocityServer","GeoEnrichmentServer")]
 		[System.String]
         $ServerRole = 'GeneralPurposeServer',
 
@@ -212,7 +212,7 @@ function Get-LicenseVersion{
             $ErrorActionPreference = "Stop"; #Make all errors terminating
             $ComponentName = Get-ArcGISProductName -Name $Component
             if($Component -ieq "Server"){
-                if(@("NotebookServer","MissionServer","VideoServer","DataPipelinesServer","GeoEnrichmentServer") -icontains $ServerRole){
+                if(@("NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer","GeoEnrichmentServer") -icontains $ServerRole){
                     $ComponentName = Get-ArcGISProductName -Name $ServerRole
                 }
             }
@@ -285,6 +285,8 @@ function Invoke-LicenseSoftware
                 $ServerTypeName = "ArcGIS Video Server"
             }elseif($ServerRole -ieq "DataPipelinesServer"){ 
                 $ServerTypeName = "ArcGIS Data Pipelines Server"
+            }elseif($ServerRole -ieq "VelocityServer"){
+                $ServerTypeName = "ArcGIS Velocity for ArcGIS Enterprise"
             }elseif($ServerRole -ieq "GeoEnrichmentServer"){ 
                 $ServerTypeName = "GeoEnrichmentServer"
             }
@@ -295,7 +297,7 @@ function Invoke-LicenseSoftware
             if([version]$Version -ge "11.2"){
                 $SoftwareAuthExePath = "$($InstallLocation)tools\SoftwareAuthorization\SoftwareAuthorization.exe"
             }else{
-                if(($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" -or $ServerRole -ieq "VideoServer" -or $ServerRole -ieq "DataPipelinesServer")){
+                if(($ServerRole -ieq "NotebookServer" -or $ServerRole -ieq "MissionServer" -or $ServerRole -ieq "VideoServer" -or $ServerRole -ieq "DataPipelinesServer" -or $ServerRole -ieq "VelocityServer")){
                     if($ServerRole -ieq "MissionServer"){
                         $SoftwareAuthExePath = "$($InstallLocation)bin\SoftwareAuthorization.exe"
                     }else{
@@ -390,7 +392,7 @@ function Test-LicenseForRole{
         }
         elseif($Component -ieq 'Server'){
             Write-Verbose "ServerRole:- $ServerRole"
-            $searchtexts = @('svr', 'svradv')
+            $searchtexts = @('svr', 'svrbas', 'svrstd', 'svradv')
             if($ServerRole -ieq 'ImageServer') {
                 $searchtexts = @('imgsvr')
             }
@@ -399,9 +401,6 @@ function Test-LicenseForRole{
             }
             if($ServerRole -ieq 'WorkflowManagerServer') {
                 $searchtexts = @('workflowsvr','workflowsvradv')
-            }
-            if($ServerRole -ieq 'GeoAnalytics') {
-                $searchtexts = @('geoesvr')
             }
             if($ServerRole -ieq 'KnowledgeServer'){ 
                 $searchtexts = @('knwldgsvr')
@@ -421,12 +420,15 @@ function Test-LicenseForRole{
             if($ServerRole -ieq 'DataPipelinesServer') {
                 $searchtexts = @('datapipelinesvr')
             }
+            if($ServerRole -ieq 'VelocityServer') {
+                $searchtexts = @('velocitysvr')
+            } 
             if($ServerRole -ieq 'GeoEnrichmentServer') {
                 $searchtexts = @('businesssvr') # TODO - Check for "svradv"
             }
         }
         
-        # All of the search texts should exist in the keygen
+        # At least one role-specific search text should exist in the keycodes file.
         $TextFound = $False
         foreach($KeyCodeLine in $KeyCodesFileContents){
             if($null -ne ($searchtexts | Where-Object { $KeyCodeLine -ilike "$($_),*" })){

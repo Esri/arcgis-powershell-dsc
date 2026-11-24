@@ -112,7 +112,6 @@ function Test-TargetResource
         $ServerType
 	)
 
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     $FQDN = Get-FQDN $HostName  
     $AppPath = $ApplicationPath.TrimStart('/')
     $Url =  "https://$($FQDN):$($HttpsPort)/$AppPath"
@@ -166,7 +165,6 @@ function Set-TargetResource
 
     if($Ensure -ieq 'Present') 
     {
-	    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	   
         $FQDN = Get-FQDN $HostName  
         $AppPath = $ApplicationPath.TrimStart('/')
         $Url =  "https://$($FQDN):$($HttpsPort)/$AppPath"
@@ -198,40 +196,32 @@ function Test-CertificateInTrustedCertificateStore
 		$StoreName = 'Root'
 	)
     
-    $global:certCheck = $false
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {
-        [System.Security.Cryptography.X509Certificates.X509Certificate2]$cert = $args[1]
-        [System.Net.Security.SslPolicyErrors]$errors = $args[3]
-        if($errors -ne [System.Net.Security.SslPolicyErrors]::None) {
-            
-            if(-not(Test-Path "Cert:\$StoreLocation\$StoreName\$($cert.Thumbprint)")) {
-                Write-Verbose "Certificate '$($cert.Thumbprint)' does not exist in $StoreName store in $StoreLocation"
-            }else {
-                $global:certCheck = $true
-                Write-Verbose "Certificate '$($cert.Thumbprint)' already exists in $StoreName store in $StoreLocation"
-            }
-        }else{
-            $global:certCheck = $true
-        }
+    try {
+        Write-Verbose "Connecting to $Url to retrieve SSL certificate"
+        $certificateState = Get-ArcGISEndpointCertificate -Url $Url
+    }
+    catch {
+        Write-Verbose "Unable to retrieve an SSL certificate from '$Url'. Error: $_"
+        return $false
     }
 
-    try
-    {
-        Write-Verbose "Connecting to $Url to retrieve SSL certificate"
-        [System.Net.HttpWebRequest]$request = [System.Net.WebRequest]::Create($Url)
-        [System.Net.HttpWebResponse]$response = $request.GetResponse()
-        $respStream = $response.GetResponseStream()
-        Write-Verbose "Successfully connected to $Url"
+    $cert = $certificateState.Certificate
+    try {
+        if($certificateState.Errors -eq [System.Net.Security.SslPolicyErrors]::None){
+            return $true
+        }
+
+        $certificateExists = Test-Path "Cert:\$StoreLocation\$StoreName\$($cert.Thumbprint)"
+        if($certificateExists){
+            Write-Verbose "Certificate '$($cert.Thumbprint)' already exists in $StoreName store in $StoreLocation"
+        }else{
+            Write-Verbose "Certificate '$($cert.Thumbprint)' does not exist in $StoreName store in $StoreLocation"
+        }
+        return $certificateExists
     }
-    catch{
-        Write-Verbose "Connecting to $Url. Expected Error:- $_"
+    finally {
+        $cert.Dispose()
     }
-    finally 
-    {
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-		[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    }   
-	$global:certCheck
 }
 
 function Import-CertFromServerIntoTrustedCertificateStore
@@ -258,88 +248,92 @@ function Import-CertFromServerIntoTrustedCertificateStore
         $ServerType
 	)
     
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {
+    try {
+        Write-Verbose "Connecting to $Url to retrieve SSL certificate"
+        $certificateState = Get-ArcGISEndpointCertificate -Url $Url
+    }
+    catch {
+        throw "Unable to retrieve an SSL certificate from '$Url'. Error: $_"
+    }
 
-        [System.Security.Cryptography.X509Certificates.X509Certificate2]$cert = $args[1]
-        [System.Net.Security.SslPolicyErrors]$errors = $args[3]    
-        # Import Certificate into ArcGIS Server (establish trust between JVM)
+    [System.Security.Cryptography.X509Certificates.X509Certificate2]$cert = $certificateState.Certificate
+    try {
         if($SiteAdministrator) {
             $FQDN = Get-FQDN $env:COMPUTERNAME
-            $ServerBaseURL = Get-ArcGISComponentBaseUrl -FQDN $FQDN -ComponentName $ServerType            
+            $ServerBaseURL = Get-ArcGISComponentBaseUrl -FQDN $FQDN -ComponentName $ServerType
             $Referer = $ServerBaseURL
             $token = Get-ServerToken -URL $ServerBaseURL -Credential $SiteAdministrator -Referer $Referer
-            
             $CertOnDiskPath = Join-Path $env:TEMP "$($cert.Thumbprint).cer"
-            Set-Content -Path $CertOnDiskPath -Value ($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)) -Encoding Byte -Force
-            
-            
-            $Subject = $cert.Subject            
-            $Splits = $Subject -split ','
-            foreach($split in $Splits) {
-                $SubSplit = $split -split '='
-                $SubSplitKey = $SubSplit | Select-Object -First 1
-                $SubSplitValue = $SubSplit | Select-Object -Last 1
-                if($SubSplit -ieq 'CN'){
-                    $Issuer = $SubSplitValue
-                    $break
-                }
-            }
-            
-            $ub = New-Object System.UriBuilder -ArgumentList $Url
-            $Alias = "$($ub.Host)-$($ub.Port)"
+            try {
+                Set-Content -Path $CertOnDiskPath -Value ($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)) -Encoding Byte -Force
 
-            Write-Verbose "Thumbprint of certificate is $($cert.Thumbprint). Issue is $($Issuer). Alias being used is $($Alias)."
-            if($Alias) {
+                $Issuer = $null
+                foreach($split in ($cert.Subject -split ',')) {
+                    $SubSplit = $split -split '='
+                    $SubSplitKey = ($SubSplit | Select-Object -First 1).Trim()
+                    if($SubSplitKey -ieq 'CN'){
+                        $Issuer = ($SubSplit | Select-Object -Last 1).Trim()
+                        break
+                    }
+                }
+
+                $ub = New-Object System.UriBuilder -ArgumentList $Url
+                $Alias = "$($ub.Host)-$($ub.Port)"
+                Write-Verbose "Thumbprint of certificate is $($cert.Thumbprint). Issuer is $Issuer. Alias being used is $Alias."
+
                 $certNames = Get-AllSSLCertificateForMachine -URL $ServerBaseURL -Token $token.token -Referer $Referer -MachineName $FQDN
-                if($certNames.certificates -icontains $Alias) {
+                $certificateAliases = @($certNames.certificates | ForEach-Object {
+                    if($_ -is [System.String]){ $_ } elseif($_.alias){ $_.alias } elseif($_.name){ $_.name }
+                })
+                if($certificateAliases -icontains $Alias) {
                     Write-Verbose "Certificate with alias $Alias already exists for Machine $FQDN"
                 }else{
                     Write-Verbose "Certificate with alias $Alias not found for Machine $FQDN"
-                    Import-RootOrIntermediateCertificate -URL $ServerBaseURL -Token $token.token -Referer $Referer -MachineName $FQDN -CertAlias $Alias -CertificateFilePath $CertOnDiskPath -CertificateFileName "$($cert.Thumbprint).cer"
-                }
-                
-            }else {
-                 Write-Verbose 'Unable to determine alias from certificate exposed by web server'
-            }
+                    $importError = $null
+                    try {
+                        Import-RootOrIntermediateCertificate -URL $ServerBaseURL -Token $token.token -Referer $Referer `
+                            -MachineName $FQDN -CertAlias $Alias -CertificateFilePath $CertOnDiskPath `
+                            -CertificateFileName "$($cert.Thumbprint).cer" -ServerType $ServerType `
+                            -ThrowOnResponseError $true
+                    }
+                    catch {
+                        $importError = $_
+                    }
 
-            if(Test-Path $CertOnDiskPath -ErrorAction Ignore) {
-                Remove-Item $CertOnDiskPath -Force -ErrorAction Ignore
+                    $null = Wait-ForServerRootOrIntermediateCertificateState -URL $ServerBaseURL `
+                                    -ServerType $ServerType -Token $token.token -Credential $SiteAdministrator `
+                                    -Referer $Referer -MachineName $FQDN -CertificateAlias $Alias `
+                                    -ExpectedThumbprint $cert.Thumbprint -OperationError $importError -Verbose
+                }
+            }
+            finally {
+                if(Test-Path $CertOnDiskPath -ErrorAction Ignore) {
+                    Remove-Item $CertOnDiskPath -Force -ErrorAction Ignore
+                }
             }
         }else {
             Write-Verbose "Not importing SSL Certificate into ArcGIS Server"
         }
 
-        if($errors -ne [System.Net.Security.SslPolicyErrors]::None) {
-            
+        if($certificateState.Errors -ne [System.Net.Security.SslPolicyErrors]::None) {
             if(-not(Test-Path "Cert:\$StoreLocation\$StoreName\$($cert.Thumbprint)")) {
                 Write-Verbose "Importing Certificate '$($cert.Thumbprint)' to $StoreName store in $StoreLocation"
                 $certStore = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Store $StoreName, $StoreLocation
-                $certStore.Open("MaxAllowed")
-                $certStore.Add($cert)
-                $certStore.Close()            
+                try {
+                    $certStore.Open("MaxAllowed")
+                    $certStore.Add($cert)
+                }
+                finally {
+                    $certStore.Close()
+                }
                 Write-Verbose "Imported Certificate to $StoreName store in $StoreLocation"
             }else {
                 Write-Verbose "Certificate '$($cert.Thumbprint)' already exists in $StoreName store in $StoreLocation"
             }
-
         }
     }
-
-    try
-    {
-        Write-Verbose "Connecting to $Url to retrieve SSL certificate"
-        [System.Net.HttpWebRequest]$request = [System.Net.WebRequest]::Create($Url)
-        [System.Net.HttpWebResponse]$response = $request.GetResponse()
-        $respStream = $response.GetResponseStream()
-        Write-Verbose "Successfully connected to $Url"
-    }
-    catch{
-        Write-Verbose "Connecting to $Url. Expected Error:- $_"
-    }
-    finally 
-    {
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-		[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+    finally {
+        $cert.Dispose()
     }
 }
 

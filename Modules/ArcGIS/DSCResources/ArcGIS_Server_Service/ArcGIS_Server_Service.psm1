@@ -111,7 +111,6 @@ function Test-TargetResource
     }
 
     $result = $false
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $Referer = 'https://localhost'
 
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ServerHostname -Context $ServerContext -Port $Port

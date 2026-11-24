@@ -9,7 +9,7 @@
         [Parameter(Mandatory=$true)]
         [ValidateNotNullorEmpty()]
         [System.Management.Automation.PSCredential]
-        $RemoteSiteAdministrator,
+        $PortalSiteAdministratorCredential,
 
         [Parameter(Mandatory=$False)]
         [System.String]
@@ -64,7 +64,7 @@
         $IsFederatedWithRestrictedPublishing
     )
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_Federation
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_Federation
     
     Node $AllNodes.NodeName
     {
@@ -88,7 +88,7 @@
                 ServerSiteAdminUrlPort = $ServerSiteAdminUrlPort
                 ServerSiteAdminUrlContext = $ServerSiteAdminUrlContext
                 Ensure = "Present"
-                RemoteSiteAdministrator = $RemoteSiteAdministrator
+                PortalSiteAdministrator = $PortalSiteAdministratorCredential
                 SiteAdministrator = $ServerPrimarySiteAdminCredential
                 ServerRole = if($IsHostingServer){'HOSTING_SERVER'}else{if($IsFederatedWithRestrictedPublishing){ 'FEDERATED_SERVER_WITH_RESTRICTED_PUBLISHING' }else{'FEDERATED_SERVER'}}
                 ServerFunctions = $ServerFunctions

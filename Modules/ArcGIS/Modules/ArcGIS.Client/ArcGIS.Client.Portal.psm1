@@ -37,6 +37,26 @@ function Get-PortalSharingApiUrlForPath{
     return $URL.TrimEnd('/') + $PrimaryRelativePath + $Path
 }
 
+function ConvertTo-PortalCertificateAliases
+{
+    [CmdletBinding()]
+    param(
+        $Certificates
+    )
+
+    # Portal versions can return certificate aliases as strings or objects. Normalize both
+    # representations so idempotency checks do not attempt duplicate imports.
+    @($Certificates | ForEach-Object {
+        if($_ -is [System.String]){
+            $_
+        }elseif($_.alias){
+            $_.alias
+        }elseif($_.name){
+            $_.name
+        }
+    })
+}
+
 
 function Get-PortalToken 
 {
@@ -183,7 +203,17 @@ function Get-FederatedServers
     )
     
     $GetFederatedServerPortalAdminURL = Get-PortalAdminUrlForPath -URL $URL -Path '/federation/servers/'
-    Invoke-ArcGISWebRequest -Url $GetFederatedServerPortalAdminURL -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer 
+    $response = Invoke-ArcGISWebRequest -Url $GetFederatedServerPortalAdminURL -HttpMethod 'GET' -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer
+    if($null -eq $response) {
+        throw "Unable to retrieve federated servers from '$GetFederatedServerPortalAdminURL': response is null."
+    }
+    if($response.error) {
+        throw "Unable to retrieve federated servers from '$GetFederatedServerPortalAdminURL': $($response.error | ConvertTo-Json -Compress -Depth 10)"
+    }
+    if($null -eq $response.servers) {
+        throw "Unable to retrieve federated servers from '$GetFederatedServerPortalAdminURL': response does not contain a server list."
+    }
+    $response
 }
 
 function Get-RegisteredServersForPortal 
@@ -851,15 +881,25 @@ function Get-SSLCertificatesForPortal
         $Referer,
 
         [System.String]
-        $MachineName
+        $MachineName,
+
+        [System.Boolean]
+        $ThrowOnResponseError = $false
     )
 
 	try {
         $GetCertURL = Get-PortalAdminUrlForPath -URL $URL -Path "/machines/$MachineName/sslCertificates"
         if($WebServerCertificateAlias){ $GetCertURL = $GetCertURL + "/$($WebServerCertificateAlias)" }
-	    Invoke-ArcGISWebRequest -Url $GetCertURL -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
+	    $response = Invoke-ArcGISWebRequest -Url $GetCertURL -HttpFormParameters @{ f = 'json'; token = $Token } -Referer $Referer -HttpMethod 'GET' -TimeOutSec 120
+        if($ThrowOnResponseError){
+            Confirm-ResponseStatus $response -Url $GetCertURL
+        }
+        $response
 	}
 	catch {
+        if($ThrowOnResponseError){
+            throw
+        }
 		Write-Verbose "[WARNING]:- Error running Get-SSLCertificatesForPortal:- $_"
 	}
 }
@@ -919,7 +959,12 @@ function Import-ExistingCertificate
         $Version,
 
         [System.Boolean]
-        $ImportCertificateChain = $true
+        $ImportCertificateChain = $true,
+
+        # Opt in only when the caller can verify the imported alias and thumbprint. Retrying an
+        # upload after a dropped response is unsafe because the first request may have committed.
+        [System.Boolean]
+        $ThrowOnResponseError = $false
     )
     $ImportCertUrl = Get-PortalAdminUrlForPath -URL $URL -Path "/machines/$MachineName/sslCertificates/importExistingServerCertificate" 
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; password = $CertificatePassword.GetNetworkCredential().Password  }
@@ -927,7 +972,7 @@ function Import-ExistingCertificate
     if  ([Version]$Version -ge 11.3) {
         $props["importCertificateChain"] = $ImportCertificateChain
     }
-    $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'    
+    $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file' -ThrowOnResponseError $ThrowOnResponseError
     if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCertUrl
@@ -959,13 +1004,18 @@ function Import-RootOrIntermediateCertificate
         $MachineName,
 
         [System.Boolean]
-        $ImportCertificateChain = $true # TODO fix
+        $ImportCertificateChain = $true, # TODO fix
+
+        [System.Boolean]
+        $ThrowOnResponseError = $false
     )
 
     $ImportCertUrl =  Get-PortalAdminUrlForPath -URL $URL -Path "/machines/$MachineName/sslCertificates/importRootOrIntermediate" 
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; norestart = $true }
     try{
-        $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'file'
+        $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' `
+                                -formParams $props -Referer $Referer -fileParameterName 'file' `
+                                -ThrowOnResponseError $ThrowOnResponseError
         if($res) {
             $response = $res | ConvertFrom-Json
             Confirm-ResponseStatus $response -Url $ImportCertUrl
@@ -973,6 +1023,9 @@ function Import-RootOrIntermediateCertificate
             throw "[WARNING] Response from $ImportCertUrl was null"
         }
     }catch{
+	    if($ThrowOnResponseError){
+	        throw
+	    }
 	    Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
     }
 }
@@ -1048,7 +1101,8 @@ function Get-PortalRootAndIntermdiateCertificatesToUpdate
     $Certs = Get-SSLCertificatesForPortal -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -ErrorAction SilentlyContinue
     $MissingCerts = @()
     foreach ($Cert in $ExpectedCerts){
-        if ($Certs.sslCertificates -icontains $Cert.Alias){
+        $CertificateAliases = ConvertTo-PortalCertificateAliases -Certificates $Certs.sslCertificates
+        if ($CertificateAliases -icontains $Cert.Alias){
             Write-Verbose "Test RootOrIntermediate $($Cert.Alias) is in List of SSL-Certificates. Validating if thumbprint matches the existing certificate"
             $RootOrIntermediateCertForMachine = Get-SSLCertificatesForPortal -URL $URL -Token $Token -Referer $Referer -WebServerCertificateAlias $Cert.Alias -MachineName $MachineName
             Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.sha1Fingerprint)"
@@ -1071,6 +1125,78 @@ function Get-PortalRootAndIntermdiateCertificatesToUpdate
     return $MissingCerts
 }
 
+<#
+    .SYNOPSIS
+        Reconciles an indeterminate Portal root or intermediate certificate import.
+
+    .DESCRIPTION
+        Portal is asked not to restart for these imports, but upload responses can still be lost or
+        returned as null. This helper verifies the durable postcondition instead of retrying: the
+        requested alias must exist and contain the expected thumbprint. When credentials are supplied,
+        a fresh token is obtained before verification.
+
+        Root and intermediate certificates are trust entries, so endpoint-certificate validation does
+        not apply to them.
+#>
+function Wait-ForPortalRootOrIntermediateCertificateState
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $URL,
+
+        [System.String]
+        $Token,
+
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [System.String]
+        $Referer,
+
+        [System.String]
+        $MachineName,
+
+        [System.String]
+        $CertificateAlias,
+
+        [System.String]
+        $ExpectedThumbprint,
+
+        $OperationError
+    )
+
+    try {
+        Test-ArcGISComponentHealth -BaseURL $URL -ComponentName "Portal" `
+                                    -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
+        Test-ArcGISComponentHealth -BaseURL $URL -ComponentName "PortalSharing" `
+                                    -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
+
+        $verificationToken = $Token
+        if($null -ne $Credential){
+            $refreshedToken = Get-PortalToken -URL $URL -Credential $Credential -Referer $Referer
+            if(-not($refreshedToken.token)){
+                throw "Unable to retrieve a portal token after importing certificate '$CertificateAlias'."
+            }
+            $verificationToken = $refreshedToken.token
+        }
+
+        $certificate = Get-SSLCertificatesForPortal -URL $URL -Token $verificationToken -Referer $Referer `
+                            -WebServerCertificateAlias $CertificateAlias.ToLower() -MachineName $MachineName
+        if($null -eq $certificate -or $certificate.sha1Fingerprint -ine $ExpectedThumbprint){
+            throw "Root or intermediate certificate '$CertificateAlias' does not have expected thumbprint '$ExpectedThumbprint'."
+        }
+
+        return $verificationToken
+    }
+    catch {
+        if($null -ne $OperationError){
+            throw "The root or intermediate certificate import response failed and the expected state could not be verified. Operation error: $OperationError Reconciliation error: $_"
+        }
+        throw
+    }
+}
+
 function Set-PortalRootAndIntermdiateCertificates{
     [CmdletBinding()]
     param (
@@ -1088,6 +1214,9 @@ function Set-PortalRootAndIntermdiateCertificates{
         [System.String]
         $MachineName, 
 
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
         [System.String]
         $SslRootOrIntermediate
     )
@@ -1097,20 +1226,30 @@ function Set-PortalRootAndIntermdiateCertificates{
                                                 -Token $Token -Referer $Referer -MachineName $MachineName `
                                                 -SslRootOrIntermediate $SslRootOrIntermediate -Verbose
 
-    if($MissingCerts.Count -gt 0){
+    if(@($MissingCerts).Count -gt 0){
         $RestartRequired = $True
         foreach ($Cert in $MissingCerts){
             if($Cert.Present){
                 Write-Verbose "Thumbprints for certificate with alias $($Cert.Alias) doesn't match that of existing cetificate. Deleting existing certificate"
-                $res = Invoke-DeletePortalCertificate -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -SSLCertName $Cert.Alias.ToLower()
+                $res = Invoke-DeletePortalCertificate -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -WebServerCertificateAlias $Cert.Alias.ToLower()
                 Write-Verbose "Existing certificate delete successful - $($res | ConvertTo-Json)"
             }
 
+            $expectedCertificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $Cert.Path
+            $importError = $null
             try{
-                Import-RootOrIntermediateCertificate -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -CertAlias $Cert.Alias.ToLower() -CertificateFilePath $Cert.Path
+                Import-RootOrIntermediateCertificate -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName `
+                                                    -CertAlias $Cert.Alias.ToLower() -CertificateFilePath $Cert.Path `
+                                                    -ThrowOnResponseError $true
             }catch{
-                Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
+                # Do not retry an indeterminate upload; verify whether Portal committed it.
+                $importError = $_
             }
+
+            $Token = Wait-ForPortalRootOrIntermediateCertificateState -URL $URL -Token $Token -Credential $Credential `
+                            -Referer $Referer -MachineName $MachineName -CertificateAlias $Cert.Alias `
+                            -ExpectedThumbprint $expectedCertificate.Thumbprint -OperationError $importError -Verbose
+            Write-Verbose "Import of RootOrIntermediate Certificate with Alias $($Cert.Alias) verified successfully."
         }
     }
     
@@ -1149,8 +1288,7 @@ function Unregister-PortalSiteMachine{
     }
 
     if(($Response.status -ieq "success") -or -not($MachineInSiteFlag)){
-        Write-Verbose "Sleeping for 3 minutes. Portal will restart!"
-        Start-Sleep -Seconds 180
+        Wait-ForArcGISComponentRestart -BaseURL $URL -ComponentName "Portal" -RestartComponentName "PortalSharing" -MaxRestartWaitTimeInSeconds 180 -MaxStartupWaitTimeInSeconds 180 -Verbose
     }else{
         throw "Unable to Unregister Portal! Please run the configuration again!"
     }
@@ -1218,15 +1356,16 @@ function Test-PortalAdminHealth{
                 }elseif ($Response.status -ieq "error") { 
                     throw [string]::Format("ERROR: {0}",($Response.messages -join " "))
                 }else{
-                    throw "Unknow Error"
+                    throw "Unknown Error"
                 }
             }else{
                 $jsresponse = ConvertTo-Json $Response -Compress -Depth 5
                 Write-Verbose "[WARNING] Portal health check response - $jsresponse "
                 if ($Response.error) { 
-                    throw "ERROR: $($Response.error.messages)"
+                    $errMsgs = if($Response.error.messages){ ($Response.error.messages -join ' ') }else{ $Response.error.message }
+                    throw "ERROR: $errMsgs"
                 }else{
-                    throw "Unknow Error"
+                    throw "Unknown Error"
                 }
             }
         } catch {

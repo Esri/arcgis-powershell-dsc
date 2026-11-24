@@ -60,7 +60,7 @@ function Get-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer", "DataPipelinesServer","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer", "DataPipelinesServer","Portal","Monitor")]
         [System.String]
         $Component,
 
@@ -113,7 +113,7 @@ function Set-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","Monitor","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","Portal","Monitor")]
         [System.String]
         $Component,
 
@@ -180,7 +180,7 @@ function Set-TargetResource
             $ConfigureToolPath = '\ArcGIS\WebAdaptor\IIS\Tools\ConfigureWebAdaptor.exe'
             $ConfigureToolPath = "\ArcGIS\WebAdaptor\IIS\$($Version)\Tools\ConfigureWebAdaptor.exe"
             $ExecPath = Join-Path ${env:CommonProgramFiles(x86)} $ConfigureToolPath
-            if(@("11.1", "11.2", "11.3", "11.4", "11.5", "12.0", "12.1") -icontains $Version){
+            if(@("11.1", "11.2", "11.3", "11.4", "11.5", "12.0", "12.1", "12.2") -icontains $Version){
                 $ExecPath = Join-Path ${env:CommonProgramFiles} $ConfigureToolPath
             }
         }
@@ -251,7 +251,7 @@ function Test-TargetResource
         $Ensure,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","Monitor","Portal")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","Portal","Monitor")]
         [System.String]
         $Component,
 
@@ -287,12 +287,11 @@ function Test-TargetResource
         $JavaWebServerType
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = $True
     $WAConfigSiteUrl = $null
     if($IsJavaWebAdaptor){
         #For JAVA Web Adaptor we will always require AGSWEBADAPTORHOME to be set.
-        $AGSWEBADAPTORHOME_Path = [environment]::GetEnvironmentVariable("AGSWEBADAPTORHOME","Machine")
+        $AGSWEBADAPTORHOME_Path = Get-JavaWebAdaptorHome
         if([string]::IsNullOrEmpty($AGSWEBADAPTORHOME_Path)){
             throw "AGSWEBADAPTORHOME environment variable is not set."
         }
@@ -310,12 +309,9 @@ function Test-TargetResource
             $result = $False
             return $result
         }
-        # Get the base installation folder by removing the last segment ("java")
-        $baseInstallLocation = Split-Path $InstallObject.InstallLocation -Parent
         if(Test-ArcGISJavaWebAdaptorBuildNumberToMatch -InstallObjectVersion $InstallObject.Version -VersionToMatch $Version){
             Write-Verbose "Java Web Adaptor build number matches $Version."
-            # Now join the base location with the context (e.g., "Portal")
-            $WAConfigFolder = Join-Path $baseInstallLocation $Context
+            $WAConfigFolder = Join-Path $InstallObject.InstallLocation $Context
             $WAConfigPath = Join-Path $WAConfigFolder 'webadaptor.config'
             Write-Verbose "WAConfigFolder folder is: $WAConfigFolder"
             Write-Verbose "WAConfigPath file is: $WAConfigPath"
@@ -343,7 +339,7 @@ function Test-TargetResource
             if($wa.InstallLocation -match "\\$($Context)\\"){
                 $WAConfigPath = Join-Path $wa.InstallLocation 'WebAdaptor.config'
                 $WAConfigSiteUrl = $null
-                if(@("11.1", "11.2", "11.3", "11.4", "11.5", "12.0", "12.1") -icontains $Version){
+                if(@("11.1", "11.2", "11.3", "11.4", "11.5", "12.0", "12.1", "12.2") -icontains $Version){
                     $WAConfig = (Get-Content $WAConfigPath | ConvertFrom-Json)
                     $WAConfigSiteUrl = if($Component -ieq "Portal"){ $WAConfig.portal.url }else{ $WAConfig.gisserver.url }
                 }else{
@@ -462,11 +458,12 @@ function Start-ConfigureWebAdaptorCMDLineTool{
     Write-Verbose "SiteURL - $SiteURL, WA URL - $WAUrl"
     Test-ArcGISComponentHealth -BaseURL "$($SiteURL)/arcgis" -ComponentName $Component
 
+    $EscapedSiteAdministratorPassword = $SiteAdministrator.GetNetworkCredential().Password.Replace('"', '\"')
     $Arguments = ""
     if($IsJavaWebAdaptor){
-        $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
+        $Arguments = "-m $WAMode -w $WAUrl -g $SiteURL -u $($SiteAdministrator.UserName) -p `"$EscapedSiteAdministratorPassword`""
     }else{
-        $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$($SiteAdministrator.GetNetworkCredential().Password)`""
+        $Arguments = "/m $WAMode /w $WAUrl /g $SiteURL /u $($SiteAdministrator.UserName) /p `"$EscapedSiteAdministratorPassword`""
     }
 
     if($Component -ieq 'Server') {
@@ -487,7 +484,14 @@ function Start-ConfigureWebAdaptorCMDLineTool{
 
     $op = $null
     try{
-	    $op = Invoke-StartProcess -ExecPath "$ExecPath" -Arguments $Arguments -Verbose
+        $ProcessParameters = @{
+            ExecPath = $ExecPath
+            Arguments = $Arguments
+        }
+        if($IsJavaWebAdaptor){
+            $ProcessParameters["EnvVariables"] = Get-JavaWebAdaptorEnvironment
+        }
+        $op = Invoke-StartProcess @ProcessParameters -Verbose
 		if(($null -eq $op) -or $op.trim().StartsWith("ERROR") -or ($op -imatch "The underlying connection was closed: An unexpected error occurred on a receive.") -or ($op -imatch "The operation timed out while waiting for a response from the portal application")){
             throw "Web Adaptor configuration failed. Error - $op"
         }else{
@@ -498,6 +502,50 @@ function Start-ConfigureWebAdaptorCMDLineTool{
     }
 }
 
+function Get-JavaWebAdaptorHome {
+    [Environment]::GetEnvironmentVariable('AGSWEBADAPTORHOME', 'Machine')
+}
+
+function Get-JavaWebAdaptorEnvironment {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
+    param(
+        [System.String]
+        $MachinePath = [Environment]::GetEnvironmentVariable('PATH', 'Machine'),
+
+        [System.String]
+        $JavaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine'),
+
+        [System.String]
+        $JreHome = [Environment]::GetEnvironmentVariable('JRE_HOME', 'Machine'),
+
+        [System.String]
+        $WebAdaptorHome = [Environment]::GetEnvironmentVariable('AGSWEBADAPTORHOME', 'Machine')
+    )
+
+    $JavaDirectory = if (-not [string]::IsNullOrWhiteSpace($JavaHome)) { $JavaHome } else { $JreHome }
+    if ([string]::IsNullOrWhiteSpace($JavaDirectory)) {
+        throw 'JAVA_HOME or JRE_HOME must be set at machine scope to locate java.exe for Java Web Adaptor configuration.'
+    }
+
+    $JavaBin = Join-Path -Path $JavaDirectory -ChildPath 'bin'
+    $JavaPath = Join-Path -Path $JavaBin -ChildPath 'java.exe'
+    if (-not (Test-Path -LiteralPath $JavaPath -PathType Leaf)) {
+        throw "java.exe not found at '$JavaPath'."
+    }
+
+    $ChildPath = $JavaBin
+    if (-not [string]::IsNullOrWhiteSpace($MachinePath)) {
+        $ChildPath += ";$MachinePath"
+    }
+
+    return @{
+        PATH = $ChildPath
+        JAVA_HOME = $JavaHome
+        JRE_HOME = $JreHome
+        AGSWEBADAPTORHOME = $WebAdaptorHome
+    }
+}
 
 function Test-URL
 {
@@ -573,6 +621,7 @@ function Test-ArcGISJavaWebAdaptorBuildNumberToMatch
         "11.5" { "11.5" }
         "12.0" { "12.0" }
         "12.1" { "12.1" }
+        "12.2" { "12.2" }
         Default {
             throw "Version $VersionToMatch not supported"
         }

@@ -48,6 +48,36 @@ function Get-TargetResource
 	@{}
 }
 
+function Get-DesiredSystemDirectories
+{
+    param([System.String] $DirectoriesJSON)
+
+    try {
+        $directories = ConvertFrom-Json -InputObject $DirectoriesJSON -ErrorAction Stop
+    } catch {
+        throw "DirectoriesJSON is not valid JSON: $($_.Exception.Message)"
+    }
+
+    foreach($dir in $directories) {
+        if([string]::IsNullOrWhiteSpace($dir.name) -or
+           [string]::IsNullOrWhiteSpace($dir.physicalPath) -or
+           [string]::IsNullOrWhiteSpace($dir.directoryType)) {
+            throw 'Each server directory requires a name, physicalPath, and directoryType.'
+        }
+    }
+
+    $directories
+}
+
+function Test-SystemDirectoryDefinition
+{
+    param($Current, $Desired)
+
+    $currentPath = ([string]$Current.physicalPath).TrimEnd([char[]]@('\','/'))
+    $desiredPath = ([string]$Desired.physicalPath).TrimEnd([char[]]@('\','/'))
+    ($currentPath -ieq $desiredPath) -and ($Current.directoryType -ieq $Desired.directoryType)
+}
+
 function Set-TargetResource
 {
 	[CmdletBinding()]
@@ -72,7 +102,6 @@ function Set-TargetResource
 
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN"
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $FQDN
     $Referer = $ServerBaseUrl
@@ -84,25 +113,41 @@ function Set-TargetResource
         try {  
             Write-Verbose "Getting the Token for site '$ServerBaseUrl'"
             $token = Get-ServerToken -URL $ServerBaseUrl -Credential $SiteAdministrator -Referer $Referer 
-            if($null -ne $token.token -and $DirectoriesJSON) { #setting registered directories
-                $responseDirectories = Get-SystemDirectories -URL $ServerBaseUrl -Token $token.token -Referer $Referer
-                foreach ($dir in ($DirectoriesJSON | ConvertFrom-Json)) 
-                {
-                    Write-Verbose "Testing for Directory $($dir.name)"
-                    if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
-                        Write-Verbose "Directory $($dir.name) already registered > no Action required"
-                    } else {
-                        Write-Verbose "Directory $($dir.name) not registered > registering directory"
-                        $response = Register-SystemDirectory -URL $ServerBaseUrl -Token $token.token -Referer $Referer -Name $dir.name -PhysicalPath $dir.physicalPath -DirectoryType $dir.directoryType
-                        Write-Verbose "Register-SystemDirectory Response :-$response"
-                    }
+            if(-not $token.token) {
+                throw 'No token returned.'
+            }
+
+            $desiredDirectories = @(Get-DesiredSystemDirectories -DirectoriesJSON $DirectoriesJSON)
+            $responseDirectories = Get-SystemDirectories -URL $ServerBaseUrl -Token $token.token -Referer $Referer
+
+            # Detect incompatible existing definitions before registering any missing directories.
+            foreach($dir in $desiredDirectories) {
+                $existing = @($responseDirectories.directories | Where-Object { $_.name -ieq $dir.name })
+                if($existing.Count -gt 1) {
+                    throw "Multiple registered server directories have the name '$($dir.name)'."
                 }
-            }else{
-                throw "[Error] No Token Returned"
+                if($existing.Count -eq 1 -and -not(Test-SystemDirectoryDefinition -Current $existing[0] -Desired $dir)) {
+                    throw "Server directory '$($dir.name)' already exists with physicalPath '$($existing[0].physicalPath)' and directoryType '$($existing[0].directoryType)'; expected '$($dir.physicalPath)' and '$($dir.directoryType)'. Update or remove it explicitly before rerunning DSC."
+                }
+            }
+
+            foreach($dir in $desiredDirectories) {
+                $existing = @($responseDirectories.directories | Where-Object { $_.name -ieq $dir.name })
+                if($existing.Count -eq 0) {
+                    Write-Verbose "Directory $($dir.name) not registered; registering it."
+                    Register-SystemDirectory -URL $ServerBaseUrl -Token $token.token -Referer $Referer -Name $dir.name -PhysicalPath $dir.physicalPath -DirectoryType $dir.directoryType | Out-Null
+                    $responseDirectories = Get-SystemDirectories -URL $ServerBaseUrl -Token $token.token -Referer $Referer
+                    $registered = @($responseDirectories.directories | Where-Object { $_.name -ieq $dir.name })
+                    if($registered.Count -ne 1 -or -not(Test-SystemDirectoryDefinition -Current $registered[0] -Desired $dir)) {
+                        throw "Server directory '$($dir.name)' was not registered with the requested physicalPath and directoryType."
+                    }
+                } else {
+                    Write-Verbose "Directory $($dir.name) already registered with the requested definition."
+                }
             }
         }
         catch {
-            throw "[ERROR] GetToken returned:- $_"
+            throw "Unable to ensure server directories on '$ServerBaseUrl': $($_.Exception.Message)"
         }
     }
     elseif($Ensure -ieq 'Absent') {
@@ -134,35 +179,30 @@ function Test-TargetResource
         $SiteAdministrator  
 	)
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $FQDN = if($ServerHostName){ Get-FQDN $ServerHostName }else{ Get-FQDN $env:COMPUTERNAME }
     Write-Verbose "Fully Qualified Domain Name :- $FQDN" 
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $FQDN
     $Referer = $ServerBaseUrl
     $result = $true
     Write-Verbose "Getting the Token for site '$ServerBaseUrl'"
-    $token = Get-ServerToken -URL $ServerBaseUrl -Credential $SiteAdministrator -Referer $Referer 
     try {  
-        if($null -ne $token.token -and $DirectoriesJSON) { #setting registered directories
-            $responseDirectories = Get-SystemDirectories -URL $ServerBaseUrl -Token $token.token -Referer $Referer
-            ForEach ($dir in ($DirectoriesJSON | ConvertFrom-Json)) 
-            {
-                Write-Verbose "Testing for Directory $($dir.name)"
-                if(($responseDirectories | Where-Object { ($responseDirectories.directories.name -icontains $($dir.name))}  | Measure-Object).Count -gt 0) {
-                    Write-Verbose "Directory $($dir.name) already registered"
-                } else {
-                    Write-Verbose "Directory $($dir.name) not registered"
-                    $result = $false
-                    break
-                }
-            }
+        $token = Get-ServerToken -URL $ServerBaseUrl -Credential $SiteAdministrator -Referer $Referer
+        if(-not $token.token) {
+            throw 'No token returned.'
         }
-        else{
-            throw "No Token Returned"
+        $desiredDirectories = @(Get-DesiredSystemDirectories -DirectoriesJSON $DirectoriesJSON)
+        $responseDirectories = Get-SystemDirectories -URL $ServerBaseUrl -Token $token.token -Referer $Referer
+        foreach($dir in $desiredDirectories) {
+            $existing = @($responseDirectories.directories | Where-Object { $_.name -ieq $dir.name })
+            if($existing.Count -ne 1 -or -not(Test-SystemDirectoryDefinition -Current $existing[0] -Desired $dir)) {
+                Write-Verbose "Directory $($dir.name) is missing or its physicalPath or directoryType differs."
+                $result = $false
+                break
+            }
         }
     }
     catch {
-        throw "[ERROR] GetToken returned:- $_"
+        throw "Unable to test server directories on '$ServerBaseUrl': $($_.Exception.Message)"
     }
    
     if($Ensure -ieq 'Present') {

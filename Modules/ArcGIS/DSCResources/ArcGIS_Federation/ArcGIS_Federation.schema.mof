@@ -15,6 +15,6 @@ class ArcGIS_Federation : OMI_BaseResource
 	[Write] String ServerFunctions;
 	[Write] String ServerRole;
 	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
-	[Write, EmbeddedInstance("MSFT_Credential")] String RemoteSiteAdministrator;
+	[Write, EmbeddedInstance("MSFT_Credential")] String PortalSiteAdministrator;
 };
 

@@ -65,12 +65,16 @@
 
         [Parameter(Mandatory=$false)]
         [System.String]
-        $SharedKey = $null
+        $SharedKey = $null,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $RegisteredDirectories
     )
 
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_ServerSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_ServerSettings, ArcGIS_Server_RegisterDirectories
 
     Node $AllNodes.NodeName
     {
@@ -84,7 +88,7 @@
         ArcGIS_ServerSettings ServerSettings
         {
             ServerHostName      = $PrimaryServerMachine
-            ServerType	        = if(@("MissionServer","NotebookServer","VideoServer","DataPipelinesServer") -icontains $ServerType){ $ServerType }else{ "Server" }
+            ServerType	        = if(@("MissionServer","NotebookServer","VideoServer","DataPipelinesServer", "VelocityServer") -icontains $ServerType){ $ServerType }else{ "Server" }
             WebContextURL       = if($ExternalDNSHostName){"https://$($ExternalDNSHostName)/$($ServerContext)"}else{ $null }
             WebSocketContextUrl = if($ServerType -ieq "MissionServer" -and $ExternalDNSHostName) { "wss://$($ExternalDNSHostName)/$($ServerContext)" } else { $null }
             SiteAdministrator   = $ServerPrimarySiteAdminCredential
@@ -99,6 +103,17 @@
             VideoServerLiveStreamGatewayHostname = if($ServerType -ieq "VideoServer"){ $VideoServerLiveStreamGatewayHostname }else{ $null }
             VideoServerLiveStreamPorts = if($ServerType -ieq "VideoServer"){ $VideoServerLivestreamPorts }else{ $null } 
             SharedKey           = $SharedKey
+        }
+
+        if($RegisteredDirectories -and $ServerType -ieq "Server" -and $Node.NodeName -ieq $PrimaryServerMachine){
+            ArcGIS_Server_RegisterDirectories "Server$($Node.NodeName)RegisterDirectories"
+            {
+                ServerHostName = $Node.NodeName
+                Ensure = 'Present'
+                SiteAdministrator = $ServerPrimarySiteAdminCredential
+                DirectoriesJSON = $RegisteredDirectories
+                DependsOn = '[ArcGIS_ServerSettings]ServerSettings'
+            }
         }
     }
 }

@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1"
+        $Version = "12.2"
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -177,9 +177,7 @@
                     } 
 
                     $DataStoreDependsOn += @('[ArcGIS_xFirewall]DataStore_FirewallRules_OutBound')
-                }
-
-                if($Version -ieq "12.0" -or $Version -ieq "12.0"){
+                
                     ArcGIS_xFirewall MemoryCache_DataStore_FirewallRules
                     {
                         Name                  = "ArcGISMemoryCacheDataStore" 

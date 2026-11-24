@@ -14,4 +14,14 @@ class ArcGIS_DataStore : OMI_BaseResource
 	[Write, Description("Is Graph Store Clustered")] Boolean IsGraphStoreClustered;
 	[Write, Description("Is Failover Enabled when service on Primary machine is stopped.")] Boolean EnableFailoverOnPrimaryStop;
 	[Write, ValueMap{"Enabled","Disabled"}, Values{"Enabled","Disabled"}] String PITRState;
+	[Write, Description("Use Cloud Relational Store")] Boolean UseCloudRelationalStore;
+	[Write, ValueMap{"AzureFlexiblePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AWSAuroraPostgreSQLDatabase", "None"}, Values{"AzureFlexiblePostgreSQLDatabase","AWSRDSPostgreSQLDatabase","AWSAuroraPostgreSQLDatabase", "None"}] String CloudRelationalStoreType;
+	[Write] String CloudRelationalDatabaseURI;
+	[Write] String CloudRelationalDatabasePort;
+	[Write] String CloudRelationalDatabaseReadonlyURI;
+	[Write] String CloudRelationalProxyURI;
+	[Write] String CloudRelationalProxyPort;
+	[Write] String CloudRelationalRegion;
+	[Write, EmbeddedInstance("MSFT_Credential")] String CloudRelationalDatabaseAdminUser;
+	[Write, EmbeddedInstance("MSFT_Credential")] String CloudRelationalSDEUser;
 };

@@ -11,7 +11,7 @@ function Test-IfGISServer{
         [System.String]
         $ServerType
     )
-    return -not(@("NotebookServer","MissionServer","VideoServer","DataPipelinesServer") -icontains $ServerType)
+    return -not(@("NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer") -icontains $ServerType)
 }
 
 function Get-ServerAdminUrlForPath{
@@ -79,6 +79,10 @@ function Test-ServerSiteCreated
         [System.String]
 		$URL,
 
+        [Parameter(Mandatory=$true)]
+        [System.String]
+		$Type,
+
 		[Parameter(Mandatory=$true)]
         [System.String]
 		$Referer
@@ -86,9 +90,24 @@ function Test-ServerSiteCreated
 
     $result = $false
     try {
-        Test-ArcGISComponentHealth -BaseURL $URL -ComponentName "ServerAdmin" -Verbose
+        Test-ArcGISComponentHealth -BaseURL $URL -ComponentName $Type -Verbose
         $ServerAdminURL = Get-ServerAdminUrlForPath -URL $URL
-        $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url $ServerAdminURL -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -HttpMethod "GET"
+        $SiteCreatedCheckResponse = $null
+        try{
+            $SiteCreatedCheckResponse = Invoke-ArcGISWebRequest -Url $ServerAdminURL -HttpFormParameters @{ referer = $Referer; f = 'json' } -Referer $Referer -HttpMethod "GET" -Verbose
+        }catch{
+            if($Type -ieq "VelocityServer"){
+                # check if the error is (401) Unauthorized.
+                if($_.Exception.Response.StatusCode -eq 401){
+                    Write-Verbose "Velocity Server site is already created."
+                    $result = $true
+                }else{
+                    throw $_
+                }
+            }else{
+                throw $_
+            }
+        }
 
         $code = $null
         if ($SiteCreatedCheckResponse.code) {
@@ -98,14 +117,26 @@ function Test-ServerSiteCreated
         }
 
         if ($SiteCreatedCheckResponse.status -ieq "error" -or $SiteCreatedCheckResponse.error) {
-            if ($code -eq 499) {
+            if ($code -eq 499 -or $code -eq 401) {
                 Write-Verbose "Server site is already created."
                 $result = $true
             } else {
                 $result = $false
             }
-        } else {
-            throw "Unknown response - $(ConvertTo-Json $SiteCreatedCheckResponse -Compress)"
+        } else {    
+            if($Type -ieq "VelocityServer"){
+                if($SiteCreatedCheckResponse.isSiteReady){
+                    Write-Verbose "Velocity Server site is already created."
+                    $result = $true
+                }elseif($SiteCreatedCheckResponse.isSiteConnected){
+                    throw "Velocity Server site is connected but not ready. Please check the server logs for more details."
+                }else{
+                    Write-Verbose "Velocity Server site is not created."
+                    $result = $false
+                }
+            }else{
+                throw "Unknown response - $(ConvertTo-Json $SiteCreatedCheckResponse -Compress)"
+            }
         }
     }
     catch {
@@ -143,7 +174,8 @@ function Invoke-GetDatabaseConnectionGPTool
     Write-Verbose "Submitting Job to $SubmitJobUrl"
     $response = Invoke-ArcGISWebRequest -Url $SubmitJobUrl -HttpFormParameters @{ token = $Token; f = 'json'; in_inputData = $ConnectionFileItemId; in_connDataType = 'UPLOADED_CONNECTION_FILE_ID' } -Referer $Referer -TimeOutSec 60
     if($null -ne $response.status.error) {
-        throw "Error submitting job to 'Get Database Connection' GP Tool $($response.status.error.messages)"
+        $errMsgs = if($response.status.error.messages){ ($response.status.error.messages -join ' ') }else{ $response.status.error.message }
+        throw "Error submitting job to 'Get Database Connection' GP Tool $errMsgs"
     }
 
     [string]$JobId = $response.jobId
@@ -160,7 +192,8 @@ function Invoke-GetDatabaseConnectionGPTool
         $response = Invoke-ArcGISWebRequest -Url $CheckJobStatusUrl -HttpFormParameters @{ token = $Token; f = 'json'; } -Referer $Referer -TimeOutSec 60
 
         if($null -ne $response.status.error) {
-            throw "Error checking job status for job $JobId. Error:- $($response.status.error.messages)"
+            $errMsgs = if($response.status.error.messages){ ($response.status.error.messages -join ' ') }else{ $response.status.error.message }
+            throw "Error checking job status for job $JobId. Error:- $errMsgs"
         }
         
         $LastJobStatus = $response.jobStatus
@@ -190,7 +223,8 @@ function Invoke-GetDatabaseConnectionGPTool
     Write-Verbose "Get Job Result at $OutParamUrl"
     $response = Invoke-ArcGISWebRequest -Url $OutParamUrl -HttpFormParameters @{ token = $Token; f = 'json'; } -Referer $Referer -TimeOutSec 60
     if($null -ne $response.status.error) {
-        throw "Error retrieving job output for job $JobId. Error:- $($response.status.error.messages)"
+        $errMsgs = if($response.status.error.messages){ ($response.status.error.messages -join ' ') }else{ $response.status.error.message }
+        throw "Error retrieving job output for job $JobId. Error:- $errMsgs"
     }
 
     return $response.value
@@ -369,7 +403,8 @@ function Invoke-DataStoreItemOperation
 		}
         if($null -ne $response.status.error) 
         {
-            throw "$($ErrorPrefix) Error:- $($response.status.error.messages -join ',')"
+            $errMsgs = if($response.status.error.messages){ ($response.status.error.messages -join ',') }else{ $response.status.error.message }
+            throw "$($ErrorPrefix) Error:- $errMsgs"
         }
         if($response.success -eq $false) 
         {
@@ -528,11 +563,9 @@ function Update-MachineProperties
     while(-not($Done) -and $Attempt -lt $MaxAttempts) 
     {
         $Attempt++
-        $AttemptStr = 'Updating machine properties. '
-        $AttemptStr += "Attempt #$($Attempt)"
-        Write-Verbose $AttemptStr
+        Write-Verbose "Updating machine properties. Attempt #$($Attempt)"
         try {    
-            $response = Invoke-ArcGISWebRequest -Url $UpdateMachinePropertiesUrl -HttpFormParameters $UpdatePropertiesObject -Referer $Referer -TimeOutSec 150 -Verbose
+            $response = Invoke-ArcGISWebRequest -Url $UpdateMachinePropertiesUrl -HttpFormParameters $UpdatePropertiesObject -Referer $Referer -TimeOutSec 300 -Verbose
             Confirm-ResponseStatus $response -Url $UpdateMachinePropertiesUrl
             Write-Verbose "Update of machine properties successful! Server will restart now."
             $Done = $true
@@ -577,7 +610,14 @@ function Invoke-JoinSite
         $PrimaryServerHostName,
 
         [System.String]
-        $ServerType
+        $ServerType,
+
+        [System.String]
+        $Version,
+
+        [Parameter(Mandatory=$False)]
+        [System.Management.Automation.PSCredential]
+        $PortalSiteAdministrator        
     )
 
     $PrimaryServerFQDN = Get-FQDN $PrimaryServerHostName    
@@ -590,7 +630,6 @@ function Invoke-JoinSite
 	Test-ArcGISComponentHealth -BaseURL $URL -ComponentName $ServerType -Verbose
 
     $JoinSiteUrl = Get-ServerAdminUrlForPath -URL $URL -Path "/joinSite"
-
     $JoinSiteParams = @{ 
                         adminURL = $PrimaryServerAdminUrl
                         f = 'json'
@@ -598,33 +637,78 @@ function Invoke-JoinSite
                         password = $Credential.GetNetworkCredential().Password 
                     }
 
-    $NumAttempts        = 0           
-	$SleepTimeInSeconds = 30
-	$Success            = $false
-	$Done               = $false
-	while ((-not $Done) -and ($NumAttempts++ -lt 5)){
-        $response = Invoke-ArcGISWebRequest -Url $JoinSiteUrl -HttpFormParameters $JoinSiteParams -Referer $Referer -TimeOutSec 360
-        if ($response -and $response.status -and ($response.status -ine "error")) {
-            $Done    = $true
-            $Success = $true
-            Write-Verbose "Join Site operation successful."
-            if($response.pollAfter){
-                Write-Verbose "Waiting for $($response.pollAfter) seconds for server to initialize."
-                Wait-RecheckAfterSeconds -Seconds $response.pollAfter -Multiplier 1 -Verbose
-            }
-            break
-        }
+    if ($ServerType -ieq "VideoServer" -and `
+        $Version -and ([version]$Version -ge [version]"12.2")){
 
-        Write-Verbose "Attempt # $NumAttempts failed."
-		if ($response.status)   { Write-Verbose "`tStatus   : $($response.status)."   }
-		if ($response.messages) { Write-Verbose "`tMessages : $($response.messages)." }
-		Write-Verbose "Retrying after $SleepTimeInSeconds seconds..."
-        Start-Sleep -Seconds $SleepTimeInSeconds 
+        $JoinSiteUrl = Get-ServerAdminUrlForPath -URL $URL -Path "/joinSiteFederated"
+        if($PortalSiteAdministrator){
+            $JoinSiteParams["portalUser"] = $PortalSiteAdministrator.UserName
+            $JoinSiteParams["portalPass"] = $PortalSiteAdministrator.GetNetworkCredential().Password
+        }
     }
 
-    if(-not($Success)){
-		throw "Failed to Join Site after multiple attempts. Error on last attempt:- $($response.messages)"
-	}
+    [int]$NumAttempts        = 1           
+	$SleepTimeInSeconds = 30
+	[bool]$Done               = $false
+	while(-not($Done) -and ($NumAttempts -le 3)) {  # Max of three attempts             
+        try{
+            Write-Verbose "Attempt # $NumAttempts to Join Site at $JoinSiteUrl"
+            $response = Invoke-ArcGISWebRequest -Url $JoinSiteUrl -HttpFormParameters $JoinSiteParams -Referer $Referer -TimeOutSec 360
+            if($response){
+                if($response.status -ieq "success"){
+                   Write-Verbose "Join Site operation successful."
+                    $PollAfter = 0
+                    # Determine the poll interval for server initialization based on the response or default to 60 seconds.
+                    if($response.pollAfter){
+                        $PollAfter = [int]$response.pollAfter
+                    }else{
+                        $PollAfter = 60
+                    }
+
+                    Write-Verbose "Waiting for $($PollAfter) seconds for server to initialize."
+                    Wait-RecheckAfterSeconds -Seconds $PollAfter -Multiplier 1 -Verbose
+                }else{
+                    Write-Verbose "Join Site operation failed. Response:- $(ConvertTo-Json -Compress -Depth 5 -InputObject $response)"
+
+                    $ErrorMessage = "Join site failed."
+
+                    $DetailedResponseFound = $false
+                    if ($response.status -and ($response.status -ieq "error")) { 
+                        if($response.messages){
+                            $responseMessages = ($response.messages -join ', ')
+                            $ErrorMessage += " Error:- $responseMessages"
+                            $DetailedResponseFound = $true
+                        }
+                    }
+                    
+                    # For non-gis server types
+                    if($response.error){
+                        $ErrorMessage += " Code:- $($response.error.code), Error:- $($response.error.message)"
+                        $DetailedResponseFound = $true
+                    }
+
+                    if(-not($DetailedResponseFound)){
+                        $ErrorMessage += " Response:- $(ConvertTo-Json -Compress -Depth 5 -InputObject $response)"
+                    }
+
+                    throw $ErrorMessage
+                }
+            }else{
+                throw "Join site failed. No response from server."
+            }
+            $Done = $true
+        }catch{
+            Write-Verbose "[WARNING] Attempt # $NumAttempts to Join Site at $JoinSiteUrl failed. Error:- $_"
+
+            if($NumAttempts -gt 3){
+                throw "Failed to Join Site after multiple attempts. Error on last attempt:- $($_)"
+            }else{
+                Write-Verbose "Retrying join site after $SleepTimeInSeconds seconds"
+                Start-Sleep -Seconds $SleepTimeInSeconds
+            }
+        }
+        $NumAttempts = $NumAttempts + 1
+    }
 
     ##
 	## Adding site (might) restart the server instance (Wait for admin endpoint to comeback up)
@@ -714,6 +798,13 @@ function Update-LogSettings
     if(Test-IfGISServer -ServerType $ServerType){
         # API uses a checkbox and hence need to provide on/off values
         $props['usageMeteringEnabled'] = if($logSettings.usageMeteringEnabled) { 'on' } else { 'off' } 
+    }else{
+        if($ServerType -ieq "VelocityServer"){
+            $props['controlPlaneLogLevel'] = $logSettings.logLevel
+            $props['streamManagerLogLevel'] = $logSettings.logLevel
+            $props['feedManagerLogLevel'] = $logSettings.logLevel
+            $props['ratManagerLogLevel'] = $logSettings.logLevel
+        }
     }
 
     $response = Invoke-ArcGISWebRequest -Url $UpdateLogSettingsUrl -HttpFormParameters $props -Referer $Referer
@@ -793,9 +884,12 @@ function Get-SystemDirectories {
     try{
         $Response =Invoke-ArcGISWebRequest -Url $GetRegDirUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -TimeOutSec 150
         Confirm-ResponseStatus $Response
+        if($null -eq $Response.PSObject.Properties['directories']){
+            throw "Server directory list response did not include directories."
+        }
         $Response
     }catch{
-        Write-Verbose "[WARNING] Response from $GetRegDirUrl (Get-RegisteredDirectories) is - $_"
+        throw "Failed to retrieve server directories from $GetRegDirUrl`: $($_.Exception.Message)"
     }
 }
 
@@ -827,9 +921,12 @@ function Register-SystemDirectory {
     try{
         $Response = Invoke-ArcGISWebRequest -Url $RegDirUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 150
         Confirm-ResponseStatus $Response
+        if($Response.status -ine 'success'){
+            throw "Directory registration returned unexpected status '$($Response.status)'."
+        }
         $Response
     }catch{
-        Write-Verbose "[WARNING] Response from $RegDirUrl (Set-RegisteredDirectories) is - $_"
+        throw "Failed to register server directory '$Name' at $RegDirUrl`: $($_.Exception.Message)"
     }
 }
 
@@ -913,8 +1010,7 @@ function Update-SecurityConfig
     while(-not($Done) -and ($NumAttempts -lt $MaxAttempts)) {
         $NumAttempts++
         try {
-            Write-Verbose "Update Security Config"
-			Write-Verbose "Attempt $NumAttempts"
+            Write-Verbose "Update Security Config. Attempt $NumAttempts"
 			$response = Invoke-ArcGISWebRequest -Url $UpdateSecurityConfigUrl -HttpFormParameters $props -Referer $Referer -TimeOutSec 300 -Verbose
             Confirm-ResponseStatus $response -Url $UpdateSecurityConfigUrl
             $Done = $true
@@ -974,11 +1070,12 @@ function Update-SecurityTokenSharedKey
 
     if($SharedKey){
 		Write-Verbose "Get Token and Shared Key Setting"
-		$TokenSettings = Get-SecurityTokenSharedKey -URL $ServerBaseUrl -Token $Token -Referer $Referer -Verbose
+		$TokenSettings = Get-SecurityTokenSharedKey -URL $URL -Token $Token -Referer $Referer -Verbose
 		if($TokenSettings.properties.sharedKey -ine $SharedKey){
 			Write-Verbose "Shared Key is not set as expected. Updating shared key."	
 			$RequestUrl = Get-ServerAdminUrlForPath -URL $URL -Path "/security/tokens/update"
-            $TokenSettingsProperties = ConvertTo-Json $Properties
+            $TokenSettings.properties.sharedKey = $SharedKey
+            $TokenSettingsProperties = ConvertTo-Json -InputObject $TokenSettings -Depth 10 -Compress
             $RequestParams = @{ f = 'json'; token = $Token; tokenManagerConfig = $TokenSettingsProperties }
             $Response = Invoke-ArcGISWebRequest -Url $RequestUrl -HttpFormParameters $RequestParams -Referer $Referer
             Confirm-ResponseStatus $Response
@@ -1135,25 +1232,30 @@ function Import-ExistingCertificate
         $Version,
 
         [System.Boolean]
-        $ImportCertificateChain = $true
+        $ImportCertificateChain = $true,
+
+        # Opt in only when the caller can verify the imported alias and thumbprint. Retrying an
+        # upload after a dropped response is unsafe because the first request may have committed.
+        [System.Boolean]
+        $ThrowOnResponseError = $false
     )
 
     $ImportCACertUrl  = Get-ServerAdminUrlForPath -URL $URL -Path "/machines/$MachineName/sslCertificates/importExistingServerCertificate"
     $props = @{ f= 'json';  alias = $CertAlias; certPassword = $CertificatePassword.GetNetworkCredential().Password  }
     # Conditionally add importCertificateChain if Version is >= 11.3
     if ($Version -and ([version]$Version -ge [version]"11.3") `
-    -and (-not(@("Server", "NotebookServer", "MissionServer","VideoServer","DataPipelinesServer") -iContains $ServerType))) {
+    -and (-not(@("Server", "NotebookServer", "MissionServer","VideoServer","DataPipelinesServer","VelocityServer") -iContains $ServerType))) {
         $props["importCertificateChain"] = $ImportCertificateChain
     }
 
     $Header = @{}
-    if(-not(@("Server", "NotebookServer", "MissionServer","VideoServer","DataPipelinesServer") -iContains $ServerType)){
+    if(-not(@("NotebookServer", "MissionServer","VideoServer","DataPipelinesServer") -iContains $ServerType)){
         $props["token"] = $Token;
     }else{
         $Header["X-Esri-Authorization"] = "Bearer $Token"
     }
 
-    $res = Invoke-UploadFile -url $ImportCACertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'certFile' -httpHeaders $Header -Verbose 
+    $res = Invoke-UploadFile -url $ImportCACertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' -formParams $props -Referer $Referer -fileParameterName 'certFile' -httpHeaders $Header -ThrowOnResponseError $ThrowOnResponseError -Verbose
     if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCACertUrl
@@ -1185,17 +1287,31 @@ function Import-RootOrIntermediateCertificate
         $CertificateFilePath,
 
         [System.String]
-        $CertificateFileName
+        $CertificateFileName,
+
+        [System.String]
+        $ServerType,
+
+        [System.Boolean]
+        $ThrowOnResponseError = $false
     )
     
     $ImportCertUrl  = Get-ServerAdminUrlForPath -URL $URL -Path "/machines/$MachineName/sslCertificates/importRootOrIntermediate"
     $props = @{ f= 'json'; token = $Token; alias = $CertAlias; } 
+    if($ServerType -ieq "VelocityServer"){
+        $props["norestart"] = 'true'
+    }
+
     $res = Invoke-UploadFile -url $ImportCertUrl -filePath $CertificateFilePath -fileContentType 'application/x-pkcs12' `
-                            -formParams $props -Referer $Referer -fileParameterName 'rootCACertificate' -fileName $CertificateFileName    
+                            -formParams $props -Referer $Referer -fileParameterName 'rootCACertificate' -fileName $CertificateFileName `
+                            -ThrowOnResponseError $ThrowOnResponseError
     if($res) {
         $response = $res | ConvertFrom-Json
         Confirm-ResponseStatus $response -Url $ImportCertUrl
     } else {
+        if($ThrowOnResponseError){
+            throw "Response from $ImportCertUrl was null."
+        }
         Write-Verbose "[WARNING] Response from $ImportCertUrl was null"
     }
 }
@@ -1238,17 +1354,40 @@ function Get-SSLCertificateForMachine
         $MachineName, 
         
         [System.String]
-        $SSLCertName
+        $SSLCertName,
+
+        [System.Boolean]
+        $ThrowOnResponseError = $false,
+
+        [System.String]
+        $ServerType
     )
     $CertUrl  = Get-ServerAdminUrlForPath -URL $URL -Path "/machines/$MachineName/sslCertificates/$SSLCertName"
     try{
-        $json = Invoke-ArcGISWebRequest -Url $CertUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'  
+        Write-Verbose "Requesting SSL certificate information for machine $MachineName with alias $SSLCertName from URL $CertUrl"
+        if($ServerType -ieq 'VelocityServer'){
+            $response = Invoke-ArcGISWebRequest -Url $CertUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET' -ResponseType 'Response'
+            $json = $response.Content | ConvertFrom-Json -ErrorAction Stop
+            if(($response.StatusCode -eq 200 -or $response.StatusCode -eq 500) -and $json.code -eq 500 -and
+                $json.message -eq 'The requested resource could not be found in the system. Please check the parameters and try again.'){
+                Write-Verbose "Certificate with alias $SSLCertName not found for Velocity machine $MachineName"
+                return $null
+            }
+            if($response.StatusCode -lt 200 -or $response.StatusCode -ge 300 -or $json.code -ge 400){
+                throw "Response from $CertUrl failed (HTTP $($response.StatusCode)): $($response.Content)"
+            }
+        }else{
+            $json = Invoke-ArcGISWebRequest -Url $CertUrl -HttpFormParameters @{ f= 'json'; token = $Token; } -Referer $Referer -HttpMethod 'GET'
+        }
+        if($ThrowOnResponseError){
+            Confirm-ResponseStatus $json -Url $CertUrl
+        }
         if($json.error){
-            $errMsgs = ($json.error.messages -join ', ')
+            $errMsgs = if($json.error.messages){ ($json.error.messages -join ', ') }else{ $json.error.message }
             Write-Verbose "[WARNING] Response from $CertUrl is $errMsgs"
             $null
         }elseif($json.status -and $json.status -ieq "error"){
-            $errMsgs = ($json.messages -join ', ')
+            $errMsgs = if($json.messages){ ($json.messages -join ', ') }else{ $json.message }
             Write-Verbose "[WARNING] Response from $CertUrl is $errMsgs"
             $null
         }else{
@@ -1261,9 +1400,87 @@ function Get-SSLCertificateForMachine
         }
     }
     catch{
+        if($ThrowOnResponseError){
+            throw
+        }
         # If no cert exists, an error is returned
         Write-Verbose "[WARNING] Error checking $CertUrl Error:- $_"
         $null
+    }
+}
+
+<#
+    .SYNOPSIS
+        Reconciles an indeterminate Server root or intermediate certificate import.
+
+    .DESCRIPTION
+        The import endpoint may commit a trust certificate and restart the Server web process before
+        returning its HTTP response. Retrying the upload is unsafe because the alias may already exist.
+        This helper waits for Server recovery, optionally refreshes authentication, and verifies that
+        the imported alias contains the expected certificate thumbprint.
+
+        Root and intermediate certificates are trust entries and are not presented by the HTTPS
+        endpoint, so alias and thumbprint are the authoritative postconditions.
+#>
+function Wait-ForServerRootOrIntermediateCertificateState
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $URL,
+
+        [System.String]
+        $ServerType,
+
+        [System.String]
+        $Token,
+
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [System.String]
+        $Referer,
+
+        [System.String]
+        $MachineName,
+
+        [System.String]
+        $CertificateAlias,
+
+        [System.String]
+        $ExpectedThumbprint,
+
+        $OperationError
+    )
+
+    try {
+        # The restart is scheduled asynchronously, so allow it to begin before checking health.
+        Start-Sleep -Seconds 5
+        Test-ArcGISComponentHealth -BaseURL $URL -ComponentName $ServerType `
+                                    -MaxWaitTimeInSeconds 180 -SleepTimeInSeconds 5 -ThrowErrors $true -Verbose
+
+        $verificationToken = $Token
+        if($null -ne $Credential){
+            $refreshedToken = Get-ServerToken -URL $URL -Credential $Credential -Referer $Referer
+            if(-not($refreshedToken.token)){
+                throw "Unable to retrieve a server token after importing certificate '$CertificateAlias'."
+            }
+            $verificationToken = $refreshedToken.token
+        }
+
+        $certificate = Get-SSLCertificateForMachine -URL $URL -Token $verificationToken -Referer $Referer `
+                            -MachineName $MachineName -SSLCertName $CertificateAlias.ToLower() -ServerType $ServerType
+        if($null -eq $certificate -or $certificate.Thumbprint -ine $ExpectedThumbprint){
+            throw "Root or intermediate certificate '$CertificateAlias' does not have expected thumbprint '$ExpectedThumbprint'."
+        }
+
+        return $verificationToken
+    }
+    catch {
+        if($null -ne $OperationError){
+            throw "The root or intermediate certificate import response failed and the expected state could not be verified. Operation error: $OperationError Reconciliation error: $_"
+        }
+        throw
     }
 }
 
@@ -1294,13 +1511,34 @@ function Get-ServerRootAndIntermdiateCertificatesToUpdate
     )
 
     $ExistingCerts = Get-AllSSLCertificateForMachine -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName 
-    $AllCertificates = if(-not(Test-IfGISServer -ServerType $ServerType)){ $ExistingCerts.sslCertificates }else{ $ExistingCerts.certificates}
+
+    $AllCertificates = @()
+    if((Test-IfGISServer -ServerType $ServerType) -or ($ServerType -ieq "VelocityServer")){
+        $AllCertificates = $ExistingCerts.certificates
+    }
+    else
+    {
+        $AllCertificates = $ExistingCerts.sslCertificates
+    }
+
+    # Server versions and component types return either alias strings or certificate objects.
+    # Normalize both shapes before comparing aliases so repeated DSC runs remain idempotent.
+    $AllCertificateAliases = @($AllCertificates | ForEach-Object {
+        if($_ -is [System.String]){
+            $_
+        }elseif($_.alias){
+            $_.alias
+        }elseif($_.name){
+            $_.name
+        }
+    })
+
     $ExpectedCerts = ($SslRootOrIntermediate | ConvertFrom-Json)
     $MissingCerts = @()
     foreach ($Cert in $ExpectedCerts){
-        if ($AllCertificates -icontains $Cert.Alias){
+        if ($AllCertificateAliases -icontains $Cert.Alias){
             Write-Verbose "RootOrIntermediate $($Cert.Alias) is in List of SSL-Certificates. Validating if thumbprint matches the existing certificate"
-            $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -SSLCertName $Cert.Alias.ToLower() -Verbose
+            $RootOrIntermediateCertForMachine = Get-SSLCertificateForMachine -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -SSLCertName $Cert.Alias.ToLower() -ServerType $ServerType -Verbose
             Write-Verbose "Existing Cert Issuer $($RootOrIntermediateCertForMachine.Issuer) and Thumbprint $($RootOrIntermediateCertForMachine.Thumbprint)"
             $NewCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $Cert.Path
             Write-Verbose "Issuer and Thumprint for the supplied certificate is $($NewCert.Issuer) and $($NewCert.Thumbprint) respectively."
@@ -1344,6 +1582,9 @@ function Set-ServerRootAndIntermdiateCertificates
         [System.String]
         $MachineName, 
 
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
         [System.String]
         $SslRootOrIntermediate
     )
@@ -1353,7 +1594,7 @@ function Set-ServerRootAndIntermdiateCertificates
                                                 -Token $Token -Referer $Referer -MachineName $MachineName `
                                                 -SslRootOrIntermediate $SslRootOrIntermediate -Verbose
     
-    if($MissingCerts.Count -gt 0){
+    if(@($MissingCerts).Count -gt 0){
         $RestartRequired = $True
         foreach ($Cert in $MissingCerts){
             if($Cert.Present){
@@ -1362,11 +1603,22 @@ function Set-ServerRootAndIntermdiateCertificates
                 Write-Verbose "Delete existing certificate successful - $($res | ConvertTo-Json)"
             }
 
+            $expectedCertificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $Cert.Path
+            $importError = $null
             try{
-                Import-RootOrIntermediateCertificate -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName -CertAlias $Cert.Alias.ToLower() -CertificateFilePath $Cert.Path
+                Import-RootOrIntermediateCertificate -URL $URL -Token $Token -Referer $Referer -MachineName $MachineName `
+                                                    -CertAlias $Cert.Alias.ToLower() -CertificateFilePath $Cert.Path `
+                                                    -ServerType $ServerType -ThrowOnResponseError $true -Verbose
             }catch{
-                Write-Verbose "Error in Import-RootOrIntermediateCertificate :- $_"
+                # A dropped response is an indeterminate outcome, not proof that the import failed.
+                $importError = $_
             }
+
+            $Token = Wait-ForServerRootOrIntermediateCertificateState -URL $URL -ServerType $ServerType `
+                            -Token $Token -Credential $Credential -Referer $Referer -MachineName $MachineName `
+                            -CertificateAlias $Cert.Alias -ExpectedThumbprint $expectedCertificate.Thumbprint `
+                            -OperationError $importError -Verbose
+            Write-Verbose "Import of RootOrIntermediate Certificate with Alias $($Cert.Alias) verified successfully."
         }
     }
 
@@ -1437,9 +1689,10 @@ function Get-ConfigStoreConnectionJson
     if($CloudProvider -ine "None"){
         if($CloudProvider -ieq "AWS"){
             Write-Verbose "Using AWS S3 Cloud Storage and Dynamo DB for the config store"
-            $configStoreConnection = @{
+            $configStoreConnection = @{ 
                 connectionString = "NAMESPACE=$($CloudNamespace);REGION=$($AWSRegion);";
             }
+
 
             if(Test-IfGISServer -ServerType $ServerType ){
                 $configStoreConnection['type'] = "AMAZON";
@@ -2530,7 +2783,7 @@ function Invoke-GISServerUpgrade
                     
                     Write-Verbose "Response received:- $(ConvertTo-Json -Depth 5 -Compress -InputObject $ResponseStatus)"
                     if(($ResponseStatus.upgradeStatus -ine 'IN_PROGRESS' -or $ResponseStatus.upgradeStatus -ieq 'In Progress') -and ([version]$Version -gt "11.3")){
-                        foreach($Stage in $ResponseStatus.stages){
+                        foreach($Stage in $Stages){
                             Write-Verbose "$($Stage.name) : $($Stage.state)"
                         }
                     }
@@ -2622,6 +2875,7 @@ function Test-VideoServerLiveStreamPortsNeedsUpdates{
         throw "Live stream ports response did not include livestreamPorts."
     }
     #Ex. response - {"livestreamPorts":{"rangeMax":65535,"rtspPort":554,"rangeMin":49152,"rtmpPort":1935}}
+    #Ex. response 12.2 - {"livestreamPorts":{"rangeMax":65535,"rtspPort":554,"srtPort":9710,"rangeMin":49152,"rtmpPort":1935}}
     $CurrentPorts = $Response.livestreamPorts
     $NeedsUpdates = $false
 
@@ -2632,6 +2886,11 @@ function Test-VideoServerLiveStreamPortsNeedsUpdates{
 
     if($null -ne $PortsObject.RTSPTCPPort -and ([int]$PortsObject.RTSPTCPPort -ne [int]$CurrentPorts.rtspPort)){
         Write-Verbose "Video Server RTSP TCP port '$($CurrentPorts.rtspPort)' doesn't match expected value '$($PortsObject.RTSPTCPPort)'"
+        $NeedsUpdates = $true
+    }
+
+    if($null -ne $PortsObject.SRTPort -and ([int]$PortsObject.SRTPort -ne [int]$CurrentPorts.srtPort)){
+        Write-Verbose "Video Server SRT port '$($CurrentPorts.srtPort)' doesn't match expected value '$($PortsObject.SRTPort)'"
         $NeedsUpdates = $true
     }
 
@@ -2676,6 +2935,10 @@ function Set-UpdateVideoServerLivestreamPorts
         rtspPort = [int]$PortsObject.RTSPTCPPort
         rangeMin = [int]$PortsObject.RTSPUDPPortRangeMin
         rangeMax = [int]$PortsObject.RTSPUDPPortRangeMax
+    }
+
+    if($null -ne $PortsObject.SRTPort){
+        $HttpFormParams['srtPort'] = [int]$PortsObject.SRTPort
     }
 
     [string]$LiveStreamPortsUpdateUrl = Get-ServerAdminUrlForPath -URL $URL -Path "/system/livestream/serverPorts"

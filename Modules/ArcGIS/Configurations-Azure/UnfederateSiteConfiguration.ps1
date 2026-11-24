@@ -47,7 +47,7 @@ Configuration UnfederateSiteConfiguration
             ServerSiteAdminUrlPort = 443
             ServerSiteAdminUrlContext = $FederatedServerContext
             Ensure = "Absent"
-            RemoteSiteAdministrator = $SiteAdministratorCredential
+            PortalSiteAdministrator = $SiteAdministratorCredential
             ServerRole = 'FEDERATED_SERVER'
         }
     }

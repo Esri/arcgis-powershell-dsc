@@ -486,16 +486,6 @@ function Enable-PostgresPostGISExtension {
 
     $sql = "CREATE EXTENSION IF NOT EXISTS postgis"
     Invoke-ExecutePostgresQuery -ConnString $ConnString -sql $sql
-
-    $sql = "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch"
-    Invoke-ExecutePostgresQuery -ConnString $ConnString -sql $sql
-    
-    $sql = "CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder"
-    Invoke-ExecutePostgresQuery -ConnString $ConnString -sql $sql
-    
-    $sql = "CREATE EXTENSION IF NOT EXISTS postgis_topology"
-    Invoke-ExecutePostgresQuery -ConnString $ConnString -sql $sql
-    
 }
 
 function Invoke-ExecutePostgresQuery{

@@ -118,6 +118,13 @@ function Set-TargetResource
         Write-Verbose "Successfully added Log On As a Service Policy for RunAsAccount Username:- $ExpectedRunAsUserName"
 
         $InstallDir = (Get-ArcGISComponentVersionAndInstallDirectory -ServiceName $Name).InstallDir
+        if($Name -ieq 'ArcGISGeoEvent' -and -not($InstallDir)){
+            $ServerInstallDir = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'Server').InstallDir
+            if(-not($ServerInstallDir)){
+                throw 'Cannot determine the ArcGIS Server install directory for GeoEvent service account update.'
+            }
+            $InstallDir = Join-Path $ServerInstallDir 'GeoEvent'
+        }
         Write-Verbose "Install Dir for $Name is $InstallDir"
         $RestartService = $False
         if($InstallDir) 
@@ -130,7 +137,9 @@ function Set-TargetResource
             # Get Current Run as account or if Force Update run as account set
             $UpdateRunAsUser = $False
             $WindowsServicesToCheck = @($Name)
-            
+            if($Name -ieq "Velocity"){
+                $WindowsServicesToCheck = Get-VelocityServerServiceNames
+            }
 
             foreach($WindowsServiceName in $WindowsServicesToCheck){
                 $ServiceInfo = Get-WindowsServiceRunAsInfo -Name $WindowsServiceName
@@ -142,16 +151,20 @@ function Set-TargetResource
 
             if($ForceRunAsAccountUpdate -or $UpdateRunAsUser){
                 $RestartService = $True
-                if(@('ArcGIS Server','Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server','ArcGIS Data Store', 'ArcGIS Video Server', 'ArcGIS Data Pipelines Server') -icontains $Name){
+                if(@('ArcGIS Server','Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server','ArcGIS Data Store', 'ArcGIS Video Server', 'ArcGIS Data Pipelines Server', 'Velocity') -icontains $Name){
                     Write-Verbose "Running Account Configuration Utility for service $Name."
 
                     $ExecPath = $InstallDir
                     $EnvVariables = @{}
                     if($Name -ieq 'ArcGIS Server'){
-                        $ExecPath = Join-Path $InstallDir '\\framework\\runtime\\ArcGIS\\bin\\ServerConfigurationUtility.exe'
-                        if(-not(Test-Path "$ExecPath")){
-                            $ExecPath = Join-Path $InstallDir '\\bin\\ServerConfigurationUtility.exe'    
+                        $ExecPath = Join-Path $InstallDir '\\tools\\ConfigUtility\\configureserviceaccount.bat'
+                        if(-not(Test-Path $ExecPath)){
+                            $ExecPath = Join-Path $InstallDir '\\framework\\runtime\\ArcGIS\\bin\\ServerConfigurationUtility.exe'
+                            if(-not(Test-Path "$ExecPath")){
+                                $ExecPath = Join-Path $InstallDir '\\bin\\ServerConfigurationUtility.exe'    
+                            }
                         }
+                       
                         $EnvVariables["AGSSERVER"] = $null
                     }
                     elseif(@('Portal for ArcGIS', 'ArcGIS Notebook Server', 'ArcGIS Mission Server', 'ArcGIS Video Server', 'ArcGIS Data Pipelines Server') -icontains $Name){
@@ -171,6 +184,10 @@ function Set-TargetResource
                     elseif($Name -ieq 'ArcGIS Data Store'){
                         $ExecPath = Join-Path $ExecPath '\\tools\\configureserviceaccount.bat'
                         $EnvVariables["AGSDATASTORE"] = $null
+                    }
+                    elseif($Name -ieq 'Velocity'){
+                        $ExecPath = Join-Path $ExecPath '\\tools\\configureserviceaccount_all.bat'
+                        $EnvVariables["AGSVELOCITY"] = $null
                     }
 
                     $Arguments = ""
@@ -199,18 +216,22 @@ function Set-TargetResource
                     }
 
                     Write-Verbose "Updating Service Account for service $Name."
-                    $ReturnValue = ($WindowsService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+                    $WindowsService = Get-CimInstance Win32_Service -Filter "name='$Name'" -ErrorAction Stop
+                    if($null -eq $WindowsService){
+                        throw "Service '$Name' was not found. Cannot update its service account."
+                    }
+                    $ReturnValue = ($WindowsService | Invoke-CimMethod -Name Change -Arguments $ChangeObject -ErrorAction Stop).ReturnValue
                     if($ReturnValue -eq 0){
                         Write-Verbose "Service Account Change Operation for Service $Name successful."
                         if($Name -ieq "ArcGISGeoEvent"){
-                            $GeoeventGatewayService = Get-CimInstance Win32_Service -filter "name='ArcGISGeoEventGateway'" 
+                            $GeoeventGatewayService = Get-CimInstance Win32_Service -filter "name='ArcGISGeoEventGateway'" -ErrorAction Stop
                             if($null -ne $GeoeventGatewayService){
                                 Write-Verbose "Updating Service Account for service ArcGISGeoEventGateway."
-                                $GeoeventGatewayReturnValue = ($GeoeventGatewayService | Invoke-CimMethod -Name Change -Arguments $ChangeObject).ReturnValue
+                                $GeoeventGatewayReturnValue = ($GeoeventGatewayService | Invoke-CimMethod -Name Change -Arguments $ChangeObject -ErrorAction Stop).ReturnValue
                                 if($GeoeventGatewayReturnValue -eq 0){
                                     Write-Verbose "Service Account Change Operation for Service ArcGISGeoEventGateway successful."
                                 }else{
-                                    throw "Service Account Change Operation for Service ArcGISGeoEventGateway failed. Return value - $ReturnValue"
+                                    throw "Service Account Change Operation for Service ArcGISGeoEventGateway failed. Return value - $GeoeventGatewayReturnValue"
                                 }
                             }
                         }
@@ -298,20 +319,14 @@ function Set-TargetResource
 				try {			    
 					$ServiceName = $_
 					Write-Verbose "Stopping Service $ServiceName"
-					Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+                    Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
 					Write-Verbose 'Stopped the service'
 				}catch {
 					Write-Verbose "[WARNING] Stopping Service $_"
 				}
             }
             
-			if(-not($InstallDir)) {
-				# GeoEvent is always installed in Server's install directory
-                $InstallDir = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'Server').InstallDir
-            }
-            
 			if($InstallDir) {
-				$InstallDir = Join-Path $InstallDir 'GeoEvent'
                 $GeoEventKarafDataFolder = Join-Path $InstallDir 'data'		
 				$GeoEventGatewayLogFolder = Join-Path $InstallDir 'gateway\log'		
                 $GeoEventGatewayConfig = Join-Path $InstallDir 'etc\com.esri.ges.gateway.cfg'
@@ -319,8 +334,6 @@ function Set-TargetResource
 				$GeoEventProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent'		
 				$GeoEventGatewayProgramData = Join-Path $env:ProgramData 'Esri\GeoEvent-Gateway'
                 
-                
-
 				@($GeoEventKarafDataFolder, $GeoEventGatewayLogFolder, $GeoEventGatewayConfig, $GeoEventProgramData, $GeoEventGatewayProgramData) | ForEach-Object{ 
 					$FolderToDelete = $_
 					Write-Verbose "Clean up Folder:- $FolderToDelete"
@@ -341,10 +354,6 @@ function Set-TargetResource
             }
         }
 
-        if($Name -ieq 'WorkflowManager') {
-            $RestartService = $True
-        }
-
         if($SetStartupToAutomatic){
             try{
                 if($Name -ieq 'ArcGISGeoEvent'){
@@ -357,6 +366,14 @@ function Set-TargetResource
                     if(-not($GeoeventGatewayStartupTypeIsAutoDelayed)){
                         Write-Verbose "Setting Startup Type for ArcGIS GeoEvent Gateway to Automatic"
                         Set-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -StartupType "Automatic" -Verbose
+                    }
+                }elseif($Name -ieq 'Velocity'){
+                    foreach($VelocityServiceName in $WindowsServicesToCheck){
+                        $VelocityStartupTypeIsAuto = (Test-ServiceStartupType -ServiceName $VelocityServiceName -ExpectedStartupType "Automatic" -Verbose)
+                        if(-not($VelocityStartupTypeIsAuto)){
+                            Write-Verbose "Setting Startup Type for $VelocityServiceName to Automatic"
+                            Set-ServiceStartupType -ServiceName $VelocityServiceName -StartupType "Automatic" -Verbose
+                        }
                     }
                 }else{
                     $ServiceStartUpType = if($Name -ieq 'ArcGIS Notebook Server'){ "AutomaticDelayedStart" }else{ "Automatic" }
@@ -371,11 +388,21 @@ function Set-TargetResource
             }
         }
 
+        if($Name -ieq 'WorkflowManager' -or $Name -ieq 'Velocity'){ 
+            $RestartService = $True
+        }
+
         ###
         ### If the Service Credentials are changed. Restart the Service (just in case) TODO:- Revisit if this is needed
         ###
         if($RestartService){
-            Restart-ArcGISService -ServiceName $Name -Verbose
+            if($Name -ieq 'Velocity'){
+                foreach($VelocityServiceName in $WindowsServicesToCheck){
+                    Restart-ArcGISService -ServiceName $VelocityServiceName -Verbose
+                }
+            }else{
+                Restart-ArcGISService -ServiceName $Name -Verbose
+            }
             
             if($Name -ieq 'ArcGISGeoEvent'){
                 Start-Sleep -Seconds 180
@@ -435,6 +462,12 @@ function Test-TargetResource
     }
 
     $InstallDir = (Get-ArcGISComponentVersionAndInstallDirectory -ServiceName $Name).InstallDir
+    if($Name -ieq 'ArcGISGeoEvent' -and -not($InstallDir)){
+        $ServerInstallDir = (Get-ArcGISComponentVersionAndInstallDirectory -ComponentName 'Server').InstallDir
+        if($ServerInstallDir){
+            $InstallDir = Join-Path $ServerInstallDir 'GeoEvent'
+        }
+    }
     if($InstallDir -and (Test-Path $InstallDir)) {
         Write-Verbose "Install Dir for $Name is $InstallDir"
         if(-not(Test-Acl $InstallDir $ExpectedRunAsUserName $IsDomainAccount $IsMSAAccount)) {
@@ -444,13 +477,15 @@ function Test-TargetResource
     }
 
     # Get Current Run as account or if Force Update run as account set
-    $UpdateRunAsUser = $False
     $WindowsServicesToCheck = @($Name)
-    
+    if($Name -ieq "Velocity"){
+        $WindowsServicesToCheck = Get-VelocityServerServiceNames
+    }
+
     foreach($WindowsServiceName in $WindowsServicesToCheck){
         $ServiceInfo = Get-WindowsServiceRunAsInfo -Name $WindowsServiceName
         if($ServiceInfo.RunAsAccount -ne $ExpectedRunAsUserName){
-            Write-Verbose "Service '$WindowsServiceName' is running as '$CurrentRunAsAccount' instead of '$ExpectedRunAsUserName'."
+            Write-Verbose "Service '$WindowsServiceName' is running as '$($ServiceInfo.RunAsAccount)' instead of '$ExpectedRunAsUserName'."
             $result = $false
             break
         }
@@ -466,6 +501,14 @@ function Test-TargetResource
             $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEvent' -ExpectedStartupType "AutomaticDelayedStart" -Verbose)
             if($result){
                 $result = (Test-ServiceStartupType -ServiceName 'ArcGISGeoEventGateway' -ExpectedStartupType "Automatic" -Verbose)
+            }
+        }
+        elseif($Name -ieq 'Velocity'){
+            foreach($VelocityServiceName in $WindowsServicesToCheck){
+                $result = (Test-ServiceStartupType -ServiceName $VelocityServiceName -ExpectedStartupType "Automatic" -Verbose)
+                if(-not($result)){
+                    break
+                }
             }
         }
         else{

@@ -133,7 +133,6 @@ function Set-TargetResource
         $EmailSettingsEncryptionMethod = "NONE"
     )
 
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $PortalFQDN = Get-FQDN $PortalHostName
     $Referer = if($ExternalDNSName){"https://$($ExternalDNSName)/$($PortalContext)"}else{"https://localhost"}
 
@@ -302,27 +301,7 @@ function Set-TargetResource
         }
         Write-Verbose "Updated Portal System Properties."
         
-        $MaxWaitTimeInSeconds = 300
-        $SleepTimeInSeconds = 10
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        Write-Verbose "Waiting for up to $($MaxWaitTimeInSeconds) seconds for portal to restart"
-        while((-not($Done)) -and ($stopwatch.Elapsed.TotalSeconds -lt $MaxWaitTimeInSeconds)) {
-            try{
-                # if available sleep and try again.
-                Test-ArcGISComponentHealth -BaseURL $PortalBaseURL -ComponentName "PortalSharing" -MaxWaitTimeInSeconds 10 -ThrowErrors $true -Verbose
-                Write-Verbose "Portal web server is still available. Trying again in $($SleepTimeInSeconds) seconds"
-                Start-Sleep -Seconds $SleepTimeInSeconds
-            }catch{
-                # if error and most likely portal has become unavailable then exit loop
-                Write-Verbose "Portal is most likely restarting as result of update of system properties:- $($_)"
-                $Done = $true
-            }
-        }
-        $stopwatch.Stop()
-        
-        Write-Verbose "Waiting up to 6 minutes for portal admin endpoint to be available."
-        Test-ArcGISComponentHealth -BaseURL $PortalBaseURL -ComponentName "Portal" -MaxWaitTimeInSeconds 360 -Verbose
-        Write-Verbose "Finished waiting for portal admin endpoint is now available"    
+        Wait-ForArcGISComponentRestart -BaseURL $PortalBaseURL -ComponentName "Portal" -RestartComponentName "PortalSharing" -MaxRestartWaitTimeInSeconds 300 -Verbose
     }
 
     Write-Verbose "Getting Portal Token for user '$($PortalAdministrator.UserName)' from '$($PortalBaseURL)'"
@@ -588,7 +567,6 @@ function Test-TargetResource
         $EmailSettingsEncryptionMethod = "NONE"
     )
 
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $PortalFQDN = Get-FQDN $PortalHostName
     $Referer = if($ExternalDNSName){"https://$($ExternalDNSName)/$($PortalContext)"}else{"https://localhost"}
 	

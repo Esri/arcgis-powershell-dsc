@@ -31,7 +31,7 @@ function Get-TargetResource
 		$ServerHostName,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")]
         [System.String]
         $ServerType
 	)
@@ -54,7 +54,7 @@ function Set-TargetResource
         $ServerHostName,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")]
         [System.String]
         $ServerType,
     
@@ -68,7 +68,6 @@ function Set-TargetResource
 
 	)
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = Test-Install -Name $ServerType -Version $Version
     if(-not($result)) {
         throw "ArcGIS Server not upgraded to required Version $Version"
@@ -83,7 +82,7 @@ function Set-TargetResource
         Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName "ServerAdmin" -Verbose
         Invoke-GISServerUpgrade -URL $ServerBaseURL -EnableUpgradeSiteDebug $EnableUpgradeSiteDebug -Version $Version -Referer $Referer -Verbose
     }else{
-        Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName "Server" -Verbose
+        Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName $ServerType -Verbose
         Invoke-ServerUpgrade -URL $ServerBaseURL -Referer $Referer -Verbose
     }
 }
@@ -99,7 +98,7 @@ function Test-TargetResource
         $ServerHostName,
 
         [parameter(Mandatory = $true)]
-        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer")]
+        [ValidateSet("Server","NotebookServer","MissionServer","VideoServer","DataPipelinesServer","VelocityServer")]
         [System.String]
         $ServerType,
 
@@ -112,7 +111,6 @@ function Test-TargetResource
         $EnableUpgradeSiteDebug = $False
     )
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     $result = Test-Install -Name $ServerType -Version $Version
     if(-not($result)) {
         throw "ArcGIS Server not upgraded to required Version $Version"
@@ -125,7 +123,7 @@ function Test-TargetResource
         Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName "ServerAdmin" -MaxWaitTimeInSeconds 300 -SleepTimeInSeconds 15 -Verbose
         $result = Test-GISServerUpgrade -URL $ServerBaseURL -Referer $Referer -Version $Version -Verbose
     }else{
-        Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName "Server" -MaxWaitTimeInSeconds 300 -SleepTimeInSeconds 15 -Verbose
+        Test-ArcGISComponentHealth -BaseURL $ServerBaseUrl -ComponentName $ServerType -MaxWaitTimeInSeconds 300 -SleepTimeInSeconds 15 -Verbose
         $result = Test-ServerUpgrade -URL $ServerBaseURL -Referer $Referer -Verbose
     }
     

@@ -43,14 +43,7 @@ function Get-FQDN
                 Write-Verbose "Error Resolving DNS $($_)"            
             }
             if($null -ne $DnsRecord) {
-                [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.WindowsAzure.ServiceRuntime')
-                $UseIP = $false
-                if (('Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment' -as [type]) -and ($null -ne [Microsoft.WindowsAzure.ServiceRuntime.RoleEnvironment]::DeploymentId))
-                {
-                    $UseIP = $true
-                    Write-Verbose "Running on Microsoft Azure Cloud Service VM (Web/Worker) Role. Using IP Address instead of hostnames"
-                }
-                $Dns = if($UseIP) { $DnsRecord.IPAddress } else { $DnsRecord.Name }
+                $Dns = $DnsRecord.Name
                 if($null -ne $Dns -and $Dns.Length -gt 0)
                 {
                     $ResolvedDns = $true
@@ -237,12 +230,29 @@ function Invoke-DSCJob {
     Write-Information -InformationAction Continue "Dot Sourcing the Configuration:- $ConfigurationName"
     . "$PSScriptRoot\$($ConfigurationFolderPath)\$($ConfigurationName).ps1" -Verbose:$false
 
-    &$ConfigurationName @Arguments -Verbose
+    try {
+        &$ConfigurationName @Arguments -Verbose -ErrorAction Stop
+    }
+    catch {
+        throw "Failed to generate DSC configuration '$ConfigurationName'. $($_.Exception.Message)"
+    }
+
+    $ConfigurationOutputPath = ".\$($ConfigurationName)"
+    $GeneratedMofFiles = if(Test-Path $ConfigurationOutputPath){
+        @(Get-ChildItem -Path $ConfigurationOutputPath -Filter '*.mof' -File -ErrorAction Ignore | Where-Object { $_.Name -notlike '*.meta.mof' })
+    }else{
+        @()
+    }
+    if($GeneratedMofFiles.Count -eq 0){
+        throw "Failed to generate DSC configuration '$ConfigurationName'. No MOF files were created."
+    }
+    $TargetNodeNames = @($GeneratedMofFiles | ForEach-Object { $_.BaseName } | Select-Object -Unique)
+
     if(($Arguments.ConfigurationData.AllNodes | Where-Object { $_.Thumbprint -and $_.CertificateFile } | Measure-Object).Count -gt 0){
         Write-Information -InformationAction Continue "Configuring Local Configuration Manager:- $ConfigurationName"
         if($UseWinRMSSL){
             $SessionOptions = New-CimSessionOption -UseSsl
-            $EncryptMOFCimSession = New-CimSession -Credential $Credential -SessionOption $SessionOptions -ComputerName $Arguments.ConfigurationData.AllNodes.NodeName
+            $EncryptMOFCimSession = New-CimSession -Credential $Credential -SessionOption $SessionOptions -ComputerName $TargetNodeNames
             Set-DscLocalConfigurationManager ".\$($ConfigurationName)" -CimSession $EncryptMOFCimSession -Verbose
         }else{
             Set-DscLocalConfigurationManager ".\$($ConfigurationName)" -Verbose
@@ -252,12 +262,11 @@ function Invoke-DSCJob {
     Write-Information -InformationAction Continue "Starting DSC Job:- $ConfigurationName"
     $JobTimer = [System.Diagnostics.Stopwatch]::StartNew()
     $Job = $null
+    $DeploymentCimSession = $null
     if($Credential){
         if($UseWinRMSSL){
-            $ComputeNameList = @()
             $SessionOptions = New-CimSessionOption -UseSsl
-            (Get-ChildItem ".\$($ConfigurationName)\*.mof" -File -exclude @("*.meta.mof") ).Name | ForEach-Object { $ComputeNameList += ($_ -replace '\.mof$', '') }
-            $DeploymentCimSession = New-CimSession -Credential $Credential -SessionOption $sessionOptions -ComputerName $ComputeNameList
+            $DeploymentCimSession = New-CimSession -Credential $Credential -SessionOption $SessionOptions -ComputerName $TargetNodeNames
             $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -CimSession $DeploymentCimSession
         }else{
             $Job = Start-DscConfiguration -Path ".\$($ConfigurationName)" -Force -Verbose -Credential $Credential
@@ -269,6 +278,9 @@ function Invoke-DSCJob {
     if(Test-Path ".\$($ConfigurationName)") { Remove-Item ".\$($ConfigurationName)" -Force -ErrorAction Ignore -Recurse }
 
     Trace-DSCJob -Job $Job -JobName $ConfigurationName -DebugMode $DebugMode
+    if($DeploymentCimSession){
+        $DeploymentCimSession | Remove-CimSession -ErrorAction Ignore
+    }
     Write-Information -InformationAction Continue "Finished DSC Job:- $ConfigurationName. Time Taken - $($JobTimer.elapsed)"
     Write-Information -InformationAction Continue "$($ConfigurationName) - $($Job.state)"
     $result = if($Job.state -ieq "Completed"){ $True } else{ $False }
@@ -377,6 +389,10 @@ function Get-PasswordFromObject
         [PSCustomObject]
         $Object
     )
+
+    if($Object.IsMSAAccount){
+        return (ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force)
+    }
     
     if($Object.PasswordFilePath){
         if(Test-Path $Object.PasswordFilePath){
@@ -389,6 +405,24 @@ function Get-PasswordFromObject
     }else{
         return (ConvertTo-SecureString $Object.Password -AsPlainText -Force)
     }    
+}
+
+function Get-ServiceAccountCredential
+{
+    [CmdletBinding()]
+    [OutputType([System.Management.Automation.PSCredential])]
+    Param(
+        [Parameter(Mandatory=$true)]
+        $ServiceAccount
+    )
+
+    $ServiceAccountUserName = [System.String]$ServiceAccount.UserName
+    if([string]::IsNullOrWhiteSpace($ServiceAccountUserName)){
+        throw "Service account UserName is required, including for MSA accounts. Use the format 'DOMAIN\account$' for an MSA account."
+    }
+
+    $ServiceAccountPassword = Get-PasswordFromObject -Object $ServiceAccount
+    New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ServiceAccount.UserName, $ServiceAccountPassword )
 }
 
 function Get-PasswordFromEnvironmentVariable
@@ -405,7 +439,6 @@ function Get-PasswordFromEnvironmentVariable
         throw "Environment Variable $($EnvironmentVariableName) does not exist."
     }
     return (ConvertTo-SecureString $Password -AsPlainText -Force)
-
 }
 
 function Invoke-CreateNodeToAdd
@@ -465,7 +498,7 @@ function Invoke-CreateNodeToAdd
                                 Path = if($dscert.Path){ $dscert.Path }else{ $null }
                                 Password = $null
                                 Type = if($target -ilike "$TargetComponent-*"){ $target.Split('-')[1] }else{ "WebServer" }
-                                ImportCertificateChain = if($dscert.ImportCertificateChain){$dscert.ImportCertificateChain}else{$true}
+                                ImportCertificateChain = if ($null -ne $dscert.ImportCertificateChain) { $dscert.ImportCertificateChain } else { $true }
                             }
                 
                             if($dscert.Password `
@@ -651,7 +684,7 @@ function Get-DownloadsInstallsConfigurationData
             $ConfigData.ConfigData.Server.Remove("ServerDirectoriesRootLocation")
         }
         if($ConfigData.ConfigData.Server.ServerLogsLocation){
-            $ConfigData.ConfigData.Server.Remove("ServerLogLocations")
+            $ConfigData.ConfigData.Server.Remove("ServerLogsLocation")
         }
         if($ConfigData.ConfigData.Server.LogLevel){
             $ConfigData.ConfigData.Server.Remove("LogLevel")
@@ -784,6 +817,158 @@ function Resolve-SecretFromObject
     return $null
 }
 
+function Assert-PowerShellVersionIs51{
+    param(
+        [System.Version]
+        $Version = $PSVersionTable.PSVersion,
+
+        [System.String]
+        $Scope = "local session"
+    )
+
+    if ($Version.Major -ne 5 -or $Version.Minor -ne 1) {
+        throw "Error: ArcGIS PowerShell DSC supports Windows PowerShell 5.1 only. Unsupported version '$Version' detected on $Scope."
+    }
+    
+    Write-Information -InformationAction Continue "PowerShell version on $Scope is 5.1."
+}
+
+function Get-ConfigurationTargetNodeNames {
+    [CmdletBinding()]
+    [OutputType([System.String[]])]
+    param(
+        [Parameter(Mandatory=$true)]
+        $Configuration
+    )
+
+    $TargetNodeNames = @()
+
+    if($Configuration.AllNodes.NodeName){
+        $TargetNodeNames = @($Configuration.AllNodes.NodeName)
+    }
+
+    @($TargetNodeNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+}
+
+function Test-IsLocalComputerName {
+    [CmdletBinding()]
+    [OutputType([System.Boolean])]
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.String]
+        $ComputerName
+    )
+
+    $NormalizedName = $ComputerName.Trim()
+    if([string]::IsNullOrWhiteSpace($NormalizedName)){
+        return $true
+    }
+
+    if(@('.', 'localhost', '127.0.0.1', '::1') -icontains $NormalizedName){
+        return $true
+    }
+
+    $LocalNames = @($env:COMPUTERNAME)
+    if($env:USERDNSDOMAIN){
+        $LocalNames += "$env:COMPUTERNAME.$env:USERDNSDOMAIN"
+    }
+
+    try {
+        $HostEntry = [System.Net.Dns]::GetHostEntry($env:COMPUTERNAME)
+        if($HostEntry.HostName){
+            $LocalNames += $HostEntry.HostName
+        }
+        if($HostEntry.Aliases){
+            $LocalNames += $HostEntry.Aliases
+        }
+    }
+    catch {
+        Write-Verbose "Unable to resolve local host aliases while checking PowerShell version support. $($_.Exception.Message)"
+    }
+
+    return ($LocalNames | Where-Object { $_ } | Select-Object -Unique) -icontains $NormalizedName
+}
+
+function Get-TargetWindowsPowerShellVersion {
+    [CmdletBinding()]
+    [OutputType([System.Version])]
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.String]
+        $ComputerName,
+
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [System.Boolean]
+        $UseWinRMSSL = $False
+    )
+
+    if(Test-IsLocalComputerName -ComputerName $ComputerName){
+        return $PSVersionTable.PSVersion
+    }
+
+    $SessionParameters = @{
+        ComputerName = $ComputerName
+        ErrorAction = 'Stop'
+    }
+
+    if($Credential){
+        $SessionParameters.Credential = $Credential
+    }
+
+    if($UseWinRMSSL){
+        $SessionParameters.SessionOption = New-CimSessionOption -UseSsl
+    }
+
+    $CimSession = $null
+    try {
+        $CimSession = New-CimSession @SessionParameters
+        $RegistryValue = Invoke-CimMethod -CimSession $CimSession -Namespace 'root\default' -ClassName 'StdRegProv' -MethodName 'GetStringValue' -Arguments @{
+            hDefKey = [UInt32]2147483650
+            sSubKeyName = 'SOFTWARE\Microsoft\PowerShell\3\PowerShellEngine'
+            sValueName = 'PowerShellVersion'
+        } -ErrorAction Stop
+
+        if([string]::IsNullOrWhiteSpace($RegistryValue.sValue)){
+            throw "Unable to read Windows PowerShell version from the registry."
+        }
+
+        return [System.Version]$RegistryValue.sValue
+    }
+    finally {
+        if($CimSession){
+            $CimSession | Remove-CimSession -ErrorAction Ignore
+        }
+    }
+}
+
+function Assert-TargetNodePowerShellVersionIs51 {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.String[]]
+        $ComputerName,
+
+        [System.Management.Automation.PSCredential]
+        $Credential,
+
+        [System.Boolean]
+        $UseWinRMSSL = $False
+    )
+
+    foreach($NodeName in @($ComputerName | Select-Object -Unique)){
+        try {
+            $NodeVersion = Get-TargetWindowsPowerShellVersion -ComputerName $NodeName -Credential $Credential -UseWinRMSSL $UseWinRMSSL
+        }
+        catch {
+            throw "Error: Unable to validate Windows PowerShell version on target machine '$NodeName'. $($_.Exception.Message)"
+        }
+
+        Assert-PowerShellVersionIs51 -Version $NodeVersion -Scope "target machine '$NodeName'"
+    }
+}
+
 function Invoke-ArcGISConfiguration
 {
     [CmdletBinding()]
@@ -815,6 +1000,8 @@ function Invoke-ArcGISConfiguration
         $UseSSL
     )
     
+    Assert-PowerShellVersionIs51
+
     $DebugMode = if($DebugSwitch){ $True }else{ $False } 
     $UseWinRMSSL = if($UseSSL){ $True }else{ $False }
     $EnableMSILoggingMode = if($EnableMSILogging){ $True }else{ $False } 
@@ -827,6 +1014,8 @@ function Invoke-ArcGISConfiguration
             }
         }
         $ConfigurationParamsHashtable = Convert-PSObjectToHashtable $ConfigurationParamsJSON
+        $TargetNodeNames = Get-ConfigurationTargetNodeNames -Configuration $ConfigurationParamsHashtable
+        Assert-TargetNodePowerShellVersionIs51 -ComputerName $TargetNodeNames -Credential $Credential -UseWinRMSSL $UseWinRMSSL
 
         $EnterpriseVersion = $null
         if($ConfigurationParamsHashtable.ConfigData.Version){
@@ -835,12 +1024,10 @@ function Invoke-ArcGISConfiguration
                 throw "[ERROR] DSC Module only supports ArcGIS Enterprise 10.9.1 and above."
             }
 
-            if([version]$EnterpriseVersion -ge "11.4"){
-                if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
-                    throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update your configuration file to modify the server role."
-                }
+            if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
+                throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update your configuration file to modify the server role."
             }
-
+            
             if([version]$EnterpriseVersion -ge "12.0"){
                 $TileCacheDataStoreCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'DataStore' -and $_.DataStoreTypes -icontains "TileCache"} | Measure-Object).Count -gt 0)
                 if($TileCacheDataStoreCheck){
@@ -881,11 +1068,7 @@ function Invoke-ArcGISConfiguration
             $ServiceCredentialIsDomainAccount = if($ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.IsDomainAccount}else{$False}
             $ServiceCredentialIsMSA = if($ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{$False}
             $ForceServiceCredentialUpdate = if($ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.ForceUpdate){$ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.ForceUpdate}else{$False}
-            $SAPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
-            if(-not($ServiceCredentialIsMSA)){
-                $SAPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount)
-            }
-            $ServiceCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount.UserName, $SAPassword )
+            $ServiceCredential = Get-ServiceAccountCredential -ServiceAccount $ConfigurationParamsHashtable.ConfigData.Credentials.ServiceAccount
         }
 
         $InstallCD = Get-DownloadsInstallsConfigurationData -ConfigurationParamsJSON $ConfigurationParamsJSON
@@ -974,6 +1157,7 @@ function Invoke-ArcGISConfiguration
             $LicenseManagerCheck = (($ConfigurationParamsHashtable.AllNodes | Where-Object { $_.Role -icontains 'LicenseManager' } | Measure-Object).Count -gt 0)
             
             $ServerSkipLicenseStep = -not($null -ne $EnterpriseVersion -and $ServerCheck)
+
             $ProSkipLicenseStep = $true
             if($ConfigurationParamsHashtable.ConfigData.ProVersion -and $ProCheck){
                 $ProSkipLicenseStep = $false
@@ -1006,7 +1190,7 @@ function Invoke-ArcGISConfiguration
                         $NodeToAdd["PSDscAllowPlainTextPassword"] = $true
                     }
                     
-                    $Role = @()
+                   $Role = @()
                     if($Node.Role -icontains "Server"){
                         $ServerRole = $null
                         $NodeToAdd.Role += "Server"
@@ -1696,17 +1880,25 @@ function Invoke-ArcGISConfiguration
                     }
 
                     $ConfigurationName = "ArcGISServer"
-                    if(@("NotebookServer", "MissionServer", "VideoServer","DataPipelinesServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole){
+                    $SocMaximumHeapSize = 0
+                    $NotebookPostInstallArgs = $null
+                    if(@("NotebookServer", "MissionServer", "VideoServer","DataPipelinesServer", "VelocityServer") -iContains $ConfigurationParamsHashtable.ConfigData.ServerRole){
                         $ConfigurationName = "ArcGISNonGISServer"
                         $ServerArgs["ServerType"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "NotebookServer"){
-                            if($ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths){
-                                $ServerArgs["NotebookServerContainerImagePaths"] = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
-                            }        
+                            $NotebookPostInstallArgs = @{
+                                ConfigurationData = $ServerCD
+                                Version = $EnterpriseVersion
+                                ServiceCredential = $ServiceCredential
+                                ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                                ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
+                                ContainerImagePaths = $ConfigurationParamsHashtable.ConfigData.Server.ContainerImagePaths
+                                ExtractSamples = $false
+                            }
                             
                             if($ConfigurationParamsHashtable.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
                                 if(@("10.9.1","11.0","11.1","11.2","11.3") -icontains $EnterpriseVersion){
-                                    $ServerArgs["ExtractNotebookServerSamplesData"] = $True
+                                    $NotebookPostInstallArgs["ExtractSamples"] = $true
                                 }else{
                                     throw "Notebook Server Samples Data Path is not supported for $EnterpriseVersion."
                                 }
@@ -1717,23 +1909,16 @@ function Invoke-ArcGISConfiguration
                             if($ConfigurationParamsHashtable.ConfigData.Server.LiveStreamPorts){
                                 $ServerArgs["VideoServerLiveStreamPorts"] = ($ConfigurationParamsHashtable.ConfigData.Server.LiveStreamPorts | ConvertTo-Json)
                             }
+
+                            $FederationConfig = $ConfigurationParamsHashtable.ConfigData.Federation
+                            if($null -ne $FederationConfig){
+                                $PortalSiteAdminPassword = (Get-PasswordFromObject -Object $FederationConfig.PortalAdministrator)
+                                $PortalSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $FederationConfig.PortalAdministrator.UserName, $PortalSiteAdminPassword )
+                                $ServerArgs["PortalSiteAdministratorCredential"] = $PortalSiteAdministrator
+                            }
                         }
                     }else{
-                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeoEventServer"){
-                            $WebSocketContextUrl = $ConfigurationParamsHashtable.ConfigData.GeoEventServer.WebSocketContextUrl
-                            $ServerArgs["WebSocketContextUrl"] = $WebSocketContextUrl
-                        }
-
-                        $ServerArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
-                        $ServerArgs["EnableHTTPSOnly"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
-                        $ServerArgs["EnableHSTS"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS }else{ $False }
-                        
-                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeneralPurposeServer" -and $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles){
-                            $ServerArgs["AdditionalServerRoles"] = $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles
-                        }
-
                         $ServerArgs["OpenFirewallPorts"] = ($PortalCheck -or $DataStoreCheck -or $IsServerWAOnSeparateMachine)
-                        $ServerArgs["RegisteredDirectories"] = ($ConfigurationParamsHashtable.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
                         $ServerArgs["LocalRepositoryPath"] = if($ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath){$ConfigurationParamsHashtable.ConfigData.Server.LocalRepositoryPath}else{$null}
                         
                         # 0 represents, no action will be taken
@@ -1744,11 +1929,58 @@ function Invoke-ArcGISConfiguration
                                 throw "Invalid SocMaximumHeapSize value '$RawHeap'. Must be an integer."
                             }
 
-                            $ServerArgs["SocMaximumHeapSize"] =$ParsedHeap
+                            $SocMaximumHeapSize = $ParsedHeap
                         }
                     }
 
                     $JobFlag = Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+
+                    $ServerMachineAndTLSSettingsType = if($ServerArgs.ContainsKey("ServerType")){ $ServerArgs["ServerType"] }else{ "Server" }
+                    $ServerMachineAndTLSSettingsNodes = @($ServerCD.AllNodes | Where-Object { $ServerMachineAndTLSSettingsType -ieq "Server" -or $_.SSLCertificate -or $_.SslRootOrIntermediate })
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerMachineAndTLSSettingsNodes.Count -gt 0){
+                        foreach($ServerSettingsNode in $ServerMachineAndTLSSettingsNodes){
+                            if($JobFlag[$JobFlag.Count - 1] -ne $True){
+                                break
+                            }
+
+                            $ServerMachineAndTLSSettingsArgs = @{
+                                ConfigurationData = @{ AllNodes = @($ServerSettingsNode) }
+                                Version = $EnterpriseVersion
+                                ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
+                                ServerType = $ServerMachineAndTLSSettingsType
+                            }
+                            if($ServerMachineAndTLSSettingsType -ieq "Server"){
+                                $ServerMachineAndTLSSettingsArgs["SocMaximumHeapSize"] = $SocMaximumHeapSize
+                                $ServerMachineAndTLSSettingsArgs["EnableHTTPSOnly"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHTTPSOnly }else{ $False }
+                                $ServerMachineAndTLSSettingsArgs["EnableHSTS"] = if($ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS){ $ConfigurationParamsHashtable.ConfigData.Server.EnableHSTS }else{ $False }
+                            }
+                            $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISServerMachineAndTLSSettings" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerMachineAndTLSSettingsArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                        }
+                    }
+
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $NotebookPostInstallArgs -and ($NotebookPostInstallArgs.ContainerImagePaths.Count -gt 0 -or ($NotebookPostInstallArgs.ExtractSamples -and -not($ServiceCredentialIsMSA)))){
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISNotebookPostInstall" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $NotebookPostInstallArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                    }
+
+                    $ServerExtensionArgs = @{
+                        ConfigurationData = $ServerCD
+                        Version = $EnterpriseVersion
+                        ServiceCredential = $ServiceCredential
+                        ForceServiceCredentialUpdate = $ForceServiceCredentialUpdate
+                        ServiceCredentialIsDomainAccount = $ServiceCredentialIsDomainAccount
+                        ServiceCredentialIsMSA = $ServiceCredentialIsMSA
+                    }
+
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and ($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeoEvent" -or ($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeneralPurposeServer" -and $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoEvent"))){
+                        $GeoEventArgs = $ServerExtensionArgs.Clone()
+                        $GeoEventArgs["ServerPrimarySiteAdminCredential"] = $ServerPrimarySiteAdminCredential
+                        $GeoEventArgs["WebSocketContextUrl"] = $ConfigurationParamsHashtable.ConfigData.GeoEventServer.WebSocketContextUrl
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISGeoEvent" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $GeoEventArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                    }
+
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and ($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "WorkflowManagerServer" -or ($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "GeneralPurposeServer" -and $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "WorkflowManagerServer"))){
+                        $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWorkflowManager" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ServerExtensionArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+                    }
                 }
 
                 if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ConfigurationParamsHashtable.ConfigData.Server.Databases){
@@ -1928,7 +2160,7 @@ function Invoke-ArcGISConfiguration
                         DisableServiceDirectory = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
                     }
                     $ConfigurationName = "ArcGISServerSettings"
-                    if(@("NotebookServer", "MissionServer", "VideoServer","DataPipelinesServer") -icontains $ConfigurationParamsHashtable.ConfigData.ServerRole){
+                    if(@("NotebookServer", "MissionServer", "VideoServer","DataPipelinesServer","VelocityServer") -icontains $ConfigurationParamsHashtable.ConfigData.ServerRole){
                         $ServerSettingsArgs["ServerType"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
                         if($ConfigurationParamsHashtable.ConfigData.ServerRole -eq "MissionServer"){
                             $ServerSettingsArgs["DisableServiceDirectory"] = if($ConfigurationParamsHashtable.ConfigData.Server.DisableServiceDirectory){ $true }else{ $false }
@@ -1948,6 +2180,9 @@ function Invoke-ArcGISConfiguration
                     }else{
                         $ServerSettingsArgs["ServerType"] = "Server"
                         $ServerSettingsArgs["SharedKey"] = if($ConfigurationParamsHashtable.ConfigData.Server.SharedKey){ $ConfigurationParamsHashtable.ConfigData.Server.SharedKey }else{ $null }
+                        if($ConfigurationParamsHashtable.ConfigData.Server.RegisteredDirectories){
+                            $ServerSettingsArgs["RegisteredDirectories"] = ($ConfigurationParamsHashtable.ConfigData.Server.RegisteredDirectories | ConvertTo-Json)
+                        }
                     }
 
                     $ForwardProxyMap  = $ConfigurationParamsHashtable.ConfigData.Server.ForwardProxy
@@ -2125,13 +2360,16 @@ function Invoke-ArcGISConfiguration
                         PortalAdministratorCredential = $PortalAdministratorCredential
                         PrimaryServerMachine        = $PrimaryServerMachine.NodeName
                         PrimaryPortalMachine        = $PrimaryPortalMachine.NodeName
-                        OverrideHTTPSBinding = if($ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding }else{ $True }
+                        OverrideHTTPSBinding = if($null -ne $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.OverrideHTTPSBinding }else{ $True }
                         IsJavaWebAdaptor = $IsJavaWebAdaptor
                         JavaWebServerWebAppDirectory = if($IsJavaWebAdaptor){ $ConfigurationParamsHashtable.ConfigData.WebAdaptor.JavaWebServerWebAppDirectory }else{ $null }
                         JavaWebServerType = $ConfigurationParamsHashtable.ConfigData.WebAdaptor.JavaWebServerType
                     }
                     if($ServerCheck){
                         $WebAdaptorArgs["ServerRole"] = $ConfigurationParamsHashtable.ConfigData.ServerRole
+                        if($ConfigurationParamsHashtable.ConfigData.ServerRole -ieq "VelocityServer"){
+                            throw "Web Adaptor is not supported for Velocity Server."
+                        }
                     }
                     
                     $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISWebAdaptor" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $WebAdaptorArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
@@ -2163,6 +2401,41 @@ function Invoke-ArcGISConfiguration
                         PrimaryDataStoreMachine = $PrimaryDataStore.NodeName
                         EnableFailoverOnPrimaryStop = if($ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnableFailoverOnPrimaryStop }else{ $False }
                         EnablePointInTimeRecovery = if($ConfigurationParamsHashtable.ConfigData.DataStore.EnablePointInTimeRecovery){ $ConfigurationParamsHashtable.ConfigData.DataStore.EnablePointInTimeRecovery }else{ $False }
+                        
+                    }
+
+                    if($ConfigurationParamsHashtable.ConfigData.DataStore.UseCloudRelationalStore){
+                        $RelationalDataStoreArgs["UseCloudRelationalStore"] = $True
+
+                        $RelationalDataStoreArgs["CloudRelationalStoreType"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.Type
+                        $RelationalDataStoreArgs["CloudRelationalDatabasePort"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabasePort
+                        $RelationalDataStoreArgs["CloudRelationalDatabaseURI"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabaseURI
+                        
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabaseReadonlyURI){
+                            $RelationalDataStoreArgs["CloudRelationalDatabaseReadonlyURI"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabaseReadonlyURI
+                        }
+
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.ProxyPort){
+                            $RelationalDataStoreArgs["CloudRelationalProxyPort"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.ProxyPort
+                        }
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.ProxyURI){
+                            $RelationalDataStoreArgs["CloudRelationalProxyURI"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.ProxyURI
+                        }
+                        $RelationalDataStoreArgs["CloudRelationalRegion"] = $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.Region
+
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabaseAdminUser){
+                            $DatabaseAdminUserPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabaseAdminUser)
+                            $RelationalDataStoreDatabaseServerAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.DatabaseAdminUser.UserName, $DatabaseAdminUserPassword )
+                            $RelationalDataStoreArgs["CloudRelationalDatabaseAdminUser"] = $RelationalDataStoreDatabaseServerAdministratorCredential
+                        }else{
+                            throw "DatabaseAdminUser is required for Cloud Relational Store configuration."
+                        }
+
+                        if($ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.SDEUser){
+                            $SDEUserPassword = (Get-PasswordFromObject -Object $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.SDEUser)
+                            $RelationalDataStoreSDEUserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $ConfigurationParamsHashtable.ConfigData.DataStore.CloudRelationalStore.SDEUser.UserName, $SDEUserPassword )
+                            $RelationalDataStoreArgs["CloudRelationalSDEUser"] = $RelationalDataStoreSDEUserCredential
+                        }
                     }
 
                     if($ConfigurationParamsHashtable.ConfigData.DataStore.Backups -and `
@@ -2306,7 +2579,7 @@ function Invoke-ArcGISConfiguration
                                 -WebAdaptorCheck $WebAdaptorCheck
 
                     $Federation = $False
-                    $RemoteSiteAdministrator = $null
+                    $BaseDeploymentPortalSiteAdministrator = $null
                     
                     $FederationConfig = $ConfigurationParamsHashtable.ConfigData.Federation
                     if($null -ne $FederationConfig){
@@ -2315,8 +2588,8 @@ function Invoke-ArcGISConfiguration
                         $PortalPort = $FederationConfig.PortalPort
                         $PortalContext = $FederationConfig.PortalContext
 
-                        $RemoteSiteAdministratorPassword = (Get-PasswordFromObject -Object $FederationConfig.PortalAdministrator)
-                        $RemoteSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $FederationConfig.PortalAdministrator.UserName, $RemoteSiteAdministratorPassword )
+                        $BaseDeploymentPortalSiteAdministratorPassword = (Get-PasswordFromObject -Object $FederationConfig.PortalAdministrator)
+                        $BaseDeploymentPortalSiteAdministrator = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $FederationConfig.PortalAdministrator.UserName, $BaseDeploymentPortalSiteAdministratorPassword )
 
                         $RequiredFederationServerKeys = @(
                             'ServerHostName'
@@ -2344,7 +2617,7 @@ function Invoke-ArcGISConfiguration
                             $ServerDetails.ServerSiteAdminURL      = $FederationConfig.ServerAdminHostName
                             $ServerDetails.ServerSiteAdminURLPort  = $FederationConfig.ServerAdminUrlPort
                             $ServerDetails.ServerSiteAdminContext  = $FederationConfig.ServerAdminContext
-                        }else {
+                        } else {
                             Write-Information "Federation server endpoint overrides were not applied because one or more required keys are missing/empty in ConfigData.Federation. Using discovered server endpoint values."
                         }
                     }else{
@@ -2370,6 +2643,10 @@ function Invoke-ArcGISConfiguration
                             if($ServerRole -ieq "WorkflowManagerServer"){
                                 $ServerRole = "WorkflowManager"
                             }
+                            if($ServerRole -ieq "VelocityServer"){
+                                $ServerRole = "Velocity"
+                            }
+
                             $ServerFunctions += $ServerRole
                         }
 
@@ -2386,7 +2663,7 @@ function Invoke-ArcGISConfiguration
                             ServerSiteAdminUrlPort = $ServerDetails.ServerSiteAdminURLPort
                             ServerSiteAdminUrlContext = $ServerDetails.ServerSiteAdminContext
                             ServerPrimarySiteAdminCredential = $ServerPrimarySiteAdminCredential
-                            RemoteSiteAdministrator = if($ConfigurationParamsHashtable.ConfigData.Federation){ $RemoteSiteAdministrator }else{ $PortalAdministratorCredential }
+                            PortalSiteAdministratorCredential = if($ConfigurationParamsHashtable.ConfigData.Federation){ $BaseDeploymentPortalSiteAdministrator }else{ $PortalAdministratorCredential }
                             IsHostingServer = ($ServerCheck -and $PortalCheck -and $DataStoreCheck) #Check for relational ds only
                             IsFederatedWithRestrictedPublishing = if($ConfigurationParamsHashtable.ConfigData.Federation.RestrictedPublishing){$ConfigurationParamsHashtable.ConfigData.Federation.RestrictedPublishing}else{$False}
                             ServerFunctions = [system.String]::Join(",", $ServerFunctions)
@@ -2395,7 +2672,7 @@ function Invoke-ArcGISConfiguration
                     }
                 
                     $GeoenrichmentServerCheck = $ConfigurationParamsHashtable.ConfigData.AdditionalServerRoles -icontains "GeoEnrichmentServer"    
-                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $GeoenrichmentServerCheck -and ($null -ne $RemoteSiteAdministrator)){
+                    if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $GeoenrichmentServerCheck -and ($null -ne $BaseDeploymentPortalSiteAdministrator)){
                         if(($ServerCD.AllNodes | Where-Object { $_.Role -icontains 'Server' } | Measure-Object).Count -gt 1){
                             throw "GeoEnrichment server only supports single machine server deployment"
                         }
@@ -2404,7 +2681,7 @@ function Invoke-ArcGISConfiguration
                         $ArcGISGeoEnrichmentServerItemArgs = @{
                             ConfigurationData = $ServerCD
                             Version = $EnterpriseVersion
-                            PortalAdministratorCredential = $RemoteSiteAdministrator
+                            PortalAdministratorCredential = $BaseDeploymentPortalSiteAdministrator
                             DataStoreDataDirectory = if($ConfigurationParamsHashtable.ConfigData.GeoEnrichmentServer.DataStoreDataDirectory){ $ConfigurationParamsHashtable.ConfigData.GeoEnrichmentServer.DataStoreDataDirectory }else{ $null }
                             ForceRepair = if($ConfigurationParamsHashtable.ConfigData.GeoEnrichmentServer.ForceRepair){ $ConfigurationParamsHashtable.ConfigData.GeoEnrichmentServer.ForceRepair }else{ $False }
                             RegisterGeoEnrichmentAsPortalUtilityService = if($ConfigurationParamsHashtable.ConfigData.GeoEnrichmentServer.RegisterGeoEnrichmentAsPortalUtilityService){ $ConfigurationParamsHashtable.ConfigData.GeoEnrichmentServer.RegisterGeoEnrichmentAsPortalUtilityService }else{ $True }
@@ -2453,7 +2730,7 @@ function Invoke-ArcGISConfiguration
                                 "$($ServerDetails.ServerServiceURL):$($ServerDetails.ServerServiceURLPort)/$($ServerDetails.ServerServiceURLContext)"
                             }
                         }
-                        if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer','VideoServer','DataPipelinesServer'))){
+                        if(-not($ConfigurationParamsHashtable.ConfigData.ServerRole -in @('MissionServer', 'NotebookServer','VideoServer','DataPipelinesServer',"VelocityServer"))){
                             Write-Information -InformationAction Continue "Server Manager URL - https://$ServerURL/manager"
                         }
                         Write-Information -InformationAction Continue "Server Rest URL - https://$ServerURL/rest"
@@ -2468,6 +2745,9 @@ function Invoke-ArcGISConfiguration
         foreach($cf in $ConfigurationParametersFile){
             $cfJSON = (ConvertFrom-Json (Get-Content $cf -Raw))
             $cfHashtable = Convert-PSObjectToHashtable $cfJSON
+            $TargetNodeNames += @(Get-ConfigurationTargetNodeNames -Configuration $cfHashtable)
+            Assert-TargetNodePowerShellVersionIs51 -ComputerName @($TargetNodeNames | Select-Object -Unique) -Credential $Credential -UseWinRMSSL $UseWinRMSSL
+
             $UpgradeVersion = $cfHashtable.ConfigData.Version
             $OldVersion = $cfHashtable.ConfigData.OldVersion
 
@@ -2487,10 +2767,8 @@ function Invoke-ArcGISConfiguration
                 throw "[ERROR] Starting from version 4.3.0, the DSC Module requires a different way of specifying the Web Adaptor Node configuration. Please make sure to update your configuration file '$($cf)'."
             }
 
-            if([version]$UpgradeVersion -ge "11.4"){
-                if($cfHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $cfHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
-                    throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update the server role in the configuration file and try again."
-                }
+            if($cfHashtable.ConfigData.ServerRole -ieq "GeoAnalytics" -or $cfHashtable.ConfigData.AdditionalServerRoles -icontains "GeoAnalytics"){
+                throw "[ERROR] Starting at ArcGIS Enterprise 11.4, the GeoAnalytics Server role is retired. Please update the server role in the configuration file and try again."
             }
 
             if([version]$UpgradeVersion -ge "12.0"){
@@ -2535,7 +2813,7 @@ function Invoke-ArcGISConfiguration
             
                 $AdditionalServerRoles = @()
                 if($ServerRole -ieq "GeneralPurposeServer" -and $cfHashtable.ConfigData.AdditionalServerRoles){
-                    foreach($AdditionalRole in $cf.ConfigData.AdditionalServerRoles){
+                    foreach($AdditionalRole in $cfHashtable.ConfigData.AdditionalServerRoles){
                         if($AdditionalRole -ieq "RasterAnalytics" -or $AdditionalRole -ieq "ImageHosting"){
                             $AdditionalServerRoles += "ImageServer"
                         }else{
@@ -2656,6 +2934,47 @@ function Invoke-DataStoreConfigureScript
         [System.Boolean]
         $EnablePointInTimeRecovery = $False,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('AzureFlexiblePostgreSQLDatabase','AWSRDSPostgreSQLDatabase','AWSAuroraPostgreSQLDatabase')]
+        [System.String]
+        $CloudRelationalStoreType,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabasePort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseReadonlyURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyURI,
+        
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalRegion,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalDatabaseAdminUser,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalSDEUser,
+
         [Parameter(Mandatory=$true)]
         [System.String]
         $PrimaryDataStoreMachine,
@@ -2667,6 +2986,7 @@ function Invoke-DataStoreConfigureScript
 
     Write-Information -InformationAction Continue "Configuring ArcGIS DataStore of type $($DataStoreType)."
 
+    $DataStoreArguments = $DataStoreArguments.Clone()
     $DataStoreArguments["DataStoreType"] = $DataStoreType
     $DataStoreArguments["PrimaryDataStoreMachine"] = $PrimaryDataStoreMachine
     $DataStoreArguments["DataStoreMachineCount"] = ($DataStoreConfigData.AllNodes | Measure-Object).Count
@@ -2674,6 +2994,27 @@ function Invoke-DataStoreConfigureScript
     if($DataStoreType -ieq "Relational"){
         $DataStoreArguments["EnableFailoverOnPrimaryStop"] = $EnableFailoverOnPrimaryStop
         $DataStoreArguments["EnablePointInTimeRecovery"] = $EnablePointInTimeRecovery
+        
+        if($UseCloudRelationalStore){
+            $DataStoreArguments["UseCloudRelationalStore"] = $true
+            $DataStoreArguments["CloudRelationalStoreType"] = $CloudRelationalStoreType
+            $DataStoreArguments["CloudRelationalDatabasePort"] = $CloudRelationalDatabasePort
+            $DataStoreArguments["CloudRelationalDatabaseURI"] = $CloudRelationalDatabaseURI
+
+            if($CloudRelationalDatabaseReadonlyURI){
+                $DataStoreArguments["CloudRelationalDatabaseReadonlyURI"] = $CloudRelationalDatabaseReadonlyURI
+            }
+            if($CloudRelationalProxyPort -and $CloudRelationalProxyURI){
+                $DataStoreArguments["CloudRelationalProxyPort"] = $CloudRelationalProxyPort
+                $DataStoreArguments["CloudRelationalProxyURI"] = $CloudRelationalProxyURI
+            }
+
+            $DataStoreArguments["CloudRelationalRegion"] = $CloudRelationalRegion
+            $DataStoreArguments["CloudRelationalDatabaseAdminUser"] = $CloudRelationalDatabaseAdminUser
+            if($CloudRelationalSDEUser){
+                $DataStoreArguments["CloudRelationalSDEUser"] = $CloudRelationalSDEUser
+            }
+        }
     }
 
     $EnterpriseVersion = $DataStoreArguments.Version
@@ -2741,6 +3082,7 @@ function Invoke-DataStoreConfigureScript
 
     foreach($Node in $DataStoreConfigData.AllNodes){
         $DataStoreArguments["ConfigurationData"] = @{ AllNodes = @($Node) }
+        $DataStoreArguments.Remove("Backups")
         if($Node.NodeName -ieq $PrimaryDataStoreMachine -and $BackupsResult.Count -gt 0){
             $DataStoreArguments["Backups"] = $BackupsResult
         }
@@ -2867,11 +3209,7 @@ function Invoke-PortalUpgradeScript {
 
     $PortalServiceAccountIsDomainAccount = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$PortalConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount}else{ $false}
     $PortalServiceAccountIsMSA = if($PortalConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$PortalConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false}
-    $PortalServiceAccountPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
-    if(-not($PortalServiceAccountIsMSA)){
-        $PortalServiceAccountPassword = (Get-PasswordFromObject -Object $PortalConfig.ConfigData.Credentials.ServiceAccount)
-    }
-    $PortalServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Credentials.ServiceAccount.UserName, $PortalServiceAccountPassword )
+    $PortalServiceAccountCredential = Get-ServiceAccountCredential -ServiceAccount $PortalConfig.ConfigData.Credentials.ServiceAccount
     
     $PortalSiteAdministratorPassword = (Get-PasswordFromObject -Object $PortalConfig.ConfigData.Portal.PortalAdministrator)
     $PortalSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $PortalConfig.ConfigData.Portal.PortalAdministrator.UserName, $PortalSiteAdministratorPassword )
@@ -3018,11 +3356,7 @@ function Invoke-ServerUpgradeScript {
 
     $cfServiceAccountIsDomainAccount =  if($cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$cf.ConfigData.Credentials.ServiceAccount.IsDomainAccount}else{ $false}
     $cfServiceAccountIsMSA = if($cf.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$cf.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false }
-    $cfServiceAccountPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
-    if(-not($cfServiceAccountIsMSA)){
-        $cfServiceAccountPassword = (Get-PasswordFromObject -Object $cf.ConfigData.Credentials.ServiceAccount)
-    }
-    $cfServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Credentials.ServiceAccount.UserName, $cfServiceAccountPassword )
+    $cfServiceAccountCredential = Get-ServiceAccountCredential -ServiceAccount $cf.ConfigData.Credentials.ServiceAccount
     
     $cfSiteAdministratorPassword = (Get-PasswordFromObject -Object $cf.ConfigData.Server.PrimarySiteAdmin)
     $cfSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $cf.ConfigData.Server.PrimarySiteAdmin.UserName, $cfSiteAdministratorPassword )
@@ -3154,10 +3488,6 @@ function Invoke-ServerUpgradeScript {
             }
 
             if($ServerRole -ieq "NotebookServer"){
-                if($cf.ConfigData.Server.ContainerImagePaths){
-                    $ServerUpgradeArgs.Add("ContainerImagePaths", $cf.ConfigData.Server.ContainerImagePaths)
-                } 
-
                 if($cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath){
                     if(@("10.9.1","11.0","11.1","11.2","11.3") -icontains $cf.ConfigData.Version){
                         $ServerUpgradeArgs.Add("NotebookServerSamplesDataPath",  $cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath)
@@ -3168,6 +3498,7 @@ function Invoke-ServerUpgradeScript {
                         throw "Notebook Server Samples Data Path is only supported for 10.9.1, 11.0, 11.1, 11.2, 11.3."
                     }
                 }
+
             }
 
             if(($ServerRole -ieq "GeoEvent" -or ($ServerRole -ieq "GeneralPurposeServer" -and $AdditionalServerRoles -icontains "GeoEvent")) -and $cf.ConfigData.GeoEventServer){
@@ -3193,6 +3524,18 @@ function Invoke-ServerUpgradeScript {
             }
             
             $JobFlag = Invoke-DSCJob -ConfigurationName "ServerUpgrade" -ConfigurationFolderPath "Configurations-OnPrem\Upgrades" -Arguments $ServerUpgradeArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+            if(($JobFlag[$JobFlag.Count - 1] -eq $True) -and $ServerRole -ieq "NotebookServer" -and ($cf.ConfigData.Server.ContainerImagePaths.Count -gt 0 -or ($cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath -and -not($cfServiceAccountIsMSA)))){
+                $NotebookPostInstallArgs = @{
+                    ConfigurationData = @{ AllNodes = @($NodeToAdd) }
+                    Version = $Version
+                    ServiceCredential = $cfServiceAccountCredential
+                    ServiceCredentialIsMSA = $cfServiceAccountIsMSA
+                    ServerPrimarySiteAdminCredential = $cfSiteAdministratorCredential
+                    ContainerImagePaths = $cf.ConfigData.Server.ContainerImagePaths
+                    ExtractSamples = -not([string]::IsNullOrEmpty($cf.ConfigData.Server.Installer.NotebookServerSamplesDataPath))
+                }
+                $JobFlag = Invoke-DSCJob -ConfigurationName "ArcGISNotebookPostInstall" -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $NotebookPostInstallArgs -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
+            }
             if($JobFlag[$JobFlag.Count - 1] -ne $True){
                 break
             }
@@ -3303,11 +3646,7 @@ function Invoke-DataStoreUpgradeScript {
 
     $DSServiceAccountIsDomainAccount = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount){$DSConfig.ConfigData.Credentials.ServiceAccount.IsDomainAccount}else{ $false}
     $DSServiceAccountIsMSA = if($DSConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount){$DSConfig.ConfigData.Credentials.ServiceAccount.IsMSAAccount}else{ $false}  
-    $DSSAPassword = ConvertTo-SecureString "PlaceHolder" -AsPlainText -Force
-    if(-not($DSServiceAccountIsMSA)){
-        $DSSAPassword = (Get-PasswordFromObject -Object $DSConfig.ConfigData.Credentials.ServiceAccount)
-    }
-    $DSServiceAccountCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Credentials.ServiceAccount.UserName, $DSSAPassword )
+    $DSServiceAccountCredential = Get-ServiceAccountCredential -ServiceAccount $DSConfig.ConfigData.Credentials.ServiceAccount
     
     $DSPSAPassword = (Get-PasswordFromObject -Object $DSConfig.ConfigData.Server.PrimarySiteAdmin)
     $DSSiteAdministratorCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ( $DSConfig.ConfigData.Server.PrimarySiteAdmin.UserName, $DSPSAPassword )
@@ -3567,6 +3906,8 @@ function Invoke-PublishWebApp
         $DebugSwitch
     )
 
+    Assert-PowerShellVersionIs51
+
     $DebugMode = if($DebugSwitch){ $True }else{ $False } 
     $UseWinRMSSL = if($UseSSL){ $True }else{ $False }
     $Arguments = @{
@@ -3596,6 +3937,8 @@ function Invoke-PublishGISService
         [switch]
         $UseSSL
     )
+
+    Assert-PowerShellVersionIs51
     
     $DebugMode = if($DebugSwitch){ $True }else{ $False } 
     $UseWinRMSSL = if($UseSSL){ $True }else{ $False }
@@ -3633,117 +3976,233 @@ function Invoke-PublishGISService
     Invoke-DSCJob -ConfigurationName $ConfigurationName -ConfigurationFolderPath "Configurations-OnPrem" -Arguments $ConfigData -Credential $Credential -UseWinRMSSL $UseWinRMSSL -DebugMode $DebugMode
 }
 
-function Restart-ArcGISService
-{
+function Restart-ArcGISService {
     [CmdletBinding()]
     param(
-        [System.String]
-        $ServiceName,
+        [Parameter()]
+        [string]$ServiceName,
 
-        [System.String]
-        $ComponentName,
+        [Parameter()]
+        [string]$ComponentName,
 
-        [System.Int32]
-        $RestartDelay = 0
+        [Parameter()]
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$RestartDelay = 0,
+
+        [Parameter()]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$TimeoutSeconds = 300
     )
 
-    if([string]::IsNullOrEmpty($ServiceName)){
+    if ([string]::IsNullOrWhiteSpace($ServiceName)) {
+        if ([string]::IsNullOrWhiteSpace($ComponentName)) {
+            throw "Either ServiceName or ComponentName must be specified."
+        }
+
         $ServiceName = Get-ArcGISServiceName -ComponentName $ComponentName
     }
 
-    if($RestartDelay -gt 0){
-        Write-Verbose "Restarting $ServiceName Service in $RestartDelay Seconds"
+    if ([string]::IsNullOrWhiteSpace($ServiceName)) {
+        throw "Unable to determine the ArcGIS service name."
+    }
+
+    if ($RestartDelay -gt 0) {
+        Write-Verbose "Waiting $RestartDelay seconds before restarting '$ServiceName'."
         Start-Sleep -Seconds $RestartDelay
     }
 
-    Write-Verbose "Restarting Service $ServiceName"
-    try {
-        Write-Verbose 'Stopping the service' 
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
-        Write-Verbose 'Stopped the service'
-    }catch {
-        Write-Verbose "[WARNING] Stopping Service $_"
-    }
+    Write-Verbose "Restarting service '$ServiceName'."
 
+    # Make sure the service is stopped.
+    Stop-ServiceAndWait `
+        -ServiceName $ServiceName `
+        -TimeoutSeconds $TimeoutSeconds `
+        -Verbose
+
+    # Give SCM / ArcGIS a short breathing period.
+    Write-Verbose "Waiting 5 seconds before starting '$ServiceName'."
     Start-Sleep -Seconds 5
 
-    try {
-        Write-Verbose 'Starting the service'
-        Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Running' -Verbose
-        Write-Verbose "Restarted Service $ServiceName"
-    }catch {
-        Write-Verbose "[WARNING] Starting Service $_"
-    }
+    # Start the service and wait for Running.
+    Start-ServiceAndWait `
+        -ServiceName $ServiceName `
+        -TimeoutSeconds $TimeoutSeconds `
+        -Verbose
+
+    Write-Verbose "Service '$ServiceName' successfully restarted."
 }
 
-function Wait-ForServiceToReachDesiredState
-{
+function Stop-ServiceAndWait {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
-        [System.String]
-        $ServiceName,
+        [Parameter(Mandatory)]
+        [string]$ServiceName,
 
-        [Parameter(Mandatory=$true)]
-        [System.String]
-        $DesiredState,
+        [Parameter()]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$TimeoutSeconds = 300,
 
-        [System.Int32]
-        $SleepTimeInSeconds=10,
-
-        [System.Int32]
-        $MaxSeconds=300,
-
-        [System.Int32]
-        $MaxAttempts=-1
+        [Parameter()]
+        [ValidateRange(1, 60)]
+        [int]$PollSeconds = 2
     )
-    
-    $Attempts  = 0
-    $startTime = Get-Date
 
-    if($DesiredState -ieq "Running"){
-        Write-Verbose "Starting service '$ServiceName'"
-        Start-Service $ServiceName 
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+    $service = Get-Service -Name $ServiceName -ErrorAction Stop
+
+    Write-Verbose "Current state of '$ServiceName': $($service.Status)"
+
+    # Already stopped.
+    if ($service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+        Write-Verbose "Service '$ServiceName' is already stopped."
+        return
     }
 
-    if($DesiredState -ieq "Stopped"){
-        Write-Verbose "Stopping the service '$ServiceName'"    
-        Stop-Service -Name $ServiceName -ErrorAction Ignore -Force
-    }
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
 
-    while ($true)
-    {
-        if ($Attempts++ -gt 0) {  # to skip the message for first attempt
-            Write-Verbose "Checking state of Service '$ServiceName'. Attempt # $Attempts"        
-        }    
-        
-        $Service = Get-Service -Name $ServiceName -ErrorAction Ignore
+        # Refresh the service state.
+        $service = Get-Service -Name $ServiceName -ErrorAction Stop
 
-        $msg = "Service '$ServiceName' not ready."
-        if ($Service) {
-            $msg  = "Service '$ServiceName' is in '$($Service.Status)' state."
-            # exit if done
-            if ($Service.Status -ieq $DesiredState) {
-                Write-Verbose $msg
-                return
-            }
-        } 
+        Write-Verbose "Service '$ServiceName' state: $($service.Status)"
 
-        Write-Verbose $msg       # not there yet, report current state
-
-        # exit on timeout
-        if (($MaxSeconds -gt 0) -and ($(Get-Date) - $startTime).TotalSeconds -ge $MaxSeconds) {
-            return
-        }  
-
-        # exit on number of attempts
-        if (($MaxAttempts -gt 0) -and ($Attempts -ge $MaxAttempts)) {
+        if ($service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+            Write-Verbose "Service '$ServiceName' is stopped."
             return
         }
 
-        Write-Verbose "Waiting $SleepTimeInSeconds seconds."
-        Start-Sleep -Seconds $SleepTimeInSeconds
+        switch ($service.Status) {
+
+            'StartPending' {
+                Write-Verbose "Service '$ServiceName' is StartPending. Sending stop request."
+
+                try {
+                    Stop-Service `
+                        -Name $ServiceName `
+                        -Force `
+                        -ErrorAction Stop
+                }
+                catch {
+                    Write-Verbose "Stop request while StartPending failed: $($_.Exception.Message)"
+                }
+            }
+
+            'Running' {
+                Write-Verbose "Stopping service '$ServiceName'."
+
+                try {
+                    Stop-Service `
+                        -Name $ServiceName `
+                        -Force `
+                        -ErrorAction Stop
+                }
+                catch {
+                    Write-Verbose "Stop request failed: $($_.Exception.Message)"
+                }
+            }
+
+            'StopPending' {
+                Write-Verbose "Service '$ServiceName' is already StopPending. Waiting."
+            }
+
+            'Paused' {
+                Write-Verbose "Service '$ServiceName' is Paused. Sending stop request."
+
+                try {
+                    Stop-Service `
+                        -Name $ServiceName `
+                        -Force `
+                        -ErrorAction Stop
+                }
+                catch {
+                    Write-Verbose "Stop request failed: $($_.Exception.Message)"
+                }
+            }
+
+            default {
+                Write-Verbose "Service '$ServiceName' is in unexpected state '$($service.Status)'."
+            }
+        }
+
+        Start-Sleep -Seconds $PollSeconds
     }
+
+    $stopwatch.Stop()
+
+    $finalService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+
+    if ($finalService) {
+        throw "Timed out after $TimeoutSeconds seconds waiting for service '$ServiceName' to stop. Current state: $($finalService.Status)."
+    }
+
+    throw "Timed out after $TimeoutSeconds seconds waiting for service '$ServiceName' to stop."
+}
+
+
+function Start-ServiceAndWait {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ServiceName,
+
+        [Parameter()]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$TimeoutSeconds = 300,
+
+        [Parameter()]
+        [ValidateRange(1, 60)]
+        [int]$PollSeconds = 2
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+    $service = Get-Service -Name $ServiceName -ErrorAction Stop
+
+    Write-Verbose "Current state of '$ServiceName': $($service.Status)"
+
+    if ($service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
+        Write-Verbose "Service '$ServiceName' is already running."
+        return
+    }
+
+    Write-Verbose "Starting service '$ServiceName'."
+
+    try {
+        Start-Service -Name $ServiceName -ErrorAction Stop
+    }
+    catch {
+        throw "Failed to start service '$ServiceName': $($_.Exception.Message)"
+    }
+
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+
+        $service = Get-Service -Name $ServiceName -ErrorAction Stop
+
+        Write-Verbose "Service '$ServiceName' state: $($service.Status)"
+
+        if ($service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
+            $stopwatch.Stop()
+            Write-Verbose "Service '$ServiceName' is running."
+            return
+        }
+
+        if ($service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+            $stopwatch.Stop()
+            throw "Service '$ServiceName' stopped while waiting for it to start."
+        }
+
+        Start-Sleep -Seconds $PollSeconds
+    }
+
+    $stopwatch.Stop()
+
+    $finalService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+
+    if ($finalService) {
+        throw "Timed out after $TimeoutSeconds seconds waiting for service '$ServiceName' to start. Current state: $($finalService.Status)."
+    }
+
+    throw "Timed out after $TimeoutSeconds seconds waiting for service '$ServiceName' to start."
 }
 
 function Get-ArcGISProductDetails
@@ -3770,7 +4229,7 @@ function Get-ArcGISProductDetails
                 if($DisplayName -imatch [regex]::escape($ProductName) -and $Publisher -ieq "Environmental Systems Research Institute, Inc."){
                     if(($ProductName -ieq "ArcGIS Notebook Server" -and -not($DisplayName -imatch "Samples Data")) `
                         -or (($ProductName -ieq "portal" -or $ProductName -ieq "Portal for ArcGIS") -and -not($DisplayName -imatch "Web Styles")) `
-                        -or ($ProductName -ieq "ArcGIS Server" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Server") -and -not($DisplayName -imatch "Custom Data Feeds") -and -not($DisplayName -imatch " - ")) `
+                        -or ($ProductName -ieq "ArcGIS Server" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Server") -and -not($DisplayName -imatch "Custom Data Feeds") -and -not($DisplayName -imatch "DJI Camera Support for ArcGIS Server") -and -not($DisplayName -imatch " - ")) `
                         -or ($ProductName -ieq "ArcGIS Pro" -and -not($DisplayName -imatch "Deep Learning Libraries for ArcGIS Pro")) `
                         -or ($ProductName -ine "portal" -and $ProductName -ine "Portal for ArcGIS" -and $ProductName -ine "ArcGIS Notebook Server" -and $ProductName -ine "ArcGIS Server" -and $ProductName -ine "ArcGIS Pro")
                         ){
@@ -3805,6 +4264,7 @@ function Get-ArcGISEnterpriseComponentPort{
         'NotebookServer' { return 11443 }
         'VideoServer' { 21443 }
         'DataPipelinesServer' { 14443 }
+        'VelocityServer' { 7143 }
         'GeoEventServer' { 6143 }
         'Monitor' { 30443 }
         default { throw "Unknown component name: $ComponentName" }
@@ -3836,8 +4296,8 @@ function Get-ServerEndpointDetails {
         throw "PrimaryServerMachine is null or missing required properties."
     }
 
-    $ServerRolesWithAdminAlwaysEnabled = @('NotebookServer', 'MissionServer', 'VideoServer', 'DataPipelinesServer')
-    $AdminAlwaysEnabledVersions = @('11.5', '12.0', '12.1')
+    $ServerRolesWithAdminAlwaysEnabled = @('NotebookServer', 'MissionServer', 'VideoServer', 'DataPipelinesServer', 'VelocityServer')
+    $AdminAlwaysEnabledVersions = @('11.5', '12.0', '12.1','12.2')
 
     $AdminAccessCheck =
         (-not $WebAdaptorCheck) -or
@@ -3849,7 +4309,7 @@ function Get-ServerEndpointDetails {
     
     $DefaultAdminPort = Get-ArcGISEnterpriseComponentPort -ComponentName $ComponentName
 
-    $HasExternalDnsParam = ($null -ne $ServerExternalDNSHostName) # preserves original null-check behavior
+    $HasExternalDnsParam = -not [string]::IsNullOrEmpty($ServerExternalDNSHostName)
     $HasExternalDnsValue = -not [string]::IsNullOrEmpty($ServerExternalDNSHostName)
 
     $ServicePort = $DefaultAdminPort
@@ -4020,6 +4480,7 @@ function Get-ArcGISServiceName {
         {@('NotebookServer','ArcGIS Notebook Server') -icontains $_} { return 'ArcGIS Notebook Server' }
         {@('VideoServer','ArcGIS Video Server') -icontains $_} { return 'ArcGIS Video Server' }
         {@('DataPipelinesServer', 'ArcGIS Data Pipelines Server') -icontains $_} { return 'ArcGIS Data Pipelines Server' }
+        {@('VelocityServer', 'ArcGIS Velocity For ArcGIS Enterprise') -icontains $_} { return 'Velocity' }
         {@('ArcGISGeoEvent') -icontains $_} { return 'ArcGISGeoEvent' }
         {@('WorkflowManager') -icontains $_} { return 'WorkflowManager' }
         default { throw "Unknown component name: $ComponentName" }
@@ -4091,6 +4552,6 @@ function Add-ForwardProxySettings {
 Export-ModuleMember -Function Get-FQDN, Invoke-ArcGISConfiguration, Invoke-PublishWebApp, `
                                 Invoke-BuildArcGISAzureImage, Invoke-PublishGISService, `
                                 Get-ArcGISProductDetails, Restart-ArcGISService, `
-                                Get-ArcGISServiceName, Wait-ForServiceToReachDesiredState, `
+                                Get-ArcGISServiceName, Stop-ServiceAndWait, Start-ServiceAndWait, `
                                 New-NotebookWorkspaceSMBGlobalMapping, `
                                 Get-ArcGISEnterpriseComponentPort

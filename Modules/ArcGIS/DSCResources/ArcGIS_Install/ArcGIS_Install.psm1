@@ -275,8 +275,11 @@ function Set-TargetResource
             $SetupExtractProc = (Start-Process -FilePath $Path -ArgumentList $ArgumentsList -Wait -NoNewWindow  -Verbose -PassThru)
 
             if($SetupExtractProc.ExitCode -ne 0){
-                if(($Version -ieq "00" -or [version]$Version -ge "11.3") -and ($ComponentName -ieq "Server" -or $ComponentName -ieq "Portal")){
-                    #TODO - generalize this at a later point
+                $SupportsVolumeFiles = ($Version -ieq "00" -or [version]$Version -ge "11.3") -and (
+                    @("Server", "Portal") -icontains $ComponentName -or
+                    (([version]$Version -ge "12.2") -and @("VideoServer", "GeoEnrichmentServer") -icontains $ComponentName)
+                )
+                if($SupportsVolumeFiles){
                     if(-not(Test-Path "$($Path).001")){
                         throw "Associated Volume of the setup is not found at $Path. Please make sure all the volumes are present in the same location"
                     }
@@ -312,7 +315,7 @@ function Set-TargetResource
             $ExecPath = "msiexec"
         }
 
-        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","VideoServer","WorkflowManagerServer","NotebookServerSamplesData", "DataPipelinesServer","RealityServer","GeoEnrichmentServer") -icontains $ComponentName)){
+        if(($null -ne $ServiceCredential) -and (@("Server","Portal","WebStyles","DataStore","GeoEvent","NotebookServer","MissionServer","VideoServer","WorkflowManagerServer","NotebookServerSamplesData", "DataPipelinesServer","RealityServer","VelocityServer","GeoEnrichmentServer") -icontains $ComponentName)){
             if(-not(@("RealityServer","WorkflowManagerServer","GeoEvent") -icontains $ComponentName)){
                 $Arguments += " USER_NAME=$($ServiceCredential.UserName)"
             }
@@ -396,7 +399,7 @@ function Set-TargetResource
             }   
 
             icacls "$($env:SystemDrive)\Windows\TEMP\" /grant "$($PermissionIdentity):(OI)(CI)M"
-            
+
             Import-Module WebAdministration | Out-Null
             Write-Verbose "Increasing Web Request Timeout to 1 hour"
             $WebSiteId = 1
@@ -430,7 +433,7 @@ function Set-TargetResource
 
             # Stop IIS Service
             Write-Verbose "Stopping service '$IISServiceName'"
-            Wait-ForServiceToReachDesiredState -ServiceName $IISServiceName -DesiredState 'Stopped' -Verbose
+            Stop-ServiceAndWait -ServiceName $IISServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
             Write-Verbose 'Stopped the service'
         }
         
@@ -451,7 +454,7 @@ function Set-TargetResource
         if($IsWebAdaptorIIS){
             # Restart IIS Service
             Write-Verbose "Restarting Service '$IISServiceName'"
-            Wait-ForServiceToReachDesiredState -ServiceName $IISServiceName -DesiredState 'Running' -Verbose
+            Start-ServiceAndWait -ServiceName $IISServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
             Write-Verbose 'Started the service'
 
             Import-Module WebAdministration | Out-Null
@@ -667,6 +670,7 @@ function Test-DataStoreFeautureSet {
         GraphStore = "graph"
         ObjectStore = "object"
         Spatiotemporal = "spatiotemporal"
+        
     }
 
     if([version]$Version -le "11.5"){

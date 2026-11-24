@@ -9,6 +9,19 @@ Import-Module -Name (Join-Path -Path $modulePath `
         -ChildPath (Join-Path -Path 'ArcGIS.Client' `
             -ChildPath 'ArcGIS.Client.Server.psm1'))
 
+function ConvertTo-EGDBProcessArgument
+{
+    param(
+        [AllowEmptyString()]
+        [System.String]
+        $Argument
+    )
+
+    $EscapedArgument = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
+    $EscapedArgument = [regex]::Replace($EscapedArgument, '(\\+)$', '$1$1')
+    '"' + $EscapedArgument + '"'
+}
+
 <#
     .SYNOPSIS
         Configures a Refrenced or Managed Geo Database
@@ -199,23 +212,26 @@ function Set-TargetResource
 
                 Write-Verbose 'Enabling Geodatabase'       
                 $SdeConnectUserName = $SdeUserName
-                $Arguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $SdeConnectUserName -p $($SDECredential.GetNetworkCredential().Password) -l $LicenseFilePath"
-                $RedactedArguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $SdeConnectUserName -p xxxxx -l $LicenseFilePath"
+                $SDEPassword = $SDECredential.GetNetworkCredential().Password
+                $ArgumentValues = @($PythonScriptPath, '--DBMS', $DBType, '-s', $DatabaseServer, '-d', $DatabaseName, '-u', $SdeConnectUserName, '-p', $SDEPassword, '-l', $LicenseFilePath)
+                $Arguments = ($ArgumentValues | ForEach-Object { ConvertTo-EGDBProcessArgument -Argument $_ }) -join ' '
+                $RedactedArguments = $Arguments.Replace((ConvertTo-EGDBProcessArgument -Argument $SDEPassword), '"xxxxx"')
                 Write-Verbose "[Running Command] $PythonInterpreterPath $RedactedArguments "
                 $StdOutLogFile = [System.IO.Path]::GetTempFileName()
                 $StdErrLogFile = [System.IO.Path]::GetTempFileName()
-                Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait
+                $PythonProcess = Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait -PassThru -ErrorAction Stop
                 Write-Verbose "$StdOutLogFile"
                 $StdOut = Get-Content $StdOutLogFile -Raw
                 if($null -ne $StdOut -and $StdOut.Length -gt 0) {
                     Write-Verbose $StdOut
                 }
-                if($StdOut -icontains 'ERROR') { throw "Error Enabling Geodatabase. StdOut Error:- $StdOut"}
                 [string]$StdErr = Get-Content $StdErrLogFile -Raw
                 if($null -ne $StdErr -and $StdErr.Length -gt 0) {
                     Write-Verbose "[ERROR] $StdErr"
                 }
-                if($StdErr -icontains 'ERROR') { throw "Error Enabling Geodatabase. StdErr Error:- $StdErr"}
+                if(($PythonProcess.ExitCode -ne 0) -or ($StdOut -imatch '\bERROR\b') -or ($StdErr -imatch '\bERROR\b')) {
+                    throw "Error Enabling Geodatabase. Process exit code:- $($PythonProcess.ExitCode). StdOut:- $StdOut StdErr:- $StdErr Logs retained at '$StdOutLogFile' and '$StdErrLogFile'."
+                }
                 Remove-Item $StdOutLogFile -Force -ErrorAction Ignore
                 Remove-Item $StdErrLogFile -Force -ErrorAction Ignore  
             }
@@ -230,12 +246,14 @@ function Set-TargetResource
             if(-not(Test-Path $PythonScriptPath)){
                 throw "$PythonScriptPath not found"
             }
-            $Arguments = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $DatabaseUserName -p $($DatabaseUser.GetNetworkCredential().Password) -o $OpFolder -f $OpFile"
-            $RedactedArguments  = " ""$PythonScriptPath"" --DBMS $DBType -s $DatabaseServer -d $DatabaseName -u $DatabaseUserName -p xxxx -o $OpFolder -f $OpFile"
+            $DatabasePassword = $DatabaseUser.GetNetworkCredential().Password
+            $ArgumentValues = @($PythonScriptPath, '--DBMS', $DBType, '-s', $DatabaseServer, '-d', $DatabaseName, '-u', $DatabaseUserName, '-p', $DatabasePassword, '-o', $OpFolder, '-f', $OpFile)
+            $Arguments = ($ArgumentValues | ForEach-Object { ConvertTo-EGDBProcessArgument -Argument $_ }) -join ' '
+            $RedactedArguments = $Arguments.Replace((ConvertTo-EGDBProcessArgument -Argument $DatabasePassword), '"xxxxx"')
             Write-Verbose "[Running Command] $PythonInterpreterPath $RedactedArguments"
             $StdOutLogFile = [System.IO.Path]::GetTempFileName()
             $StdErrLogFile = [System.IO.Path]::GetTempFileName()
-            Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait
+            $PythonProcess = Start-Process -FilePath $PythonInterpreterPath -ArgumentList $Arguments -RedirectStandardError $StdErrLogFile -RedirectStandardOutput $StdOutLogFile -Wait -PassThru -ErrorAction Stop
             $StdOut = Get-Content $StdOutLogFile -Raw
 
             if($null -ne $StdOut -and $StdOut.Length -gt 0) {
@@ -254,12 +272,16 @@ function Set-TargetResource
             #if($SDELogContents -and $SDELogContents.IndexOf('Fail') -gt -1){
                 #   throw "[ERROR] $SDELogContents"
             #}
-            if($StdOut -and ($StdOut.IndexOf('ERROR') -gt -1)) { throw "Error Creating Connection File. StdOut Error:- $StdOut"}
             $StdErr = Get-Content $StdErrLogFile -Raw
             if($null -ne $StdErr -and $StdErr.Length -gt 0) {
                 Write-Verbose "[ERROR] $StdErr"
             }
-            if($StdErr -icontains 'ERROR') { throw "Error Creating Connection File. StdErr Error:- $StdErr"}
+            if(($PythonProcess.ExitCode -ne 0) -or ($StdOut -imatch '\bERROR\b') -or ($StdErr -imatch '\bERROR\b')) {
+                throw "Error Creating Connection File. Process exit code:- $($PythonProcess.ExitCode). StdOut:- $StdOut StdErr:- $StdErr Logs retained at '$StdOutLogFile' and '$StdErrLogFile'."
+            }
+            if(-not(Test-Path -LiteralPath $SDEFile -PathType Leaf)) {
+                throw "Error Creating Connection File. Python exited successfully but did not create '$SDEFile'. StdOut:- $StdOut StdErr:- $StdErr Logs retained at '$StdOutLogFile' and '$StdErrLogFile'."
+            }
             Remove-Item $StdOutLogFile -Force -ErrorAction Ignore
             Remove-Item $StdErrLogFile -Force -ErrorAction Ignore
             #endregion    
@@ -357,7 +379,6 @@ function Test-TargetResource
 
     $result = $false    
     $Referer = 'https://localhost:6443/'
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server"
 	Write-Verbose "Waiting for '$($ServerBaseUrl)' to intialize"
@@ -469,15 +490,18 @@ function Register-EGDBWithServerSite
         $IsManaged
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Net") | Out-Null
-    
+    if(-not(Test-Path -LiteralPath $SDEFilePath -PathType Leaf)) {
+        throw "Database connection file '$SDEFilePath' does not exist. Cannot register enterprise database '$Database' on '$Server'."
+    }
+
     ###
     ### Check that the system publishing tool is available
     ###
     $serviceStatus = Invoke-GPServiceOperation -URL $URL -Token $Token -Referer $Referer -ServicePath "System/PublishingTools.GPServer" -OperationName "status"
     Write-Verbose "Service Status :- $serviceStatus"
     if($null -ne $serviceStatus.status.error) {
-        throw "Error checking System Publishing Tool:- $($serviceStatus.status.error.messages)"
+        $errMsgs = if($serviceStatus.status.error.messages){ ($serviceStatus.status.error.messages -join ' ') }else{ $serviceStatus.status.error.message }
+        throw "Error checking System Publishing Tool:- $errMsgs"
     }
     if($serviceStatus.configuredState -ne 'STARTED' -or $serviceStatus.realTimeState -ne 'STARTED') {
         throw "Publishing Tools GP Server not in STARTED State. Configured State:- $($serviceStatus.configuredState), Realtime State:- $($serviceStatus.realTimeState)"

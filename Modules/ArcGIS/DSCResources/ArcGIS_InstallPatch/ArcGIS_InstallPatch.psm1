@@ -330,6 +330,8 @@ function Get-PatchManifestFromESRIDownloads
         $ProductNameArray += "GeoEvent"
    }elseif($ProductName -ieq "DataPipelinesServer"){
         $ProductNameArray += "ArcGIS Data Pipelines Server"
+    }elseif($ProductName -ieq "VelocityServer"){
+        $ProductNameArray += "ArcGIS Velocity for ArcGIS Enterprise"
     }
 
     $MinifiedVersion = $Version.Replace(".","")
@@ -395,6 +397,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\Server11.5\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server12.0\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\Server12.1\Updates\*" ,
+        "HKLM:\SOFTWARE\ESRI\Server12.2\Updates\*" ,
         "HKLM:\SOFTWARE\ESRI\GeoEvent10.9\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.0\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.1\Server\Updates\*",
@@ -404,6 +407,7 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\GeoEvent11.5\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent12.0\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\GeoEvent12.1\Server\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\GeoEvent12.2\Server\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGISPro\Updates\*" ,
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 10.9.1\Updates\*",
         "HKLM:\SOFTWARE\WOW6432Node\ESRI\ArcGIS Web Adaptor (IIS) 11.0\Updates\*",
@@ -412,8 +416,9 @@ function Test-PatchInstalled
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.3\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.4\Updates\*",
         "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 11.5\Updates\*",
-        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 12.0\Updates\*"
-        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 12.1\Updates\*"
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 12.0\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 12.1\Updates\*",
+        "HKLM:\SOFTWARE\ESRI\ArcGIS Web Adaptor (IIS) 12.2\Updates\*"
     )
     
     foreach($RegPath in $RegPaths){

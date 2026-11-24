@@ -71,7 +71,6 @@ function Set-TargetResource
 		$InstallDir
     )
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $ServerFQDN = Get-FQDN $ServerHostName
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ServerFQDN
@@ -149,7 +148,10 @@ function Set-TargetResource
         $dstypes = $dstypesarray -join ","
         Write-Verbose $dstypes
         $ExecPath = Join-Path $InstallDir 'tools\configuredatastore.bat'
-        $Arguments = "$($ServerBaseUrl) $($SiteAdministrator.GetNetworkCredential().UserName) `"$($SiteAdministrator.GetNetworkCredential().Password)`" $($ContentDirectory) --stores $dstypes"
+
+        $EscapedSiteAdministratorPassword = $SiteAdministrator.GetNetworkCredential().Password.Replace('"', '\"')
+
+        $Arguments = "$($ServerBaseUrl) $($SiteAdministrator.GetNetworkCredential().UserName) `"$EscapedSiteAdministratorPassword`" $($ContentDirectory) --stores $dstypes"
         $RedactedArguments = "$($ServerBaseUrl) $($SiteAdministrator.GetNetworkCredential().UserName) `"xxxxx`" $($ContentDirectory) --stores $dstypes"
         Write-verbose "Executing $ExecPath $RedactedArguments"
 
@@ -187,7 +189,6 @@ function Test-TargetResource
 		$InstallDir
     )
     
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
 
     $ServerFQDN = Get-FQDN $ServerHostName
     $ServerBaseUrl = Get-ArcGISComponentBaseUrl -ComponentName "Server" -FQDN $ServerFQDN

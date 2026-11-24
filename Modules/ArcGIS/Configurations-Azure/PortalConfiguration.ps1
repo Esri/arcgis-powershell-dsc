@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1"
+        $Version = "12.2"
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]
@@ -517,7 +517,7 @@
                     ServerSiteAdminUrlPort = 443
                     ServerSiteAdminUrlContext =$ServerContext
                     Ensure = 'Present'
-                    RemoteSiteAdministrator = $SiteAdministratorCredential
+                    PortalSiteAdministrator = $SiteAdministratorCredential
                     SiteAdministrator = $SiteAdministratorCredential
                     ServerRole = 'HOSTING_SERVER'
                     ServerFunctions = 'GeneralPurposeServer'

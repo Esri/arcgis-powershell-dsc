@@ -3,7 +3,7 @@
 ## Overview Automation for ArcGIS using Windows PowerShell DSC
 This repository contains scripts, code and samples for automating the install and configuration of ArcGIS (Enterprise and Pro) using Microsoft Windows [PowerShell DSC](https://docs.microsoft.com/en-us/powershell/scripting/overview?view=powershell-5.1) (Desired State Configuration).
 
-Sample JSON Configuration files for different ArcGIS deployment patterns are available in the [SampleConfigs](SampleConfigs) folder.
+Sample JSON Configuration files for different ArcGIS deployment patterns are available in the [SampleConfigs](SampleConfigs) folder. See the [v5.2.x sample catalog](SampleConfigs/v5/v5.2.x/README.md) for descriptions and usage guidance.
 
 See [wiki](https://github.com/Esri/arcgis-powershell-dsc/wiki) pages for more information about using ArcGIS Powershell DSC Module.
 

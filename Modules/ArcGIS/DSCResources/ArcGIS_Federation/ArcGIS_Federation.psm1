@@ -38,12 +38,12 @@ Import-Module -Name (Join-Path -Path $modulePath `
         Port of the Server URL on which the Server Admin is to be accessed
     .PARAMETER ServerSiteAdminUrlContext
         Context of the Server URL on which the Server Admin is to be accessed
-    .PARAMETER RemoteSiteAdministrator
+    .PARAMETER PortalSiteAdministrator
         A MSFT_Credential Object - Initial Administrator Account
     .PARAMETER SiteAdministrator
         A MSFT_Credential Object - Primary Site Administrator
     .PARAMETER ServerFunctions
-        Server Function of the Federate server - (GeoAnalytics, RasterAnalytics) - Add more 
+        Server Function of the federated server (for example, RasterAnalytics)
     .PARAMETER ServerRole
         Role of the Federate server - (HOSTING_SERVER, FEDERATED_SERVER, FEDERATED_SERVER_WITH_RESTRICTED_PUBLISHING)
 #>
@@ -115,7 +115,7 @@ function Test-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$RemoteSiteAdministrator,
+		$PortalSiteAdministrator,
 
 		[System.Management.Automation.PSCredential]
 		$SiteAdministrator,
@@ -134,14 +134,13 @@ function Test-TargetResource
     $ServerSiteAdminUrl = Get-ArcGISComponentBaseUrl -FQDN $ServerFQDN -ComponentName "Server" -Context $ServerSiteAdminUrlContext -Port $ServerSiteAdminUrlPort
 
     $PortalFQDN = Get-FQDN $PortalHostName
-	[System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
     Write-Verbose "Get Portal Token from Deployment '$PortalFQDN'"
     $PortalBaseUrl = Get-ArcGISComponentBaseUrl -FQDN $PortalFQDN -ComponentName "Portal" -Port $PortalPort -Context $PortalContext
     $Referer = $PortalBaseURL
 
-    $token = Get-PortalToken -URL $PortalBaseURL -Credential $RemoteSiteAdministrator -Referer $Referer -MaxAttempts 30 -Verbose
+    $token = Get-PortalToken -URL $PortalBaseURL -Credential $PortalSiteAdministrator -Referer $Referer -MaxAttempts 30 -Verbose
     if(-not($token.token)) {
-        throw "Unable to retrieve Portal Token for '$($RemoteSiteAdministrator.UserName)' from Deployment '$PortalFQDN'"
+        throw "Unable to retrieve Portal Token for '$($PortalSiteAdministrator.UserName)' from Deployment '$PortalFQDN'"
     }
 
     Write-Verbose "Site Admin Url:- $ServerSiteAdminUrl Service Url:- $ServiceUrl"
@@ -299,7 +298,7 @@ function Set-TargetResource
 
         [parameter(Mandatory = $true)]
 		[System.Management.Automation.PSCredential]
-		$RemoteSiteAdministrator,
+		$PortalSiteAdministrator,
 
 		[System.Management.Automation.PSCredential]
 		$SiteAdministrator,
@@ -313,7 +312,6 @@ function Set-TargetResource
         $ServerRole
     )
 
-    [System.Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null	 
     
     $ServiceURL = Get-ArcGISComponentBaseUrl -FQDN $ServiceUrlHostName -ComponentName "Server" -Port $ServiceUrlPort -Context $ServiceUrlContext
     $ServerFQDN = Get-FQDN $ServerSiteAdminUrlHostName
@@ -326,9 +324,9 @@ function Set-TargetResource
     $PortalBaseUrl = Get-ArcGISComponentBaseUrl -FQDN $PortalFQDN -ComponentName "Portal" -Port $PortalPort -Context $PortalContext
     $Referer = $PortalBaseURL
     
-    $token = Get-PortalToken -URL $PortalBaseURL -Credential $RemoteSiteAdministrator -Referer $Referer -MaxAttempts 30 -Verbose
+    $token = Get-PortalToken -URL $PortalBaseURL -Credential $PortalSiteAdministrator -Referer $Referer -MaxAttempts 30 -Verbose
     if(-not($token.token)) {
-        throw "Unable to retrieve Portal Token for '$($RemoteSiteAdministrator.UserName)' from Deployment '$PortalFQDN'"
+        throw "Unable to retrieve Portal Token for '$($PortalSiteAdministrator.UserName)' from Deployment '$PortalFQDN'"
     }
 
     Write-Verbose "Site Admin Url:- $ServerSiteAdminUrl Service Url:- $ServiceUrl"
@@ -355,7 +353,7 @@ function Set-TargetResource
                             Write-Verbose "Error during unfederate operation. Error:- $_"
                         }
                         Write-Verbose "Unfederate Operation causes a web server restart. Waiting for portaladmin endpoint to come back up"
-                        Test-ArcGISComponentHealth -BaseURL $PortalBaseURL -ComponentName "Portal" -MaxWaitTimeInSeconds 180 -Verbose
+                        Wait-ForArcGISComponentRestart -BaseURL $PortalBaseURL -ComponentName "Portal" -RestartComponentName "PortalSharing" -MaxRestartWaitTimeInSeconds 300 -MaxStartupWaitTimeInSeconds 180 -Verbose
                     }
                 }
             }
@@ -369,6 +367,7 @@ function Set-TargetResource
             while(-not($Done)) {
                 Write-Verbose "Federation of Server Attempt $NumAttempts"
                 [bool]$failed = $false
+                [bool]$AlreadyFederated = $false
                 $ErrorMessage = ""
                 try {
                     $resp = Invoke-FederateServer -URL $PortalBaseURL -PortalToken $token.token -Referer $Referer `
@@ -376,21 +375,50 @@ function Set-TargetResource
                     if($resp.error){
                         $failed = $true
                         $ErrorMessage = $resp.error
+                        $AlreadyFederated = ($resp.error.message -imatch '\balready (?:a )?federated\b')
                     }
                 }
                 catch
                 {
                     $failed = $true
                     $ErrorMessage =  $_
+                    $AlreadyFederated = ($_.Exception.Message -imatch '\balready (?:a )?federated\b')
+                }
+
+                if($failed) {
+                    Write-Verbose "[ERROR]:- Federation returned error. Error:- $ErrorMessage"
+                    if($NumAttempts -lt $MaxAttempts -and -not($AlreadyFederated)) {
+                        Write-Verbose "Attempt [$NumAttempts] Failed. Waiting 30 seconds before checking federation state."
+                        Start-Sleep -Seconds 30
+                    }
+
+                    try {
+                        $fedServers = Get-FederatedServers -URL $PortalBaseURL -Token $token.token -Referer $Referer -ErrorAction Stop
+                        if($fedServers.error) {
+                            throw ($fedServers.error | ConvertTo-Json -Compress -Depth 10)
+                        }
+                        $fedServer = $fedServers.servers | Where-Object { $_.url -ieq $ServiceUrl -and $_.adminUrl -ieq $ServerSiteAdminUrl }
+                    } catch {
+                        throw "Unable to verify federation state after a failed request. Federation error:- $ErrorMessage. Verification error:- $_"
+                    }
+
+                    if($fedServer) {
+                        Write-Verbose "Federation is confirmed in Portal despite the failed request."
+                        $failed = $false
+                    }elseif($AlreadyFederated) {
+                        $RegisteredServerUrls = @($fedServers.servers | ForEach-Object { "id='$($_.id)', url='$($_.url)', adminUrl='$($_.adminUrl)'" }) -join '; '
+                        if(-not($RegisteredServerUrls)) {
+                            $RegisteredServerUrls = '(none)'
+                        }
+                        throw "ArcGIS Server reports that it is already federated, but Portal '$PortalBaseURL' has no server matching service URL '$ServiceUrl' and admin URL '$ServerSiteAdminUrl'. Registered servers: $RegisteredServerUrls. Check the configured URLs and the Server security/config portalProperties before retrying. Federation error:- $ErrorMessage"
+                    }
                 }
 
                 if($failed) {
                     if($NumAttempts -ge $MaxAttempts) {
                         throw "[ERROR]:- Federation Failed after multiple attempts. Error:- $ErrorMessage"                        
                     }else{
-                        Write-Verbose "[ERROR]:- Federation returned error. Error:- $ErrorMessage"
-                        Write-Verbose "Attempt [$NumAttempts] Failed. Retrying after 30 seconds!"
-                        Start-Sleep -Seconds 30
+                        Write-Verbose "Federation is not registered in Portal. Retrying."
                     }
                 } else {
                     Write-Verbose 'Federation succeeded. Now updating server role and function.'
@@ -564,7 +592,7 @@ function Set-TargetResource
                 Write-Verbose "Error during unfederate operation. Error:- $_"
             }
             Write-Verbose "Unfederate Operation causes a web server restart. Waiting for portaladmin endpoint to come back up"
-            Test-ArcGISComponentHealth -BaseURL $PortalBaseURL -ComponentName "Portal" -MaxWaitTimeInSeconds 180 -Verbose
+            Wait-ForArcGISComponentRestart -BaseURL $PortalBaseURL -ComponentName "Portal" -RestartComponentName "PortalSharing" -MaxRestartWaitTimeInSeconds 300 -MaxStartupWaitTimeInSeconds 180 -Verbose
         }else{
             Write-Verbose "Federated Server with Admin URL $ServerSiteAdminUrl doesn't exists"
         }   

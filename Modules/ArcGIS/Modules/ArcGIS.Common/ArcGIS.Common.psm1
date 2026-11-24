@@ -1,9 +1,55 @@
-﻿function ConvertTo-HttpBody($props)
+﻿Add-Type -AssemblyName System.Net.Http
+
+function New-ArcGISHttpClient
+{
+    param(
+        [System.Int32]
+        $TimeOutSec = 100,
+
+        [System.Boolean]
+        $UseDefaultCredentials = $false,
+
+        [System.Int32]
+        $MaximumRedirection = 50,
+
+        [System.Boolean]
+        $AllowUntrustedCertificates = $true
+    )
+
+    $Handler = New-Object System.Net.Http.HttpClientHandler
+    $Client = $null
+    try {
+        $Handler.UseDefaultCredentials = $UseDefaultCredentials
+        $Handler.AllowAutoRedirect = $MaximumRedirection -ge 0
+        $Handler.MaxAutomaticRedirections = [System.Math]::Max(1, $MaximumRedirection)
+        $Handler.SslProtocols = [System.Security.Authentication.SslProtocols]::Tls12 -bor [System.Security.Authentication.SslProtocols]::Tls13
+        if($AllowUntrustedCertificates){
+            $Handler.ServerCertificateCustomValidationCallback = [System.Net.Http.HttpClientHandler]::DangerousAcceptAnyServerCertificateValidator
+        }
+        $Client = New-Object System.Net.Http.HttpClient -ArgumentList $Handler
+        if($TimeOutSec -eq 0){
+            $Client.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+        }else{
+            $Client.Timeout = [System.TimeSpan]::FromSeconds($TimeOutSec)
+        }
+        return $Client
+    }
+    catch {
+        if($null -ne $Client){
+            $Client.Dispose()
+        }else{
+            $Handler.Dispose()
+        }
+        throw
+    }
+}
+
+function ConvertTo-HttpBody($props)
 {
     [string]$str = ''
     foreach($prop in $props.Keys){                
-        $key = [System.Web.HttpUtility]::UrlEncode($prop)
-        $value = [System.Web.HttpUtility]::UrlEncode($props[$prop])
+        $key = [System.Net.WebUtility]::UrlEncode($prop)
+        $value = [System.Net.WebUtility]::UrlEncode($props[$prop])
         $str += "$key=$value&"
     }
     if($str.Length -gt 0) {
@@ -20,10 +66,12 @@ function Confirm-ResponseStatus($Response, $Url)
     throw [string]::Format("ERROR: {0} response is NULL.URL:- {1}", $parentFunc, $Url)
   }
   if ($Response.status -and ($Response.status -ieq "error")) { 
-    throw [string]::Format("ERROR: {0} failed. {1}" , $parentFunc,($Response.messages -join " "))
+        $errMsgs = if($Response.messages){ ($Response.messages -join " ") }else{ $Response.message }
+        throw [string]::Format("ERROR: {0} failed. {1}" , $parentFunc,$errMsgs)
   }
   if ($Response.error) { 
-    throw [string]::Format("ERROR: {0} failed. {1}" , $parentFunc,$Response.error.messages)
+        $errMsgs = if($Response.error.messages){ ($Response.error.messages -join " ") }else{ $Response.error.message }
+        throw [string]::Format("ERROR: {0} failed. {1}" , $parentFunc,$errMsgs)
   }
 }
 
@@ -62,70 +110,64 @@ function Wait-ForUrl
     $WaitForError = $null
     Write-Verbose "Waiting for Url $Url"
 
-    # for server and portal generate token
-    if($Url -ilike "*/generateToken"){
-        $ServicePoint = [System.Net.ServicePointManager]::FindServicePoint($Url)
-        $ServicePoint.CloseConnectionGroup("")
-    }
-
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-
+    $Client = $null
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    while((-not($Done)) -and ($stopwatch.Elapsed.TotalSeconds -lt $MaxWaitTimeInSeconds)) {
-	    try {
-			if($HttpMethod -ieq 'GET') {
-				[System.Net.HttpWebRequest]$webRequest = [System.Net.WebRequest]::Create($Url)
-				$webRequest.Timeout  = ($RequestTimeoutInSeconds * 1000)
-                $webRequest.AllowAutoRedirect = $MaximumRedirection -gt -1
-                $webRequest.MaximumAutomaticRedirections = [System.Math]::Max(1, $MaximumRedirection)
-                if($IsWebAdaptor){
-                    $webRequest.Headers.Add('accept-language','en-US') 
-                }
-                $resp = $null
-                try {
-                    $resp = $webRequest.GetResponse()
-                    $Done = $true
-                }catch [System.Net.WebException] {
-                    # Handle Protocol Errors (404, 500, etc.)
-                    $resp = $_.Exception.Response
-                    if ($null -ne $resp) {
-                        $statusCode = [int]$resp.StatusCode
+    try {
+        $RedirectLimit = $MaximumRedirection
+        if($HttpMethod -ine 'GET' -and $MaximumRedirection -eq 0){
+            $RedirectLimit = -1
+        }
+        $Client = New-ArcGISHttpClient -TimeOutSec $RequestTimeoutInSeconds `
+                    -UseDefaultCredentials ($HttpMethod -ine 'GET') -MaximumRedirection $RedirectLimit
+        $RequestParameters = @{
+            Url = $Url
+            HttpMethod = $HttpMethod
+            Referer = $null
+            HttpClient = $Client
+            ResponseType = 'Response'
+        }
+        if($HttpMethod -ieq 'GET'){
+            $RequestParameters.ResponseType = 'Headers'
+            if($IsWebAdaptor){
+                $RequestParameters.HttpHeaders = @{'accept-language' = 'en-US'}
+            }
+        }
+        while((-not($Done)) -and ($stopwatch.Elapsed.TotalSeconds -lt $MaxWaitTimeInSeconds)) {
+            try {
+                $resp = Invoke-ArcGISWebRequest @RequestParameters
+                if($HttpMethod -ieq 'GET') {
+                    $statusCode = $resp.StatusCode
+                    if($statusCode -lt 400){
+                        $Done = $true
+                    }else{
+                        $WaitForError = "[Warning]:- Server returned error: $statusCode"
                         Write-Warning "Server returned error: $statusCode"
                     }
-                }
-                finally {
-                    # This ensures the response is disposed of, freeing up the network connection
-                    if ($null -ne $resp) {
-                        $resp.Dispose()
+                }else{
+                    if(($resp.StatusCode -eq 200) -and $resp.Content){
+                        $Done = $true
+                        Write-Verbose "Url is ready : $Url"
+                    }else{
+                        $WaitForError = "[Warning]:- Response:- $($resp.Content)"
+                        Write-Verbose $WaitForError
                     }
                 }
-			}
-			else {
-				$resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -UseDefaultCredentials -ErrorAction Ignore -TimeoutSec $RequestTimeoutInSeconds -Method $HttpMethod -DisableKeepAlive -MaximumRedirection $MaximumRedirection
-				if($resp) {
-					if(($resp.StatusCode -eq 200) -and $resp.Content) { 
-						$Done = $true
-						Write-Verbose "Url is ready : $Url"
-					}else{
-                        $WaitForError = "[Warning]:- Response:- $($resp.Content)"
-						Write-Verbose $WaitForError
-					}
-				}else {
-                    $WaitForError = "[Warning]:- Response from $Url was NULL"
-					Write-Verbose $WaitForError
-				}
-			}
-        }
-        catch {
-            $WaitForError = "[Warning]:- $($_)"
-            Write-Verbose $WaitForError
-        }
-        if(-not($Done)) {
-            Start-Sleep -Seconds $SleepTimeInSeconds
+            }
+            catch {
+                $WaitForError = "[Warning]:- $($_)"
+                Write-Verbose $WaitForError
+            }
+            if(-not($Done)) {
+                Start-Sleep -Seconds $SleepTimeInSeconds
+            }
         }
     }
-    $stopwatch.Stop()
+    finally {
+        $stopwatch.Stop()
+        if($null -ne $Client){
+            $Client.Dispose()
+        }
+    }
     if($ThrowErrors -and -not($Done)){
         throw "[ERROR] Wait-ForUrl for $Url failed after waiting for $MaxWaitTimeInSeconds seconds -  $WaitForError"
     }
@@ -156,120 +198,55 @@ function Invoke-UploadFile
         $fileParameterName = 'file',
 
         [System.String]
-        $fileName
+        $fileName,
+
+        [System.Boolean]
+        $ThrowOnResponseError = $false
     )
 
-
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    [System.Net.WebRequest]$webRequest = [System.Net.WebRequest]::Create($url)
-    $webRequest.ServicePoint.Expect100Continue = $false
-    $webRequest.Method = "POST"
-    $webRequest.Referer = $Referer
-    $webRequest.Timeout = 86400000;
-    
     if(-not($fileName) -or $fileName.Length -lt 1){
         $fileName = (Get-Item -Path $filePath).Name
     }
 
-    if($httpHeaders){
-        foreach($httpHeader in $httpHeaders.GetEnumerator())
-        {
-            if('Referer' -ine $httpHeader.Name) {
-                $webRequest.Headers.Add($httpHeader.Name, $httpHeader.Value)
+    $Multipart = $null
+    $FileStream = $null
+    $FileContent = $null
+    try {
+        $Multipart = New-Object System.Net.Http.MultipartFormDataContent
+        if($formParams){
+            foreach($formParam in $formParams.GetEnumerator()){
+                $FormContent = New-Object System.Net.Http.StringContent -ArgumentList @([string]$formParam.Value, [System.Text.Encoding]::UTF8)
+                $FormContent.Headers.ContentType = $null
+                $Multipart.Add($FormContent, [string]$formParam.Name)
             }
         }
-    }
-
-    $boundary = [System.Guid]::NewGuid().ToString()
-    $header = "--{0}" -f $boundary
-    $footer = "--{0}--" -f $boundary
-    $webRequest.ContentType = "multipart/form-data; boundary={0}" -f $boundary
-
-    $enc = [System.Text.Encoding]::GetEncoding("UTF-8")
-    $headerPlusNewLine = $header + [System.Environment]::NewLine
-    [byte[]]$headerBytes = $enc.GetBytes($headerPlusNewLine)
-
-    [System.IO.Stream]$reqStream = $null
-    [System.IO.StreamWriter]$streamWriter = $null
-    try {
-        $reqStream = $webRequest.GetRequestStream()
-
-        #### Use StreamWriter to write form parameters ####
-        $streamWriter = New-Object 'System.IO.StreamWriter' -ArgumentList $reqStream
-        foreach($formParam in $formParams.GetEnumerator()) {
-            [void]$streamWriter.WriteLine($header)
-            [void]$streamWriter.WriteLine(("Content-Disposition: form-data; name=""{0}""" -f $formParam.Name))
-            [void]$streamWriter.WriteLine("")
-            [void]$streamWriter.WriteLine($formParam.Value)
+        $FileStream = [System.IO.File]::OpenRead($filePath)
+        $FileContent = New-Object System.Net.Http.StreamContent -ArgumentList $FileStream
+        if($fileContentType){
+            $FileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($fileContentType)
         }
-        $streamWriter.Flush()
-
-        [void]$reqStream.Write($headerBytes,0, $headerBytes.Length)
-
-        #### File Header ####
-        $fileHeader = "Content-Disposition: form-data; name=""{0}""; filename=""{1}""" -f $fileParameterName, $fileName
-        $fileHeader = $fileHeader + [System.Environment]::NewLine
-        [byte[]]$fileHeaderBytes = $enc.GetBytes($fileHeader)
-        [void]$reqStream.Write($fileHeaderBytes,0, $fileHeaderBytes.Length)
-
-        #### File Content Type ####
-        [string]$fileContentTypeStr = "Content-Type: {0}" -f $fileContentType
-        $fileContentTypeStr = $fileContentTypeStr + [System.Environment]::NewLine + [System.Environment]::NewLine
-        [byte[]]$fileContentTypeBytes = $enc.GetBytes($fileContentTypeStr)
-        [void]$reqStream.Write($fileContentTypeBytes,0, $fileContentTypeBytes.Length)
-
-        #### File #####
-        [System.IO.FileStream]$fileStream = $null
+        $Multipart.Add($FileContent, $fileParameterName, $fileName)
         try {
-            $fileStream = New-Object 'System.IO.FileStream' -ArgumentList @($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
-            $fileStream.CopyTo($reqStream)
+            Invoke-ArcGISWebRequest -Url $url -HttpMethod 'POST' -Content $Multipart -HttpHeaders $httpHeaders `
+                -Referer $Referer -TimeOutSec 86400 -UseDefaultCredentials $false -ConnectionClose $false -ResponseType 'Text'
         }
-        finally {
-            if($null -ne $fileStream) {
-                $fileStream.Dispose()
+        catch {
+            Write-Verbose "[WARNING] $url returned an error $_"
+            if($ThrowOnResponseError){
+                throw
             }
-        }
-
-        [void]$streamWriter.WriteLine("")
-        [void]$streamWriter.WriteLine($footer)
-        $streamWriter.Flush()
-    }
-    finally {
-        if($null -ne $streamWriter) {
-            $streamWriter.Dispose()
-        }
-        elseif($null -ne $reqStream) {
-            $reqStream.Dispose()
-        }
-    }
-    
-    $resp = $null
-    $rs = $null
-    $sr = $null
-	try {
-		$resp =  $webRequest.GetResponse()    
-    }catch {
-        Write-Verbose "[WARNING] $url returned an error $_"
-	}
-    try {
-        if($resp) {
-            $rs = $resp.GetResponseStream()
-            $sr = New-Object System.IO.StreamReader -ArgumentList $rs
-            $sr.ReadToEnd()
-        } else {
-            $null
+            return $null
         }
     }
     finally {
-        if($null -ne $sr) {
-            $sr.Dispose()
+        if($null -ne $Multipart){
+            $Multipart.Dispose()
         }
-        if($null -ne $rs) {
-            $rs.Dispose()
+        if($null -ne $FileContent){
+            $FileContent.Dispose()
         }
-        if($null -ne $resp) {
-            $resp.Dispose()
+        if($null -ne $FileStream){
+            $FileStream.Dispose()
         }
     }
 }
@@ -295,114 +272,236 @@ function Get-ArcGISComponentVersionAndInstallDirectory{
     }
 }
 
+<#
+    .SYNOPSIS
+        Sends an ArcGIS HTTP request using a shared transport path.
+    .PARAMETER Url
+        Required request URL.
+    .PARAMETER HttpFormParameters
+        Form fields appended to the query string for GET or URL-encoded for other methods.
+        Defaults to an empty hashtable. Cannot be combined with Content. When omitted,
+        non-GET Json requests send an empty form; other response modes send no form body.
+    .PARAMETER Referer
+        Referer header value. Defaults to https://localhost; pass null to omit it.
+        Referer entries in HttpHeaders are ignored in favor of this parameter.
+    .PARAMETER TimeOutSec
+        Timeout in seconds for a newly created client. Defaults to 30; zero means infinite.
+        Covers the buffered response body except with Headers or OutFile, which stop at
+        response headers. Ignored when HttpClient is supplied.
+    .PARAMETER HttpMethod
+        HTTP method. Defaults to Post.
+    .PARAMETER Content
+        Required in the Content parameter set instead of HttpFormParameters. One-use HTTP
+        content, such as a multipart upload, disposed with the request after sending.
+    .PARAMETER HttpHeaders
+        Optional dictionary of request headers. Supply Referer through its own parameter.
+    .PARAMETER ResponseType
+        Defaults to Json, which parses the response. Text returns its body unchanged.
+        Response returns StatusCode, ReasonPhrase and Content without throwing for HTTP
+        error statuses. Headers returns the same status information without downloading
+        the body. Transport errors still throw in all modes. OutFile overrides this option.
+    .PARAMETER OutFile
+        Streams a successful response to a file instead of returning a body. TimeOutSec
+        covers response headers; it does not bound the subsequent stream copy.
+    .PARAMETER HttpClient
+        Optional caller-owned client for repeated requests; it is not disposed here.
+        Its existing timeout, credentials, redirects and certificate-validation settings
+        are used unchanged, overriding the corresponding client-creation parameters.
+    .PARAMETER UseDefaultCredentials
+        Enables default Windows credentials on a newly created client. Defaults to false
+        for GET and true for other methods. Ignored when HttpClient is supplied.
+    .PARAMETER MaximumRedirection
+        Redirect limit for a newly created client. Defaults to 50. Negative values disable
+        redirects; zero allows one redirect. Ignored when HttpClient is supplied.
+    .PARAMETER AllowUntrustedCertificates
+        Allows untrusted server certificates on a newly created client. Defaults to true.
+        Set false to retain normal certificate validation. Ignored when HttpClient is supplied.
+    .PARAMETER ConnectionClose
+        Controls the request's Connection: close header. Defaults to false for GET and true
+        for other methods, including when HttpClient is supplied.
+#>
 function Invoke-ArcGISWebRequest
 {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName='Form')]
     param(
         [Parameter(Mandatory=$true)]
         [System.String]
-		$Url, 
+		$Url,
 
-        [Parameter(Mandatory=$true)]
-        $HttpFormParameters,
-        
-        [Parameter(Mandatory=$false)]
+        [Parameter(ParameterSetName='Form')]
+        $HttpFormParameters = @{},
+
         [System.String]
 		$Referer = 'https://localhost',
 
-        [Parameter(Mandatory=$false)]
         [System.Int32]
 		$TimeOutSec = 30,
 
-        [Parameter(Mandatory=$false)]
         [System.String]
-		$HttpMethod = 'Post'
+		$HttpMethod = 'Post',
+
+        [Parameter(ParameterSetName='Content', Mandatory=$true)]
+        [System.Net.Http.HttpContent]
+        $Content,
+
+        [System.Collections.IDictionary]
+        $HttpHeaders,
+
+        [ValidateSet('Json','Text','Response','Headers')]
+        [System.String]
+        $ResponseType = 'Json',
+
+        [System.String]
+        $OutFile,
+
+        [System.Net.Http.HttpClient]
+        $HttpClient,
+
+        [System.Boolean]
+        $UseDefaultCredentials = ($HttpMethod -ine 'GET'),
+
+        [System.Int32]
+        $MaximumRedirection = 50,
+
+        [System.Boolean]
+        $AllowUntrustedCertificates = $true,
+
+        [System.Boolean]
+        $ConnectionClose = ($HttpMethod -ine 'GET')
     )
 
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-	[System.Net.ServicePointManager]::DefaultConnectionLimit = 1024
-	[System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    
-    $HttpBody = (ConvertTo-HttpBody $HttpFormParameters)
-    if($HttpMethod -ieq 'GET') {
-        $UrlWithQueryString = $Url
-        if(-not([string]::IsNullOrEmpty($HttpBody))){
-            if($UrlWithQueryString.IndexOf('?') -lt 0) {
-                $UrlWithQueryString += '?'
-            }else {
-                $UrlWithQueryString += '&'
-            }
-            $UrlWithQueryString += $HttpBody
+    [System.Net.ServicePointManager]::DefaultConnectionLimit = 1024
+    $Client = $HttpClient
+    $OwnsClient = $null -eq $HttpClient
+    $Request = $null
+    $HttpResponse = $null
+    $Stream = $null
+    $FileStream = $null
+    try {
+        if($OwnsClient){
+            $Client = New-ArcGISHttpClient -TimeOutSec $TimeOutSec -UseDefaultCredentials $UseDefaultCredentials `
+                        -MaximumRedirection $MaximumRedirection -AllowUntrustedCertificates $AllowUntrustedCertificates
         }
-
-        $wc = New-Object System.Net.WebClient
-        if($Referer) {
-            $wc.Headers.Add('Referer', $Referer)
+        $Request = New-Object System.Net.Http.HttpRequestMessage
+        $Request.Method = New-Object System.Net.Http.HttpMethod -ArgumentList $HttpMethod.ToUpperInvariant()
+        $Request.Headers.ConnectionClose = $ConnectionClose
+        if($Referer){
+            [void]$Request.Headers.TryAddWithoutValidation('Referer', $Referer)
         }
-        try {
-            $res = $wc.DownloadString($UrlWithQueryString)
-            Write-Verbose "Response:- $res"
-            if($res) {
-                $response = $res | ConvertFrom-Json
-                $response
-            }else {
-                Write-Verbose "Response from $Url is NULL"
-            }
-        }
-        catch [System.Net.WebException] {
-            # Catch the specific WebException
-            Write-Verbose "HTTP Request Failed!"
-            Write-Verbose "Status: $($_.Exception.Message)"
-            if ($wc.Headers.Count -gt 0) {
-                foreach ($key in $wc.Headers.AllKeys) {
-                    Write-Verbose "$key : $($wc.Headers[$key])"
+        if($HttpHeaders){
+            foreach($Header in $HttpHeaders.GetEnumerator()){
+                if('Referer' -ine $Header.Key){
+                    [void]$Request.Headers.TryAddWithoutValidation($Header.Key, [string]$Header.Value)
                 }
             }
-
-            # Check if the server actually sent a response object back
-            if ($_.Exception.Response) {
-                # Extract the response stream
-                $responseStream = $_.Exception.Response.GetResponseStream()
-                
-                # Read the stream using a StreamReader
-                $reader = New-Object System.IO.StreamReader($responseStream)
-                $responseBody = $reader.ReadToEnd()
-                
-                Write-Verbose "Server Response Body ---$responseBody"
-                
-                # Always clean up your streams to free up resources!
-                $reader.Close()
-                $responseStream.Close()
-            }
-            throw $_
         }
-        catch {
-            # Catch any other unexpected errors (e.g., typos in the URL, network disconnected)
-            throw "An unexpected error occurred: $_"
-        }
-        finally {
-            $wc.Dispose()
-        }
-     }else {
-        $Headers = @{
-            'Content-type'='application/x-www-form-urlencoded'
-            'Content-Length' = $HttpBody.Length
-            'Accept' = 'text/plain,text/html,application/json'     
-            'Referer' = $Referer             
-        }
-        try {
-            $res = Invoke-WebRequest -Method $HttpMethod -Uri $Url -Body $HttpBody -Headers $Headers -UseDefaultCredentials -DisableKeepAlive -UseBasicParsing -TimeoutSec $TimeOutSec
-            Write-Verbose "Response:- $($res.Content)"
-            if($res -and $res.Content) {
-                $response = $res.Content | ConvertFrom-Json
-                $response  
-            }else { 
-                throw "Response returned NULL"
+        if($PSCmdlet.ParameterSetName -eq 'Content'){
+            $Request.Content = $Content
+            $Request.Headers.ExpectContinue = $false
+        }else{
+            $HttpBody = ConvertTo-HttpBody $HttpFormParameters
+            if($HttpMethod -ieq 'GET'){
+                if(-not([string]::IsNullOrEmpty($HttpBody))){
+                    if($Url.IndexOf('?') -lt 0){
+                        $Url += '?'
+                    }else{
+                        $Url += '&'
+                    }
+                    $Url += $HttpBody
+                }
+            }elseif($PSBoundParameters.ContainsKey('HttpFormParameters') -or $ResponseType -eq 'Json'){
+                $Request.Content = New-Object System.Net.Http.StringContent -ArgumentList @($HttpBody, [System.Text.Encoding]::UTF8, 'application/x-www-form-urlencoded')
+                $Request.Content.Headers.ContentType.CharSet = $null
+                if($ResponseType -eq 'Json'){
+                    $Request.Headers.Add('Accept', 'text/plain,text/html,application/json')
+                }
             }
         }
-        catch {
-            # Catch any other unexpected errors (e.g., typos in the URL, network disconnected)
-            throw "Request to $Url failed. An unexpected error occurred: $_"
+        $Request.RequestUri = $Url
+        $CompletionOption = [System.Net.Http.HttpCompletionOption]::ResponseContentRead
+        if($ResponseType -eq 'Headers' -or $OutFile){
+            $CompletionOption = [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead
+        }
+        $HttpResponse = $Client.SendAsync($Request, $CompletionOption).GetAwaiter().GetResult()
+        if($OutFile){
+            [void]$HttpResponse.EnsureSuccessStatusCode()
+            $Stream = $HttpResponse.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+            $FileStream = [System.IO.File]::Create($OutFile)
+            $Stream.CopyTo($FileStream)
+            return
+        }
+        $ResponseBody = $null
+        if($ResponseType -ne 'Headers'){
+            $ResponseBody = $HttpResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            Write-Verbose "Response:- $ResponseBody"
+        }
+        if($ResponseType -eq 'Response' -or $ResponseType -eq 'Headers'){
+            return [PSCustomObject]@{
+                StatusCode = [int]$HttpResponse.StatusCode
+                ReasonPhrase = $HttpResponse.ReasonPhrase
+                Content = $ResponseBody
+            }
+        }
+        if(-not $HttpResponse.IsSuccessStatusCode){
+            Write-Verbose "HTTP Request Failed!"
+            Write-Verbose "Status: $([int]$HttpResponse.StatusCode) $($HttpResponse.ReasonPhrase)"
+            Write-Verbose "Server Response Body ---$ResponseBody"
+        }
+        [void]$HttpResponse.EnsureSuccessStatusCode()
+        if($ResponseType -eq 'Text'){
+            return $ResponseBody
+        }
+        if($ResponseBody){
+            $ResponseBody | ConvertFrom-Json
+        }elseif($HttpMethod -ieq 'GET'){
+            Write-Verbose "Response from $Url is NULL"
+        }else{
+            throw "Response returned NULL"
+        }
+    }
+    catch {
+        if($null -ne $Client){
+            foreach($Header in $Client.DefaultRequestHeaders){
+                Write-Verbose "$($Header.Key) : $($Header.Value -join ', ')"
+            }
+        }
+        if($null -ne $Request){
+            foreach($Header in $Request.Headers){
+                Write-Verbose "$($Header.Key) : $($Header.Value -join ', ')"
+            }
+            if($null -ne $Request.Content){
+                foreach($Header in $Request.Content.Headers){
+                    Write-Verbose "$($Header.Key) : $($Header.Value -join ', ')"
+                }
+            }
+        }
+        $RequestError = $_.Exception
+        $ErrorDetails = [string]$_
+        $InnerError = $RequestError.InnerException
+        while($null -ne $InnerError){
+            $ErrorDetails += " Inner exception ($($InnerError.GetType().FullName)): $($InnerError.Message)"
+            $InnerError = $InnerError.InnerException
+        }
+        if($HttpMethod -ieq 'GET'){
+            throw [System.InvalidOperationException]::new("An unexpected error occurred: $ErrorDetails", $RequestError)
+        }
+        throw [System.InvalidOperationException]::new("Request to $Url failed. An unexpected error occurred: $ErrorDetails", $RequestError)
+    }
+    finally {
+        if($null -ne $FileStream){
+            $FileStream.Dispose()
+        }
+        if($null -ne $Stream){
+            $Stream.Dispose()
+        }
+        if($null -ne $HttpResponse){
+            $HttpResponse.Dispose()
+        }
+        if($null -ne $Request){
+            $Request.Dispose()
+        }
+        if($OwnsClient -and $null -ne $Client){
+            $Client.Dispose()
         }
     }
 }
@@ -419,12 +518,13 @@ function Get-PropertyFromPropertiesFile
     )
     
     $PropertyValue = $null
+    $PropertyPrefix = "$PropertyName="
     if(Test-Path $PropertiesFilePath) {
-        Get-Content $PropertiesFilePath | ForEach-Object {
-            if($_ -and $_.StartsWith($PropertyName)){
-                $Splits = $_.Split('=')
-                if($Splits.Length -gt 1){
-                    $PropertyValue = $Splits[1].Trim()
+        foreach($Line in Get-Content $PropertiesFilePath) {
+            if($Line -and $Line.StartsWith($PropertyPrefix)){
+                $SeparatorIndex = $Line.IndexOf('=')
+                if($SeparatorIndex -ge 0){
+                    $PropertyValue = $Line.Substring($SeparatorIndex + 1).Trim()
                 }
             }
         }
@@ -447,45 +547,49 @@ function Set-PropertyFromPropertiesFile
         $PropertyValue
     )      
 
-    $Changed = $false       
+    $Changed = $false
     $Lines = @()
-    $Exists = $false
-    $Commented = $false
+    $PropertyPrefix = "$PropertyName="
     $CommentedProperty = '#' + $PropertyName
+    $ExpectedLine = "$($PropertyName)=$($PropertyValue)"
+    $PropertyWasFound = $false
     if(Test-Path $PropertiesFilePath) {
-       
-        Get-Content $PropertiesFilePath | ForEach-Object {
-            $Line = $_
-            if($_ -and $_.StartsWith($PropertyName)){
-                $Line = "$($PropertyName)=$($PropertyValue)"
-                $Splits = $_.Split('=')
-                if(($Splits.Length -gt 1) -and ($Splits[1].Trim() -ieq $PropertyValue)){
-                    $Exists = $true
-                    Write-Verbose "Property entry for '$PropertyName' already exists in $PropertiesFilePath  and matches expected value '$PropertyValue'"
+        foreach($Line in Get-Content $PropertiesFilePath) {
+            if($Line -and $Line.StartsWith($PropertyPrefix)){
+                $PropertyWasFound = $true
+                $Lines += $ExpectedLine
+                if($Line -ieq $ExpectedLine){
+                    Write-Verbose "Property entry for '$PropertyName' already exists in $PropertiesFilePath and matches expected value '$PropertyValue'"
+                }else {
+                    Write-Verbose "Updating entry $PropertyName = $PropertyValue to $PropertiesFilePath"
+                    $Changed = $true
                 }
             }
-            elseif($_ -and $_.StartsWith($CommentedProperty)){
+            elseif($Line -and $Line.StartsWith($CommentedProperty)){
                 Write-Verbose "Uncomment existing property entry for '$PropertyName'"
-                $Lines += "$($PropertyName)=$($PropertyValue)"
-                $Commented = $true
+                $Lines += $ExpectedLine
+                $PropertyWasFound = $true
+                $Changed = $true
             }
             else {
                 $Lines += $Line
             }
         }
-        if(-not($Exists) -and (-not($Commented))) { 
+        if(-not($PropertyWasFound)) {
             Write-Verbose "Adding entry $PropertyName = $PropertyValue to $PropertiesFilePath"
-            $Lines += "$($PropertyName)=$($PropertyValue)" 
-			$Lines += [System.Environment]::NewLine # Add a newline            
+            $Lines += $ExpectedLine
+            $Changed = $true
         }
     }else{
-        $Lines += "$($PropertyName)=$($PropertyValue)"
+        $Lines += $ExpectedLine
+        $Changed = $true
     }
-    if(-not($Exists) -or $Commented) {        
+
+    if($Changed) {
 		Write-Verbose "Updating file $PropertiesFilePath"
 		Set-Content -Path $PropertiesFilePath -Value $Lines -Force 
-		$Changed = $true
     }
+
     Write-Verbose "Changed applied:- $Changed"
     $Changed
 }
@@ -590,17 +694,24 @@ function Add-HostMapping
     $contents = Get-Content $file 
     $exists = $false
     foreach($content in $contents){
-        if($content -and (-not($content.StartsWith('#'))) -and ($content.StartsWith($hostname)))
-        {
-            $exists = $true
+        if($content -and (-not($content.StartsWith('#')))) {
+            $uncommentedContent = $content.Split('#')[0].Trim()
+            if($uncommentedContent) {
+                $tokens = $uncommentedContent -split '\s+'
+                if(($tokens.Length -ge 2) -and ($tokens[0] -ieq $ipaddress) -and ($tokens[1] -ieq $hostname)) {
+                    $exists = $true
+                    break
+                }
+            }
         }
     }    
     if($exists){
-        Write-Verbose "Entry '$hostname  $ipaddress' already exists in $file"
+        Write-Verbose "Entry '$ipaddress  $hostname' already exists in $file"
     }else{
-        Write-Verbose "Adding entry '$hostname`t`t$ipaddress' to $file"
+        Write-Verbose "Adding entry '$ipaddress`t`t$hostname' to $file"
         Add-Content -Value "" -Path $file -Force  # Add a new line
-        Add-Content -Value "$hostname`t`t$ipaddress`t`t# $hostname" -Path $file -Force
+        Add-Content -Value "$ipaddress`t`t$hostname`t`t# $hostname" -Path $file -Force
+        $returnValue = $true
     }
     $returnValue
 }
@@ -613,18 +724,7 @@ function Get-ConfiguredHostName
     )
 
     $File = Join-Path $InstallDir 'framework\etc\hostname.properties'
-    $HostName = $null
-    if(Test-Path $File) {
-        Get-Content $File | ForEach-Object {
-            if($_ -and $_.StartsWith('hostname')){
-                $Splits = $_.Split('=')
-                if($Splits.Length -gt 1){
-                    $HostName = $Splits[1].Trim()
-                }
-            }
-        }
-    }
-    $HostName
+    Get-PropertyFromPropertiesFile -PropertiesFilePath $File -PropertyName 'hostname'
 }
 
 function Set-ConfiguredHostName
@@ -638,34 +738,8 @@ function Set-ConfiguredHostName
         [string]$HostName
     )
 
-    $Changed = $false
-    $File = Join-Path $InstallDir 'framework\etc\hostname.properties'    
-    $Lines = @()
-    $Exists = $false
-    if(Test-Path $File) {
-        Get-Content $File | ForEach-Object {
-            $Line = $_
-            if($_ -and $_.StartsWith('hostname')){
-                $Line = "hostname=$($HostName)"
-                $Splits = $_.Split('=')
-                if(($Splits.Length -gt 1) -and ($Splits[1].Trim() -ieq $HostName)){
-                    $Exists = $true
-                    Write-Verbose "Host entry for $HostName already exists"
-                }
-            }else {
-                $Lines += $Line
-            }
-        }
-        if(-not($Exists)) { $Lines += "hostname=$($HostName)" }
-    }else{
-        $Lines += "hostname=$($HostName)"
-    }
-    if(-not($Exists)) {
-        Write-Verbose "Adding entry $HostName to $File"
-        $Changed = $true
-        Set-Content -Path $File -Value $Lines
-    }
-    $Changed
+    $File = Join-Path $InstallDir 'framework\etc\hostname.properties'
+    Set-PropertyFromPropertiesFile -PropertiesFilePath $File -PropertyName 'hostname' -PropertyValue $HostName
 }
 
 
@@ -677,18 +751,7 @@ function Get-ConfiguredHostIdentifier
     )
 
     $File = Join-Path $InstallDir 'framework\etc\hostidentifier.properties'
-    $HostIdentifier = $null
-    if(Test-Path $File) {
-        Get-Content $File | ForEach-Object {
-            if($_ -and $_.StartsWith('hostidentifier')){
-                $Splits = $_.Split('=')
-                if($Splits.Length -gt 1){
-                    $HostIdentifier = $Splits[1].Trim()
-                }
-            }
-        }
-    }
-    $HostIdentifier
+    Get-PropertyFromPropertiesFile -PropertiesFilePath $File -PropertyName 'hostidentifier'
 }
 
 function Get-ConfiguredHostIdentifierType
@@ -699,18 +762,7 @@ function Get-ConfiguredHostIdentifierType
     )
 
     $File = Join-Path $InstallDir 'framework\etc\hostidentifier.properties'
-    $HostIdentifier = $null
-    if(Test-Path $File) {
-        Get-Content $File | ForEach-Object {
-            if($_ -and $_.StartsWith('preferredidentifier')){
-                $Splits = $_.Split('=')
-                if($Splits.Length -gt 1){
-                    $HostIdentifier = $Splits[1].Trim()
-                }
-            }
-        }
-    }
-    $HostIdentifier
+    Get-PropertyFromPropertiesFile -PropertiesFilePath $File -PropertyName 'preferredidentifier'
 }
 
 function Set-ConfiguredHostIdentifier
@@ -727,52 +779,11 @@ function Set-ConfiguredHostIdentifier
         [string]$HostIdentifierType = 'hostname'
     )
 
-    $Changed = $false
-    $File = Join-Path $InstallDir 'framework\etc\hostidentifier.properties'    
-    $Lines = @()
-    $HostIdExists = $false
-    $HostIdTypeExists = $false
-    $HostIdChanged = $true
-    $HostIdTypeChanged = $true
-    if(Test-Path $File) {
-        Get-Content $File | ForEach-Object {
-            $Line = $_            
-            if($Line -and ($Line.StartsWith('hostidentifier') -or $Line.StartsWith('#hostidentifier'))) {                
-                $Line = "hostidentifier=$($HostIdentifier)"
-                if(-not($_.StartsWith('#'))) {
-                    $Splits = $_.Split('=')
-                    if(($Splits.Length -gt 1) -and ($Splits[1].Trim() -ieq $HostIdentifier)){
-                        $HostIdChanged = $false
-                        Write-Verbose "Host entry for $HostIdentifier already exists"                    
-                    }
-                }
-                $HostIdExists = $true
-            }
-            elseif($Line -and ($Line.StartsWith('preferredidentifier') -or $Line.StartsWith('#preferredidentifier'))) {
-                $Line = "preferredidentifier=$($HostIdentifierType)"
-                if(-not($_.StartsWith('#'))) {
-                    $Splits = $_.Split('=')
-                    if(($Splits.Length -gt 1) -and ($Splits[1].Trim() -ieq $HostIdentifierType)){
-                        $HostIdTypeChanged = $false
-                        Write-Verbose "Host identifier type entry for $HostIdentifierType already exists"
-                    }
-                }
-                $HostIdTypeExists = $true
-            }
-            $Lines += $Line
-        }
-        if(-not($HostIdExists)) { $Lines += "hostidentifier=$($HostIdentifier)" }
-        if(-not($HostIdTypeExists)) { $Lines += "preferredidentifier=$($HostIdentifierType)" }
-    }else{
-        $Lines += "hostidentifier=$($HostName)"
-        $Lines += "preferredidentifier=$($HostIdentifierType)" 
-    }
-    if((-not($HostIdExists)) -or (-not($HostIdTypeExists)) -or $HostIdChanged -or $HostIdTypeChanged) {
-        Write-Verbose "Adding/modifying entry $HostIdentifier or identifier type $HostIdentifierType to $File"
-        $Changed = $true
-        Set-Content -Path $File -Value $Lines
-    }
-    $Changed
+    $File = Join-Path $InstallDir 'framework\etc\hostidentifier.properties'
+    $HostIdentifierChanged = Set-PropertyFromPropertiesFile -PropertiesFilePath $File -PropertyName 'hostidentifier' -PropertyValue $HostIdentifier
+    $HostIdentifierTypeChanged = Set-PropertyFromPropertiesFile -PropertiesFilePath $File -PropertyName 'preferredidentifier' -PropertyValue $HostIdentifierType
+
+    ($HostIdentifierChanged -or $HostIdentifierTypeChanged)
 }
 
 function Get-ArcGISProductName
@@ -784,7 +795,7 @@ function Get-ArcGISProductName
 		[System.String]
 		$Name,
 
-		[parameter(Mandatory = $false)]
+        [parameter(Mandatory = $false)]
 		[System.String]
 		$Version
     )
@@ -850,10 +861,21 @@ function Get-ArcGISProductName
         $ProductName = "ArcGIS Data Pipelines Server"
     }elseif($Name -ieq 'RealityServer'){
         $ProductName = "ArcGIS Reality Server Runtime"
+    }elseif($Name -ieq 'VelocityServer'){
+        $ProductName = "ArcGIS Velocity for ArcGIS Enterprise"
+        if(-not([string]::IsNullOrEmpty($Version))){
+            $ProductName = "ArcGIS Velocity for ArcGIS Enterprise $($Version)"
+        }
     }elseif($Name -ieq 'Monitor'){
         $ProductName = "ArcGIS Monitor Server"
     }elseif($Name -ieq 'MonitorAgent'){
         $ProductName = "ArcGIS Monitor Agent"
+    }elseif($Name -ieq 'ServerCoordinateSystemsData'){
+        $ProductName = "ArcGIS Coordinate Systems Data"
+    }elseif($Name -ieq 'ServerRasterData'){
+        $ProductName = "ArcGIS Raster Data"
+    }elseif($Name -ieq 'ServerDJI'){
+        $ProductName = "DJI Camera Support for ArcGIS Server"
     }
     
     $ProductName
@@ -864,12 +886,12 @@ function Get-ComponentCode
        [CmdletBinding()]
        param
        (
-        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","Monitor", "MonitorAgent","WebStyles", "WebAdaptorIIS", "WebAdaptorJava","Pro","LicenseManager","NotebookServerSamplesData","ServerDataInteroperability","ProDataInteroperability","ServerDataReviewer","ServerWorkflowManagerClassic","ProWorkflowMangerClassic","ServerMappingChartingSolution","VideoServer","ServerDeepLearningLibraries","ProDeepLearningLibraries","GeoenrichmentServer","DataPipelinesServer","RealityServer")]
+        [ValidateSet("Server","Portal","DataStore","GeoEvent","NotebookServer","MissionServer","WorkflowManagerServer","Monitor", "MonitorAgent","WebStyles", "WebAdaptorIIS", "WebAdaptorJava","Pro","LicenseManager","NotebookServerSamplesData","ServerDataInteroperability","ProDataInteroperability","ServerDataReviewer","ServerWorkflowManagerClassic","ProWorkflowMangerClassic","ServerMappingChartingSolution","VideoServer","ServerDeepLearningLibraries","ProDeepLearningLibraries","VelocityServer","GeoenrichmentServer","DataPipelinesServer","RealityServer","ServerCoordinateSystemsData","ServerRasterData","ServerDJI")]
         [parameter(Mandatory = $true)]
         [System.String]
         $ComponentName,
 
-        [ValidateSet("3.2","3.3","3.4","3.5","3.6","3.7","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0","2020.1","2021.0","2022.0","2021.1","2022.1","2023.0","2024.0","2024.1","2025.0","2025.0.1","2025.1","2025.1.1","10.9.1","11.0","11.1","11.2","11.3","11.4","11.5","12.0","12.1")]
+        [ValidateSet("3.2","3.3","3.4","3.5","3.6","3.7","3.8","2018.0","2018.1","2019.0","2019.1","2019.2","2020.0","2020.1","2021.0","2022.0","2021.1","2022.1","2023.0","2024.0","2024.1","2025.0","2025.0.1","2025.1","2025.1.1","10.9.1","11.0","11.1","11.2","11.3","11.4","11.5","12.0","12.1","12.2","1.0.1014")]
         [parameter(Mandatory = $true)]
         [System.String]
         $Version
@@ -886,6 +908,7 @@ function Get-ComponentCode
             '11.5' = 'BBFCF183-6CB3-409F-A855-21D48C5F079B'
             '12.0' = '97DB2F11-2C92-41DF-9C6D-F71648CD2AC9'
             '12.1' = '93056F2C-C97C-4958-B79E-92E9873F8C61'
+            '12.2' = 'DC0B22C6-16E1-45AF-83C3-B3FF23AE0EB5'
         }
         Portal = @{      
             '10.9.1' = 'B5C5195E-2446-45F9-B49E-CC0E1C358E7C'
@@ -897,6 +920,7 @@ function Get-ComponentCode
             '11.5' = '366A0EAF-7974-4EA3-9A43-74D76FB77C47'
             '12.0' = 'C898DDF9-D6BE-45DF-9A10-3263660BB39F'
             '12.1' = 'B089C99B-8570-40E1-88C0-EF86CA36E536'
+            '12.2' = '596CA60F-47FA-44CF-8859-5005A9753388'
         }
         WebStyles = @{ 
             '10.9.1' = '2E63599E-08C2-4401-8FD7-95AAA64EA087'
@@ -908,6 +932,7 @@ function Get-ComponentCode
             '11.5' = '58668668-FCF9-400D-B3DF-24A3E0417C00'
             '12.0' = 'A31A5861-3957-46E3-9166-56D297C0309E'
             '12.1' = '44120188-FA74-4E39-8691-68C7C4C9A25C'
+            '12.2' = 'F02B76E4-6268-4E15-A7C1-61DB9F14B266'
         }
         DataStore = @{             
             '10.9.1' = '30BB3697-7815-406B-8F0C-EAAFB723AA97'
@@ -919,6 +944,7 @@ function Get-ComponentCode
             '11.5' = '622B3833-6239-4857-96D5-4294D1E85F94'
             '12.0' = 'E62C9D19-53FE-45C2-B9C5-C86C7C703B8F'
             '12.1' = '0D10FFF3-8380-4E15-952E-DC031EB3940D'
+            '12.2' = '77F35A08-D726-431E-9200-961CBF300868'
         }        
         GeoEvent = @{             
             '10.9.1' = 'F5C3D729-0B74-419D-9154-D05C63606A94'
@@ -930,6 +956,7 @@ function Get-ComponentCode
             '11.5' = 'C8BA52B6-38E6-484E-BEC6-61A28EBC6CB8'
             '12.0' = '92BEF07A-3250-4276-BCDE-1D66F26160CE'
             '12.1' = 'C57000DE-175A-4305-B948-94B53A6E3B86'
+            '12.2' = 'EDC4FA6E-9890-464A-AD27-95D28174C653'
         }
         NotebookServer = @{
             '10.9.1' = '39DA210D-DE33-4223-8268-F81D2674B501'
@@ -941,6 +968,7 @@ function Get-ComponentCode
             '11.5' = 'C9AB6062-B63C-4745-AB1F-2532D594379F'
             '12.0' = '42B859BB-95D1-4778-B2A7-991F3DD812E1'
             '12.1' = 'E3307F5C-C424-45A9-8B2D-8950B9700B74'
+            '12.2' = 'E2F78117-5B53-425F-A3FD-DADE534E3D5A'
         }
         NotebookServerSamplesData = @{
             '10.9.1' = '02AB631F-4427-4426-B515-8895F9315D22'
@@ -959,6 +987,7 @@ function Get-ComponentCode
             '11.5' = 'F0FEE17E-2CB7-4C42-B091-5E8AC7945666'
             '12.0' = '16AF7BDF-E692-4490-A3F6-1F41812CF155'
             '12.1' = 'E116D18B-4CB4-4E16-8EA5-CDD2CCA67DF4'
+            '12.2' = '261B895A-DFD5-425A-9F37-5E8BB70D3EF3'
         }
         VideoServer = @{
             '11.2' = 'D68D1CBB-990B-4F5B-916A-A7B89EE33716'
@@ -967,6 +996,7 @@ function Get-ComponentCode
             '11.5' = 'BCA8F7A7-9A65-4E66-A007-83C0D3EF73A6'
             '12.0' = 'A08F57C3-0681-4D57-AEE8-51BB55ABA32D'
             '12.1' = '691DD84E-B01A-4341-888B-6B941F671E6E'
+            '12.2' = '174BC304-199D-47FE-8AFF-D6A75E9C5477'
         }
         WorkflowManagerServer = @{
             '10.9.1' = '9EF4FCC5-64EE-4719-B050-41E5AB85857B'
@@ -978,8 +1008,8 @@ function Get-ComponentCode
             '11.5' = 'A5C18498-DEF3-44DD-8DE6-8E6C1653CC66'
             '12.0' = '3E93DBCD-2ECB-4E88-BD1E-3456D5FAD070'
             '12.1' = 'CF66FDBC-FBF0-4593-8222-172328452A77'
+            '12.2' = 'E748ED42-3599-46F4-AF61-05A0C4F5B872'
         }
-        
         Monitor = @{
             '2025.0' = '99F8BE63-2E0F-40D8-9059-350E727360A7'
             '2025.0.1' = '7E3F85BA-A4EB-4FBE-B242-0F5F60AF9E29'
@@ -1016,6 +1046,7 @@ function Get-ComponentCode
             '3.5' = '6AB7A2E6-6E45-4A2D-8E88-6B0856B4CB48'
             '3.6' = '302EF432-616C-4281-94F6-D53E290D0F77'
             '3.7' = 'E56D931B-27A0-4C1D-87F8-AFCDCD21A653'
+            '3.8' = '99FA33F5-A747-442F-9D27-AF352BFDC57B'
         }
         WebAdaptorIIS = @{
             '10.9.1' = @('BC399DA9-62A6-4978-9B75-32F46D3737F7', 'F48C3ABF-AF5F-4326-9876-E748DB244DB7','AC4AD5BF-E0B4-4EE6-838E-93EE66D986EF', 'F96ECEFD-2015-4275-B15D-363F53407390','21B1638E-47E7-4147-B739-EB341F99986F', '78ABEA6E-4832-4087-B7BB-04746D1E83E8','A624163D-A110-4959-BD82-98CB7CE6ECBE', '7A6E0537-43A2-4925-8F8A-E19715B21392','4AE1AE3D-2471-4393-B0D9-ECB4D1368EB9', 'C72DE321-E19C-4737-9513-AE39B1A32953','49F98C43-955D-4BD8-A585-07BA45D72D0A', '5DD68937-54F9-4015-A8DA-4602AFCA8986','D3C16E17-DAB1-4025-A029-46C7598DCA4A', 'A2CBD39F-C2DE-4983-9C70-7F108B52F402','CA174887-E7C6-4DE9-8797-72CBD7FC4B1C', 'B658575F-82ED-49BE-980C-D4A5089FCA7A','CBEE526A-29B6-46FE-B7F8-B930A785CFF8', '76618450-9F2C-4FCC-9CDA-01A61F9E1953','17591EF3-221C-4DD1-B773-6C9617925B5F','566920BF-1EF3-4E62-B2BF-029475E35AAB','4A3B27C6-7CB1-4DE8-BCB1-221B9A23E2E1')
@@ -1027,6 +1058,7 @@ function Get-ComponentCode
             '11.5' = @('B87FD5D1-7ED0-424B-8A79-CE4B231CF085','A944DC16-D9B0-4FEC-AAFB-9CC9D5D45414','CACEC5F2-E484-40E5-BC3E-D82A19554E40','EC659D96-A962-4F04-AF02-42CDD3CC8C6A','7D357A92-E949-4322-95D5-6EB58640C078','4782E831-37C1-4B83-B975-9D0E0F373135','CC3694A7-F3EC-4358-9F06-DD1D2EBC4B1D','BD0A6A4E-4B75-48E9-8ABF-9774E7960CAB','43E50FE3-F1E4-416C-924D-9604296C2090','276501DB-F08D-4489-BF02-D12430E7BB5C','BE613B94-61AF-4B48-A0CA-DDCB134CE9CA','F3D1F822-9CE3-46CE-8ACA-8CFD737F6604','155FF541-DB93-49F4-BB01-B5495F707807','5A969923-9741-4FA9-81AB-13B776DFF16E','BFBAA84A-008F-493F-B6D3-EC12AD4C57BD','72A84420-32D8-462F-968B-92F25B02D73C','F048814A-3140-461F-A399-13F234344AF0','ADD92D5D-540E-4532-AB53-DA19D76FFBE2','E594184E-A395-49AB-860F-6EA29C50423F','F2C56B3D-BA68-413F-9916-C2CDCEDD9C7E','7ADDF6BE-4277-4814-A31C-DF36D0ADE5E3','362763DC-B9B5-46E8-80AB-17C082646B2A','A3B15EFA-172D-40EF-B5B9-382777992697','83C7DEB5-C160-4520-9F45-1B2C1A55B5C0','A0B36D8D-9551-4EDA-974E-9ED1CEC5151A','AAD36199-6837-4865-8692-02BA825874B7','DD14E295-6798-407E-A5A0-870C8341577E','E25BD1CE-3A98-4833-B021-E5F1FB613F21','5118D9DB-543E-45EA-AE06-08A0A67143A1','DCBFF94C-763C-4F36-A10C-2AFD9A335334','DD063BF3-0D8E-4E58-B295-C48827E13893','59062D7E-E4E7-4567-9634-4E51F42D6BCA','C26ABB80-29AF-4328-834E-A3C0ECF298B4','0654FE83-95A5-481E-B5B2-61A3FEDFA5C4','77EE6E4F-5A1D-4DBB-9688-027DA4DF3BAB','2558441D-97F6-419A-9AF9-A0F4D56C1AC4','468A6A59-C347-4B59-952F-697390488CE3','003BAC29-91FE-4185-A90B-945F82847E67','817458AC-05F3-4A68-AD26-A6E894EAECD5','5C2E1A0C-B17C-4CA0-B230-4934C4AD11CF','CE3DAA74-A08E-46B1-B963-8552A486F9C2','2EBA8AD2-0DA0-4143-B878-9FD1303635A3','CD758D69-D265-4053-A62F-AF4525F61BD5','709E6312-B1F0-48A6-8347-5186CDF5AD07','2CB5A7D6-51DA-4CD1-ADF9-4F7036E8D36B','9A94211B-33E6-4311-9B0D-3CD1BBCEE423','73E65AC0-BE55-4BDC-8586-9CC9634C692D','513D8FE8-4999-4D9C-98A4-03F9EBC5B50C','777F527D-2D43-4430-8E8F-A93B71FA1C4D','C74184F9-8D73-4F9A-8C47-187F28B9A92A','6FA4997E-158E-4A9B-A093-7473A259500E')
             '12.0' = @('BB194DE8-F519-4660-837F-B6AAA3650DEB','2F6059F3-08E0-45D6-B75E-D99A26F46923','7C748A51-F096-4886-B7DB-A8F1D09AF36B','A6571CB2-ED32-4406-99DE-1115CC67A159','532FC0CE-63C1-4AC0-823E-C11DEBCB014D','135DE6D2-F950-4502-8A3F-207590E63385','A7B6D59B-E59C-4799-9793-1E062FE57C4C','4C04F842-BF8B-4789-8FDC-092767AC09A7','49530C4D-F9E1-4AB1-9386-0ADA92BBE99B','1FF4D167-C240-48BC-961A-F819EB364283','AE371E47-D666-41D7-ABD2-06304FAC2CE1','CC85E3D7-FBEB-417A-B94B-83721721144D','319AFA39-5272-4944-A4DA-FACFB484737B','1B923CCF-53C3-49BF-99D0-B8A0D4AFF648','B023628D-AC80-425B-A052-BCD26AD5A547','3650EF99-D4A5-4A8F-AA28-09935A66EBFA','0033A180-F240-422A-B1A7-9F4FEDD8B20E','FF312ADC-BDEB-4AF7-9B27-CE849400D4CB','FF480938-7A92-438E-B634-E46B747FA4AA','D965B597-02B4-4BAD-B7B5-2C8780BEDCAC','C259A6BB-BF51-4793-A77B-359B5A9D274E','B0868301-627D-4A6B-A301-5C9FC120418E','578A334A-F1D4-4846-B6FE-9B6087FC4DC1','8E07BB12-EC11-4477-AC15-EB93A39AA736','25689A35-9378-4A80-B5C9-CB5723732D0F','6F484488-A8EA-4483-9700-EA173C86DE5F','F89A57CE-6340-4549-8893-85B86A3315C9','01BB8344-7A5D-4204-B046-B8FC5B1EB1AF','C829C6CE-2239-4B9F-97ED-8B93CE13006E','B294CD04-C562-4C42-A3D0-A3F353F58352','B0D9C28E-26A2-4362-9FE3-1504BF92C204','C3FE2DBA-83B6-40B4-954E-4733FF7F4C0C','07F81319-C8A9-4A73-87FE-6C3FFEEE187A','4CC28D62-8260-4537-9E6D-578432579EA6','11517C11-A569-42DF-A109-35ED8A383215','8501FB6A-2543-4857-8C68-F59EB83A5F14','09542E0F-0313-4249-9970-7CEB90902D2A','095279E6-82B0-4915-93C1-B0B3F7491BB5','B698BDD0-DC3E-41B0-B1D5-566B522EDD4F','DCE0A9CB-20E5-46F7-8A89-DA9DAC1658EF','1AF687D6-A15F-4AC1-A5B8-202BEF43AA92','D38DC6CD-7D57-477E-B5B4-CB3A704654C8','0CCFF04D-8F0A-45FC-B326-A6A3D2E828B0','BF863CEF-1BE9-40F6-976B-680D502F9C0F','9BC57233-80DA-4EAD-96D1-ED07FDCD602B','C68E9488-FD2B-426D-B431-48EACEF2D8CE','58EB33C9-5156-406D-81EE-B9B20603FEAA','4D4A68E7-56E0-43E0-94DF-B18CBAB9E205','4350A88A-9027-40C1-91CA-0D9235BE4042','1F78C428-AC73-4858-A4D2-FCEB3123F156','B2E5F1AB-51EB-492D-BF61-A43002F7F8D2')
             '12.1' = @('3EBF5B44-4B62-4E7D-ADF8-2F1BE4419867','10E702C4-5461-45C2-9BF7-0E4861D4CB15','CFEF5F3A-9B91-4124-8863-C724282F3DD1','37E9E565-596E-4C47-8319-A57E404988A0','6F91314C-BC9A-4AF9-94B7-1F12FB68BB09','B978AEF5-56CC-4D75-A8A5-72369B307F0C','4B83513E-4505-436C-A0ED-6AAAE100CEB6','2A880BAB-A224-4EDC-A575-713C89FFE307','7B13AAB0-EA92-43B7-B911-143C020946C0','909A3A6D-E97B-4C18-9E28-4BC670868EB4','53ED8318-CBCB-4E58-8BD4-757DF2F72514','2A394041-E353-478A-9C95-427537B383BF','53DB779D-9705-4C83-A09B-E047171BC780','F8252420-C71B-476D-B190-E291159087FB','C334CDA9-D6E6-4E10-BFD9-D3E69D815F20','E6BE03C5-E4C9-4E4D-B1D1-481FBF0DE00D','73C3EA6E-07E6-484C-8B37-9999498F2E6D','3782A1E6-DADF-4629-A8C1-897D0D7C4D2C','3CC697B6-50CD-4DB0-A775-91A50E601ABE','51262449-468F-4F31-AE23-58CFA276BCF6','18F949CD-2887-482D-BE7F-11E0797AFB1F','D917129E-84D7-4965-8C1C-6647FC3C390D','6DC057CC-279C-4B2D-83A2-C6A882D5FC7E','BAF5DFA6-930F-4726-B9F2-41E2D8BDA98F','A54A42A1-3DF1-49FC-809B-A3CFB97C563C','08869055-8E45-47D1-BE1A-E0E7EE21D139','9A6D4A47-09D6-43E3-A66E-397599052291','88EF3E0B-744A-4D12-AA78-51C97A785B25','B8EBCC18-FDD7-454B-A1A2-DC1BA36C1D72','DC686101-411F-424D-BBBA-63ADED7880AE','3FFA65CF-5696-4726-9F68-F8CF4B616434','B2E56531-2941-4614-AD12-91F0B2DD07FB','181C90B1-BDDD-4DA3-BD45-5D8BC3603D41','95A27070-2B74-4DE6-9A1D-C02FB0AB2D49','264541CF-FDAF-410C-9D64-0E745A2CBF30','448D6332-B41F-4A9D-852B-484FFE5875EC','B9EC1A0B-E377-4EE5-99F5-2B93E13A6D9F','7060272F-2AEB-4569-9E90-2DAD0D3C520B','B2594ED6-2F00-4DB0-932B-D04D422DAF36','71ECBE5D-7995-48DE-833A-2E05535550F8','0E70B283-6622-4E05-889C-6952678CBDDE','799C961D-A5FF-4F8F-AABE-27F654D13339','5DDEEFB0-0C4C-483D-8AD3-0425981D4B97','4C4C8FA0-1DDA-4E17-8A8E-6B4D3E12BED7','DFE77477-1106-4784-91C3-7DA5436CC8B3','A73584A8-8AF4-4C5A-A3B9-4CACCCF0E5ED','C58E3698-6DF3-419C-A1D6-0F9A90114805','2E7F4E14-11A2-4963-A24D-949107B404C2','5C560E1E-6266-41F8-B76F-B1296A48815F','E664E225-7F7D-4B03-9218-0F64AFD57E95','B0E93D95-F062-40F5-8863-0FA4863C0033','852703F7-78E1-4F00-BCC0-FF98D8A39E7B','01B6CA84-23DF-47BD-8093-7536AC0C9776')
+            '12.2' = @('A93851DE-025A-41D7-9E55-14ED8E3C1ECF','EEF7C457-C42B-49AA-97AC-E751B15528B1','9BF760D9-F6FB-48B6-BAB6-F1475674CDC9','67237C4B-A7B2-450D-9FAD-4DE3F26B68A6','F6003E62-66E4-402C-B259-2119EED26E63','CE2BDBA6-6BE3-4312-946E-E6D0BEF09F4A','95B13CBF-D068-4EEB-AE93-879C6FDFF48C','DCC6D353-F0ED-4E00-BC47-AF5F9A48E847','46033004-0BBF-4B71-8D2A-17165CB832C3','ABA1B021-2BAD-4B33-B1CB-470C9F7143B1','DF81589A-71C1-4E81-9CDE-E63B255FCA2E','7EE494DB-B9CF-407B-B318-44051E7775D6','F26E8118-4263-4351-94F6-68796D85A280','19A2B9A5-029D-4CE4-958F-B4FBB3192761','FFA94945-9C86-43EB-BBCF-1AA92BF0A22B','660952FC-E54B-47E7-BC97-FA92D58CA71A','A3E1A47D-08AA-495B-A46B-AE2D45B2EC1A','7A0F59A7-7F3E-48EF-9EA7-4A969598FB98','0DF0991D-8C22-4DB0-9026-EE54F9737487','27A8B402-950C-43D7-AF9A-1EC70B150627','01BCD1CC-81BE-498B-B6CF-2C72956C8DB4','0076F206-A293-4506-9DF7-523392C450CF','883FF7AB-9BE2-44C0-B662-E82A148DB09C','4EE2382D-DA30-4911-9C05-AB9C6AB052A0','F8788A81-107A-45B1-AD87-032752A70046','224CD3D3-91EC-4962-9F3F-1B10DCA1E1CF','4DFC90EB-8CB4-4DE0-85E2-006BD5FE94CD','73EB7177-A74E-4273-9083-B9296E0A75A6','0815659D-DB7F-44B9-B918-7A4622F892D1','990D2D04-87E8-4AE5-BEF2-C2E84555C7DF','A2FF665E-EED6-4BE5-8169-CC8380D172CA','B45EAC88-899B-4AD2-9E57-B11431AEA856','5EBE9597-3BDB-4C6A-84E1-1C41C7D0472D','25A57B34-4753-40D0-AE62-779686C9B69C','7D9AD781-E7D3-4815-B42E-FE47B01E7221','84898B53-620A-4801-AB63-3BB25B3637FE','ADF296B7-FC71-4216-948B-266A16608ECA','35E5CD68-E7F4-4FD5-A66E-7E875AE18C3D','A3571C0A-1465-4C53-B7A9-3874999E8391','C5EE0A62-867A-49B9-B18A-8469EFFF03C6','90702AAE-475E-4735-8569-44AFF8C36C4D','7B8B43FB-BEF3-41E5-B17F-4EF6FDFF8006','4CAD205D-F494-48E9-A984-1A2CBE9CE3EF','706ED804-C8B7-4453-AF48-A4C0D629BCBE','3F67E94C-D741-4062-B377-E44799A1D377','50465361-13EB-400A-810C-2E50C355AF4D','6126EF79-2D1F-4E00-9746-07E726B53096','7E8DB7F6-E6DE-4678-841E-90F706579AC8','98C7ED8D-A5FD-4001-B928-AB875E2C66A1','B9E39316-4A5C-40EC-9C14-5C61E85A7989','D13F5141-84DA-4E10-B3C2-C9FC8C1BA06F')
         }
         WebAdaptorJava = @{
             '10.9.1' = 'B9138950-F155-4754-9510-678B2B523A35'
@@ -1038,6 +1070,7 @@ function Get-ComponentCode
             '11.5' = 'F56388CB-22AF-429E-A878-81CC8F072217'
             '12.0' = '74A17026-AB8D-45DD-949F-5A05F8AF0B39'
             '12.1' = 'E78D347D-E22D-40DE-B182-E4A9A78FB97C'
+            '12.2' = 'AE061A79-DE73-43B7-A1B9-AAAAB8E43D86'
         }
         ServerDataInteroperability = @{
             '10.9.1' = '26A934BC-212C-4F90-8DFF-9900437D303B'
@@ -1049,6 +1082,7 @@ function Get-ComponentCode
             '11.5' = 'C70F9A21-95A4-4908-BA87-FDCD8F2F26EB'
             '12.0' = '9E052075-3EFB-4565-9186-D263F0A69A54'
             '12.1' = 'D7633151-A3F5-497D-8D88-160262735F43'
+            '12.2' = '44FD3877-0396-44A1-89A6-E7C61ED9319B'
         }
         ProDataInteroperability = @{
             '3.2' = '7FFFFCBC-0C97-4B5A-9A5D-74A79D0C43AF'
@@ -1057,6 +1091,7 @@ function Get-ComponentCode
             '3.5' = '50DC0AD9-A7DB-4093-ADD1-78A12841873D'
             '3.6' = 'C1BC0512-8B35-4229-AB23-373509FEBAFC'
             '3.7' = '1AB8880E-529C-4438-9B1F-269648AD825A'
+            '3.8' = '7B60525F-0323-4741-8F47-1ED0863A24E8'
         }
         ServerDataReviewer = @{
             '10.9.1' = '907233F9-A534-4483-AB2A-1EA0E7328BE3'
@@ -1075,6 +1110,7 @@ function Get-ComponentCode
             '11.5' = '589C31AD-BF06-479D-999D-790D83BA52E3'
             '12.0' = 'C81ECAAA-4FCA-4721-91F1-6E113E320871'
             '12.1' = 'D3939715-2ADB-414F-B2E4-A3DADD159C69'
+            '12.2' = '5068EFEC-A439-41AA-90D5-18CF07272C38'
         }
         ServerDeepLearningLibraries = @{
             '11.0' = '23FC1804-7B41-4271-8734-8C78C9B8CEF9' 
@@ -1085,6 +1121,7 @@ function Get-ComponentCode
             '11.5' = 'AC41FE87-D271-49B9-8918-ABA9ADB06F30'
             '12.0' = '9284C916-FDFD-4F16-856D-AD1B797467B2'
             '12.1' = '9C38A28D-70CA-4A3F-8C3D-CD80BF815233'
+            '12.2' = '5F6CAC9B-66AC-4402-93EE-E9FE87711346'
         }
         ProDeepLearningLibraries = @{
             '3.2' = '713C97D1-F666-4EFE-A370-718646B23459'
@@ -1093,14 +1130,17 @@ function Get-ComponentCode
             '3.5' = '0354AE95-2315-47B6-A8C4-2B694220785A'
             '3.6' = 'AAB2647E-C7EE-4FFB-81D2-54BF1F070941'
             '3.7' = '3E61D7ED-F500-4E1C-8772-97D45DDC4A08'
+            '3.8' = '0E0CBF86-92FB-4345-A22D-49F672905776'
         }
         RealityServer = @{
             '12.0' = 'CC32EDFF-F1D4-4232-8494-BC87BBC6F146'
             '12.1' = '192D2EE4-71D4-4A91-8D74-D1E18926F1BC'
+            '12.2' = '194BB795-ADF3-4873-9181-270004049C5D'
         }
         DataPipelinesServer = @{
             '12.0' = 'C12E5DB8-9886-4089-89FB-652E6CAFE043'
             '12.1' = '47592468-38F3-4920-A2E1-C60B898933EF'
+            '12.2' = '3DF24A17-1E43-483A-B093-B3807E0990D1'
         }
         GeoenrichmentServer = @{
             '11.3' = 'B2755F3D-5798-417D-AD2B-B30382E38D45'
@@ -1108,6 +1148,21 @@ function Get-ComponentCode
             '11.5' = 'E8221CA6-05A1-4D4F-8BE2-43CB5E22FD9A'
             '12.0' = '4C13A8B7-0E7F-4077-A755-3E28358E363D'
             '12.1' = 'E893462F-32E2-427C-B558-0AC852F2C8E1'
+            '12.2' = '6FDD1B9F-2424-479C-9FD8-C96218970AE5'
+        }
+        VelocityServer = @{
+            '12.1' = '86AA5664-C755-432B-94C4-C6C15D9005A6'
+            '12.2' = '7CB31E0D-75DB-473B-9DA0-8213E3B14267'
+        }
+        ServerCoordinateSystemsData = @{
+            '12.1' = '530E6B47-61C8-4B76-BB52-BAD2102A5461'
+            '12.2' = '5660A05E-61BA-41B5-8F6C-09858C844F1C'
+        }
+        ServerRasterData = @{
+            '1.0.1014' = '39B4BD05-8981-45B2-8577-039C19499EA0'
+        }
+        ServerDJI = @{
+            '12.2' = '1C79CC85-1A27-4440-83EF-3324C17F6A80'
         }
     }
     $ProductCodes[$ComponentName][$Version]    
@@ -1337,6 +1392,10 @@ function Test-ArcGISComponentHealth{
             $AdditionalHealthCheckURL = "$($BaseURL)/admin" # Only for admin?/hea
             break
         }
+        {@('VelocityServer') -icontains $_} { 
+            $HealthCheckURL = "$($BaseURL)/rest/info?f=json"
+            break
+        }
         'ServerAdmin' { 
             $HealthCheckURL = "$($BaseURL)/admin" # Only for admin?
             break
@@ -1353,6 +1412,272 @@ function Test-ArcGISComponentHealth{
     Wait-ForUrl -Url $HealthCheckURL -MaxWaitTimeInSeconds $MaxWaitTimeInSeconds -SleepTimeInSeconds $SleepTimeInSeconds -HttpMethod $HttpMethod -MaximumRedirection $MaximumRedirection -RequestTimeoutInSeconds $RequestTimeoutInSeconds -ThrowErrors $ThrowErrors -IsWebAdaptor $IsWebAdaptor -Verbose
     if(-not([string]::IsNullOrEmpty($AdditionalHealthCheckURL))){
         Wait-ForUrl -Url $AdditionalHealthCheckURL -MaxWaitTimeInSeconds $MaxWaitTimeInSeconds -SleepTimeInSeconds $SleepTimeInSeconds -HttpMethod $HttpMethod -MaximumRedirection $MaximumRedirection -RequestTimeoutInSeconds $RequestTimeoutInSeconds -ThrowErrors $ThrowErrors -IsWebAdaptor $IsWebAdaptor -Verbose
+    }
+}
+
+<#
+    .SYNOPSIS
+        Waits for an ArcGIS component to restart after an update.
+    .DESCRIPTION
+        Polls for unavailability, then waits for the component to become healthy.
+        Recovery is checked even if no downtime is observed within the restart wait.
+        This function does not initiate a restart.
+    .PARAMETER RestartComponentName
+        Health-check component used to detect downtime. Defaults to ComponentName,
+        which is always used to check recovery.
+    .PARAMETER RestartSleepTimeInSeconds
+        Polling interval while waiting for downtime. Defaults to ten seconds.
+    .PARAMETER StartupSleepTimeInSeconds
+        Polling interval while waiting for recovery. Defaults to five seconds.
+    .EXAMPLE
+        Wait-ForArcGISComponentRestart -BaseURL $ServerBaseUrl -ComponentName $ServerType -Verbose
+#>
+function Wait-ForArcGISComponentRestart
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $BaseURL,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $ComponentName,
+
+        [ValidateRange(1, 2147483647)]
+        [System.Int32]
+        $MaxRestartWaitTimeInSeconds = 120,
+
+        [ValidateRange(1, 2147483647)]
+        [System.Int32]
+        $MaxStartupWaitTimeInSeconds = 360,
+
+        [Alias('SleepTimeInSeconds')]
+        [ValidateRange(1, 2147483647)]
+        [System.Int32]
+        $RestartSleepTimeInSeconds = 10,
+
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $RestartComponentName = $ComponentName,
+
+        [ValidateRange(1, 2147483647)]
+        [System.Int32]
+        $StartupSleepTimeInSeconds = 5
+    )
+
+    Write-Verbose "Waiting for up to $($MaxRestartWaitTimeInSeconds) seconds for '$($ComponentName)' to restart"
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $Done = $false
+    while((-not($Done)) -and ($stopwatch.Elapsed.TotalSeconds -lt $MaxRestartWaitTimeInSeconds)) {
+        try {
+            Test-ArcGISComponentHealth -BaseURL $BaseURL -ComponentName $RestartComponentName -MaxWaitTimeInSeconds 10 -Verbose -ThrowErrors $true
+            Write-Verbose "'$($ComponentName)' is still available. Trying again in $($RestartSleepTimeInSeconds) seconds"
+            Start-Sleep -Seconds $RestartSleepTimeInSeconds
+        } catch {
+            Write-Verbose "'$($ComponentName)' is likely restarting after an update:- $($_)"
+            $Done = $true
+        }
+    }
+    $stopwatch.Stop()
+
+    Write-Verbose "Waiting up to $($MaxStartupWaitTimeInSeconds) seconds for '$($ComponentName)' endpoint '$($BaseURL)' to come back up"
+    Test-ArcGISComponentHealth -BaseURL $BaseURL -ComponentName $ComponentName -MaxWaitTimeInSeconds $MaxStartupWaitTimeInSeconds -SleepTimeInSeconds $StartupSleepTimeInSeconds -Verbose
+    Write-Verbose "Finished waiting for '$($ComponentName)' endpoint '$($BaseURL)' to come back up"
+}
+
+<#
+    .SYNOPSIS
+        Inspects an HTTPS endpoint certificate without accepting the TLS connection.
+    .DESCRIPTION
+        Opens a fresh connection directly to the URL host and port. Captures the certificate
+        and TLS policy errors, then rejects the handshake without sending HTTP traffic or
+        changing global TLS settings. The caller must dispose the returned Certificate.
+        TLS authentication is synchronous so the PowerShell validation callback executes
+        in the caller's runspace; it must not be changed to asynchronous authentication.
+    .PARAMETER RequestTimeoutInSeconds
+        Bounds the TCP connection wait. The remaining budget sets synchronous TLS read/write
+        timeouts, not a strict overall deadline for the handshake or certificate validation.
+#>
+function Get-ArcGISEndpointCertificate
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Uri]
+        $Url,
+
+        [ValidateRange(1, 2147483)]
+        [System.Int32]
+        $RequestTimeoutInSeconds = 15
+    )
+
+    if(-not($Url.IsAbsoluteUri) -or $Url.Scheme -ine 'https'){
+        throw 'An absolute HTTPS URL is required to inspect an endpoint certificate.'
+    }
+
+    $certificateInfo = @{
+        Certificate = $null
+        Errors = [System.Net.Security.SslPolicyErrors]::None
+    }
+    $validationCallback = [System.Net.Security.RemoteCertificateValidationCallback]{
+        param($sender, $presentedCertificate, $chain, $policyErrors)
+        if($null -ne $presentedCertificate){
+            $certificateInfo.Certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($presentedCertificate)
+        }
+        $certificateInfo.Errors = $policyErrors
+        return $false
+    }.GetNewClosure()
+
+    $client = [System.Net.Sockets.TcpClient]::new()
+    $stream = $null
+    $timeoutMilliseconds = $RequestTimeoutInSeconds * 1000
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $connection = $client.BeginConnect($Url.DnsSafeHost, $Url.Port, $null, $null)
+        $waitHandle = $connection.AsyncWaitHandle
+        try {
+            if(-not($waitHandle.WaitOne($timeoutMilliseconds))){
+                throw [System.TimeoutException]::new('Timed out connecting to the TLS endpoint.')
+            }
+            $client.EndConnect($connection)
+        }
+        finally {
+            $waitHandle.Dispose()
+        }
+
+        $remainingMilliseconds = $timeoutMilliseconds - $stopwatch.ElapsedMilliseconds
+        if($remainingMilliseconds -le 0){
+            throw [System.TimeoutException]::new('Timed out inspecting the endpoint certificate.')
+        }
+        $stream = [System.Net.Security.SslStream]::new($client.GetStream(), $false, $validationCallback)
+        $stream.ReadTimeout = [int]$remainingMilliseconds
+        $stream.WriteTimeout = [int]$remainingMilliseconds
+        try {
+            $stream.AuthenticateAsClient($Url.DnsSafeHost, $null, [System.Security.Authentication.SslProtocols]::Tls12, $false)
+        }
+        catch [System.Security.Authentication.AuthenticationException] {
+            if($null -eq $certificateInfo.Certificate){
+                throw
+            }
+        }
+        catch [System.IO.IOException] {
+            $transportError = $_.Exception.GetBaseException()
+            if($transportError -is [System.Net.Sockets.SocketException] -and $transportError.SocketErrorCode -eq [System.Net.Sockets.SocketError]::TimedOut){
+                throw [System.TimeoutException]::new('Timed out inspecting the endpoint certificate.', $_.Exception)
+            }
+            throw
+        }
+        if($null -eq $certificateInfo.Certificate){
+            throw [System.Security.Authentication.AuthenticationException]::new('The endpoint did not present a certificate.')
+        }
+        return [PSCustomObject]$certificateInfo
+    }
+    catch {
+        if($null -ne $certificateInfo.Certificate){
+            $certificateInfo.Certificate.Dispose()
+        }
+        throw
+    }
+    finally {
+        $stopwatch.Stop()
+        if($null -ne $stream){
+            $stream.Dispose()
+        }
+        $client.Dispose()
+    }
+}
+
+<#
+    .SYNOPSIS
+        Waits for an HTTPS endpoint to present a specific TLS certificate.
+
+    .DESCRIPTION
+        Certificate alias changes restart ArcGIS web servers asynchronously. A normal health
+        response only proves that an endpoint is available; it can come from the old listener
+        before the restart begins or from a listener still using the previous certificate.
+        This helper repeatedly opens a TLS connection and compares the certificate presented
+        by that connection with the expected SHA-1 thumbprint.
+
+        Each probe captures the certificate and rejects the TLS handshake without sending an
+        HTTP request. Certificate trust and HTTP readiness do not affect thumbprint comparison.
+        Connection failures are expected while the embedded web server is restarting. The final
+        exception includes the last transport error to aid DSC log diagnostics.
+
+    .PARAMETER Url
+        HTTPS URL used to establish the TLS connection.
+
+    .PARAMETER ExpectedThumbprint
+        SHA-1 thumbprint of the certificate expected from the endpoint.
+
+    .PARAMETER MaxWaitTimeInSeconds
+        Maximum amount of time to poll before failing the operation.
+
+    .PARAMETER SleepTimeInSeconds
+        Delay between connection attempts.
+
+    .PARAMETER RequestTimeoutInSeconds
+        Bounds each TCP connection wait and sets synchronous TLS read/write timeouts from the
+        remaining budget. Certificate validation and the overall handshake can exceed this
+        value, so the polling window is not a strict wall-clock deadline.
+#>
+function Wait-ForArcGISEndpointCertificate
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.String]
+        $Url,
+
+        [Parameter(Mandatory = $true)]
+        [System.String]
+        $ExpectedThumbprint,
+
+        [System.Int32]
+        $MaxWaitTimeInSeconds = 180,
+
+        [System.Int32]
+        $SleepTimeInSeconds = 5,
+
+        [System.Int32]
+        $RequestTimeoutInSeconds = 15
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastError = $null
+
+    try {
+        while($stopwatch.Elapsed.TotalSeconds -lt $MaxWaitTimeInSeconds){
+            $certificate = $null
+            try {
+                $certificateInfo = Get-ArcGISEndpointCertificate -Url $Url -RequestTimeoutInSeconds $RequestTimeoutInSeconds
+                $certificate = $certificateInfo.Certificate
+                if($certificate.Thumbprint -ieq $ExpectedThumbprint){
+                    Write-Verbose "Endpoint '$Url' is presenting certificate '$ExpectedThumbprint'."
+                    return
+                }
+                $lastError = "Endpoint '$Url' presented certificate '$($certificate.Thumbprint)', but expected '$ExpectedThumbprint'."
+                Write-Verbose $lastError
+            }
+            catch {
+                $lastError = $_
+                Write-Verbose "Endpoint '$Url' is not ready while waiting for certificate '$ExpectedThumbprint'. Error: $_"
+            }
+            finally {
+                if($null -ne $certificate){
+                    $certificate.Dispose()
+                }
+            }
+
+            Start-Sleep -Seconds $SleepTimeInSeconds
+        }
+
+        throw "Endpoint '$Url' did not present certificate '$ExpectedThumbprint' within $MaxWaitTimeInSeconds seconds. Last error: $lastError"
+    }
+    finally {
+        $stopwatch.Stop()
     }
 }
 
@@ -1418,9 +1743,11 @@ function Invoke-StartProcess
     }
 
     $p = [System.Diagnostics.Process]::Start($psi)
+    $standardOutputTask = $p.StandardOutput.ReadToEndAsync()
+    $standardErrorTask = $p.StandardError.ReadToEndAsync()
     if($TimeOutInMinutes -gt 0){
         $TimeoutInMilliseconds = $TimeoutInMinutes * 60 * 1000
-        $p.WaitForExit($TimeoutInMilliseconds)
+        [void]$p.WaitForExit($TimeoutInMilliseconds)
         if(-not $p.HasExited) {
             $p.Kill()
             throw "$($ExecPath) timed out after $($TimeoutInMinutes) minutes."
@@ -1429,13 +1756,13 @@ function Invoke-StartProcess
         $p.WaitForExit()
     }
     
-    $op = $p.StandardOutput.ReadToEnd()
+    $op = $standardOutputTask.GetAwaiter().GetResult()
+    $err = $standardErrorTask.GetAwaiter().GetResult()
     $result = $null
     if($p.ExitCode -eq 0) {                    
         Write-Verbose "$ExecPath run successful."
         $result = $op
     }else{
-        $err = $p.StandardError.ReadToEnd()
         Write-Verbose $err
         $ExceptionString= "$ExecPath run failed. Output - $($op). Process exit code:- $($p.ExitCode)."
         if($err -and $err.Length -gt 0) {
@@ -1474,6 +1801,18 @@ function Get-WindowsServiceRunAsInfo
     }
 }
 
+function Get-VelocityServerServiceNames
+{
+    @(
+        'ArcGISVelocityEnterpriseControlPlane'
+        'ArcGISVelocityEnterpriseFeeds'
+        'ArcGISVelocityEnterpriseGateway'
+        'ArcGISVelocityEnterpriseMetrics'
+        'ArcGISVelocityEnterpriseRealtimeAnalytics'
+        'ArcGISVelocityEnterpriseStreamServer'
+    )
+}
+
 function Get-RemoteFile
 {
     param (
@@ -1486,39 +1825,30 @@ function Get-RemoteFile
         [System.Boolean]
         $IsUsingAzureBlobManagedIndentity
     )
-    
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true} # Allow self-signed certificates
-    [System.Net.ServicePointManager]::DefaultConnectionLimit = 1024
-    [System.Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    $wc = New-Object System.Net.WebClient
+
     try {
+        $Headers = @{}
         if($IsUsingAzureBlobManagedIndentity){
             $ManagedIdentityAccessToken = Get-AzureManagedIdentityStorageAccessToken -Verbose
-            $wc.Headers.Add('Authorization', "Bearer $ManagedIdentityAccessToken")
-            $wc.Headers.Add("x-ms-version", "2017-11-09")
+            $Headers.Authorization = "Bearer $ManagedIdentityAccessToken"
+            $Headers['x-ms-version'] = '2017-11-09'
         }
-        $wc.DownloadFile($RemoteFileUrl, $DestinationFilePath)
+        Invoke-ArcGISWebRequest -Url $RemoteFileUrl -HttpMethod 'GET' -Referer $null -TimeOutSec 100 `
+            -HttpHeaders $Headers -OutFile $DestinationFilePath
     }
     catch {
         throw "Error downloading remote file. Error - $_"
-    }
-    finally {
-        $wc.Dispose()
     }
 }
 
 function Get-AzureManagedIdentityStorageAccessToken
 {
-    $wc = New-Object System.Net.WebClient
     try {
-        $wc.Headers.Add('Metadata', "true")
-        $response = $wc.DownloadString('http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F')
-        return ($response | ConvertFrom-Json).access_token
+        $response = Invoke-ArcGISWebRequest -Url 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F' `
+            -HttpMethod 'GET' -Referer $null -TimeOutSec 100 -AllowUntrustedCertificates $false -HttpHeaders @{Metadata = 'true'}
+        return $response.access_token
     }catch {
         throw "Error getting managed identity token for storage account access. Error - $_"
-    }
-    finally {
-        $wc.Dispose()
     }
 }
 
@@ -1545,11 +1875,15 @@ Export-ModuleMember -Function @(
     'Restart-ArcGISService'
     'Get-AvailableDriveLetter'
     'Test-ArcGISComponentHealth'
+    'Wait-ForArcGISComponentRestart'
+    'Get-ArcGISEndpointCertificate'
+    'Wait-ForArcGISEndpointCertificate'
     'Get-ArcGISComponentBaseUrl'
     'Wait-RecheckAfterSeconds'
     'Invoke-StartProcess'
     'Get-ArcGISComponentVersionAndInstallDirectory'
     'Get-WindowsServiceRunAsInfo'
+    'Get-VelocityServerServiceNames'
     'Get-RemoteFile'
     'Get-AzureManagedIdentityStorageAccessToken'
 )

@@ -60,17 +60,58 @@
         [System.Boolean]
         $EnablePointInTimeRecovery = $False,
 
+        [Parameter(Mandatory=$false)]
+        [System.Boolean]
+        $UseCloudRelationalStore = $False,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('AzureFlexiblePostgreSQLDatabase','AWSRDSPostgreSQLDatabase','AWSAuroraPostgreSQLDatabase')]
+        [System.String]
+        $CloudRelationalStoreType,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabasePort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalDatabaseReadonlyURI,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyPort,
+
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalProxyURI,
+        
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $CloudRelationalRegion,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalDatabaseAdminUser,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]
+        $CloudRelationalSDEUser,
+
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $UsesSSL = $False,
-
+        
         [Parameter(Mandatory=$False)]
         [System.Boolean]
         $DebugMode = $False
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_DataStoreBackup, ArcGIS_HostNameSettings
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_xFirewall, ArcGIS_Service_Account, ArcGIS_DataStore, ArcGIS_DataStoreBackup, ArcGIS_HostNameSettings
 
     Node $AllNodes.NodeName 
     {
@@ -271,9 +312,12 @@
         }
 
         if($DataStoreType -ieq 'ObjectStore'){
-            $ObjectStoreServerPorts = @("29879", "29879")
+            $ObjectStoreServerPorts = @("29878", "29879")
             if([version]$Version -ge "11.5"){
                 $ObjectStoreServerPorts = @("29879", "19879")
+            }
+            if([version]$Version -ge "12.2"){
+                $ObjectStoreServerPorts = @("29879")
             }
 
             ArcGIS_xFirewall ObjectDataStore_FirewallRules
@@ -348,6 +392,16 @@
             IsObjectDataStoreClustered = if($DataStoreType -ieq 'ObjectStore'){ ($DataStoreMachineCount -gt 2)} else{ $False }
             IsGraphStoreClustered = if($DataStoreType -ieq 'GraphStore'){ ($DataStoreMachineCount -gt 2)} else{ $False }
             PITRState = if($EnablePointInTimeRecovery){ "Enabled" }else{ "Disabled" }
+            UseCloudRelationalStore = $UseCloudRelationalStore
+            CloudRelationalStoreType = if($UseCloudRelationalStore){ $CloudRelationalStoreType }else{ 'None' }
+            CloudRelationalDatabasePort = $CloudRelationalDatabasePort
+            CloudRelationalDatabaseURI = $CloudRelationalDatabaseURI
+            CloudRelationalDatabaseReadonlyURI = $CloudRelationalDatabaseReadonlyURI
+            CloudRelationalProxyPort = $CloudRelationalProxyPort
+            CloudRelationalProxyURI = $CloudRelationalProxyURI
+            CloudRelationalRegion = $CloudRelationalRegion
+            CloudRelationalDatabaseAdminUser = $CloudRelationalDatabaseAdminUser
+            CloudRelationalSDEUser = $CloudRelationalSDEUser
             DependsOn = $Depends
         }
         $DataStoreDependsOn = @("[ArcGIS_DataStore]$($DataStoreType)-DataStore$($Node.NodeName)")

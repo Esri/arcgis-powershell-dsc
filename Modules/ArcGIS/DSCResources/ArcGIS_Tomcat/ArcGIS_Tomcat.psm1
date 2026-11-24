@@ -96,12 +96,13 @@ function Set-TargetResource
     $RestartTomcat = $False
     $ServerXMLNeedsUpdate = $False
     if($Ensure -eq "Present"){
+        $KeytoolPath = Get-KeytoolPath
         if(-not(Test-ApacheTomcatInstall -TomcatVersion $Version -InstallDirectory $InstallDirectory -TomcatServiceName $ServiceName)){
             Write-Verbose "Installing Apache Tomcat $($TomcatVersion) - '$ServiceName' service. Removing existing installation if present."
             if(Test-Path $InstallDirectory){
                 if(Get-Service $ServiceName -ErrorAction Ignore) {
                     Write-Verbose 'Stopping the service' 
-                    Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+                    Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
                     Write-Verbose 'Stopped the service'
                     
                     $service = Get-WmiObject -Class Win32_Service -Filter "Name='$ServiceName'"
@@ -216,7 +217,7 @@ function Set-TargetResource
         if(-not($CreateKeyStore)){
             Write-Verbose "Key Store Exists. Testing if the key store accessible and certificate is already in the key store"
             try{
-                $CertificateInKeyStore = Invoke-CliTool -ExecPath "keytool.exe" -Arguments " -list -keystore $KeyStoreName -storepass $Base64KeyStorePass -alias $CertAliasInKeyStore" `
+                $CertificateInKeyStore = Invoke-CliTool -ExecPath $KeytoolPath -Arguments " -list -keystore $KeyStoreName -storepass $Base64KeyStorePass -alias $CertAliasInKeyStore" `
                  -AddJavaEnvironmentVariables $true -WorkingDirectory $TomcatConf -Verbose
                 if($CertificateInKeyStore -match "^$CertAliasInKeyStore"){
                     Write-Verbose "Certificate with thumbprint $CertAliasInKeyStore found in the key store."
@@ -257,7 +258,7 @@ function Set-TargetResource
                     $tempOutput = [System.IO.Path]::GetTempFileName()
 
                     # Use -RedirectStandardOutput to capture keytool's output
-                    Start-Process -FilePath "keytool.exe" `
+                    Start-Process -FilePath $KeytoolPath `
                                     -ArgumentList " -v -list -keystore `"$CertificateFileLocation`" -storepass $srcStorePass" `
                                     -NoNewWindow -Wait -RedirectStandardOutput $tempOutput -PassThru
 
@@ -276,7 +277,7 @@ function Set-TargetResource
                                 " -storetype PKCS12 -storepass `"$Base64KeyStorePass`" -alias `"$CertAliasInKeyStore`"",
                                 " -dname `"CN=$ExternalDNSName`""))
                 }
-                $CertificateInKeyStore = Invoke-CliTool -ExecPath "keytool.exe" -Arguments $Arguments -WorkingDirectory $TomcatConf -AddJavaEnvironmentVariables $true -Verbose
+                $CertificateInKeyStore = Invoke-CliTool -ExecPath $KeytoolPath -Arguments $Arguments -WorkingDirectory $TomcatConf -AddJavaEnvironmentVariables $true -Verbose
                 $RestartTomcat = $True
             }
             catch {
@@ -313,7 +314,7 @@ function Set-TargetResource
         $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
         if ($existingService) {
             Write-Verbose "Stopping Tomcat service '$ServiceName'..."
-            Wait-ForServiceToReachDesiredState -ServiceName $ServiceName -DesiredState 'Stopped' -Verbose
+            Stop-ServiceAndWait -ServiceName $ServiceName -TimeoutSeconds 300 -PollSeconds 2 -Verbose
             Write-Verbose "Service '$ServiceName' has been stopped."
 
             # Remove the service using WMI
@@ -390,11 +391,7 @@ function Test-TargetResource
 
     $result = $True
     if($Ensure -eq "Present") {
-        $JAVA_HOME = [environment]::GetEnvironmentVariable("JAVA_HOME","Machine")
-        $JRE_HOME = [environment]::GetEnvironmentVariable("JRE_HOME","Machine")
-        if (-not((-not([string]::IsNullOrEmpty($JAVA_HOME)) -and (Test-Path -Path "$($JAVA_HOME)")) -or (-not([string]::IsNullOrEmpty($JRE_HOME)) -and (Test-Path -Path "$($JRE_HOME)")))) {
-            throw "Java not installed."
-        }
+        $KeytoolPath = Get-KeytoolPath
         if(Test-ApacheTomcatInstall -TomcatVersion $Version -TomcatServiceName $ServiceName -InstallDirectory $InstallDirectory){
             $TomcatConf = (Join-Path $InstallDirectory "conf")
             $KeyStoreName = "arcgis.keystore"
@@ -419,7 +416,7 @@ function Test-TargetResource
                     }
             
                     try{
-                        $CertificateInKeyStore = Invoke-CliTool -ExecPath "keytool.exe" -Arguments " -list -keystore `"$KeyStoreName`" -storepass `"$Base64KeyStorePass`" -alias `"$CertAliasInKeyStore`"" -AddJavaEnvironmentVariables $true -WorkingDirectory $TomcatConf
+                        $CertificateInKeyStore = Invoke-CliTool -ExecPath $KeytoolPath -Arguments " -list -keystore `"$KeyStoreName`" -storepass `"$Base64KeyStorePass`" -alias `"$CertAliasInKeyStore`"" -AddJavaEnvironmentVariables $true -WorkingDirectory $TomcatConf
                         if($CertificateInKeyStore -imatch "^$CertAliasInKeyStore"){
                             Write-Verbose "Certificate with alias $CertAliasInKeyStore found in the key store."
                         }else{
@@ -624,6 +621,29 @@ function Test-FileInSubPath
         $File
     )
     $File.FullName.StartsWith($Dir.FullName)
+}
+function Get-KeytoolPath {
+    [CmdletBinding()]
+    [OutputType([System.String])]
+    param(
+        [System.String]
+        $JavaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine'),
+
+        [System.String]
+        $JreHome = [Environment]::GetEnvironmentVariable('JRE_HOME', 'Machine')
+    )
+
+    $JavaDirectory = if (-not [string]::IsNullOrWhiteSpace($JavaHome)) { $JavaHome } else { $JreHome }
+    if ([string]::IsNullOrWhiteSpace($JavaDirectory)) {
+        throw 'JAVA_HOME or JRE_HOME must be set at machine scope to locate keytool.exe.'
+    }
+
+    $KeytoolPath = Join-Path -Path $JavaDirectory -ChildPath 'bin\keytool.exe'
+    if (-not (Test-Path -LiteralPath $KeytoolPath -PathType Leaf)) {
+        throw "keytool.exe not found at '$KeytoolPath'."
+    }
+
+    return $KeytoolPath
 }
 
 function Invoke-CliTool {

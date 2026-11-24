@@ -127,7 +127,20 @@ function Test-DataStoreCertificate
     $DataStoreConfigureUrl = $URL.TrimEnd('/') + '/datastoreadmin/configure?f=json'  
 
     $webRequest = [Net.WebRequest]::Create($DataStoreConfigureUrl)
-    try { $_d = $webRequest.GetResponse() } catch {}
+    $response = $null
+    try {
+        $response = $webRequest.GetResponse()
+    }
+    catch {}
+    finally {
+        if($null -ne $response) {
+            $response.Dispose()
+        }
+    }
+
+    if($null -eq $webRequest.ServicePoint.Certificate) {
+        return $false
+    }
     
     return $webRequest.ServicePoint.Certificate.GetCertHashString() -ieq $Cert.Thumbprint
 }

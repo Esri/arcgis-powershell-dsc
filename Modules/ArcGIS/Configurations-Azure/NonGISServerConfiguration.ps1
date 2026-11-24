@@ -3,7 +3,7 @@ Configuration NonGISServerConfiguration
     param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1"
+        $Version = "12.2"
 
         ,[Parameter(Mandatory=$true)]
         [System.String]
@@ -166,7 +166,6 @@ Configuration NonGISServerConfiguration
     Import-DscResource -Name ArcGIS_AzureSetupsManager
     Import-DscResource -Name ArcGIS_HostNameSettings
     Import-DscResource -Name ArcGIS_RemoteFile
-    Import-DscResource -Name ArcGIS_WindowsService
     #NotebookServer
     Import-DscResource -Name ArcGIS_WebAdaptor
     Import-DscResource -Name ArcGIS_IIS_TLS
@@ -243,7 +242,7 @@ Configuration NonGISServerConfiguration
             HostName = $env:ComputerName
         }
 
-        if($ServerType -ieq "MissionServer" -and $ServerType -ieq "NotebookServer"){
+        if(@("NotebookServer", "MissionServer", "VelocityServer") -icontains $ServerType){
             WindowsFeature websockets
             {
                 Name    = 'Web-WebSockets'
@@ -290,6 +289,7 @@ Configuration NonGISServerConfiguration
             $DependsOn += "[ArcGIS_Install]$($ServerType)Install"
 
             $FirewallPorts = @()
+            $SRTFirewallPort = $null
             $FirewallDisplayGroupAndName = ""
             if($ServerType -ieq "NotebookServer"){
                 $FirewallPorts = ("80", "443", "11443")
@@ -306,7 +306,11 @@ Configuration NonGISServerConfiguration
                 if(-not([string]::IsNullOrEmpty($VideoServerLiveStreamPorts))){
                     $PortsObject = ConvertFrom-Json $VideoServerLiveStreamPorts
                     $FirewallPorts += ($PortsObject.RTMPPort, $PortsObject.RTSPTCPPort,"$($PortsObject.RTSPUDPPortRangeMin)-$($PortsObject.RTSPUDPPortRangeMax)")
+                    $SRTFirewallPort = $PortsObject.SRTPort
                 }
+            }elseif($ServerType -ieq "VelocityServer"){
+                $FirewallPorts = ("7143")
+                $FirewallDisplayGroupAndName = "ArcGIS for Velocity Server"
             }
 
             ArcGIS_xFirewall "$($ServerType)_FirewallRules"
@@ -323,6 +327,23 @@ Configuration NonGISServerConfiguration
                 DependsOn       	  = $DependsOn
             }
             $DependsOn += "[ArcGIS_xFirewall]$($ServerType)_FirewallRules"
+
+            if($null -ne $SRTFirewallPort){
+                ArcGIS_xFirewall "$($ServerType)_SRTFirewallRule"
+                {
+                    Name                  = "ArcGIS$($ServerType)SRT"
+                    DisplayName           = "$FirewallDisplayGroupAndName SRT"
+                    DisplayGroup          = $FirewallDisplayGroupAndName
+                    Ensure                = 'Present'
+                    Access                = "Allow"
+                    State                 = "Enabled"
+                    Profile               = ("Domain","Private","Public")
+                    LocalPort             = $SRTFirewallPort
+                    Protocol              = "UDP"
+                    DependsOn             = $DependsOn
+                }
+                $DependsOn += "[ArcGIS_xFirewall]$($ServerType)_SRTFirewallRule"
+            }
 
             # TODO - create folders in existing file share
 
@@ -378,23 +399,14 @@ Configuration NonGISServerConfiguration
 
 
             $ServiceName = (Get-ArcGISServiceName -ComponentName $ServerType)
-            ArcGIS_WindowsService "ArcGIS_for_$($ServerType)_Service"
-            {
-                Name            = $ServiceName
-                Credential      = $ServiceCredential
-                StartupType     = 'Automatic'
-                State           = 'Running' 
-                DependsOn       = $DependsOn
-            }
-            $DependsOn += "[ArcGIS_WindowsService]ArcGIS_for_$($ServerType)_Service"
-
             ArcGIS_Service_Account "$($ServerType)_Service_Account"
             {
-                Name            = $ServiceName
-                RunAsAccount    = $ServiceCredential
-                IsDomainAccount = $ServiceCredentialIsDomainAccount
-                Ensure          = 'Present'
-                DependsOn       = $DependsOn
+                Name                    = $ServiceName
+                RunAsAccount            = $ServiceCredential
+                IsDomainAccount         = $ServiceCredentialIsDomainAccount
+                SetStartupToAutomatic   = $True
+                Ensure                  = 'Present'
+                DependsOn               = $DependsOn
             }
             $DependsOn += "[ArcGIS_Service_Account]$($ServerType)_Service_Account"
 
@@ -491,8 +503,26 @@ Configuration NonGISServerConfiguration
                 Join                                    = $Join
                 Version                                 = $Version
                 PeerServerHostName                      = $ServerHostName
+                PortalSiteAdministrator                 = if($PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder"){ $PortalSiteAdministratorCredential }else{ $null }
             }
             $DependsOn += "[ArcGIS_NonGISServer]$($ServerType)"
+        }
+
+        if(($ServerHostName -ieq $env:ComputerName) -and ($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsUpdatingCertificates))
+        {
+            ArcGIS_ServerSettings "$($ServerType)Settings"
+            {
+                ServerHostName      = $ServerHostName
+                ServerType          = $ServerType
+                WebContextURL       = if($ExternalDNSHostName){"https://$($ExternalDNSHostName)/$($Context)"}else{ $null }
+                WebSocketContextUrl = if($ServerType -ieq "MissionServer" -and $ExternalDNSHostName){"wss://$($ExternalDNSHostName)/$($Context)wss"}else{ $null }
+                SiteAdministrator   = $SiteAdministratorCredential
+                DisableDockerHealthCheck = ($ServerType -ieq "NotebookServer")
+                VideoServerLiveStreamPorts = if($ServerType -ieq "VideoServer"){ $VideoServerLivestreamPorts }else{ $null } 
+                VideoServerLiveStreamGatewayHostname = if($ServerType -ieq "VideoServer"){ $VideoServerLiveStreamGatewayHostname }else{ $null } 
+                DependsOn           = $DependsOn
+            }
+            $DependsOn += "[ArcGIS_ServerSettings]$($ServerType)Settings"
         }
 
         if($ServerCertificateFileName) {
@@ -540,7 +570,7 @@ Configuration NonGISServerConfiguration
             CertificateFileLocation    = $ServerCertificateLocalFilePath
             CertificatePassword        = if($ServerInternalCertificatePassword -and ($ServerInternalCertificatePassword.GetNetworkCredential().Password -ine 'Placeholder')) { $ServerInternalCertificatePassword } else { $null }
             ServerType                 = $ServerType
-            DependsOn                  = if(-not($IsUpdatingCertificates)){ @("[ArcGIS_NonGISServer]$($ServerType)") }else{ @() }
+            DependsOn                  = $DependsOn
             SslRootOrIntermediate	   = if($PublicKeySSLCertificateFileName){ [string]::Concat('[{"Alias":"AppGW-ExternalDNSCerCert","Path":"', (Join-Path $(Get-Location).Path $PublicKeySSLCertificateFileName).Replace('\', '\\'),'"}]') }else{$null}
         }
         $DependsOn += '[ArcGIS_Server_TLS]Server_TLS'
@@ -566,20 +596,6 @@ Configuration NonGISServerConfiguration
 
         if(($LastServerHostName -ieq $env:ComputerName) -and ($FederateSite -ieq 'true') -and $PortalSiteAdministratorCredential -and -not($IsUpdatingCertificates)) 
         {
-            ArcGIS_ServerSettings "$($ServerType)Settings"
-            {
-                ServerHostName      = $ServerHostName
-                ServerType          = $ServerType
-                WebContextURL       = if($ExternalDNSHostName){"https://$($ExternalDNSHostName)/$($Context)"}else{ $null }
-                WebSocketContextUrl = if($ServerType -ieq "MissionServer" -and $ExternalDNSHostName){"wss://$($ExternalDNSHostName)/$($Context)wss"}else{ $null }
-                SiteAdministrator   = $SiteAdministratorCredential
-                DisableDockerHealthCheck = ($ServerType -ieq "NotebookServer")
-                VideoServerLiveStreamPorts = if($ServerType -ieq "VideoServer"){ $VideoServerLivestreamPorts }else{ $null } 
-                VideoServerLiveStreamGatewayHostname = if($ServerType -ieq "VideoServer"){ $VideoServerLiveStreamGatewayHostname }else{ $null } 
-                DependsOn           = $DependsOn
-            }
-            $DependsOn += "[ArcGIS_ServerSettings]$($ServerType)Settings"
-
             ArcGIS_Federation Federate
             {
                 PortalHostName              = $ExternalDNSHostName
@@ -592,7 +608,7 @@ Configuration NonGISServerConfiguration
                 ServerSiteAdminUrlPort      = 443
                 ServerSiteAdminUrlContext   = $Context
                 Ensure                      = "Present"
-                RemoteSiteAdministrator     = $PortalSiteAdministratorCredential
+                PortalSiteAdministrator     = $PortalSiteAdministratorCredential
                 SiteAdministrator           = $SiteAdministratorCredential
                 ServerRole                  = 'FEDERATED_SERVER'
                 ServerFunctions             = $ServerType
@@ -600,7 +616,6 @@ Configuration NonGISServerConfiguration
             }
         }
 
-       
         if($PortalSiteAdministratorCredential -and $PortalSiteAdministratorCredential.UserName -ine "placeholder"){
 
             # Import TLS certificates from portal machines on the hosting server
@@ -618,7 +633,7 @@ Configuration NonGISServerConfiguration
                         StoreLocation		= 'LocalMachine'
                         StoreName			= 'Root'
                         SiteAdministrator	= $PortalSiteAdministratorCredential
-                        ServerType          = $ServerFunctions
+                        ServerType          = $ServerType
                         DependsOn           = $DependsOn
                     }
                 }
@@ -639,7 +654,7 @@ Configuration NonGISServerConfiguration
                         StoreLocation		= 'LocalMachine'
                         StoreName			= 'Root'
                         SiteAdministrator	= $PortalSiteAdministratorCredential
-                        ServerType          = $ServerFunctions
+                        ServerType          = $ServerType
                         DependsOn           = $DependsOn
                     }
                 }

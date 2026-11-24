@@ -6,7 +6,7 @@
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.1.2 -Name ArcGIS_RemoteFile
+    Import-DscResource -ModuleName ArcGIS -ModuleVersion 5.2.0 -Name ArcGIS_RemoteFile
     
     Node $AllNodes.NodeName {
 
@@ -89,7 +89,7 @@
                         }
                     }
 
-                    $ServerTypeName = if(@("MissionServer", "NotebookServer", "VideoServer","DataPipelinesServer") -iContains $ConfigurationData.ConfigData.ServerRole){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
+                    $ServerTypeName = if(@("MissionServer", "NotebookServer", "VideoServer","DataPipelinesServer","VelocityServer") -iContains $ConfigurationData.ConfigData.ServerRole){ $ConfigurationData.ConfigData.ServerRole }else{ "Server" }
                     
                     if($ServerTypeName -ieq "Server" -and $ConfigurationData.ConfigData.Server.Extensions){
                         foreach ($Extension in $ConfigurationData.ConfigData.Server.Extensions.GetEnumerator())
@@ -183,7 +183,7 @@
                                 Ensure = $Ensure
                             }
                         }
-                        
+
                         ArcGIS_RemoteFile "GeoEnrichmentServerDownload$($Node.NodeName)"
                         {
                             Source = $ConfigurationData.ConfigData.GeoEnrichmentServer.Installer.Path
@@ -192,6 +192,22 @@
                             Credential = $AGOCredential
                             ArcGISDownloadAPIFolderPath = "software/ba/$($ConfigurationData.ConfigData.Version)"
                             Ensure = $Ensure
+                        }
+
+                        $Version = $ConfigurationData.ConfigData.Version
+                        if(([version]$Version -ge "12.2") -and $ConfigurationData.ConfigData.GeoEnrichmentServer.Installer.VolumePaths){
+                            foreach($VolumePath in $ConfigurationData.ConfigData.GeoEnrichmentServer.Installer.VolumePaths){
+                                $VolumeName = Split-Path $VolumePath -leaf
+                                ArcGIS_RemoteFile "GeoEnrichmentServerVolumeDownload$($VolumeName)"
+                                {
+                                    Source = $VolumePath
+                                    Destination = $VolumePath
+                                    FileSourceType = "ArcGISDownloadsAPI"
+                                    Credential = $AGOCredential
+                                    ArcGISDownloadAPIFolderPath = "software/ba/$($ConfigurationData.ConfigData.Version)"
+                                    Ensure = $Ensure
+                                }
+                            }
                         }
                     }
                 }

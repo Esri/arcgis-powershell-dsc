@@ -4,7 +4,8 @@
 class ArcGIS_NotebookPostInstall : OMI_BaseResource
 {
 	[Key] String SiteName;
+	[Key] String Version;
 	[Write] String ContainerImagePaths[];
 	[Write] Boolean ExtractSamples;
-	[Write] Boolean ForceRestart;
+	[Write, EmbeddedInstance("MSFT_Credential")] String SiteAdministrator;
 };

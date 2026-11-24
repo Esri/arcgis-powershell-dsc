@@ -3,7 +3,7 @@
 	param(
         [Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1"
+        $Version = "12.2"
 
         ,[Parameter(Mandatory=$false)]
         [System.Boolean]

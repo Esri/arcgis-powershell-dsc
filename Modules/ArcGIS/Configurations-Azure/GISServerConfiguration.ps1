@@ -3,7 +3,7 @@
 	param(
 		[Parameter(Mandatory=$false)]
         [System.String]
-        $Version = "12.1"
+        $Version = "12.2"
 		
 		,[Parameter(Mandatory=$false)]
         [System.Management.Automation.PSCredential]
@@ -225,6 +225,26 @@
         [System.Boolean]
         $IsUpdatingCertificates = $False
 
+		,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerDeepLearningLibrariesFileName
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerCoordinateSystemsDataFileName
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerRasterDataFileName
+
+		,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerRasterDataVersion = "1.0.1014"
+
+        ,[Parameter(Mandatory=$false)]
+        [System.String]
+        $ServerDJIFileName
+
 		,[Parameter(Mandatory=$True)]
         [System.Management.Automation.PSCredential]
         $DeploymentArtifactCredentials
@@ -413,6 +433,53 @@
 					$ServerDependsOn += @('[ArcGIS_Install]GeoEventServerInstall')
 				}
 
+				if($ServerRole -ieq "RasterAnalytics" -or $ServerRole -ieq "RealityServer") {
+					if($ServerDeepLearningLibrariesFileName) {
+						$ServerDeepLearningLibrariesDestinationPath = (Join-Path $(Get-Location).Path $ServerDeepLearningLibrariesFileName)
+
+						ArcGIS_RemoteFile "ServerDeepLearningLibrariesFileDownload"
+						{
+							Source = $ServerDeepLearningLibrariesFileName
+							Destination = $ServerDeepLearningLibrariesDestinationPath
+							FileSourceType = "AzureSASUri"
+							Credential = $DeploymentArtifactCredentials
+							Ensure = 'Present'
+						}
+						
+						$IsSelfExtractingInstaller = $True
+						$ServerDeepLearningLibrariesInstallPath = $null
+						if($ServerDeepLearningLibrariesFileName.EndsWith('zip')){
+							$IsSelfExtractingInstaller = $False
+							$SetupInstallerFolderPath = (Join-Path $ENV:Temp "ServerDeepLearningLibraries")
+							
+							Archive "Extract-ServerDeepLearningLibraries"
+							{
+								Destination = $SetupInstallerFolderPath
+								Path = $ServerDeepLearningLibrariesDestinationPath
+								Ensure = 'Present'
+								DependsOn = "[ArcGIS_RemoteFile]ServerDeepLearningLibrariesFileDownload"
+							}
+							$ServerDependsOn += '[Archive]Extract-ServerDeepLearningLibraries'
+							$ServerDeepLearningLibrariesInstallPath = Join-Path $SetupInstallerFolderPath "setup.exe"
+						}else{
+							$ServerDeepLearningLibrariesInstallPath = $ServerDeepLearningLibrariesDestinationPath
+							$ServerDependsOn += '[ArcGIS_RemoteFile]ServerDeepLearningLibrariesFileDownload'
+						}
+
+						ArcGIS_Install "ServerDeepLearningLibrariesInstallExtension"
+						{
+							Name = "ServerDeepLearningLibraries"
+							Version = $Version
+							Path = $ServerDeepLearningLibrariesInstallPath
+							Extract = $IsSelfExtractingInstaller
+							Arguments = "/qn ACCEPTEULA=YES"
+							Ensure = "Present"
+							DependsOn = $ServerDependsOn
+						}
+						$ServerDependsOn += "[ArcGIS_Install]ServerDeepLearningLibrariesInstallExtension"
+					}
+				}
+
 				if($ServerRole -ieq "RealityServer"){
 					ArcGIS_Install RealityServerInstall
 					{
@@ -428,6 +495,78 @@
 						DependsOn = @('[User]ArcGIS_RunAsAccount')
 					}
 					$ServerDependsOn += @('[ArcGIS_Install]RealityServerInstall')
+					
+					if($ServerCoordinateSystemsDataFileName) {
+						$ServerCoordinateSystemsDataDestinationPath = (Join-Path $(Get-Location).Path $ServerCoordinateSystemsDataFileName)
+						ArcGIS_RemoteFile "ServerCoordinateSystemsDataDownload"
+						{
+							Source = $ServerCoordinateSystemsDataFileName
+							Destination = $ServerCoordinateSystemsDataDestinationPath
+							FileSourceType = "AzureSASUri"
+							Credential = $DeploymentArtifactCredentials
+							Ensure = 'Present'
+						}
+						$ServerDependsOn += '[ArcGIS_RemoteFile]ServerCoordinateSystemsDataDownload'
+						ArcGIS_Install "ServerCoordinateSystemsDataInstallExtension"
+						{
+							Name = "ServerCoordinateSystemsData"
+							Version = $Version
+							Path = $ServerCoordinateSystemsDataDestinationPath
+							Extract = $True 
+							Arguments = "/qn ACCEPTEULA=YES"
+							Ensure = "Present"
+							DependsOn = $ServerDependsOn
+						}
+						$ServerDependsOn += "[ArcGIS_Install]ServerCoordinateSystemsDataInstallExtension"
+					}
+
+					if($ServerRasterDataFileName) {
+						$ServerRasterDataDestinationPath = (Join-Path $(Get-Location).Path $ServerRasterDataFileName)
+						ArcGIS_RemoteFile "ServerRasterDataDownload"
+						{
+							Source = $ServerRasterDataFileName
+							Destination = $ServerRasterDataDestinationPath
+							FileSourceType = "AzureSASUri"
+							Credential = $DeploymentArtifactCredentials
+							Ensure = 'Present'
+						}
+						$ServerDependsOn += '[ArcGIS_RemoteFile]ServerRasterDataDownload'
+						ArcGIS_Install "ServerRasterDataInstallExtension"
+						{
+							Name = "ServerRasterData"
+							Version = $ServerRasterDataVersion
+							Path = $ServerRasterDataDestinationPath
+							Extract = $True 
+							Arguments = "/qn ACCEPTEULA=YES"
+							Ensure = "Present"
+							DependsOn = $ServerDependsOn
+						}
+						$ServerDependsOn += "[ArcGIS_Install]ServerRasterDataInstallExtension"
+					}
+
+					if($ServerDJIFileName) {
+						$ServerDJIDestinationPath = (Join-Path $(Get-Location).Path $ServerDJIFileName)
+						ArcGIS_RemoteFile "ServerDJIDownload"
+						{
+							Source = $ServerDJIFileName
+							Destination = $ServerDJIDestinationPath
+							FileSourceType = "AzureSASUri"
+							Credential = $DeploymentArtifactCredentials
+							Ensure = 'Present'
+						}
+						$ServerDependsOn += '[ArcGIS_RemoteFile]ServerDJIDownload'
+						ArcGIS_Install "ServerDJIInstallExtension"
+						{
+							Name = "ServerDJI"
+							Version = $Version
+							Path = $ServerDJIDestinationPath
+							Extract = $True 
+							Arguments = "/qn ACCEPTEULA=YES"
+							Ensure = "Present"
+							DependsOn = $ServerDependsOn
+						}
+						$ServerDependsOn += "[ArcGIS_Install]ServerDJIInstallExtension"
+					}
 				}
 
 				if($ServerFunctionsArray -iContains 'WorkflowManagerServer'){
@@ -448,7 +587,6 @@
 				}
 
 				# TODO - create folders in existing file share
-
 				ArcGIS_WindowsService ArcGIS_for_Server_Service
 				{
 					Name            = 'ArcGIS Server'
@@ -826,30 +964,35 @@
 							SetScript = {
 								$WFMConfPath = (Join-Path $env:ProgramData "\esri\workflowmanager\WorkflowManager.conf")
 								if(Test-Path $WFMConfPath) {
-									@('play.modules.disabled', 'play.modules.enabled') | ForEach-Object {
-										$PropertyName = $_
-										$PropertyValue = $null
-										Get-Content $WFMConfPath | ForEach-Object {
-											if($_ -and $_.TrimStart().StartsWith($PropertyName)){
-												$Splits = $_.Split('=')
-												if($Splits.Length -gt 1){
-													$PropertyValue = $Splits[1].Trim()
+									Stop-ServiceAndWait -ServiceName "WorkflowManager" -ErrorAction Stop
+									try {
+										$WFMConfContent = @(Get-Content $WFMConfPath -ErrorAction Stop)
+										@('play.modules.disabled', 'play.modules.enabled') | ForEach-Object {
+											$PropertyName = $_
+											$PropertyValue = $null
+											$WFMConfContent | ForEach-Object {
+												if($_ -and $_.TrimStart().StartsWith($PropertyName)){
+													$Splits = $_.Split('=')
+													if($Splits.Length -gt 1){
+														$PropertyValue = $Splits[1].Trim()
+													}
 												}
 											}
-										}
-										if($null -eq $PropertyValue){
-											if($PropertyName -ieq "play.modules.disabled"){
-												Add-Content $WFMConfPath "`nplay.modules.disabled += `"esri.workflow.utils.inject.LocalDataProvider`""
+											if($null -eq $PropertyValue){
+												if($PropertyName -ieq "play.modules.disabled"){
+													Add-Content $WFMConfPath "`nplay.modules.disabled += `"esri.workflow.utils.inject.LocalDataProvider`"" -ErrorAction Stop
+												}
+												if($PropertyName -ieq "play.modules.enabled"){
+													Add-Content $WFMConfPath "`nplay.modules.enabled += `"esri.workflow.utils.inject.DistributedDataProvider`"" -ErrorAction Stop
+												}
+												}
 											}
-											if($PropertyName -ieq "play.modules.enabled"){
-												Add-Content $WFMConfPath "`nplay.modules.enabled += `"esri.workflow.utils.inject.DistributedDataProvider`""
-											}
-										}
+									}finally{
+										Start-ServiceAndWait -ServiceName "WorkflowManager" -ErrorAction Stop
 									}
 								}else{
 									Write-Verbose "[WARNING] Workflow Manager Configuration file not found. Please update this file manually."
 								}
-								Restart-ArcGISService -ComponentName "WorkflowManager" -RestartDelay 30
 							}
 							TestScript = {
 								$result = $True
@@ -1041,7 +1184,7 @@
 					ServerSiteAdminUrlPort = 443
 					ServerSiteAdminUrlContext = $Context
 					Ensure = "Present"
-					RemoteSiteAdministrator = $PortalSiteAdministratorCredential
+					PortalSiteAdministrator = $PortalSiteAdministratorCredential
 					SiteAdministrator = $SiteAdministratorCredential
 					ServerRole = 'FEDERATED_SERVER'
 					ServerFunctions = ($ServerFunctionsArray -join ",")
@@ -1082,7 +1225,7 @@
                     StoreLocation		= 'LocalMachine'
                     StoreName			= 'Root'
 					SiteAdministrator	= $PortalSiteAdministratorCredential
-					ServerType          = $ServerFunctions
+					ServerType          = 'Server'
                 }
 			}
 		}
@@ -1102,7 +1245,7 @@
                     StoreLocation		= 'LocalMachine'
                     StoreName			= 'Root'
 					SiteAdministrator	= $PortalSiteAdministratorCredential
-					ServerType          = $ServerFunctions
+					ServerType          = 'Server'
                 }
 			}
 		}

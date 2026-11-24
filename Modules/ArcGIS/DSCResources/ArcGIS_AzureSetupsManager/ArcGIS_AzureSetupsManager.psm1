@@ -123,19 +123,132 @@ function Test-TargetResource
     $false
 }
 
-function Add-LongPathPrefix {
+function Resolve-CleanupPath {
     param(
-        [string]$Path
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({ -not [string]::IsNullOrWhiteSpace($_) })]
+        [string]$Path,
+
+        [switch]$UseLongPath
     )
-    if ($Path.Length -gt 259) {
-        if (-not $Path.StartsWith("\\\\?\\")) {
-            return "\\\\?\\" + $Path
-        } else {
-            return $Path
+    # Accept paths whose extended-length prefix is still JSON-escaped.
+    if ($Path.StartsWith('\\\\?\\')) {
+        $Path = $Path.Replace('\\', '\')
+    }
+
+    # Try ordinary syntax first, even when the caller supplied an extended path.
+    if ($Path.StartsWith('\\?\UNC\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $Path = '\\' + $Path.Substring(8)
+    } elseif ($Path.StartsWith('\\?\')) {
+        $Path = $Path.Substring(4)
+    }
+
+    $FullPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    if (-not $UseLongPath) {
+        return $FullPath
+    }
+
+    if ($FullPath.StartsWith('\\')) {
+        $FullPath = '\\?\UNC\' + $FullPath.Substring(2)
+    } else {
+        $FullPath = '\\?\' + $FullPath
+    }
+
+    # Validate extended syntax before Test-Path can misreport an unsupported path as missing.
+    return [System.IO.Path]::GetFullPath($FullPath)
+}
+
+function Remove-CleanupItem {
+    param(
+        [Parameter(Mandatory=$false)]
+        [System.String]
+        $Path,
+
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $UseLongPath
+    )
+
+    $PathToDelete = Resolve-CleanupPath -Path $Path -UseLongPath:$UseLongPath
+    if (Test-Path -LiteralPath $PathToDelete -ErrorAction Stop) {
+        Write-Verbose "Found file/folder: $Path"
+        Remove-Item -LiteralPath $PathToDelete -Recurse -Force -ErrorAction Stop
+
+        # Never log success if a provider leaves the requested item behind.
+        if (Test-Path -LiteralPath $PathToDelete -ErrorAction Stop) {
+            throw "Cleanup failed. File/folder still exists: $Path"
         }
-     } else {
-        return $Path
-     }
+        Write-Verbose "Deleted file/folder: $Path"
+    } else {
+        Write-Verbose "File/Folder not found: $Path"
+    }
+}
+
+function Start-LongPathCleanupJob {
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Array]
+        $FileOrFolderPaths
+    )
+
+    $CleanupParameters = @{
+        ModulePath = $MyInvocation.MyCommand.Module.Path
+        Paths = $FileOrFolderPaths
+        WorkingDirectory = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.Path
+        Verbose = ($VerbosePreference -eq 'Continue')
+    }
+
+    # A separate process avoids the DSC host's legacy .NET settings without changing them.
+    Start-Job -ArgumentList $CleanupParameters -ErrorAction Stop -ScriptBlock {
+        param($Cleanup)
+
+        $ErrorActionPreference = 'Stop'
+        Set-Location -LiteralPath $Cleanup.WorkingDirectory
+        $ResourceModule = Import-Module -Name $Cleanup.ModulePath -Force -PassThru
+        & $ResourceModule {
+            param($Paths, $ShowVerbose)
+
+            Invoke-AdditionalFolderOrFilesToCleanup -FileOrFolderPaths $Paths -UseLongPath -Verbose:$ShowVerbose
+        } $Cleanup.Paths $Cleanup.Verbose 3>&1 4>&1 | ForEach-Object {
+            # Serialize stream metadata so the parent can re-emit capturable records.
+            [PSCustomObject]@{
+                Stream = $_.GetType().Name
+                Message = $_.Message
+            }
+        }
+    }
+}
+
+function Invoke-LongPathCleanup {
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Array]
+        $FileOrFolderPaths
+    )
+
+    $CleanupJob = $null
+    try {
+        Write-Verbose 'Retrying long-path cleanup in an isolated PowerShell job.'
+        $CleanupJob = Start-LongPathCleanupJob -FileOrFolderPaths $FileOrFolderPaths
+        Wait-Job -Job $CleanupJob -ErrorAction Stop | Out-Null
+        Receive-Job -Job $CleanupJob -ErrorAction Stop | ForEach-Object {
+            $Record = $_
+            switch ($Record.Stream) {
+                'WarningRecord' { Write-Warning $Record.Message }
+                'VerboseRecord' { Write-Verbose $Record.Message }
+                default { throw "Unexpected cleanup job output: $($Record.Stream)" }
+            }
+        }
+        if ($CleanupJob.State -ne 'Completed') {
+            throw "Cleanup job ended in state '$($CleanupJob.State)'."
+        }
+    } catch {
+        Write-Warning "Error running isolated PowerShell cleanup - $($_.Exception.Message)"
+    } finally {
+        if ($null -ne $CleanupJob) {
+            Remove-Job -Job $CleanupJob -Force -ErrorAction Stop
+        }
+    }
 }
 
 function Invoke-AdditionalFolderOrFilesToCleanup
@@ -143,32 +256,33 @@ function Invoke-AdditionalFolderOrFilesToCleanup
     param(
         [Parameter(Mandatory=$false)]
         [System.Array]
-        $FileOrFolderPaths
+        $FileOrFolderPaths,
+
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $UseLongPath
     )
 
-    foreach($FileOrFolderPath in $FileOrFolderPaths){
-        if(Test-Path -Path $FileOrFolderPath) {
-            Write-Verbose "Found file/folder: $FileOrFolderPath"
-            try {
-                # Check if the path is a file or folder
-                if (Test-Path -Path $FileOrFolderPath -PathType Leaf) {
-                    $FilePathToDelete = Add-LongPathPrefix $FileOrFolderPath
-                    Remove-Item -Path $FilePathToDelete -Force 
-                    Write-Verbose "Deleted file: $FileOrFolderPath" 
-                } elseif (Test-Path -Path $FileOrFolderPath -PathType Container) {
-                    $FolderPathToDelete = Add-LongPathPrefix $FileOrFolderPath
-                    Remove-Item -Path $FolderPathToDelete -Recurse -Force 
-                    Write-Verbose "Deleted file/folder: $FileOrFolderPath" 
-                }
-            } catch {
-                Write-Verbose "[WARNING] Error deleting folder '$($FileOrFolderPath)' - $($_.Exception.Message)"
-                # Swallow the error and continue
-                # This is to ensure that the script continues even if there are errors in deleting some files/folders
-                continue
+    $LongPaths = @()
+    foreach ($FileOrFolderPath in $FileOrFolderPaths) {
+        try {
+            Remove-CleanupItem -Path $FileOrFolderPath -UseLongPath:$UseLongPath
+        } catch [System.IO.PathTooLongException] {
+            if ($UseLongPath) {
+                # The retry already uses extended syntax; do not start another job.
+                Write-Warning "Error deleting file/folder '$FileOrFolderPath' - $($_.Exception.Message)"
+            } else {
+                # A short root can contain long descendants, so rely on the actual failure.
+                $LongPaths += $FileOrFolderPath
             }
-        } else {
-            Write-Verbose "File/Folder not found: $FileOrFolderPath"
+        } catch {
+            Write-Warning "Error deleting file/folder '$FileOrFolderPath' - $($_.Exception.Message)"
         }
+    }
+
+    # Batch only length-related failures; locked files and other errors are not retried.
+    if ($LongPaths.Count -gt 0) {
+        Invoke-LongPathCleanup -FileOrFolderPaths $LongPaths
     }
 }
 
@@ -188,7 +302,18 @@ function  Invoke-DownloadFolderCleanup {
     )
 
     $ComponentNamesArray = $ComponentNames -split ","
-    if(Test-Path -Path $SetupsStagingFolderPath) {
+    try {
+        $StagingFolderExists = Test-Path -LiteralPath $SetupsStagingFolderPath -ErrorAction Stop
+        $Subfolders = @()
+        if($StagingFolderExists) {
+            $Subfolders = Get-ChildItem -LiteralPath $SetupsStagingFolderPath -Directory -ErrorAction Stop
+        }
+    } catch {
+        Write-Warning "Error reading setup staging folder '$SetupsStagingFolderPath' - $($_.Exception.Message)"
+        return
+    }
+
+    if($StagingFolderExists) {
         $ExceptionFolders = @()
         if($ComponentNamesArray -icontains "Portal"){
             $ExceptionFolders += @("$($SetupsStagingFolderPath)\Portal","$($SetupsStagingFolderPath)\WebStyles")
@@ -205,6 +330,8 @@ function  Invoke-DownloadFolderCleanup {
                 $ExceptionFolders += @("$($SetupsStagingFolderPath)\VideoServer")
             }elseif($ServerRole -ieq "DataPipelinesServer"){
                 $ExceptionFolders += @("$($SetupsStagingFolderPath)\DataPipelinesServer")
+            }elseif($ServerRole -ieq "VelocityServer"){
+                $ExceptionFolders += @("$($SetupsStagingFolderPath)\VelocityServer")
             }else{
                 $ExceptionFolders += @("$($SetupsStagingFolderPath)\Server","$($SetupsStagingFolderPath)\SQLNativeClient")
 
@@ -221,31 +348,19 @@ function  Invoke-DownloadFolderCleanup {
             }
         }
 
-        # Is all is one deploy
-        $Subfolders = Get-ChildItem -Path $SetupsStagingFolderPath -Directory
+        $FoldersToDelete = @()
         foreach ($Folder in $Subfolders) {
             $FolderPath = $folder.FullName
     
-            # Check if folder exists
-            if (Test-Path -Path $FolderPath) {
-                Write-Verbose "Found folder: $FolderPath"
-                if($FolderPath -in $ExceptionFolders) {
-                    Write-Verbose "Skipped deleting folder: $FolderPath"
-                } else {
-                    try {
-                        Remove-Item -Path $FolderPath -Recurse -Force 
-                        Write-Verbose "Deleted folder: $FolderPath" 
-                    } catch {
-                        Write-Verbose "Error deleting folder: $FolderPath. Error: $_"
-                        continue
-                    }
-                }
+            if($FolderPath -in $ExceptionFolders) {
+                Write-Verbose "Skipped deleting folder: $FolderPath"
             } else {
-                Write-Verbose "Folder not found: $FolderPath"
+                $FoldersToDelete += $FolderPath
             }
         }
+        Invoke-AdditionalFolderOrFilesToCleanup -FileOrFolderPaths $FoldersToDelete
     }else{
-        Write-Verbose "Folder $DownloadsRoot not found. No cleanup needed."
+        Write-Verbose "Folder $SetupsStagingFolderPath not found. No cleanup needed."
     }
 }
 function Invoke-DownloadSetupFromUpgradeVM
@@ -451,6 +566,20 @@ function Invoke-DownloadSetupFromUpgradeVM
                 }else{
                     Write-Verbose "Video Server setup already exists at '$VideoServerUpgradeSetupDestinationPath'"
                 }
+
+                if([version]$Version -ge "12.2"){
+                    $VideoServerUpgradeSetupVolumePath = "$($PsDrive.Name):\VideoServer\VideoServer.exe.001"
+                    $VideoServerUpgradeSetupVolumeDestinationPath = "$($StagingPath)\VideoServer.exe.001"
+                    if(-not(Test-Path -Path $VideoServerUpgradeSetupVolumeDestinationPath)){
+                        if(-not(Test-Path $VideoServerUpgradeSetupVolumePath)){
+                            throw "Required Video Server setup volume was not found."
+                        }
+                        Copy-Item -Path $VideoServerUpgradeSetupVolumePath -Destination $VideoServerUpgradeSetupVolumeDestinationPath -Force
+                        Write-Verbose "Copied Video Server setup volume from '$VideoServerUpgradeSetupVolumePath' to '$VideoServerUpgradeSetupVolumeDestinationPath'"
+                    }else{
+                        Write-Verbose "Video Server setup volume already exists at '$VideoServerUpgradeSetupVolumeDestinationPath'"
+                    }
+                }
             }elseif($ServerRole -ieq "DataPipelinesServer"){
                 # Copy Data Pipelines server setup
                 $DataPipelinesServerUpgradeSetupPath = "$($PsDrive.Name):\DataPipelinesServer\DataPipelinesServer.exe"
@@ -463,6 +592,19 @@ function Invoke-DownloadSetupFromUpgradeVM
                     Write-Verbose "Copied Data Pipelines Server setup from '$DataPipelinesServerUpgradeSetupPath' to '$DataPipelinesServerUpgradeSetupDestinationPath'"
                 }else{
                     Write-Verbose "Data Pipelines Server setup already exists at '$DataPipelinesServerUpgradeSetupDestinationPath'"
+                }
+            }elseif($ServerRole -ieq "VelocityServer"){
+                # Copy Velocity server setup
+                $VelocityServerUpgradeSetupPath = "$($PsDrive.Name):\VelocityServer\VelocityServer.exe"
+                $VelocityServerUpgradeSetupDestinationPath = "$($StagingPath)\VelocityServer.exe"
+                if(-not(Test-Path -Path $VelocityServerUpgradeSetupDestinationPath)){
+                    if(-not(Test-Path $VelocityServerUpgradeSetupPath)){
+                        throw "Required Velocity Server setup file was not found."
+                    }
+                    Copy-Item -Path $VelocityServerUpgradeSetupPath -Destination $VelocityServerUpgradeSetupDestinationPath -Force
+                    Write-Verbose "Copied Velocity Server setup from '$VelocityServerUpgradeSetupPath' to '$VelocityServerUpgradeSetupDestinationPath'"
+                }else{
+                    Write-Verbose "Velocity Server setup already exists at '$VelocityServerUpgradeSetupDestinationPath'"
                 }
             }else{
                 # Copy Server setup
